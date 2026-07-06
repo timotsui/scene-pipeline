@@ -8,9 +8,12 @@ modularized by stage; each module is a subfolder.
 
 | module | stage |
 |--------|-------|
-| `entangled_gen/` | generated-splat leg: render views → segment → depth-lift → `scene_manifest.json` → envelope → LLM composition package + live placement viewer |
+| `entangled_gen/` | generated-splat leg: generate (swappable methods under `gen/`) → render views → segment → depth-lift → `scene_manifest.json` → envelope → LLM composition package + live placement viewer |
 
 (Planned next modules: scene proposer, composition/verification.)
+
+Stages talk only through per-scene files — the contracts (and how to swap in an
+alternative method for any stage) are in `entangled_gen/PIPELINE.md`.
 
 ## Data
 

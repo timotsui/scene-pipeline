@@ -23,8 +23,8 @@ ap.add_argument("--scene", default="bedroom", help="default scene for /")
 ap.add_argument("--port", type=int, default=8321)
 args = ap.parse_args()
 
-CAPS = ROOT / "out" / "viewer_caps"
-CAPS.mkdir(exist_ok=True)
+CAPS = paths.OUT / "viewer_caps"   # shared data root (local_paths.json), not the repo tree
+CAPS.mkdir(parents=True, exist_ok=True)
 
 
 def placement_file(sc):
