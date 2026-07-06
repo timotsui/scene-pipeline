@@ -1,0 +1,67 @@
+{
+  "_note": "v0 isolation test produced from the starter pack by eye. Coords are LOW-CONFIDENCE estimates meant to demonstrate the format and prove the task has signal; verify each anchor bbox with the shot.py --box loop before trusting geometry. Frame: origin=standpoint, North=-z, East=+x, South=+z, West=-x, up=+y, floor y=-3.2.",
+
+  "scene": {
+    "room_type": "children's playroom (under-stair)",
+    "style": "warm, light-wood, primary-color kids' decor; built-in white cabinetry",
+    "north": "-z",
+    "bounds": { "x": [-4.1, 2.3], "z": [-3.2, 2.4], "floor_y": -3.2 }
+  },
+
+  "objects": [
+    { "id": "desk_1", "category": "desk", "anchor": true,
+      "size": [1.6, 0.75, 0.7], "position": [-0.5, -2.83, 1.9], "yaw_deg": 0,
+      "support": "floor", "against": "wall_S",
+      "description": "wooden child's desk against the south wall, faces into room", "confidence": 0.6 },
+
+    { "id": "bookshelf_W", "category": "bookshelf", "anchor": true,
+      "size": [0.3, 1.8, 1.2], "position": [-3.8, -2.3, -0.4], "yaw_deg": 90,
+      "support": "floor", "against": "wall_W",
+      "description": "tall bookshelf on the west wall, full of children's books", "confidence": 0.5 },
+
+    { "id": "wardrobe_E", "category": "wardrobe_cabinet", "anchor": true,
+      "size": [0.6, 2.0, 1.5], "position": [1.9, -2.2, -0.4], "yaw_deg": 270,
+      "support": "floor", "against": "wall_E",
+      "description": "white built-in wardrobe + cabinets on the east wall", "confidence": 0.5 },
+
+    { "id": "wallshelf_E", "category": "wall_shelving", "anchor": true,
+      "size": [0.25, 1.4, 1.6], "position": [2.0, -1.8, 0.8], "yaw_deg": 270,
+      "support": "wall", "against": "wall_E",
+      "description": "open wall shelving with books, southeast", "confidence": 0.45 },
+
+    { "id": "staircase_N", "category": "staircase", "anchor": true,
+      "size": [1.6, 2.6, 2.4], "position": [0.6, -1.9, -2.6], "yaw_deg": 180,
+      "support": "floor", "against": "wall_N",
+      "description": "wooden staircase + under-stair door, architectural fixture", "confidence": 0.6 },
+
+    { "id": "monitor_1", "category": "monitor", "anchor": false,
+      "size": [0.5, 0.4, 0.1], "support": "desk_1",
+      "constraints": [ {"rel": "on", "target": "desk_1"}, {"rel": "facing", "target": "wall_S"} ],
+      "description": "dark monitor/portfolio standing on the desk", "confidence": 0.5 },
+
+    { "id": "rug_striped", "category": "rug", "anchor": false,
+      "size": [1.2, 0.02, 2.0], "support": "floor",
+      "constraints": [ {"rel": "centered_in_room", "target": "room"}, {"rel": "in_front_of", "target": "desk_1"} ],
+      "description": "multicolor striped runner rug, center of room", "confidence": 0.6 },
+
+    { "id": "rug_alphabet", "category": "rug", "anchor": false,
+      "size": [1.6, 0.02, 1.6], "support": "floor",
+      "constraints": [ {"rel": "near", "target": "bookshelf_W"}, {"rel": "left_of", "target": "rug_striped"} ],
+      "description": "colorful alphabet play mat on the west side", "confidence": 0.6 },
+
+    { "id": "beanbag_red", "category": "beanbag", "anchor": false,
+      "size": [0.6, 0.4, 0.6], "support": "floor",
+      "constraints": [ {"rel": "near", "target": "rug_striped"} ],
+      "description": "round red beanbag", "confidence": 0.6 },
+
+    { "id": "peanut_yellow", "category": "play_cushion", "anchor": false,
+      "size": [0.9, 0.4, 0.4], "support": "floor",
+      "constraints": [ {"rel": "near", "target": "staircase_N"} ],
+      "description": "yellow peanut-shaped balance cushion", "confidence": 0.6 },
+
+    { "id": "stroller_1", "category": "stroller", "anchor": false,
+      "size": [0.5, 1.0, 0.8], "support": "floor",
+      "constraints": [ {"rel": "near", "target": "wardrobe_E"}, {"rel": "against_wall", "target": "wall_E"} ],
+      "description": "baby stroller parked by the east cabinets", "confidence": 0.5 }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "package": "playroom-starting-guide",
+  "version": 1,
+  "created": "2026-06-23",
+  "purpose": "Starting orientation package for an agent exploring the playroom 3DGS scene. Gives a fixed standpoint, a defined North, a ring of eye-level views, and top-down plan views, all with exact camera coordinates. The agent may render additional/custom views by calling the render tool (see render_tool).",
+
+  "scene": {
+    "ply": "data/superspl/playroom_centered.ply",
+    "ply_note": "Recentered so the standpoint is the origin. Original un-centered scene is data/superspl/playroom.ply (this frame minus T, T=[1.5,-1.2,2.7]).",
+    "units": "approx meters (3DGS scene scale)"
+  },
+
+  "frame": {
+    "origin": "standpoint (where the observer stands)",
+    "axes": {
+      "+x": "EAST",
+      "-x": "WEST",
+      "-z": "NORTH (forward / toward staircase)",
+      "+z": "SOUTH (toward desk / playroom)",
+      "+y": "UP (ceiling)",
+      "-y": "DOWN (floor)"
+    },
+    "extent": { "x": [-4.13, 2.31], "y": [-4.96, 2.28], "z": [-3.19, 2.42] },
+    "floor_y_approx": -3.2,
+    "ceiling_y_approx": 2.28,
+    "north_definition": "North is the -z direction: the forward look from the standpoint, facing the staircase/entry."
+  },
+
+  "standpoint": {
+    "eye": [0, 0, 0],
+    "eye_height_note": "y=0 is standing eye level. Floor is ~3.2 below, ceiling ~2.3 above.",
+    "default_view": { "look": [0, 0, -3], "up": [0, 1, 0], "fov": 90, "heading": "north" }
+  },
+
+  "ring_views": {
+    "description": "8 eye-level views from the standpoint, one per compass heading. All: eye [0,0,0], up [0,1,0], fov 90, look = 3 units toward heading.",
+    "common": { "eye": [0, 0, 0], "up": [0, 1, 0], "fov": 90 },
+    "views": [
+      { "name": "north",     "heading": "N",  "look": [0, 0, -3],          "file": "views/view_north.webp", "shows": "staircase, under-stair door, yellow peanut beanbag" },
+      { "name": "northeast", "heading": "NE", "look": [2.12, 0, -2.12],    "file": "views/view_ne.webp" },
+      { "name": "east",      "heading": "E",  "look": [3, 0, 0],           "file": "views/view_east.webp" },
+      { "name": "southeast", "heading": "SE", "look": [2.12, 0, 2.12],     "file": "views/view_se.webp" },
+      { "name": "south",     "heading": "S",  "look": [0, 0, 3],           "file": "views/view_south.webp", "shows": "desk with monitor, bookshelves, playroom" },
+      { "name": "southwest", "heading": "SW", "look": [-2.12, 0, 2.12],    "file": "views/view_sw.webp" },
+      { "name": "west",      "heading": "W",  "look": [-3, 0, 0],          "file": "views/view_west.webp" },
+      { "name": "northwest", "heading": "NW", "look": [-2.12, 0, -2.12],   "file": "views/view_nw.webp" }
+    ]
+  },
+
+  "plan_views": {
+    "description": "Top-down floor plans. Both clip the ceiling/upper half at the standpoint plane (box ymax=0) and pan-center on the room footprint XZ=[0.5,0.0]. Plan-frame screen mapping: screen-right=+x (EAST), screen-down=+z (SOUTH), screen-up=-z (NORTH).",
+    "common": { "up": [0, 0, -1], "box": [-4.3, -5, -3.3, 2.5, 0, 2.5] },
+    "views": [
+      {
+        "name": "plan_ortho",
+        "type": "near-orthographic (recommended for layout)",
+        "eye": [0.5, 16, 0.0], "look": [0.5, -1, 0.0], "fov": 17,
+        "file": "views/plan_ortho.webp",
+        "note": "High eye + narrow fov => straight walls, true footprint, minimal perspective."
+      },
+      {
+        "name": "plan_fov90",
+        "type": "fov-90 oblique (standardized with eye-level shots)",
+        "eye": [0.5, 1.2, 0.0], "look": [0.5, -1, 0.0], "fov": 90,
+        "file": "views/plan_fov90.webp",
+        "note": "fov 90 forces a low eye; walls bow and furniture sides show. Not a true flat plan."
+      }
+    ]
+  },
+
+  "render_tool": {
+    "script": "view.py",
+    "cwd": "this package directory",
+    "usage": "python view.py <heading | degrees | plan | plan90>  [fov=N] [from=x,y,z] [eye=x,y,z look=x,y,z]",
+    "examples": {
+      "heading": "python view.py north",
+      "degrees": "python view.py 135",
+      "plan": "python view.py plan",
+      "zoom_heading": "python view.py east fov=60",
+      "move_standpoint": "python view.py from=1,0,0 north",
+      "arbitrary": "python view.py eye=0,0,-1 look=0,0,2"
+    },
+    "notes": [
+      "Simplest path: a heading name (n/ne/e/se/s/sw/w/nw) or a compass angle in degrees (0=N,90=E) aims from the standpoint at eye level, fov 90.",
+      "'plan' = clean near-orthographic floor plan; 'plan90' = fov-90 oblique plan. Ceiling clip is handled for you.",
+      "Pan by moving where you stand: from=+x is East/right, from=+z is South/down.",
+      "Lower fov= zooms in; higher zooms out.",
+      "Images save to views/ and print their path; each also writes a .json sidecar + a views/shots.csv row.",
+      "view.py wraps the underlying renderer ../shot.py; call shot.py directly only for exotic shots (custom --box/--sphere, HTML orbit viewer)."
+    ]
+  }
+}

@@ -9,8 +9,11 @@ modularized by stage; each module is a subfolder.
 | module | stage |
 |--------|-------|
 | `entangled_gen/` | generated-splat leg: generate (swappable methods under `gen/`) → render views → segment → depth-lift → `scene_manifest.json` → envelope → LLM composition package + live placement viewer |
+| `real_scan/` | real-scan leg (ex week5/splat_to_placement): candidate triage, SOG/InteriorGS decoding, clean/render/plan tooling, agent starter pack |
+| `proposer/` | scene-proposer stage (seed: week5 proposer experiments; real scene → composition proposal for a Holodeck/GLTS-style composer) |
 
-(Planned next modules: scene proposer, composition/verification.)
+(Planned next: composition/verification module; modules are incomplete by
+design — this repo is the single home for the pipeline as it grows.)
 
 Stages talk only through per-scene files — the contracts (and how to swap in an
 alternative method for any stage) are in `entangled_gen/PIPELINE.md`.

@@ -1,0 +1,132 @@
+{
+  "_note": "Scene proposal built from proposer/observations.md (24-object explore log) in the centered standpoint frame. Anchors carry full geometry verified with shot.py --box (see PROPOSAL_NOTES.md). Non-anchors carry size + support + constraints only; the composer solves their positions. Frame: origin=standpoint, North=-z, East=+x, South=+z, West=-x, up=+y, floor y=-3.2. Units approx meters. Coords are best-effort estimates from a non-metric 3DGS scene; N-wall numbers are softer (unscanned capture void).",
+
+  "scene": {
+    "room_type": "children's playroom (converted under-stair room)",
+    "style": "warm, light-wood floor, cream walls with kids' wall decals; lots of built-in white cabinetry; soft toy-filled play zones",
+    "north": "-z",
+    "bounds": { "x": [-4.13, 2.31], "z": [-3.19, 2.42], "floor_y": -3.2 }
+  },
+
+  "objects": [
+    { "id": "staircase_N", "category": "staircase", "anchor": true,
+      "size": [2.6, 2.8, 1.4], "position": [0.3, -1.8, -2.5], "yaw_deg": 180,
+      "support": "floor", "against": "wall_N",
+      "description": "wooden staircase with turned balusters and handrail, treads rising west->east, white-painted closed stringer/skirt below; dominant North-wall structure", "confidence": 0.6 },
+
+    { "id": "understair_door", "category": "door", "anchor": true,
+      "size": [0.85, 2.0, 0.1], "position": [-1.1, -2.2, -3.1], "yaw_deg": 180,
+      "support": "floor", "against": "wall_N",
+      "description": "full-height white 4-panel under-stair closet door with lever handle; light switch on wall beside it", "confidence": 0.55 },
+
+    { "id": "understair_cabinet", "category": "cabinet", "anchor": true,
+      "size": [1.2, 0.9, 0.5], "position": [0.6, -2.75, -2.95], "yaw_deg": 180,
+      "support": "floor", "against": "wall_N",
+      "description": "low white built-in cabinetry filling the triangular under-stair void, beneath the rising treads", "confidence": 0.5 },
+
+    { "id": "wardrobe_E", "category": "wardrobe_cabinet", "anchor": true,
+      "size": [1.4, 3.3, 0.6], "position": [2.0, -1.55, -0.6], "yaw_deg": 270,
+      "support": "floor", "against": "wall_E",
+      "description": "tall floor-to-near-ceiling white built-in wardrobe: two upper cabinet doors, two lower doors/drawers, brushed handles; biggest mass on the East wall", "confidence": 0.55 },
+
+    { "id": "bookshelf_SE", "category": "bookshelf", "anchor": true,
+      "size": [1.1, 2.6, 0.4], "position": [1.9, -1.9, 2.1], "yaw_deg": 0,
+      "support": "floor", "against": "wall_S",
+      "description": "built-in: 4-5 open upper shelves packed with books/binders/files over a lower cabinet with two doors; SE corner directly behind desk's right end", "confidence": 0.55 },
+
+    { "id": "desk_S", "category": "desk", "anchor": true,
+      "size": [1.3, 0.75, 0.6], "position": [0.6, -2.83, 2.0], "yaw_deg": 0,
+      "support": "floor", "against": "wall_S",
+      "description": "wooden desk against the south wall with a dark monitor, keyboard, cable bundle below and a small chair tucked under; faces North into the room", "confidence": 0.6 },
+
+    { "id": "bookrack_SW", "category": "book_display_rack", "anchor": true,
+      "size": [0.8, 1.2, 0.3], "position": [-1.2, -2.6, 2.05], "yaw_deg": 0,
+      "support": "floor", "against": "wall_S",
+      "description": "white slanted-front tiered kids' picture-book display rack, ~4 rows, full of children's books; SW corner", "confidence": 0.55 },
+
+    { "id": "curtain_recess_W", "category": "curtained_recess", "anchor": true,
+      "size": [1.4, 2.4, 0.2], "position": [-4.0, -1.2, 0.8], "yaw_deg": 90,
+      "support": "floor", "against": "wall_W",
+      "description": "large beige curtain covering a West-wall recess (likely a window or storage niche)", "confidence": 0.45 },
+
+    { "id": "monitor_desk", "category": "monitor", "anchor": false,
+      "size": [0.5, 0.4, 0.1], "support": "desk_S",
+      "constraints": [ {"rel": "on", "target": "desk_S"}, {"rel": "facing", "target": "wall_N"} ],
+      "description": "dark computer monitor standing on the desk, facing into the room", "confidence": 0.55 },
+
+    { "id": "train_picture_W", "category": "wall_art", "anchor": false,
+      "size": [0.5, 0.3, 0.05], "support": "wall",
+      "constraints": [ {"rel": "against_wall", "target": "wall_W"}, {"rel": "above", "target": "abacus_train_W"} ],
+      "description": "dark framed print of a steam train, upper West wall", "confidence": 0.55 },
+
+    { "id": "abacus_train_W", "category": "wall_toy", "anchor": false,
+      "size": [0.4, 0.4, 0.1], "support": "wall",
+      "constraints": [ {"rel": "against_wall", "target": "wall_W"}, {"rel": "near", "target": "ride_on_car"} ],
+      "description": "wall-mounted wooden bead/alphabet train abacus toy, low on the West wall", "confidence": 0.5 },
+
+    { "id": "ride_on_car", "category": "ride_on_toy", "anchor": false,
+      "size": [0.5, 0.4, 0.6], "support": "floor",
+      "constraints": [ {"rel": "against_wall", "target": "wall_W"}, {"rel": "in_corner", "target": "room"} ],
+      "description": "child's red/blue ride-on push car on the floor near the West wall / NW", "confidence": 0.55 },
+
+    { "id": "stroller_E", "category": "stroller", "anchor": false,
+      "size": [0.6, 1.0, 1.0], "support": "floor",
+      "constraints": [ {"rel": "in_front_of", "target": "wardrobe_E"}, {"rel": "against_wall", "target": "wall_E"} ],
+      "description": "blue-seat baby stroller parked in front of the East wardrobe", "confidence": 0.55 },
+
+    { "id": "beanbag_peanut", "category": "beanbag", "anchor": false,
+      "size": [1.0, 0.4, 0.5], "support": "floor",
+      "constraints": [ {"rel": "in_front_of", "target": "staircase_N"}, {"rel": "centered_in_room", "target": "room"} ],
+      "description": "long yellow peanut-shaped beanbag on the bare floor in front of the stairs", "confidence": 0.6 },
+
+    { "id": "pouf_red", "category": "pouf", "anchor": false,
+      "size": [0.7, 0.4, 0.7], "support": "mat_alphabet",
+      "constraints": [ {"rel": "on", "target": "mat_alphabet"}, {"rel": "near", "target": "lions_plush"} ],
+      "description": "round red pouf/beanbag sitting on the SW alphabet foam mat", "confidence": 0.55 },
+
+    { "id": "lions_plush", "category": "plush_toy", "anchor": false,
+      "size": [0.6, 0.3, 0.3], "support": "floor",
+      "constraints": [ {"rel": "near", "target": "mat_alphabet"}, {"rel": "in_corner", "target": "room"} ],
+      "description": "two stuffed lion toys at the SW edge of the foam mat", "confidence": 0.5 },
+
+    { "id": "elephant_plush", "category": "plush_toy", "anchor": false,
+      "size": [0.4, 0.3, 0.6], "support": "floor",
+      "constraints": [ {"rel": "near", "target": "wardrobe_E"}, {"rel": "on", "target": "rug_striped"} ],
+      "description": "grey plush elephant/whale toy on the floor by the striped rug near the wardrobe base", "confidence": 0.45 },
+
+    { "id": "kids_table", "category": "kids_table", "anchor": false,
+      "size": [0.6, 0.5, 0.6], "support": "floor",
+      "constraints": [ {"rel": "in_corner", "target": "room"}, {"rel": "near", "target": "curtain_recess_W"} ],
+      "description": "small light-wood child table with little chairs, West / SW corner", "confidence": 0.5 },
+
+    { "id": "play_kitchen", "category": "play_set", "anchor": false,
+      "size": [0.4, 0.4, 0.4], "support": "floor",
+      "constraints": [ {"rel": "near", "target": "kids_table"} ],
+      "description": "assorted play kitchen / cash-register role-play toys clustered at the kids' table", "confidence": 0.45 },
+
+    { "id": "rug_striped", "category": "rug", "anchor": false,
+      "size": [1.0, 0.02, 2.2], "support": "floor",
+      "constraints": [ {"rel": "in_front_of", "target": "wardrobe_E"}, {"rel": "aligned_with", "target": "wall_E"} ],
+      "description": "multicolor striped runner rug (pink/black/blue/red) running N-S along the East/center side", "confidence": 0.55 },
+
+    { "id": "mat_alphabet", "category": "play_mat", "anchor": false,
+      "size": [1.8, 0.02, 1.8], "support": "floor",
+      "constraints": [ {"rel": "in_corner", "target": "room"}, {"rel": "left_of", "target": "rug_striped"} ],
+      "description": "interlocking colored foam alphabet puzzle mat filling the SW floor; main play zone", "confidence": 0.6 },
+
+    { "id": "floor_toys", "category": "scattered_toys", "anchor": false,
+      "size": [0.6, 0.2, 0.6], "support": "floor",
+      "constraints": [ {"rel": "centered_in_room", "target": "room"}, {"rel": "near", "target": "rug_striped"} ],
+      "description": "small cars, wooden toys and blocks strewn across the central floor / rug", "confidence": 0.4 },
+
+    { "id": "wall_decals", "category": "wall_decals", "anchor": false,
+      "size": [0.3, 0.3, 0.02], "support": "wall",
+      "constraints": [ {"rel": "against_wall", "target": "wall_E"} ],
+      "description": "decorative kids' wall decals (rocket on W wall, animals/balloons on E & S walls)", "confidence": 0.4 },
+
+    { "id": "floor_wood", "category": "floor", "anchor": false,
+      "size": [6.4, 0.02, 5.6], "support": "floor",
+      "constraints": [ {"rel": "centered_in_room", "target": "room"} ],
+      "description": "light wood plank flooring throughout, partly covered by the two rugs/mats", "confidence": 0.7 }
+  ]
+}
