@@ -1,0 +1,13 @@
+# machine-local data roots (see entangled_gen/local_paths.json.example)
+local_paths.json
+
+# heavy data — never in git
+out/
+repos/
+**/viewer/data/
+*.ply
+*.pkl
+
+# python
+__pycache__/
+*.pyc

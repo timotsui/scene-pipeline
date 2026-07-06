@@ -1,0 +1,4 @@
+{
+  "out": "ABSOLUTE/PATH/TO/pipeline-data/out",
+  "week5": "ABSOLUTE/PATH/TO/week5/splat_to_placement"
+}
