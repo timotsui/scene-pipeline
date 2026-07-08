@@ -42,6 +42,8 @@ ap.add_argument("--views-dir", default="", help="override views directory")
 ap.add_argument("--glob", default="gpu_yaw*.webp", help="view filename glob")
 ap.add_argument("--out-dir", default="", help="override output directory")
 ap.add_argument("--prompt", default="", help="override detection vocab")
+ap.add_argument("--box-thr", type=float, default=0.35,
+                help="GroundingDINO box threshold (lower for promised-but-missed words)")
 args = ap.parse_args()
 sc = args.scene
 
@@ -111,7 +113,7 @@ for vp in VIEWS:
     img = Image.open(vp).convert("RGB")
     print(f"\n=== {name} ===", flush=True)
 
-    dets = detect(img, PROMPT)
+    dets = detect(img, PROMPT, box_thr=args.box_thr)
     # keep it readable
     dets = sorted(dets, key=lambda d: -d["score"])[:20]
     for d in dets:

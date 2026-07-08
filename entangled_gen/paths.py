@@ -64,6 +64,16 @@ def seg_dir(sc):
     return scene_dir(sc) / "seg"
 
 
+def pano_crops_dir(sc):
+    """Pinhole crops sliced from a bundle equirect (crop_pano.py, week8)."""
+    return scene_dir(sc) / "pano_crops"
+
+
+def seg_pano_dir(sc):
+    """seg_views outputs on the pano crops (week8 object-ID path)."""
+    return scene_dir(sc) / "seg_pano"
+
+
 def package_dir(sc):
     return scene_dir(sc) / "package"
 

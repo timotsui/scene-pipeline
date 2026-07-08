@@ -72,9 +72,27 @@ class H(BaseHTTPRequestHandler):
                 man = json.loads(manf.read_text())
                 meta["floor_y"] = man["frame"]["floor_y"]
                 meta["ceiling_y"] = man["frame"]["ceiling_y"]
+            # exact rig cameras from the shot.py sidecars, so the viewer's
+            # photo-pose buttons match the webps even when the rig is not at
+            # the origin (e.g. marble scenes: floor-origin, eye at +1.6)
+            poses = {}
+            for vj in sorted((paths.OUT / sc / "views").glob("gpu_yaw*.json")):
+                try:
+                    d = json.loads(vj.read_text())
+                    poses[vj.stem] = {"cam": d["cam"], "look": d["look"],
+                                      "fov": d.get("fov", 75)}
+                except Exception:
+                    pass
+            meta["poses"] = poses
             self._send(200, json.dumps(meta).encode(), "application/json")
         elif p == "/manifest.json":
-            f = paths.manifest(sc)
+            # ?man=<variant> serves scene_manifest_<variant>.json (e.g. the
+            # week8 pano-lift manifests) without touching the default one
+            man = (q.get("man") or [""])[0]
+            if man and man.replace("_", "").isalnum():
+                f = paths.scene_dir(sc) / f"scene_manifest_{man}.json"
+            else:
+                f = paths.manifest(sc)
             if f.exists():
                 self._send(200, f.read_bytes(), "application/json")
             else:
@@ -89,6 +107,23 @@ class H(BaseHTTPRequestHandler):
             f = placement_file(sc)
             body = f.read_bytes() if f.exists() else b'{"placements":[]}'
             self._send(200, body, "application/json")
+        elif p == "/splat.ply":
+            # full-quality splat for the hi-fi renderer (GaussianSplats3D).
+            # Streamed in chunks: gen_raw.ply can be 100-800 MB.
+            f = paths.OUT / sc / "gen_raw.ply"
+            if not f.exists():
+                return self._send(404, b"no gen_raw.ply for this scene")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(f.stat().st_size))
+            self.send_header("Cache-Control", "max-age=300")
+            self.end_headers()
+            with f.open("rb") as fh:
+                while True:
+                    chunk = fh.read(1 << 20)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
         else:
             self._send(404, b"not found")
 
