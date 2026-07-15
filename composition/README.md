@@ -18,7 +18,7 @@ PER-OBJECT at its checkpoint before the next stage runs.
 | C4 | inspect | `review_server.py` (localhost:8322) | shortlists2.json + `views/` + thumbs | `package/review_crops/<obj>{,_clean}.png` (viewer is LOOK-ONLY; two strips per box: dimension-fit order and CLIP-relevance order; glowing frame = native size fits inside the box) |
 | C5 | pick | `pick.py` — dimension gate (fit cap + scale band around the scene-median scale), argmax `clip` inside it | shortlists2.json | `package/picks2.json` |
 | C6 | place (base) | `place2.py` — perm rotation + uniform fit scale + tiling; facing (0/180) unresolved | picks2.json + shortlists2.json + manifest | `package/composed_state2.json` + `composed2_view_*.png` + `composed_scene2.glb` |
-| C7 | refine/loop | later this week (facing, occlusion, render-variant judging of alternates) | composed_state2.json + composites | TBD |
+| C7 | loop | `loop.py` — VLM critique → `{add, nudge}` edits, verified one at a time (see "C7 loop contract") | composed_state2.json + `views/` + shortlists2.json + manifest | `package/edits.jsonl` + updated `composed_state2.json` + `composed2_view_*.png` (base snapshot `composed_state2_base.json`; per-edit renders under `package/loop/`) |
 
 Run C1: `python retrieve2.py --scene <sc>` (`--no-agent` offline,
 `--compare` prints v0's pick, `--top N` table depth).
@@ -129,6 +129,102 @@ bedroom_marble only obj_016, a sliver lift-artifact box, relaxes). Top-3
 alternates are kept in picks2.json for a render-variants/VLM judgment at
 placement time.
 
+### C7 loop contract (shape settled 2026-07-15; ops scoped to add + nudge)
+
+C7 is a propose→verify cycle over a SMALL TYPED EDIT SPACE on
+`composed_state2.json`. The loop's skeleton never changes; capability grows by
+adding op types. For now exactly two ops (user scoping 2026-07-15 — `swap`,
+`remove`/merge, `flip_facing` are deferred: other mechanisms may handle them
+more efficiently, and they bolt on later without touching the skeleton):
+
+- `{"op":"add", "label", "center", "size", "mount"}` — VLM names an object
+  visible in the target views but absent from the composed render, with an
+  approximate box. The new box re-enters the chain at C1 FOR THAT BOX ONLY
+  (in-process: `retrieve2.shortlist_box` → `measure.ensure` + catalog size
+  refresh → re-shortlist → `thumbs.ensure` → the C5 gate; NO CLIP — a loop
+  add has no detection crop, so best fit wins inside the band) and is then
+  placed. This is the "pick object after layout" contribution operating
+  inside the loop, and the direct answer to the starved detection (60° never
+  rendered, 15/20 detections in one view). On accept the box is appended to
+  shortlists2.json + picks2.json with `source: "loop"` so the viewers can
+  inspect it.
+- `{"op":"nudge", "id", "dpos":[x,y,z], "dyaw_deg", "dscale"}` — bounded
+  layout jiggle per instance. Caps per edit: each |dpos component| ≤ 0.5 m,
+  |dyaw| ≤ 45°, dscale ∈ [0.8, 1.25]; a bigger correction takes multiple
+  accepted edits.
+
+**Iteration skeleton:**
+
+1. RENDER the composed state from the judge cameras, MESH-ONLY on a flat
+   background (`composite_views(..., splat_bg=False)`). The splat lives ONLY
+   in the ORIGINAL target images — run 1 (2026-07-15, archived under
+   `package/loop/run1_splatbg/`) composited meshes over the splat and the
+   splat masked everything: no adds ever look missing (the original object
+   shows through) and verify can't see a mesh change (the splat fills what
+   the mesh vacated). Judge set v1 = the 4 target yaw views, PAIRED (target
+   splat render next to mesh-only render, same camera) — paired comparison
+   is the easy VLM task; free off-center cameras judge plausibility only
+   (no target image) and are a later extension.
+2. CRITIQUE (one VLM call, all pairs): structured JSON
+   `{issues:[{view, id?, kind, detail}], edits:[<ops above>]}` — never a
+   free-text vibe. The prompt includes the journal's REJECTED edits
+   (Reflexion memory): never re-propose a rejected edit.
+3. VALIDATE each proposed edit geometrically, zero VLM cost: caps, inside
+   the room shell, and DETERMINISTIC MESH COLLISION (`collide.py`): solid
+   voxel occupancy at 3 cm pitch (same method family as
+   collider_register.py; `mesh.voxelized(pitch).fill()`, surface-sample
+   fallback, global-grid snap, in-process cache on the placement
+   signature) — pair score = shared voxels / smaller instance's voxels;
+   > `RATIO_MAX` 0.05 = collision. Genuine contact stays under it; solid
+   fill catches full containment, which AABB/surface checks miss. A nudge
+   is rejected only if it made its worst collision WORSE past the
+   threshold (lifted scenes already interpenetrate); an add must come in
+   under it. Failures are journaled `valid:false` and count as rejected.
+   CLI diagnostic: `python collide.py --scene <sc>` prints the current
+   state's full collision table.
+4. APPLY strictly ONE edit at a time → re-render affected views → VERIFY
+   (VLM, before/after): `{verdict: better|worse|neutral}`. Accept ONLY
+   `better`; `neutral` and `worse` revert (anti-drift). Batching edits per
+   iteration is a later speed optimization; strict mode keeps attribution
+   clean.
+5. JOURNAL every attempt to `package/edits.jsonl`:
+   `{iter, edit, valid, verdict, accepted, renders}` — the reproducible
+   trace (paper artifact), the revert record, and the Reflexion memory.
+   Rejections carry WHY (validation reason or verify verdict), and the
+   critique prompt shows them: identical re-proposals are key-blocked,
+   corrected variants addressing the reason are invited.
+6. STOP when an iteration produces nothing new (zero accepts AND zero
+   fresh rejections — an all-rejected iteration continues, since its
+   reasons feed the next critique), or at hard caps (`MAX_ITERS`,
+   `MAX_VLM_CALLS`) — caps kill swap-style oscillation by construction.
+
+**State rule:** `composed_state2.json` stays THE state, updated in place on
+accept; the pre-loop state is snapshotted ONCE to
+`composed_state2_base.json`; `edits.jsonl` is append-only (full revert =
+snapshot + replay; re-running loop.py resumes iteration numbering and keeps
+the rejected-edit memory). All VLM/LLM calls go through `bridge.py`.
+
+**Frames:** the VLM talks RENDER frame (+y up, meters — the view sidecars'
+frame; room bounds from `frame.extent_p1/p99`); loop.py converts centers and
+`dpos` to RAW at ingest via `raw_to_render` (elementwise, self-inverse).
+A nudge's rotation is stored as optional `yaw` (render-frame degrees) on the
+state entry; `place2.placed_mesh` applies it about the placed mesh's bbox
+center, so floor contact survives. Per-edit renders + `target_*.png` (webp →
+png copies of the originals) + `critique_it##.json` live under
+`package/loop/` — canonical `composed2_view_*.png` + the glb are rewritten
+only at the end, and only if something was accepted.
+
+Run: `python loop.py --scene <sc> [--max-iters 4] [--max-edits 4]
+[--model sonnet]` (Windows python, from `composition/`).
+
+**Facing note:** the 0/180 facing problem is NOT a v1 loop op. The
+dot-product initializer stays C6's job (still gated on the front = +z
+verification); a `flip_facing` op is the loop-side repair once ops expand.
+
+The v0 augment path (`propose.py` → `jiggle.py`, below) is this loop's
+unjudged precursor: C7 `add` ≈ propose with a VLM verdict, C7 `nudge` ≈
+jiggle with accept/reject. v0 stays untouched for `--compare`.
+
 ### File contracts
 
 `shortlists2.json`: `{scene, boxes:[{id,label,conf,center,size,aabb_min,
@@ -172,7 +268,12 @@ recreate that C1–C4 replace; kept for `--compare`.)
 
 - extraction: only the 4-view gpu manifest (19 objects on bedroom_marble);
   the pano lift has 98 — switch source manifest once re-verified post
-  mirror-fix.
+  mirror-fix. Note both are the SAME single viewpoint (`0,1.6,0`): the pano
+  buys angular resolution, NOT parallax, so lifted boxes stay modal
+  (truncated where occluded) either way — see entangled_gen/PIPELINE.md
+  "What the sources can and cannot know". The bundle collider was checked as
+  a second source on 2026-07-15 and closed out: it registers (p50 1.4 cm) but
+  is derived from the splat and carries nothing the splat lacks.
 - placement: no per-pixel occlusion vs the splat; facing (0/180 about y)
   unresolved — dot-product rule vs room interior is next (front = +z
   assumption still needs user verification).

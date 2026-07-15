@@ -39,11 +39,14 @@ def _sub_boxes(center, size, axis, k):
     return subs
 
 
-def placed_mesh(uid, perm, sub_size, center_raw, mount, floor_y_raw, r2r):
+def placed_mesh(uid, perm, sub_size, center_raw, mount, floor_y_raw, r2r,
+                yaw_deg=0.0):
     """Asset -> RENDER-frame mesh: perm rotation, uniform scale, position.
     The uniform scale is the geometric-mean optimum computed from the REAL
     rotated mesh bounds vs the (sub-)box — never from annotation sizes, which
-    lie for a fat minority of assets (window bbox z=14cm, mesh z=54cm)."""
+    lie for a fat minority of assets (window bbox z=14cm, mesh z=54cm).
+    yaw_deg (C7 nudge): free rotation about render-frame up (+y) through the
+    placed mesh's own bbox center — floor contact survives it."""
     mesh = load_asset(uid)
     mesh.apply_transform(perm_rotation(perm))
     lo, hi = mesh.bounds
@@ -62,6 +65,10 @@ def placed_mesh(uid, perm, sub_size, center_raw, mount, floor_y_raw, r2r):
         target = c_r
         offset = (lo + hi) / 2
     mesh.apply_translation(target - offset)
+    if yaw_deg:
+        lo, hi = mesh.bounds
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(
+            np.deg2rad(yaw_deg), [0, 1, 0], (lo + hi) / 2))
     return mesh
 
 
@@ -91,19 +98,23 @@ def build_state(sc):
 def _meshes(state, fr):
     r2r = fr.get("raw_to_render", [1.0, 1.0, 1.0])
     return [placed_mesh(e["uid"], e["perm"], e["size"], e["center"],
-                        e["mount"], fr["floor_y"], r2r)
+                        e["mount"], fr["floor_y"], r2r,
+                        yaw_deg=e.get("yaw", 0.0))
             for e in state["objects"]]
 
 
-def composite_views(sc, state):
+def composite_views(sc, state, outdir=None, prefix="composed2_view_",
+                    splat_bg=True):
+    """splat_bg=False renders mesh-only on a flat background (C7 loop: the
+    splat in the composite masked missing/changed meshes from the VLM)."""
     man = json.loads(paths.manifest(sc).read_text())
     meshes = _meshes(state, man["frame"])
-    pkg = paths.package_dir(sc)
+    pkg = outdir or paths.package_dir(sc)
     outs = []
     for metaf in sorted(paths.views_dir(sc).glob("gpu_yaw*.json")):
         meta = json.loads(metaf.read_text())
         imgf = paths.views_dir(sc) / meta["file"]
-        if not imgf.exists():
+        if splat_bg and not imgf.exists():
             continue
         w, h = (int(t) for t in meta["res"].split("x"))
         scene = pyrender.Scene(bg_color=[0, 0, 0, 0],
@@ -120,9 +131,10 @@ def composite_views(sc, state):
         r = pyrender.OffscreenRenderer(w, h)
         color, _ = r.render(scene, flags=pyrender.RenderFlags.RGBA)
         r.delete()
-        bg = Image.open(imgf).convert("RGBA")
+        bg = (Image.open(imgf).convert("RGBA") if splat_bg
+              else Image.new("RGBA", (w, h), (232, 232, 232, 255)))
         comp = Image.alpha_composite(bg, Image.fromarray(color, "RGBA"))
-        outf = pkg / f"composed2_view_{metaf.stem}.png"
+        outf = pkg / f"{prefix}{metaf.stem}.png"
         comp.convert("RGB").save(outf)
         outs.append(outf)
         print(f"[place2] wrote {outf}", flush=True)
