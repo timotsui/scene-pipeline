@@ -29,6 +29,36 @@ def catalog():
         for a in _CATALOG:  # tokenize once; shortlist scans run per box
             a["_cat_toks"] = _tokens(a["category"])
             a["_desc_toks"] = a["_cat_toks"] | _tokens(a.get("description", ""))
+            # y-up gate: the annotation "size" is z-up ordered for ~72% of the
+            # catalog (and inconsistent for the rest) — measured 2026-07-14
+            # against the THOR mesh bboxes. The bbox itself is y-up and
+            # real-scale by construction, so it approximates the asset's
+            # dimensions; everything downstream uses size_yup_cm, never raw
+            # "size". Truly measured mesh extents (measure.py cache) override
+            # below — the metadata bbox itself lies for a fat minority (open
+            # window shutters: bbox z=14cm, mesh z=54cm).
+            bb = ((a.get("thor_metadata") or {}).get("assetMetadata")
+                  or {}).get("boundingBox")
+            if bb:
+                a["size_yup_cm"] = [round((bb["max"][k] - bb["min"][k]) * 100)
+                                    for k in ("x", "y", "z")]
+            else:
+                s = a["size"]
+                a["size_yup_cm"] = ([s[0], s[2], s[1]] if isinstance(s, list)
+                                    and len(s) == 3 else s)
+        try:
+            from measure import load_cache
+            measured = load_cache()
+            n = 0
+            for a in _CATALOG:
+                m = measured.get(a["uid"])
+                if m:
+                    a["size_yup_cm"] = m
+                    n += 1
+            if n:
+                print(f"[retrieve] {n} sizes from measured-mesh cache", flush=True)
+        except Exception as e:
+            print(f"[retrieve] measured-size cache unavailable ({e})", flush=True)
         print(f"[retrieve] catalog: {len(_CATALOG)} annotated assets", flush=True)
     return _CATALOG
 

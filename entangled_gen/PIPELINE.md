@@ -16,7 +16,7 @@ format.** Nothing downstream knows or cares which implementation produced them.
 | 4 | lift | `lift_views.py` (point z-buffer depth + unproject + merge) | masks + sidecars + ply | `scene_manifest.json` (see frame contract below) + `seg/manifest_overlay_*.png` + `seg/manifest_plan_*.png` |
 | 5 | envelope | `envelope.py` (occupancy voxels → floor/clearance) | ply + manifest | `envelope.npz` + `envelope_heatmap.png` + `viewer/data/<scene>_clearance.json` |
 | 6 | package | `agent_package.py` | manifest + overlays | `package/GUIDE.md` + copied views/overlays + manifest |
-| 7 | compose/verify | LLM + `render_proposal.py`, `splat_place.py`, viewer | package + envelope | `package/compose_proposal.json`, `proposal_*` renders, composed plys |
+| 7 | compose/verify | `../composition/` (stages C1–C5, see its README for the sub-stage contracts) + `render_proposal.py`, `splat_place.py`, viewer | package + envelope | `package/shortlists2.json`, `picks2.json`, `composed_*`; augment path: `compose_proposal.json` + `proposal_*` renders |
 
 Orchestration: `scene_ready.py` runs the missing CPU stages (4→6) per scene by
 file mtimes. GPU stages (1–3) are launched explicitly (see `gen/*/` runners for
