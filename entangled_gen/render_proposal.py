@@ -38,6 +38,8 @@ def main():
     prop = json.loads((pkg / "compose_proposal.json").read_text())
     fr = man["frame"]
     floor_y = fr["floor_y"]
+    r2r = np.array(fr.get("raw_to_render", [1.0, 1.0, 1.0]), np.float32)
+    sy = r2r[1]  # up-sign: +1 -> up=+y; -1 -> RAW up=-y (floor_y > ceiling_y)
 
     # ---- constraint check ----
     lines, ok_all = [], True
@@ -47,9 +49,15 @@ def main():
     for p in prop["placements"]:
         lo, hi = aabb(p)
         errs = []
-        want_y = floor_y + p["size"][1] / 2
-        if abs(p["center"][1] - want_y) > 0.02:
-            errs.append(f"not on floor (center_y {p['center'][1]} != {want_y:.3f})")
+        on_floor = p.get("mount", "floor") == "floor"
+        if on_floor:
+            want_y = floor_y + sy * p["size"][1] / 2  # h/2 physically above the floor
+            if abs(p["center"][1] - want_y) > 0.02:
+                errs.append(f"not on floor (center_y {p['center'][1]} != {want_y:.3f})")
+        else:  # wall-mounted: whole AABB vertically between floor and ceiling
+            ylo_room, yhi_room = sorted((floor_y, fr["ceiling_y"]))
+            if lo[1] < ylo_room or hi[1] > yhi_room:
+                errs.append("wall object outside floor..ceiling range")
         if "extent_p1" in fr:
             (x0, _, z0), (x1, _, z1) = fr["extent_p1"], fr["extent_p99"]
             if lo[0] < x0 or hi[0] > x1 or lo[2] < z0 or hi[2] > z1:
@@ -63,7 +71,7 @@ def main():
         # corridor: keep the closest point of the AABB >= 0.5 m from origin (xz)
         nearest = np.clip(0, lo, hi)
         d = float(np.hypot(nearest[0], nearest[2]))
-        if d < 0.5:
+        if on_floor and d < 0.5:
             errs.append(f"blocks rig corridor (d={d:.2f})")
         placed.append((p["label"], (lo, hi)))
         status = "OK " if not errs else "FAIL"
@@ -75,13 +83,13 @@ def main():
     print(report, flush=True)
 
     # ---- draw: existing grey, proposed green ----
-    # manifest/proposal boxes are in RAW ply space; the webp render space may be
-    # x-mirrored relative to it (frame.st_mirror_x, calibrated by lift_views).
-    st_mirror = bool(fr.get("st_mirror_x", False))
+    # manifest/proposal boxes are in RAW ply space; the sidecar cams (and webp
+    # content) are in the RENDER frame, so transform boxes raw->render before
+    # projecting (elementwise sign flip; lo/hi swap on negated axes).
 
     def draw_box(dr, cam, lo, hi, color, width, label=None):
-        if st_mirror:
-            lo, hi = np.array([-hi[0], lo[1], lo[2]]), np.array([-lo[0], hi[1], hi[2]])
+        a, b = np.asarray(lo, np.float32) * r2r, np.asarray(hi, np.float32) * r2r
+        lo, hi = np.minimum(a, b), np.maximum(a, b)
         corners = np.array([[x, y, z] for x in (lo[0], hi[0])
                             for y in (lo[1], hi[1]) for z in (lo[2], hi[2])], np.float32)
         u, v, z = cam.project(corners)

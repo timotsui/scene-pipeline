@@ -32,16 +32,32 @@ FLOOR_SEARCH = 0.45   # local floor searched within floor_y +/- this (gen floors
 SKIRT = 0.12          # ignore this much above local floor (baseboards, rug pile)
 
 
-def compute(ply, floor_y, ceil_y, x0, x1, z0, z1):
+def compute(ply, floor_y, ceil_y, x0, x1, z0, z1, r2r=(1.0, 1.0, 1.0)):
     """First bedroom run (global flat-floor band) found floor under <5% of the
     room: generated floors are bowl-warped by tens of cm. So estimate a LOCAL
     floor height per cell and measure clearance above that; the local floor map
-    itself (floor_dev) doubles as the spatial-warp metric."""
+    itself (floor_dev) doubles as the spatial-warp metric.
+
+    Inputs (floor_y, ceil_y, extents) and stored outputs are RAW-frame; the
+    voxel logic below needs physical up = +y, so points/bounds are mapped to
+    the upright frame via frame.raw_to_render (elementwise sign flip,
+    self-inverse) and the finished grid is mapped back to raw at the end.
+    floor_dev stays in physical units (positive = local floor physically above
+    global floor_y) regardless of frame."""
+    sx, sy, sz = r2r
     names, data = read_ply(ply)
     ix = {n: i for i, n in enumerate(names)}
     alpha = 1 / (1 + np.exp(-data[:, ix["opacity"]]))
     m = alpha > 0.3
-    xyz = data[m][:, [ix["x"], ix["y"], ix["z"]]]
+    xyz = data[m][:, [ix["x"], ix["y"], ix["z"]]] * np.array(r2r)
+
+    x0r, z0r = x0, z0  # raw-frame grid origin, re-derived after the flip below
+    x0u, x1u = sorted((x0 * sx, x1 * sx))
+    z0u, z1u = sorted((z0 * sz, z1 * sz))
+    floor_u, ceil_u = floor_y * sy, ceil_y * sy
+    assert floor_u < ceil_u, (
+        f"upright floor {floor_u} not below ceiling {ceil_u} — bad frame block?")
+    x0, x1, z0, z1, floor_y, ceil_y = x0u, x1u, z0u, z1u, floor_u, ceil_u
 
     nx = max(8, int(np.ceil((x1 - x0) / CELL)))
     nz = max(8, int(np.ceil((z1 - z0) / CELL)))
@@ -77,9 +93,25 @@ def compute(ply, floor_y, ceil_y, x0, x1, z0, z1):
         (first_above - floor_bin) * YBIN,
         HEAD_MAX).astype(np.float32)
     clearance = np.where(has_floor, np.minimum(clearance, HEAD_MAX), 0.0)
+
+    # map the upright grid back to RAW: a negated axis reverses cell order, and
+    # the ceil() overhang lands at the raw-min end, so the raw origin is
+    # (raw max) - n*CELL there (exact, keeps cells aligned).
+    if sx < 0:
+        clearance = clearance[:, ::-1]
+        has_floor = has_floor[:, ::-1]
+        floor_dev = floor_dev[:, ::-1]
+        x0r = -x0u - nx * CELL  # -x0u = raw x max; origin = max end minus span
+    if sz < 0:
+        clearance = clearance[::-1]
+        has_floor = has_floor[::-1]
+        floor_dev = floor_dev[::-1]
+        z0r = -z0u - nz * CELL
+    clearance, has_floor, floor_dev = (np.ascontiguousarray(a) for a in
+                                       (clearance, has_floor, floor_dev))
     return {"clearance": clearance, "has_floor": has_floor, "floor_dev": floor_dev,
-            "x0": x0, "z0": z0, "cell": CELL, "nx": nx, "nz": nz,
-            "floor_y": floor_y, "ceil_y": ceil_y}
+            "x0": x0r, "z0": z0r, "cell": CELL, "nx": nx, "nz": nz,
+            "floor_y": floor_y * sy, "ceil_y": ceil_y * sy}
 
 
 def check_placement(env, center, size, margin=0.05):
@@ -174,7 +206,8 @@ def main():
     man = json.loads(paths.manifest(args.scene).read_text())
     fr = man["frame"]
     (x0, _, z0), (x1, _, z1) = fr["extent_p1"], fr["extent_p99"]
-    env = compute(ply, fr["floor_y"], fr["ceiling_y"], x0, x1, z0, z1)
+    r2r = fr.get("raw_to_render", [1.0, 1.0, 1.0])
+    env = compute(ply, fr["floor_y"], fr["ceiling_y"], x0, x1, z0, z1, r2r=r2r)
     save(env, args.scene)
 
 

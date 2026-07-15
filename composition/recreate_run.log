@@ -1,0 +1,47 @@
+[recreate] 19/19 boxes (conf >= 0.35)
+[retrieve] catalog: 36805 annotated assets
+[bridge] recreate_obj_000 ok in 6s
+[recreate] obj_000 chair            -> chair (84bb9327): A light brown wooden dining table chair that has a black cushion.
+[bridge] recreate_obj_001 ok in 5s
+[recreate] obj_001 bed              -> bed (73cfc22e): A rectangular twin sized or smaller bed with a wood frame, blue blanke
+[bridge] recreate_obj_002 ok in 5s
+[recreate] obj_002 computer monitor -> monitor (computer equipment) computer monitor (ffabd727): Flat screen computer monitor with landscape home screen.
+[bridge] recreate_obj_003 ok in 5s
+[recreate] obj_003 side table       -> table (f0c09d44): Mahagony wood side table with a lower shelve and top drawer.
+[bridge] recreate_obj_004 ok in 5s
+[recreate] obj_004 lamp             -> lamp (7be9e6cb): A desk lamp in a dull green color.
+[bridge] recreate_obj_005 ok in 6s
+[recreate] obj_005 shelf            -> shelf x2 (742fbdd5): A shelf full of books near a ladder.
+[bridge] recreate_obj_006 ok in 6s
+[recreate] obj_006 rug              -> footstool x2 (b929c3b0): It is a short wooden stool with a red rug on it.
+[bridge] recreate_obj_007 ok in 5s
+[recreate] obj_007 desk             -> desk (27d8e3b1): A dark brown desk with three drawers on one side and an open compartme
+[bridge] recreate_obj_008 ok in 5s
+[recreate] obj_008 window           -> window (5b9e03a4): White window with black curtain rod and green curtain.
+[bridge] recreate_obj_009 ok in 5s
+[recreate] obj_009 pillow           -> pillow (2cbac6ea): A rectangular green pillow.
+[bridge] recreate_obj_010 ok in 5s
+[recreate] obj_010 door             -> door (f563ffcd): A brown wooden door.
+[bridge] recreate_obj_011 ok in 5s
+[recreate] obj_011 door             -> door (f563ffcd): A brown wooden door.
+[bridge] recreate_obj_012 ok in 5s
+[recreate] obj_012 door             -> door (872d01ee): A dark brown wooden door with a round metal knob.
+[bridge] recreate_obj_013 ok in 50s
+[recreate] obj_013 shelf            -> shelf (514e1095): Wooden shelf with 10 shelves.
+[bridge] recreate_obj_014 ok in 5s
+[recreate] obj_014 shelf            -> shelf x2 (742fbdd5): A shelf full of books near a ladder.
+[bridge] recreate_obj_015 ok in 5s
+[recreate] obj_015 potted planter   -> potted plant (1632deaa): A plant sits in the middle of a clay-colored pot.
+[bridge] recreate_obj_016 ok in 6s
+[recreate] obj_016 door             -> door (f563ffcd): A brown wooden door.
+[bridge] recreate_obj_017 ok in 5s
+[recreate] obj_017 poter            -> box (cc51921d): A box of chocolate that looks like a crown.
+[bridge] recreate_obj_018 ok in 9s
+[recreate] obj_018 rug              -> footstool x2 (b929c3b0): It is a short wooden stool with a red rug on it.
+[place] wrote D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\package\composed_view_gpu_yaw000.png
+[place] wrote D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\package\composed_view_gpu_yaw090.png
+[place] wrote D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\package\composed_view_gpu_yaw180.png
+[place] wrote D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\package\composed_view_gpu_yaw270.png
+[place] wrote D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\package\composed_scene.glb
+[compose] done through 'place' (mode=recreate)
+EXIT:0
