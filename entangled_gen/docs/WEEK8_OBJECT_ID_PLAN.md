@@ -208,6 +208,34 @@ axis-sign hypotheses + vertical shift minimizing splat-to-mesh distance.
 Zero assumptions, zero eyes, per scene. The manual detective work of
 2026-07-07 was this algorithm executed by hand.
 
+## NEXT SESSION (user request 2026-07-07 close): RUN IT END TO END
+
+Goal: one clean E2E run of the pipeline, bundle → viewer, no hand-holding.
+
+1. **Write `run_scene.py`** (thin orchestrator, module boundaries intact):
+   bundle path in → vocab (prompt ∪ tags) → crops → seg → lift → manifest
+   variants → prints the viewer URL. Each module stays independently
+   runnable; the orchestrator only chains their CLIs.
+2. **Fix the crop mirror first** (crop_pano right-axis convention; masks↔rays
+   stay consistent either way, but crops become human-readable) — then the
+   E2E run regenerates everything cleanly from scratch.
+3. **Target scene: a SECOND Marble bundle (playroom prompt)** — proves
+   scene-generality + tests which frame-relations-table conventions are
+   truly fixed vs per-scene. ⛔ USER: download the playroom bundle from
+   Marble into in/<name>/ (spz + collider + pano + prompt.txt), then write
+   out/<scene>/bundle_path.txt (one line, bundle folder path).
+   Fallback if no new bundle: re-run bedroom_marble E2E from bare inputs.
+4. Gates: same dev-time checkpoints (pose sanity via the yaw-scan number,
+   detection overlays, viewer boxes) — full artifact paths listed at every
+   gate per the standing rule.
+
+Pickup facts: viewer = `python viewer/serve.py --scene <sc> --port 8321`,
+URL `?scene=<sc>&man=panoraw_c`. Marble transform: pano→raw = (x, −y−H, z),
+H auto-derived from mesh floor_y (manifest_pano_to_raw.py default). All
+code pushed (master 531f8fb; secret-fix history rewrite done, old HF token
+revoked). HF login NOT needed (all pipeline models cached/public). Windows
+python rule: NEVER let pip upgrade torch (2.6.0+cu124; use --no-deps).
+
 ## Status log
 
 - 2026-07-07: v1 plan written (pano+collider+prompt.txt as substrates).
@@ -354,3 +382,24 @@ Zero assumptions, zero eyes, per scene. The manual detective work of
   (c) known-opens list from the A5 entry (2nd AC, cabinet, laundry,
   label-blind dedup, door×7 audit), (d) second marble scene (playroom)
   to prove scene-generality.
+- 2026-07-14 **run_scene.py WRITTEN + CLEAN E2E RUN** (the 07-07 "NEXT
+  SESSION: RUN IT END TO END" step 1). `run_scene.py` = thin subprocess
+  orchestrator, chains crop_pano → vocab_from_prompt → seg_views (--views-dir
+  pano_crops --glob "pano_*.webp" --out-dir seg_pano --prompt <vocab>
+  --box-thr 0.35) → seg_pano_overlay → lift_pano → manifest_pano_to_raw;
+  imports only paths.py, each module stays independently runnable; --skip
+  <stages> to reuse GPU outputs; stops on first nonzero rc; prints per-stage
+  summary + viewer URL. Persists the GD vocab to seg_pano/vocab.txt.
+  Ran clean on bedroom_marble from bare inputs in **59 s** (subagent, to keep
+  logs out of context): 20 crops, 25-term vocab, **199 detections in 19/20
+  crops** (pano_y180_pp40 = up-look, 0 dets), **98 objects** →
+  scene_manifest_pano.json, panoraw_{a,b,c} variants. Reproduces the 07-07
+  hand-run (97→98, i.e. 198→199 dets). Lift stats: mesh floor −1.34 ceil 1.67
+  (matches A2 pose), 0 dropped (weak/blob/thin), **31.0% of mesh surface area
+  claimed** (the free completeness metric module 5 wanted). VLM DECISION
+  RESOLVED (user 2026-07-14): **use Claude as the VLM surrogate instead of an
+  API / local Qwen** — for module-4 audit+enrichment AND the "observation"
+  naming (can replace Florence). run_scene.py is NEW + UNCOMMITTED (naming
+  stage currently = vocab_from_prompt only; Florence/surrogate top-up not
+  wired into the orchestrator yet). NOT done this session: crop mirror fix,
+  module 4, second scene. Viewer launched + verified (HTTP 200) then stopped.
