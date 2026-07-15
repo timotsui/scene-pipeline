@@ -22,6 +22,65 @@ Orchestration: `scene_ready.py` runs the missing CPU stages (4→6) per scene by
 file mtimes. GPU stages (1–3) are launched explicitly (see `gen/*/` runners for
 the historical batch pattern).
 
+Stage 4.5 (optional, applied on bedroom_marble 2026-07-15): `amodal_apply.py
+--scene <sc> --method splat` rewrites `scene_manifest.json` with one amodal
+method's boxes — snapshotting the modal manifest to `scene_manifest_modal.json`
+first, `--revert` to undo. Downstream needs no change (file contract), but IS
+stale after it: box size drives fit scores, so the composition chain must
+re-run from C1.
+
+Side experiments (not in the chain): `collider_register.py` →
+`collider_registration.json` (bundle collider → RAW 4×4 + `collider_registered.glb`
+for the viewer's `collider` layer; see below), `amodal_boxes.py` +
+`amodal_compare.py` → `amodal_boxes.json` + `amodal_comparison/` (occluded-box
+extension, method comparison).
+
+## What the sources can and cannot know (2026-07-15)
+
+**Everything is single-viewpoint.** The 4 `gpu_yaw*` views all sit at the same
+camera position (`0,1.6,0`), yawed 90° apart — it is a panorama cut in four,
+with ZERO parallax; the pano path is the same viewpoint at better angular
+resolution (98 boxes vs 19), NOT more coverage of what hides behind what.
+
+**But truncation is mostly a MASK problem, not an observation problem.** The
+splat has 473 occupied 5 cm voxels in the gap under the bed and 197 under the
+shelf — that geometry was seen (a 1.6 m camera looks under a bed at a shallow
+angle) and is simply not in SAM's mask, and the lift only unprojects mask
+pixels. That is exactly why the splat-occupancy method works. Do not repeat the
+stronger claim that occluded geometry "was never observed": measure first.
+
+**Coverage hole (unfixed, 2026-07-15):** `fov 75` horizontal × 4 views 90°
+apart = 300° of 360°. Four 15° wedges are never rendered at all, so nothing in
+them can be detected. Fix = render 6 views at 60° spacing (or widen the fov)
+and re-run seg + lift.
+
+**Detection is effectively single-view.** On bedroom_marble GroundingDINO finds
+15 objects in `gpu_yaw000` and 2/1/2 in the other three (doors only). 20 raw
+detections → 19 manifest objects: exactly ONE cross-view merge, so nearly every
+box rests on one view's opinion with no corroboration. Whether the other three
+directions are genuinely bare or the generator only elaborated its front is a
+USER judgment, not yet made.
+
+**The bundle collider is REDUNDANT, not incapable.** It registers well
+(`collider_register.py`: scale 0.9498, t_y −1.23, no rotation; splat→surface
+p50 1.4 cm) and it DOES do the job asked of it — run as an amodal method it
+extends bed/side table/shelf/desk/planter to the floor, agreeing with splat on
+5 of 6 boxes (it misses only the lamp). It contains the furniture too (voxels
+inside every detected box; the chair at 0.97 of the splat's count). What it
+never does is add anything: under every occluded box it holds LESS than the
+splat, and residual-blob clustering (subtract detected boxes + room shell,
+connected-component the rest) finds it nothing the splat lacks. It is a mesh
+derived FROM the splat. Live value: it is CLEAN (no floaters), so agreement
+with splat-occupancy is a precision check that an extension is not a floater
+artifact — weak corroboration, since the two are not independent.
+
+For semantics it is out for a different reason: untextured (2D detectors need
+appearance) and one fused connected component of 83.7k verts (+2 six-vertex
+scraps), no submeshes or names. NB the "collider CC-growth" plan was first
+struck for that CC count — FAULTY reasoning: components would be clustered on a
+residual occupancy grid, not on mesh topology. It was re-tested properly
+(residual blobs) and only then closed.
+
 ## The coordinate-frame contract (stage 4 output; user-verified 2026-07-05)
 
 ALL stored coordinates are in the RAW ply frame. Raw is "upside-down": the

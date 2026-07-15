@@ -45,6 +45,20 @@ obj_014 elevated (prior wrongly floors it); collider FAILED registration
 (IoU 0.37, likely scale mismatch — needs scale estimation before use).
 NOT wired into the lift — comparison only, user to bless a method.
 
+> **SUPERSEDED 2026-07-15 (this paragraph's collider claims were wrong).**
+> The registration failure was not scale — it was a MISSING TRANSLATION: the
+> old search tried 8 sign flips and no translation, and a sign flip mirrors
+> about the origin, so with the frames' origins 1.23 m apart nothing in that
+> search space could register. `collider_register.py` (48 signed perms scored
+> on voxel occupancy, then ICP) finds identity rotation, scale 0.9498,
+> t_y −1.23 → voxel IoU 0.683, splat→surface p50 1.4 cm. The 3 collider
+> "shelf" extensions this paragraph reports were artifacts of the broken
+> transform. Re-run with the correct one, the collider adds NOTHING (agrees
+> with splat on 5/6 boxes, misses the lamp): it is derived FROM the splat and
+> is closed out as an amodal source. Live choice is splat vs prior — and note
+> the collider's agreement is NOT independent corroboration of splat for the
+> same reason. See PIPELINE.md "What the sources can and cannot know".
+
 ## Viewers
 
 - retrieval inspection :8322 — `python composition/review_server.py --scene
@@ -60,7 +74,18 @@ NOT wired into the lift — comparison only, user to bless a method.
 
 1. Facing rule in place2 (one dot product per object).
 2. Bless an amodal method → promote into the lift as a proper stage.
-3. Collider scale-registration (rescues the Marble collider as a source).
+   (2026-07-15: now a 2-way choice, splat vs prior — collider closed out.)
+3. ~~Collider scale-registration (rescues the Marble collider as a source).~~
+   DONE 2026-07-15 and it did NOT rescue it — registration solved
+   (`collider_register.py`), collider proven to add nothing. Closed.
 4. Occlusion/lighting in composites; render-variant judging of the top-5
    alternates; C7 loop.
 5. Extraction upgrade: pano manifest (98 objects) after re-lift verification.
+   NB the pano is the SAME viewpoint as the 4 views — more boxes, not more
+   parallax; it does not help the occlusion problem.
+6. NEW: off-center render test — the splat is a 3D asset, so it can be
+   rendered from cameras Marble never generated from (behind the bed, across
+   the room). If the geometry holds up there, real parallax replaces the
+   amodal heuristics entirely; if it is hollow, splat-occupancy is the
+   ceiling and item 2 resolves to "pick splat". Not yet run — this is the
+   question that decides item 2.

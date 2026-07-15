@@ -9,9 +9,13 @@ v1 downward-only (the shelf-legs case):
             slabs below the box bottom inside the (shrunk) footprint; extend
             while slab density holds up vs the box's own median slab density.
   collider  same column walk on points sampled from the Marble bundle
-            collider mesh; the collider->raw sign transform is auto-picked
-            over the 8 flips by bbox IoU vs the splat (printed — LOW IoU
-            MEANS THE REGISTRATION GATE FAILED, distrust the boxes).
+            collider mesh, placed in the raw frame by collider_register.py
+            (run it first; skipped if the scene is unregistered).
+            EXPECTED TO ADD NOTHING, and that is the finding: once correctly
+            registered (2026-07-15) the collider holds strictly LESS geometry
+            under every occluded box than the splat already does — it is a
+            mesh derived FROM the splat, so it cannot carry what the splat
+            lacks. Kept as a measured negative result, not a live candidate.
   prior     unconditional floor-snap for floor-contact labels — the naive
             baseline the occupancy methods must beat.
 
@@ -23,10 +27,10 @@ Run: python amodal_boxes.py --scene bedroom_marble
 """
 import argparse
 import json
-from pathlib import Path
 
 import numpy as np
 
+import collider_register
 import paths
 
 r3 = paths.load_r3()
@@ -81,37 +85,32 @@ def new_aabb(lo, hi, bottom_e, floor_y, sy):
     return lo, hi
 
 
-def load_collider_pts(sc, splat_xyz):
-    """Collider mesh -> raw-frame sample points via best-of-8 sign flip."""
-    bp = paths.scene_dir(sc) / "bundle_path.txt"
-    if not bp.exists():
-        return None, None, 0.0
-    bundle = Path(bp.read_text().strip())
-    glbs = list(bundle.glob("*_collider.glb")) + list(bundle.glob("*collider*.glb"))
-    if not glbs:
-        return None, None, 0.0
+def load_collider_pts(sc):
+    """Collider mesh -> raw-frame sample points via collider_register.py.
+
+    The registration is NOT searched here (it was, until 2026-07-15: best-of-8
+    sign flips scored on bbox IoU, which could never register frames whose
+    origins are 1.23 m apart — it settled on IoU 0.37 and the resulting
+    "collider" boxes in every amodal_boxes.json written before that date are
+    garbage). Run `python collider_register.py --scene <sc>` first.
+    """
+    glb = collider_register.collider_path(sc)
+    T = collider_register.load_T(sc)
+    if glb is None:
+        return None, None
+    if T is None:
+        print("[amodal] collider present but UNREGISTERED — run "
+              "collider_register.py --scene " + sc + " (skipping)", flush=True)
+        return None, None
     import trimesh
-    mesh = trimesh.load(glbs[0], force="mesh")
-    pts = np.asarray(mesh.sample(300_000), np.float64)
-    s_lo = np.percentile(splat_xyz, 1, axis=0)
-    s_hi = np.percentile(splat_xyz, 99, axis=0)
-    best = None
-    for sx in (1, -1):
-        for sy_ in (1, -1):
-            for sz in (1, -1):
-                q = pts * np.array([sx, sy_, sz])
-                c_lo, c_hi = np.percentile(q, 1, 0), np.percentile(q, 99, 0)
-                inter = np.maximum(0, np.minimum(s_hi, c_hi)
-                                   - np.maximum(s_lo, c_lo)).prod()
-                union = ((s_hi - s_lo).prod() + (c_hi - c_lo).prod() - inter)
-                iou = float(inter / union) if union > 0 else 0.0
-                if best is None or iou > best[0]:
-                    best = (iou, (sx, sy_, sz), q)
-    iou, flip, q = best
-    print(f"[amodal] collider {glbs[0].name}: flip {flip}, bbox IoU vs splat "
-          f"{iou:.2f}" + ("  <-- REGISTRATION SUSPECT" if iou < 0.5 else ""),
-          flush=True)
-    return q, flip, iou
+    mesh = trimesh.load(glb, force="mesh")
+    mesh.apply_transform(T)
+    reg = json.loads((paths.scene_dir(sc)
+                      / "collider_registration.json").read_text())
+    print(f"[amodal] collider {glb.name}: registered "
+          f"(voxel IoU {reg['metrics']['voxel_iou']:.3f}, splat->surface p50 "
+          f"{reg['metrics']['dist_p50']*100:.1f}cm)", flush=True)
+    return np.asarray(mesh.sample(300_000), np.float64), reg
 
 
 def main():
@@ -125,7 +124,7 @@ def main():
 
     xyz, _, _, _ = r3.load_splat(str(paths.scene_dir(sc) / "gen_raw.ply"))
     sources = {"splat": xyz.astype(np.float64)}
-    cpts, flip, iou = load_collider_pts(sc, xyz)
+    cpts, reg = load_collider_pts(sc)
     if cpts is not None:
         sources["collider"] = cpts
 
@@ -169,7 +168,8 @@ def main():
         print(f"{o['id']} {o['label']:14s} {b0:10.2f} {cells}", flush=True)
 
     out = {"scene": sc, "floor_y": floor_y, "sy": sy,
-           "collider_flip": flip, "collider_iou": round(iou, 3),
+           "collider_registration": (reg and {k: reg[k] for k in
+                                              ("method", "scale", "metrics")}),
            "methods": methods}
     outf = paths.scene_dir(sc) / "amodal_boxes.json"
     outf.write_text(json.dumps(out, indent=1))

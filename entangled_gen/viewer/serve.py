@@ -136,6 +136,15 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), "model/gltf-binary")
             else:
                 self._send(404, b"no composed_scene2.glb; run composition/place2.py")
+        elif p == "/collider.glb":
+            # Marble bundle collider, ICP-registered into the RAW frame
+            # (collider_register.py) — already raw, so NO browser-side flip.
+            f = paths.scene_dir(sc) / "collider_registered.glb"
+            if f.exists():
+                self._send(200, f.read_bytes(), "model/gltf-binary")
+            else:
+                self._send(404, b"no collider_registered.glb; run "
+                                b"collider_register.py --scene " + sc.encode())
         elif p == "/splat.ply":
             # full-quality splat for the hi-fi renderer (GaussianSplats3D).
             # Streamed in chunks: gen_raw.ply can be 100-800 MB.

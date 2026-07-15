@@ -31,6 +31,7 @@
        <label><input type="checkbox" id="hifi" checked> hi-fi splats</label>
        <label><input type="checkbox" id="showComp"> composed</label>
        <label><input type="checkbox" id="showGlts"> GLTS</label>
+       <label><input type="checkbox" id="showColl"> collider</label>
        <span id="amBoxes"></span>
        <span id="hifiNote" class="dim"></span></div>
   <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
@@ -581,6 +582,39 @@ $('showComp').onchange = async e => {
     msg('composed glb unavailable: ' + err.message);
     e.target.checked = false;
     compGroup.visible = false;
+  }
+};
+
+// ---------------- bundle collider (registered) ----------------
+// collider_registered.glb is ALREADY in the RAW frame (collider_register.py
+// bakes the ICP transform in), and worldGroup is RAW -> no scale flip here,
+// unlike compGroup/gltsGroup above. Drawn as flat-shaded orange so it reads
+// against the splat's photoreal colors when both layers are on.
+const collGroup = new THREE.Group(); worldGroup.add(collGroup);
+collGroup.visible = false;
+let collLoaded = false;
+$('showColl').onchange = async e => {
+  collGroup.visible = e.target.checked;
+  if (!e.target.checked || collLoaded) return;
+  try {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    const gltf = await new GLTFLoader().loadAsync('collider.glb?' + sq);
+    gltf.scene.traverse(o => {
+      if (o.isMesh) {
+        o.material = new THREE.MeshLambertMaterial({
+          color: 0xff8844, side: THREE.DoubleSide,
+          transparent: true, opacity: 0.85 });
+      }
+    });
+    collGroup.add(gltf.scene);
+    // the scene has no lights (splat points are unlit) -> give this layer its own
+    collGroup.add(new THREE.HemisphereLight(0xffffff, 0x334455, 2.2));
+    collLoaded = true;
+    msg('collider loaded (registered, raw frame)');
+  } catch (err) {
+    msg('collider unavailable: ' + err.message);
+    e.target.checked = false;
+    collGroup.visible = false;
   }
 };
 
