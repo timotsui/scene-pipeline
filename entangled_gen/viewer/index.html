@@ -22,11 +22,16 @@
 <body>
 <div id="hud" class="panel">
   <div><b>live placement viewer</b> — scene: <select id="scSel"></select></div>
-  <div class="dim">drag orbit · wheel zoom · right-drag pan · click object = inspect</div>
-  <div><label><input type="checkbox" id="clipCeil" checked> clip ceiling</label>
+  <div class="dim">drag orbit · wheel zoom · right-drag pan · WASD move, E/Q (or R/F)
+       up/down, Shift fast · click object = inspect</div>
+  <div><label><input type="checkbox" id="showSplat" checked> splat</label>
+       <label><input type="checkbox" id="clipCeil" checked> clip ceiling</label>
        <label><input type="checkbox" id="showMan" checked> manifest</label>
        <label><input type="checkbox" id="showClr" checked> clearance</label>
        <label><input type="checkbox" id="hifi" checked> hi-fi splats</label>
+       <label><input type="checkbox" id="showComp"> composed</label>
+       <label><input type="checkbox" id="showGlts"> GLTS</label>
+       <span id="amBoxes"></span>
        <span id="hifiNote" class="dim"></span></div>
   <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
        y <input type="number" id="ry" value="0" step="90" style="width:52px">
@@ -161,10 +166,20 @@ const SC = new URLSearchParams(location.search).get('scene') || scList.default;
 const MAN = new URLSearchParams(location.search).get('man') || '';
 const sq = 'scene=' + encodeURIComponent(SC) + (MAN ? '&man=' + encodeURIComponent(MAN) : '');
 const sel_ = $('scSel');
-for (const s of scList.scenes) {
-  const o = document.createElement('option');
-  o.value = s; o.textContent = s; o.selected = (s === SC);
-  sel_.appendChild(o);
+// group the dropdown: 'active' (viewer/data/_active.json) vs archived scenes
+const activeSet = new Set(scList.active || []);
+const groups = [['active', scList.scenes.filter(s => activeSet.has(s))],
+                ['archive (stale)', scList.scenes.filter(s => !activeSet.has(s))]];
+for (const [gname, list] of groups) {
+  if (!list.length) continue;
+  const og = document.createElement('optgroup');
+  og.label = gname;
+  sel_.appendChild(og);
+  for (const s of list) {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s; o.selected = (s === SC);
+    og.appendChild(o);
+  }
 }
 sel_.onchange = () => location.search = '?scene=' + sel_.value;
 
@@ -205,7 +220,6 @@ function cloud(idx) {
 const lowPts = cloud(idxLow), highPts = cloud(idxHigh);
 worldGroup.add(lowPts); worldGroup.add(highPts);
 highPts.visible = !$('clipCeil').checked;
-$('clipCeil').onchange = e => highPts.visible = !e.target.checked && !$('hifi').checked;
 
 // ---------------- hi-fi splat layer (GaussianSplats3D DropInViewer) ----------------
 // Real sorted alpha-blended gaussians, lazy-loaded from /splat.ply on first
@@ -213,17 +227,26 @@ $('clipCeil').onchange = e => highPts.visible = !e.target.checked && !$('hifi').
 // unchanged; coords stay RAW frame (same file the dots came from).
 // Ceiling clip is dots-only (no per-gaussian clipping in the lib).
 let splatLayer = null, splatLoading = false;
+// master splat visibility: the "splat" checkbox hides BOTH the dots and the
+// hi-fi layer (grid/boxes/composed stay), so furniture can be judged clean
+function applySplatVis() {
+  const show = $('showSplat').checked;
+  const hifiOn = $('hifi').checked && !!splatLayer;
+  if (splatLayer) splatLayer.visible = show && $('hifi').checked;
+  lowPts.visible = show && !hifiOn;
+  highPts.visible = show && !hifiOn && !$('clipCeil').checked;
+}
+$('showSplat').onchange = applySplatVis;
+$('clipCeil').onchange = applySplatVis;
 async function enableHifi(on) {
   const note = $('hifiNote');
   if (!on) {
-    if (splatLayer) splatLayer.visible = false;
-    lowPts.visible = true;
-    highPts.visible = !$('clipCeil').checked;
+    applySplatVis();
     note.textContent = '';
     return;
   }
   lowPts.visible = false; highPts.visible = false;
-  if (splatLayer) { splatLayer.visible = true; return; }
+  if (splatLayer) { applySplatVis(); return; }
   if (splatLoading) return;
   splatLoading = true;
   note.textContent = ' loading full splat…';
@@ -243,6 +266,7 @@ async function enableHifi(on) {
       format: GaussianSplats3D.SceneFormat.Ply,
     });
     worldGroup.add(splatLayer);
+    applySplatVis();
     note.textContent = '';
     msg('hi-fi splats on (dots hidden; ceiling clip is dots-only)');
   } catch (err) {
@@ -250,7 +274,7 @@ async function enableHifi(on) {
     note.textContent = ' splat FAILED: ' + (err && err.message ? err.message : err) + ' — back to dots';
     $('hifi').checked = false;
     splatLayer = null;
-    lowPts.visible = true; highPts.visible = !$('clipCeil').checked;
+    applySplatVis();
   } finally {
     splatLoading = false;
   }
@@ -443,6 +467,122 @@ try {
   }
 } catch (e) { console.warn('no manifest', e); }
 $('showMan').onchange = e => manGroup.visible = e.target.checked;
+
+// ---------------- amodal box variants (extraction experiment) -----------
+// amodal_boxes.py output: per-method extended boxes; only CHANGED boxes are
+// drawn — toggle a method against the raw manifest layer to compare.
+try {
+  const am = await (await fetch('amodal.json?' + sq)).json();
+  const AMCOL = { splat: 0x30d5c8, collider: 0xffa500, prior: 0xff5ad2 };
+  for (const [meth, boxes] of Object.entries(am.methods || {})) {
+    const changed = boxes.filter(b => b.changed);
+    if (!changed.length) continue;
+    const g = new THREE.Group();
+    g.visible = false;
+    worldGroup.add(g);
+    const col = AMCOL[meth] || 0xffffff;
+    for (const b of changed) {
+      const c = [(b.aabb_min[0] + b.aabb_max[0]) / 2,
+                 (b.aabb_min[1] + b.aabb_max[1]) / 2,
+                 (b.aabb_min[2] + b.aabb_max[2]) / 2];
+      const s = [b.aabb_max[0] - b.aabb_min[0], b.aabb_max[1] - b.aabb_min[1],
+                 b.aabb_max[2] - b.aabb_min[2]];
+      g.add(objBox(c, s, 0, col));
+    }
+    const suspect = meth === 'collider' && (am.collider_iou || 0) < 0.5;
+    const lab = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    lab.appendChild(cb);
+    lab.append(` ${meth} (${changed.length}${suspect ? ' ⚠reg' : ''})`);
+    lab.style.color = '#' + col.toString(16).padStart(6, '0');
+    lab.title = suspect
+      ? 'collider registration IoU ' + am.collider_iou + ' — distrust these boxes'
+      : meth + '-extended boxes (changed only)';
+    $('amBoxes').appendChild(lab);
+    cb.onchange = e => g.visible = e.target.checked;
+  }
+} catch (e) { console.warn('no amodal boxes', e); }
+
+// ---------------- GLTS baseline scene (side-by-side comparable) ----------
+// glts_scene.glb has its own origin (GLTS builds the room from scratch), so
+// it is parked NEXT TO the splat room: floor-aligned, just beyond the room's
+// +x extent — WASD between the two.
+const gltsGroup = new THREE.Group(); worldGroup.add(gltsGroup);
+{
+  const rr = (manifest && manifest.frame && manifest.frame.raw_to_render) || [1, 1, 1];
+  gltsGroup.scale.set(rr[0], rr[1], rr[2]);   // content added in RENDER coords
+}
+gltsGroup.visible = false;
+let gltsLoaded = false;
+$('showGlts').onchange = async e => {
+  gltsGroup.visible = e.target.checked;
+  if (!e.target.checked || gltsLoaded) return;
+  try {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    const gltf = await new GLTFLoader().loadAsync('glts.glb?' + sq);
+    gltf.scene.traverse(o => {
+      if (o.isMesh) {
+        o.material = new THREE.MeshBasicMaterial({
+          map: o.material.map || null,
+          color: o.material.color || new THREE.Color(0xffffff),
+          side: THREE.DoubleSide });
+      }
+    });
+    const fr = manifest.frame, rr = fr.raw_to_render || [1, 1, 1];
+    const a = fr.extent_p1.map((v, i) => v * rr[i]);
+    const b = fr.extent_p99.map((v, i) => v * rr[i]);
+    const bb = new THREE.Box3().setFromObject(gltf.scene);
+    gltf.scene.position.add(new THREE.Vector3(
+      (Math.max(a[0], b[0]) + 0.8 + (bb.max.x - bb.min.x) / 2)
+        - (bb.min.x + bb.max.x) / 2,
+      fr.floor_y * rr[1] - bb.min.y,
+      (a[2] + b[2]) / 2 - (bb.min.z + bb.max.z) / 2));
+    gltsGroup.add(gltf.scene);
+    gltsLoaded = true;
+    msg('GLTS baseline parked next to the room (+x side)');
+  } catch (err) {
+    msg('GLTS glb unavailable: ' + err.message);
+    e.target.checked = false;
+    gltsGroup.visible = false;
+  }
+};
+
+// ---------------- composed meshes (composition C6 glb) ----------------
+// composed_scene2.glb is exported in the RENDER (upright) frame; worldGroup
+// content is RAW. raw_to_render is an elementwise sign flip and self-inverse,
+// so applying it as a group scale maps render->raw exactly.
+const compGroup = new THREE.Group(); worldGroup.add(compGroup);
+{
+  const rr = (manifest && manifest.frame && manifest.frame.raw_to_render) || [1, 1, 1];
+  compGroup.scale.set(rr[0], rr[1], rr[2]);
+}
+compGroup.visible = false;
+let compLoaded = false;
+$('showComp').onchange = async e => {
+  compGroup.visible = e.target.checked;
+  if (!e.target.checked || compLoaded) return;
+  try {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    const gltf = await new GLTFLoader().loadAsync('composed.glb?' + sq);
+    // no lights in this scene -> swap PBR materials for unlit textured ones
+    gltf.scene.traverse(o => {
+      if (o.isMesh) {
+        o.material = new THREE.MeshBasicMaterial({
+          map: o.material.map || null,
+          color: o.material.color || new THREE.Color(0xffffff),
+          side: THREE.DoubleSide });
+      }
+    });
+    compGroup.add(gltf.scene);
+    compLoaded = true;
+    msg('composed meshes loaded (composition C6)');
+  } catch (err) {
+    msg('composed glb unavailable: ' + err.message);
+    e.target.checked = false;
+    compGroup.visible = false;
+  }
+};
 
 // ---------------- placements (live) ----------------
 const liveGroup = new THREE.Group(); worldGroup.add(liveGroup);
@@ -741,7 +881,46 @@ async function bookmark() {
 }
 $('bmBtn').onclick = bookmark;
 
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+// ---------------- WASD fly navigation ----------------
+// W/S = along view direction (horizontal), A/D = strafe, R/F = up/down,
+// Shift = fast. Camera and orbit target move together so drag-orbit keeps
+// working from wherever you fly to. Keys are ignored while typing in the HUD.
+const keys = new Set();
+addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  keys.add(e.key.toLowerCase());
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => keys.clear());
+const _clock = new THREE.Clock();
+function flyStep() {
+  const dt = Math.min(_clock.getDelta(), 0.1);
+  if (!keys.size) return;
+  const speed = (keys.has('shift') ? 4.5 : 1.5) * dt;
+  const fwd = new THREE.Vector3().subVectors(controls.target, camera.position);
+  fwd.projectOnPlane(camera.up).normalize();       // horizontal, view-relative
+  if (fwd.lengthSq() < 1e-9) return;
+  const right = new THREE.Vector3().crossVectors(fwd, camera.up).normalize();
+  const mv = new THREE.Vector3();
+  if (keys.has('w')) mv.add(fwd);
+  if (keys.has('s')) mv.sub(fwd);
+  if (keys.has('d')) mv.add(right);
+  if (keys.has('a')) mv.sub(right);
+  if (keys.has('r')) mv.add(camera.up);
+  if (keys.has('f')) mv.sub(camera.up);
+  // Q/E elevator — but they yaw a SELECTED placement, so yield in that case
+  const plSel = (typeof sel !== 'undefined') && sel && sel.kind === 'pl';
+  if (!plSel) {
+    if (keys.has('e')) mv.add(camera.up);
+    if (keys.has('q')) mv.sub(camera.up);
+  }
+  if (mv.lengthSq() === 0) return;
+  mv.normalize().multiplyScalar(speed);
+  camera.position.add(mv);
+  controls.target.add(mv);
+}
+
+renderer.setAnimationLoop(() => { flyStep(); controls.update(); renderer.render(scene, camera); });
 </script>
 </body>
 </html>

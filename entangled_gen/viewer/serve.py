@@ -53,7 +53,14 @@ class H(BaseHTTPRequestHandler):
             self._send(200, (HERE / "index.html").read_bytes(), "text/html")
         elif p == "/scenes.json":
             scenes = sorted(f.stem for f in (HERE / "data").glob("*.bin"))
-            self._send(200, json.dumps({"scenes": scenes, "default": args.scene}).encode(),
+            actf = HERE / "data" / "_active.json"
+            try:
+                active = json.loads(actf.read_text()).get("active", [])
+            except Exception:
+                active = []
+            active = [s for s in active if s in scenes] or [args.scene]
+            self._send(200, json.dumps({"scenes": scenes, "active": active,
+                                        "default": args.scene}).encode(),
                        "application/json")
         elif p == "/scene.bin":
             f = HERE / "data" / f"{sc}.bin"
@@ -107,6 +114,28 @@ class H(BaseHTTPRequestHandler):
             f = placement_file(sc)
             body = f.read_bytes() if f.exists() else b'{"placements":[]}'
             self._send(200, body, "application/json")
+        elif p == "/amodal.json":
+            # amodal_boxes.py comparison output (extraction experiment)
+            f = paths.scene_dir(sc) / "amodal_boxes.json"
+            if f.exists():
+                self._send(200, f.read_bytes(), "application/json")
+            else:
+                self._send(404, b"no amodal_boxes.json; run amodal_boxes.py")
+        elif p == "/glts.glb":
+            # GLTS baseline scene (newest glts_comparison* package in OUT)
+            cands = sorted(paths.OUT.glob("glts_comparison*/glts_scene.glb"))
+            if cands:
+                self._send(200, cands[-1].read_bytes(), "model/gltf-binary")
+            else:
+                self._send(404, b"no glts_comparison*/glts_scene.glb in OUT")
+        elif p == "/composed.glb":
+            # composition C6 output (RENDER frame; browser flips via
+            # frame.raw_to_render, self-inverse)
+            f = paths.package_dir(sc) / "composed_scene2.glb"
+            if f.exists():
+                self._send(200, f.read_bytes(), "model/gltf-binary")
+            else:
+                self._send(404, b"no composed_scene2.glb; run composition/place2.py")
         elif p == "/splat.ply":
             # full-quality splat for the hi-fi renderer (GaussianSplats3D).
             # Streamed in chunks: gen_raw.ply can be 100-800 MB.
