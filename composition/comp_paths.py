@@ -11,6 +11,8 @@ import paths  # noqa: E402  (entangled_gen's paths.py: scene dirs from local_pat
 OBJATHOR = Path("D:/T/Documents/GeorgiaTech/Summer2026/Research/objathor-assets/2023_09_23")
 ANNOTATIONS = OBJATHOR / "annotations.json.gz"
 ASSETS = OBJATHOR / "assets"
+MESH_YAW = OBJATHOR / "_thumbs" / "_mesh_yaw.json"   # measure.py canonical-yaw cache
+MESH_FIXUPS = OBJATHOR / "_thumbs" / "_mesh_fixups.json"   # curated per-uid cleanups
 
 BRIDGE_DIR = Path("C:/Users/T/AppData/Local/Temp/treesearch_claude_bridge")
 
