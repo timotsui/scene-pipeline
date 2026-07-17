@@ -103,37 +103,87 @@ def _meshes(state, fr):
             for e in state["objects"]]
 
 
+def _rgba_pass(meshes, meta, w, h):
+    """Meshes through the sidecar camera -> transparent RGBA layer."""
+    scene = pyrender.Scene(bg_color=[0, 0, 0, 0],
+                           ambient_light=[0.55, 0.55, 0.55])
+    for m in meshes:
+        scene.add(pyrender.Mesh.from_trimesh(m, smooth=False))
+    pose = look_at_pose([float(t) for t in meta["cam"].split(",")],
+                        [float(t) for t in meta["look"].split(",")],
+                        [float(t) for t in meta["up"].split(",")])
+    hf = np.radians(float(meta["fov"]))   # horizontal fov -> vertical
+    yfov = 2 * np.arctan(np.tan(hf / 2) * h / w)
+    scene.add(pyrender.PerspectiveCamera(yfov=yfov), pose=pose)
+    scene.add(pyrender.DirectionalLight(intensity=2.5), pose=pose)
+    r = pyrender.OffscreenRenderer(w, h)
+    color, _ = r.render(scene, flags=pyrender.RenderFlags.RGBA)
+    r.delete()
+    return Image.fromarray(color, "RGBA")
+
+
+def _splat_floor_color(sc, fr):
+    """Median splat color in a thin band at floor height, inner 80% of the
+    footprint (walls/baseboards out; median rides out floor-object
+    gaussians) -> the clean view's floor tint. Grey fallback if starved."""
+    r3 = paths.load_r3()
+    xyz, rgb, _, _ = r3.load_splat(str(paths.ply(sc)))
+    p1, p9 = np.asarray(fr["extent_p1"]), np.asarray(fr["extent_p99"])
+    lo, hi = np.minimum(p1, p9), np.maximum(p1, p9)
+    pad = 0.1 * (hi - lo)
+    m = ((np.abs(xyz[:, 1] - fr["floor_y"]) < 0.03)
+         & (xyz[:, 0] > lo[0] + pad[0]) & (xyz[:, 0] < hi[0] - pad[0])
+         & (xyz[:, 2] > lo[2] + pad[2]) & (xyz[:, 2] < hi[2] - pad[2]))
+    if m.sum() < 100:
+        print(f"[place2] floor band starved ({int(m.sum())} pts) — grey",
+              flush=True)
+        return (205, 205, 205)
+    c = tuple(int(round(v * 255)) for v in np.median(rgb[m], 0))
+    print(f"[place2] splat floor color {c} from {int(m.sum()):,} pts",
+          flush=True)
+    return c
+
+
+def _floor_mesh(fr, color=(205, 205, 205), margin=0.3):
+    """Flat floor over the room footprint (clean mode: grounds the meshes
+    so nothing sits on air)."""
+    r2r = np.asarray(fr.get("raw_to_render", [1.0, 1.0, 1.0]), np.float64)
+    p1, p9 = (np.asarray(fr[k]) * r2r for k in ("extent_p1", "extent_p99"))
+    lo, hi = np.minimum(p1, p9), np.maximum(p1, p9)
+    m = trimesh.creation.box(extents=[hi[0] - lo[0] + 2 * margin, 0.02,
+                                      hi[2] - lo[2] + 2 * margin])
+    m.apply_translation([(lo[0] + hi[0]) / 2,
+                         fr["floor_y"] * r2r[1] - 0.011,  # top just sub-floor
+                         (lo[2] + hi[2]) / 2])
+    m.visual.face_colors = list(color) + [255]
+    return m
+
+
 def composite_views(sc, state, outdir=None, prefix="composed2_view_",
                     splat_bg=True):
-    """splat_bg=False renders mesh-only on a flat background (C7 loop: the
-    splat in the composite masked missing/changed meshes from the VLM)."""
+    """splat_bg: True = real splat behind the meshes (canonical in-context
+    view), False = flat grey (C7 loop judge: the splat in the composite
+    masked missing/changed meshes from the VLM), "clean" = mesh-only over a
+    synthetic floor (representation view — no gsplat anywhere; the carved-
+    splat background was tried 2026-07-17 and rejected on cutout quality)."""
     man = json.loads(paths.manifest(sc).read_text())
     meshes = _meshes(state, man["frame"])
+    if splat_bg == "clean":
+        meshes = [_floor_mesh(man["frame"],
+                              _splat_floor_color(sc, man["frame"]))] + meshes
     pkg = outdir or paths.package_dir(sc)
     outs = []
     for metaf in sorted(paths.views_dir(sc).glob("gpu_yaw*.json")):
         meta = json.loads(metaf.read_text())
         imgf = paths.views_dir(sc) / meta["file"]
-        if splat_bg and not imgf.exists():
+        if splat_bg is True and not imgf.exists():
             continue
         w, h = (int(t) for t in meta["res"].split("x"))
-        scene = pyrender.Scene(bg_color=[0, 0, 0, 0],
-                               ambient_light=[0.55, 0.55, 0.55])
-        for m in meshes:
-            scene.add(pyrender.Mesh.from_trimesh(m, smooth=False))
-        pose = look_at_pose([float(t) for t in meta["cam"].split(",")],
-                            [float(t) for t in meta["look"].split(",")],
-                            [float(t) for t in meta["up"].split(",")])
-        hf = np.radians(float(meta["fov"]))   # horizontal fov -> vertical
-        yfov = 2 * np.arctan(np.tan(hf / 2) * h / w)
-        scene.add(pyrender.PerspectiveCamera(yfov=yfov), pose=pose)
-        scene.add(pyrender.DirectionalLight(intensity=2.5), pose=pose)
-        r = pyrender.OffscreenRenderer(w, h)
-        color, _ = r.render(scene, flags=pyrender.RenderFlags.RGBA)
-        r.delete()
-        bg = (Image.open(imgf).convert("RGBA") if splat_bg
-              else Image.new("RGBA", (w, h), (232, 232, 232, 255)))
-        comp = Image.alpha_composite(bg, Image.fromarray(color, "RGBA"))
+        if splat_bg is True:
+            bg = Image.open(imgf).convert("RGBA")
+        else:
+            bg = Image.new("RGBA", (w, h), (232, 232, 232, 255))
+        comp = Image.alpha_composite(bg, _rgba_pass(meshes, meta, w, h))
         outf = pkg / f"{prefix}{metaf.stem}.png"
         comp.convert("RGB").save(outf)
         outs.append(outf)
@@ -164,5 +214,15 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
+    ap.add_argument("--clean", action="store_true",
+                    help="render the EXISTING composed_state2.json (loop "
+                         "edits kept) mesh-only over a synthetic floor, no "
+                         "gsplat -> composed2c_view_*")
     args = ap.parse_args()
-    run(args.scene)
+    if args.clean:
+        state = json.loads((paths.package_dir(args.scene)
+                            / "composed_state2.json").read_text())
+        composite_views(args.scene, state, prefix="composed2c_view_",
+                        splat_bg="clean")
+    else:
+        run(args.scene)

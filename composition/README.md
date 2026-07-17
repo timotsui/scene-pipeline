@@ -225,6 +225,22 @@ The v0 augment path (`propose.py` → `jiggle.py`, below) is this loop's
 unjudged precursor: C7 `add` ≈ propose with a VLM verdict, C7 `nudge` ≈
 jiggle with accept/reject. v0 stays untouched for `--compare`.
 
+### Clean view (representation-only, 2026-07-17)
+
+`python place2.py --scene <sc> --clean` renders the EXISTING
+`composed_state2.json` (loop edits kept — no state rebuild) mesh-only over
+a synthetic floor plane (`_floor_mesh`, room footprint from
+`frame.extent_p1/p99`, tinted `_splat_floor_color`: median splat color in a
+3 cm band at floor height, inner-footprint only) — no gsplat in the render
+itself — writing
+`package/composed2c_view_*.png`. This is the honest what-did-we-actually-
+place view with grounding: the splat-backed `composed2_view_*` backfills
+missing objects and halos undersized meshes. (A carved-splat background —
+delete in-box gaussians, difference-matte, composite — was built and
+rejected 2026-07-17: cutout quality too poor.) The C7 loop does NOT consume
+these; its judge renders stay bare grey, and canonical `composed2_view_*`
+stay splat-backed.
+
 ### File contracts
 
 `shortlists2.json`: `{scene, boxes:[{id,label,conf,center,size,aabb_min,
