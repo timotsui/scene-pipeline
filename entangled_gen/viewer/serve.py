@@ -121,6 +121,16 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), "application/json")
             else:
                 self._send(404, b"no amodal_boxes.json; run amodal_boxes.py")
+        elif p == "/collisions.json":
+            # collide.py --export output: mesh-overlap pairs + RENDER-frame
+            # overlap boxes for the viewer's collision layer
+            f = paths.package_dir(sc) / "collisions.json"
+            if f.exists():
+                self._send(200, f.read_bytes(), "application/json")
+            else:
+                self._send(404, b"no collisions.json; run composition/"
+                                b"collide.py --scene " + sc.encode()
+                                + b" --export")
         elif p == "/glts.glb":
             # GLTS baseline scene (newest glts_comparison* package in OUT)
             cands = sorted(paths.OUT.glob("glts_comparison*/glts_scene.glb"))

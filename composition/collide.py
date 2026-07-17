@@ -61,10 +61,12 @@ def voxels_of(e, fr):
     return _CACHE[sig]
 
 
-def report(state, fr, only=None):
+def report(state, fr, only=None, boxes=False):
     """Pairwise collisions, worst first: [{a, b, ratio, liters, voxels}].
     only = iid or set of iids — restrict to pairs touching those instances
-    (what the loop needs after a single edit)."""
+    (what the loop needs after a single edit). boxes=True adds the
+    RENDER-frame AABB of the shared voxels (overlap_lo/overlap_hi, meters)
+    — what the viewer's collision layer draws."""
     if isinstance(only, str):
         only = {only}
     ent = state["objects"]
@@ -81,13 +83,20 @@ def report(state, fr, only=None):
             vb, lb, hb = voxels_of(b, fr)
             if (la > hb + 1).any() or (lb > ha + 1).any():   # broad phase
                 continue
-            shared = len(va & vb)
+            shared = va & vb
             if not shared:
                 continue
-            ratio = shared / max(1, min(len(va), len(vb)))
-            out.append({"a": ia, "b": ib, "ratio": round(ratio, 4),
-                        "liters": round(shared * PITCH ** 3 * 1000, 2),
-                        "voxels": shared})
+            ratio = len(shared) / max(1, min(len(va), len(vb)))
+            row = {"a": ia, "b": ib, "ratio": round(ratio, 4),
+                   "liters": round(len(shared) * PITCH ** 3 * 1000, 2),
+                   "voxels": len(shared)}
+            if boxes:
+                g = np.asarray(sorted(shared), np.int64)
+                row["overlap_lo"] = [round(float(v), 3)
+                                     for v in g.min(0) * PITCH]
+                row["overlap_hi"] = [round(float(v), 3)
+                                     for v in (g.max(0) + 1) * PITCH]
+            out.append(row)
     return sorted(out, key=lambda r: -r["ratio"])
 
 
@@ -101,11 +110,14 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--state", default="composed_state2.json")
+    ap.add_argument("--export", action="store_true",
+                    help="also write package/collisions.json (pairs + "
+                         "overlap boxes) for the 3D viewer's collision layer")
     args = ap.parse_args()
     man = json.loads(paths.manifest(args.scene).read_text())
     state = json.loads(
         (paths.package_dir(args.scene) / args.state).read_text())
-    rows = report(state, man["frame"])
+    rows = report(state, man["frame"], boxes=args.export)
     labels = {_iid(e): e["label"] for e in state["objects"]}
     if not rows:
         print("[collide] no colliding pairs")
@@ -114,3 +126,11 @@ if __name__ == "__main__":
         print(f'[collide] {r["a"]} ({labels[r["a"]]}) x {r["b"]} '
               f'({labels[r["b"]]}): ratio {r["ratio"]:.3f}, '
               f'{r["liters"]} L, {r["voxels"]} vox{flag}')
+    if args.export:
+        data = {"state": args.state, "pitch": PITCH, "ratio_max": RATIO_MAX,
+                "frame": "render",
+                "pairs": [{**r, "label_a": labels[r["a"]],
+                           "label_b": labels[r["b"]]} for r in rows]}
+        outf = paths.package_dir(args.scene) / "collisions.json"
+        outf.write_text(json.dumps(data, indent=1))
+        print(f"[collide] wrote {outf}")

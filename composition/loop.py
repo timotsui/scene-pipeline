@@ -218,9 +218,10 @@ def apply_add(sc, edit, state, sl, ctx, model):
 # ---------------------------------------------------------------- VLM
 
 def _views(sc):
-    """[(stem, cam, unit look dir, fov)] from the view sidecars (render frame)."""
+    """[(stem, cam, unit look dir, fov)] from the judge-camera sidecars
+    (render frame; judge_* rig when rendered, else legacy gpu_yaw*)."""
     out = []
-    for metaf in sorted(paths.views_dir(sc).glob("gpu_yaw*.json")):
+    for metaf in place2.judge_sidecars(sc):
         meta = json.loads(metaf.read_text())
         cam = [float(t) for t in meta["cam"].split(",")]
         look = [float(t) for t in meta["look"].split(",")]
@@ -232,9 +233,10 @@ def _views(sc):
 
 
 def ensure_targets(sc, loopdir):
-    """The ORIGINAL splat renders as PNGs (webp -> png once)."""
+    """The ORIGINAL splat renders as PNGs (webp -> png once), from the
+    judge cameras."""
     tg = {}
-    for metaf in sorted(paths.views_dir(sc).glob("gpu_yaw*.json")):
+    for metaf in place2.judge_sidecars(sc):
         meta = json.loads(metaf.read_text())
         src = paths.views_dir(sc) / meta["file"]
         if not src.exists():
@@ -301,7 +303,7 @@ two ops (all coordinates in the frame above):
 
 Propose an edit ONLY where the pair comparison clearly supports it; an empty
 list is a valid answer. Reply with ONLY a JSON object:
-{{"issues":[{{"view":"gpu_yaw000","kind":"missing|misplaced|wrong_size|other",
+{{"issues":[{{"view":"judge_yaw000","kind":"missing|misplaced|wrong_size|other",
 "detail":"..."}}],"edits":[...]}}"""
     iids = {_iid(e) for e in state["objects"]}
 
@@ -386,6 +388,7 @@ def run(sc, max_iters=MAX_ITERS, max_edits=EDITS_PER_ITER, model="sonnet"):
     picksf = pkg / "picks2.json"
     picks = json.loads(picksf.read_text())
     ctx = _ctx(sc)
+    cams = place2.judge_sidecars(sc)
     targets = ensure_targets(sc, loopdir)
     journalf = pkg / "edits.jsonl"
     rejected, last_it = _load_journal(journalf)
@@ -397,7 +400,7 @@ def run(sc, max_iters=MAX_ITERS, max_edits=EDITS_PER_ITER, model="sonnet"):
 
     for it in range(last_it + 1, last_it + 1 + max_iters):
         cur = place2.composite_views(sc, state, loopdir, f"it{it:02d}_cur_",
-                                     splat_bg=False)
+                                     splat_bg=False, sidecars=cams)
         crit = vlm_critique(sc, state, ctx, cur, targets,
                             list(rejected.values()), max_edits, model)
         calls += 1
@@ -425,7 +428,8 @@ def run(sc, max_iters=MAX_ITERS, max_edits=EDITS_PER_ITER, model="sonnet"):
                 print(f"[loop]   INVALID {key}: {reason}", flush=True)
                 continue
             after = place2.composite_views(sc, new_state, loopdir,
-                                           f"it{it:02d}e{j}_", splat_bg=False)
+                                           f"it{it:02d}e{j}_", splat_bg=False,
+                                           sidecars=cams)
             v = vlm_verify(edit, targets, cur, after, model)
             calls += 1
             accepted = v["verdict"] == "better"

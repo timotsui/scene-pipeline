@@ -159,13 +159,26 @@ def _floor_mesh(fr, color=(205, 205, 205), margin=0.3):
     return m
 
 
+def judge_sidecars(sc):
+    """Camera sidecars for loop judging: the judge_* rig (full-room
+    coverage — 6 tilted yaws + straight-down; rendered by
+    entangled_gen/render_judge_views.py) when present, else the legacy 4
+    gpu_yaw* detection views (which cannot see the floor within ~2.1 m or
+    the 15-deg wedges between views — 2026-07-15B handoff)."""
+    vdir = paths.views_dir(sc)
+    return (sorted(vdir.glob("judge_*.json"))
+            or sorted(vdir.glob("gpu_yaw*.json")))
+
+
 def composite_views(sc, state, outdir=None, prefix="composed2_view_",
-                    splat_bg=True):
+                    splat_bg=True, sidecars=None):
     """splat_bg: True = real splat behind the meshes (canonical in-context
     view), False = flat grey (C7 loop judge: the splat in the composite
     masked missing/changed meshes from the VLM), "clean" = mesh-only over a
     synthetic floor (representation view — no gsplat anywhere; the carved-
-    splat background was tried 2026-07-17 and rejected on cutout quality)."""
+    splat background was tried 2026-07-17 and rejected on cutout quality).
+    sidecars: camera sidecar .json paths; default = the 4 canonical
+    gpu_yaw* views (the loop passes judge_sidecars(sc) instead)."""
     man = json.loads(paths.manifest(sc).read_text())
     meshes = _meshes(state, man["frame"])
     if splat_bg == "clean":
@@ -173,7 +186,9 @@ def composite_views(sc, state, outdir=None, prefix="composed2_view_",
                               _splat_floor_color(sc, man["frame"]))] + meshes
     pkg = outdir or paths.package_dir(sc)
     outs = []
-    for metaf in sorted(paths.views_dir(sc).glob("gpu_yaw*.json")):
+    if sidecars is None:
+        sidecars = sorted(paths.views_dir(sc).glob("gpu_yaw*.json"))
+    for metaf in sidecars:
         meta = json.loads(metaf.read_text())
         imgf = paths.views_dir(sc) / meta["file"]
         if splat_bg is True and not imgf.exists():

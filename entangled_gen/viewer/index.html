@@ -32,6 +32,7 @@
        <label><input type="checkbox" id="showComp"> composed</label>
        <label><input type="checkbox" id="showGlts"> GLTS</label>
        <label><input type="checkbox" id="showColl"> collider</label>
+       <label title="mesh-overlap regions from collide.py --export: bright red = over the 0.05 acceptance threshold, dim red = tolerated contact"><input type="checkbox" id="showOverlap"> collisions</label>
        <span id="amBoxes"></span>
        <span id="hifiNote" class="dim"></span></div>
   <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
@@ -548,6 +549,50 @@ $('showGlts').onchange = async e => {
     gltsGroup.visible = false;
   }
 };
+
+// ---------------- mesh-collision overlaps (collide.py --export) ---------
+// collisions.json boxes are the RENDER-frame AABBs of the voxels two placed
+// meshes SHARE — the actual interpenetration region, not the objects.
+// Bright red + filled = pair over the acceptance threshold (real collision);
+// dim red outline = tolerated contact. Same render->raw flip as compGroup.
+const ovGroup = new THREE.Group(); worldGroup.add(ovGroup);
+{
+  const rr = (manifest && manifest.frame && manifest.frame.raw_to_render) || [1, 1, 1];
+  ovGroup.scale.set(rr[0], rr[1], rr[2]);
+}
+ovGroup.visible = false;
+function wideSprite(text, color, scale = 1) {   // textSprite clips ~10 chars
+  const cv = document.createElement('canvas'); cv.width = 480; cv.height = 44;
+  const ctx = cv.getContext('2d');
+  ctx.font = '26px monospace'; ctx.fillStyle = color; ctx.fillText(text, 6, 30);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+  sp.scale.set(1.5 * scale, 0.14 * scale, 1);
+  sp.renderOrder = 210;
+  return sp;
+}
+try {
+  const cj = await (await fetch('collisions.json?' + sq)).json();
+  let nBad = 0;
+  for (const p of cj.pairs) {
+    if (!p.overlap_lo) continue;
+    const lo = p.overlap_lo, hi = p.overlap_hi;
+    const c = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
+    const s = [hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]];
+    const bad = p.ratio > cj.ratio_max;
+    if (bad) nBad++;
+    const grp = objBox(c, s, 0, bad ? 0xff2222 : 0x803030);
+    grp.userData.fill.visible = bad;          // fill only the real offenders
+    ovGroup.add(grp);
+    const lb = wideSprite(
+      `${p.label_a} × ${p.label_b}  ${p.ratio.toFixed(3)}`,
+      bad ? '#ff5555' : '#a06060', bad ? 1.2 : 0.8);
+    lb.position.set(c[0], hi[1] + 0.06, c[2]);
+    ovGroup.add(lb);
+  }
+  console.log(`collisions layer: ${cj.pairs.length} pairs, ${nBad} over threshold`);
+} catch (e) { console.warn('no collisions.json', e); }
+$('showOverlap').onchange = e => ovGroup.visible = e.target.checked;
 
 // ---------------- composed meshes (composition C6 glb) ----------------
 // composed_scene2.glb is exported in the RENDER (upright) frame; worldGroup
