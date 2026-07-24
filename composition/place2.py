@@ -159,6 +159,94 @@ def _floor_mesh(fr, color=(205, 205, 205), margin=0.3):
     return m
 
 
+# ---- background-source resolver (integration directive 2026-07-21) --------
+# The cut lane (entangled_gen/cut/) removes an object's Gaussians from the
+# scene splat, leaving out/<scene>/cut/<obj>[_vN]/background.ply — the scene
+# with the object cleanly gone, layout-identical to gen_raw.ply. When such a
+# background exists, compositing meshes over IT (instead of the original
+# splat) kills the ghost problem the tinted-floor clean view works around.
+
+_CUT_NON_OBJECT_DIRS = {"dataset", "bg_renders", "integration_demo"}
+
+
+def find_cut_background(sc):
+    """Newest cut background.ply for a scene, or None.
+
+    Selection rule (documented for the auto mode): candidates are
+    out/<scene>/cut/<name>/background.ply for every <name> except the
+    dataset/cache/demo folders; winner = NEWEST background.ply by mtime.
+    A re-cut variant (obj_004_v2) is always written after its base
+    (obj_004), so variants supersede automatically — i.e. for the current
+    single-object cuts, "newest" = the most complete cut available.
+    Revisit when multi-object cuts land (Step 12 merges cuts)."""
+    cdir = paths.scene_dir(sc) / "cut"
+    if not cdir.is_dir():
+        return None
+    cands = [d / "background.ply" for d in cdir.iterdir()
+             if d.is_dir() and d.name not in _CUT_NON_OBJECT_DIRS
+             and (d / "background.ply").exists()]
+    return max(cands, key=lambda p: p.stat().st_mtime) if cands else None
+
+
+def resolve_background(sc, mode="auto"):
+    """Resolve a --background mode -> (composite_views splat_bg value, cut
+    background.ply or None). Modes:
+      auto     = cut background when the scene has one, else the EXISTING
+                 tinted-floor clean path (pipeline never breaks on un-cut
+                 scenes/objects)
+      cut      = require the cut background (error if absent) — test override
+      tinted   = the existing clean path, unconditionally — test override
+      original = original splat behind the meshes (the ghost problem)"""
+    if mode == "original":
+        return True, None
+    if mode == "tinted":
+        return "clean", None
+    bg = find_cut_background(sc)
+    if bg is None:
+        if mode == "cut":
+            raise SystemExit(f"--background cut: no cut background under "
+                             f"{paths.scene_dir(sc) / 'cut'}")
+        print("[place2] background auto: no cut background -> tinted-floor "
+              "clean path", flush=True)
+        return "clean", None
+    print(f"[place2] background {mode}: cut background {bg}", flush=True)
+    return "cut", bg
+
+
+def _cut_bg_image(sc, bg_ply, meta, metaf):
+    """Background image for ONE camera in cut mode. Reuse the cut lane's
+    existing after_<view>.png (render_cut_review.py rendered background.ply
+    from all 15 review cameras — read-only reuse) when present at the right
+    resolution; else render background.ply through this camera with
+    splat-transform into cut/bg_renders/<variant>/ — a cache OUTSIDE the
+    read-only cut outputs. Same renderer/fov/near/background color as
+    cut/render_cut_review.py, so reused and fresh images match."""
+    if bg_ply is None:
+        bg_ply = find_cut_background(sc)
+    w, h = (int(t) for t in meta["res"].split("x"))
+    have = bg_ply.parent / "renders" / f"after_{metaf.stem}.png"
+    if have.exists() and Image.open(have).size == (w, h):
+        return have
+    cache = paths.scene_dir(sc) / "cut" / "bg_renders" / bg_ply.parent.name
+    cache.mkdir(parents=True, exist_ok=True)
+    png = cache / f"{metaf.stem}.png"
+    if png.exists():
+        return png
+    import subprocess
+    webp = cache / f"{metaf.stem}.webp"
+    cmd = ["splat-transform", "-w", "-g", "0", str(bg_ply),
+           "--camera", meta["cam"], "--look-at", meta["look"],
+           "--up", meta["up"], "--fov", str(meta["fov"]),
+           "--near", str(meta.get("near", 0.2)),
+           "--resolution", meta["res"], "--background", "0.08,0.08,0.1",
+           str(webp)]
+    print(f"[place2] rendering cut background for {metaf.stem} ...",
+          flush=True)
+    subprocess.run(cmd, check=True, shell=True, timeout=600)
+    Image.open(webp).convert("RGB").save(png)
+    return png
+
+
 def judge_sidecars(sc):
     """Camera sidecars for loop judging: the judge_* rig (full-room
     coverage — 6 tilted yaws + straight-down; rendered by
@@ -171,12 +259,15 @@ def judge_sidecars(sc):
 
 
 def composite_views(sc, state, outdir=None, prefix="composed2_view_",
-                    splat_bg=True, sidecars=None):
+                    splat_bg=True, sidecars=None, cut_bg=None):
     """splat_bg: True = real splat behind the meshes (canonical in-context
     view), False = flat grey (C7 loop judge: the splat in the composite
     masked missing/changed meshes from the VLM), "clean" = mesh-only over a
     synthetic floor (representation view — no gsplat anywhere; the carved-
-    splat background was tried 2026-07-17 and rejected on cutout quality).
+    splat background was tried 2026-07-17 and rejected on cutout quality),
+    "cut" = the CUT background splat behind the meshes (the object's
+    Gaussians removed by the cut lane — no ghost; cut_bg = background.ply
+    from resolve_background, else the newest cut is found automatically).
     sidecars: camera sidecar .json paths; default = the 4 canonical
     gpu_yaw* views (the loop passes judge_sidecars(sc) instead)."""
     man = json.loads(paths.manifest(sc).read_text())
@@ -191,11 +282,17 @@ def composite_views(sc, state, outdir=None, prefix="composed2_view_",
     for metaf in sidecars:
         meta = json.loads(metaf.read_text())
         imgf = paths.views_dir(sc) / meta["file"]
+        if not imgf.exists():   # cut/dataset sidecars keep images next door
+            alt = metaf.parent.parent / "images" / meta["file"]
+            imgf = alt if alt.exists() else imgf
         if splat_bg is True and not imgf.exists():
             continue
         w, h = (int(t) for t in meta["res"].split("x"))
         if splat_bg is True:
             bg = Image.open(imgf).convert("RGBA")
+        elif splat_bg == "cut":
+            bg = Image.open(_cut_bg_image(sc, cut_bg, meta, metaf)
+                            ).convert("RGBA")
         else:
             bg = Image.new("RGBA", (w, h), (232, 232, 232, 255))
         comp = Image.alpha_composite(bg, _rgba_pass(meshes, meta, w, h))
@@ -233,8 +330,23 @@ if __name__ == "__main__":
                     help="render the EXISTING composed_state2.json (loop "
                          "edits kept) mesh-only over a synthetic floor, no "
                          "gsplat -> composed2c_view_*")
+    ap.add_argument("--background",
+                    choices=["auto", "cut", "tinted", "original"],
+                    default=None,
+                    help="render the EXISTING composed_state2.json over a "
+                         "RESOLVED background -> composed2b_view_*. auto = "
+                         "cut background.ply when the scene has one, else "
+                         "the tinted-floor clean path; cut/tinted/original "
+                         "force one source for testing. Default behavior "
+                         "(no flag) is untouched.")
     args = ap.parse_args()
-    if args.clean:
+    if args.background:
+        state = json.loads((paths.package_dir(args.scene)
+                            / "composed_state2.json").read_text())
+        splat_bg, cut_bg = resolve_background(args.scene, args.background)
+        composite_views(args.scene, state, prefix="composed2b_view_",
+                        splat_bg=splat_bg, cut_bg=cut_bg)
+    elif args.clean:
         state = json.loads((paths.package_dir(args.scene)
                             / "composed_state2.json").read_text())
         composite_views(args.scene, state, prefix="composed2c_view_",

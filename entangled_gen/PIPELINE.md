@@ -35,6 +35,50 @@ for the viewer's `collider` layer; see below), `amodal_boxes.py` +
 `amodal_compare.py` → `amodal_boxes.json` + `amodal_comparison/` (occluded-box
 extension, method comparison).
 
+## The cut lane — object removal from the splat (side lane, 2026-07-21)
+
+Removes a chosen object's Gaussians from `gen_raw.ply` (GaussianCut graph
+cut, seeded by per-view masks), leaving a background splat with the object
+cleanly gone — the fix for the entanglement/ghost problem that the
+tinted-floor clean view only works around. `background.ply` keeps
+`gen_raw.ply`'s exact 62-float layout and Gaussian order, so it drops into
+every existing renderer/viewer unchanged. Inputs are per (scene, object id);
+a re-cut writes a NEW variant folder (`obj_004_v2`), never overwriting an
+earlier attempt.
+
+| # | stage | current method | reads | writes (THE CONTRACT) |
+|---|-------|----------------|-------|----------------------|
+| c1 | view-pack | `cut/prep_views.py` | `gen_raw.ply` + view sidecars | `cut/dataset/` (15×900² PNGs + COLMAP `sparse/0` + `sidecars/*.json` + `verification.json` with per-view object UVs) |
+| c2 | mask-pack | `cut/make_masks.py` (SAM box-prompt; SAM2 propagation pass) | the object's manifest box + `cut/dataset/` | `cut/dataset/multiview_masks/<view>.png` (L-mode, {0,255}, stems match the dataset images) |
+| c3 | graph-cut | `cut/run_cut.py` (GaussianCut, WSL `gaussiancut` env) | ply + dataset + masks | `cut/<obj>[_vN]/foreground.ply` (the object's Gaussians) + `background.ply` (scene minus object) + `stats.json` (counts, threshold/weight choice, purity + spatial checks) |
+| c4 | review | `cut/render_cut_review.py` | cut outputs + dataset sidecars | `cut/<obj>[_vN]/renders/` (before/after/fg + crops) + `cut_review.html` (Checkpoint 6 page) |
+
+**Background resolver (consumer contract, integration directive
+2026-07-21):** downstream composition renders choose their backdrop through
+`../composition/place2.resolve_background(scene, mode)`:
+
+- `auto` (default): use the scene's newest `cut/*/background.ply` (newest by
+  mtime — a re-cut variant is always newer than its base, so `obj_004_v2`
+  supersedes `obj_004`; cuts are single-object for now, so newest = the most
+  complete cut available) composited behind the meshes; when the scene has NO
+  cut background, fall back to the EXISTING tinted-floor clean path
+  unchanged — un-cut scenes/objects never break.
+- `cut` / `tinted` / `original`: force one source for testing (`cut` errors
+  when no cut background exists; `original` = the ghost-visible splat).
+- CLI: `python place2.py --scene <sc> --background auto|cut|tinted|original`
+  → `package/composed2b_view_*.png`; all pre-existing place2 invocations
+  (default, `--clean`) are untouched. In cut mode the per-camera backdrop
+  reuses the review's `renders/after_<view>.png` when the resolution matches,
+  else renders `background.ply` via splat-transform into
+  `cut/bg_renders/<variant>/` (a cache — the cut outputs themselves stay
+  read-only).
+
+Docs: `cut/FEASIBILITY_GAUSSIANCUT.md` (formats + loader constraints),
+`cut/ENV.md` (WSL env build), `docs/PLAN_GAUSSIAN_CUT_AND_SPLAT_ANALYZER.md`
+(plan + progress log). Demo artifact: `cut/integration_demo.py` →
+`OUT/<scene>/cut/integration_demo/integration_demo.html` (same composition
+over original / cut / tinted backgrounds, side by side).
+
 ## What the sources can and cannot know (2026-07-15)
 
 **Everything is single-viewpoint.** The 4 `gpu_yaw*` views all sit at the same

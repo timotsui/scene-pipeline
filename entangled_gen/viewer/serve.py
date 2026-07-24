@@ -131,6 +131,41 @@ class H(BaseHTTPRequestHandler):
                 self._send(404, b"no collisions.json; run composition/"
                                 b"collide.py --scene " + sc.encode()
                                 + b" --export")
+        elif p == "/analyzer_boxes.json":
+            # bridge_boxes.py output (Step 6 -- format-bridge): splat_analyzer
+            # clusters as manifest-style boxes, RAW frame (same as
+            # scene_manifest.json). sc is sanitized by _scene() (alnum/_-),
+            # so the path cannot traverse.
+            f = paths.scene_dir(sc) / "analyzer" / "bridged_boxes.json"
+            if f.exists():
+                self._send(200, f.read_bytes(), "application/json")
+            else:
+                self._send(404, b"no analyzer/bridged_boxes.json; run "
+                                b"analyzer/bridge_boxes.py --scene "
+                                + sc.encode())
+        elif p == "/scene_graph.json":
+            # graph/build_graph.py + build_edges.py + describe_nodes.py output
+            # (Steps 1-3 -- scene graph): nodes + typed edges + appearance,
+            # RAW frame. Feeds the "graph nodes" layer. sc is sanitized by
+            # _scene() (alnum/_-), so the path cannot traverse.
+            f = paths.scene_dir(sc) / "scene_graph.json"
+            if f.exists():
+                self._send(200, f.read_bytes(), "application/json")
+            else:
+                self._send(404, b"no scene_graph.json; run "
+                                b"graph/build_graph.py --scene " + sc.encode())
+        elif p.startswith("/graph_crops/"):
+            # per-node evidence crops (graph/describe_nodes.py output) for the
+            # graph layer's click card. Filename sanitized to alnum/_-. and
+            # resolve+parents-checked like /vendor/ -- blocks ../ traversal.
+            base = (paths.scene_dir(sc) / "graph" / "crops").resolve()
+            name = p[len("/graph_crops/"):].lstrip("/")
+            name = "".join(ch for ch in name if ch.isalnum() or ch in "_-.")
+            f = (base / name).resolve() if name else base
+            if name and f.is_file() and base in f.parents:
+                self._send(200, f.read_bytes(), "image/png", cache=True)
+            else:
+                self._send(404, b"no such graph crop")
         elif p == "/glts.glb":
             # GLTS baseline scene (newest glts_comparison* package in OUT)
             cands = sorted(paths.OUT.glob("glts_comparison*/glts_scene.glb"))
@@ -172,6 +207,45 @@ class H(BaseHTTPRequestHandler):
                     if not chunk:
                         break
                     self.wfile.write(chunk)
+        elif p in ("/cut_background.ply", "/cut_foreground.ply"):
+            # GaussianCut outputs (Step 11 — cut-review build): background =
+            # the scene splat with the cut object removed, foreground = the
+            # extracted object alone. Row-subsets of gen_raw.ply (RAW frame,
+            # identical property layout). ?obj=<id> picks the object folder
+            # (default obj_004); sanitized like sc so the path cannot
+            # traverse. background is ~100 MB -> streamed like /splat.ply.
+            obj = (q.get("obj") or ["obj_004"])[0]
+            obj = "".join(ch for ch in obj if ch.isalnum() or ch in "_-") \
+                or "obj_004"
+            name = ("background.ply" if p == "/cut_background.ply"
+                    else "foreground.ply")
+            f = paths.scene_dir(sc) / "cut" / obj / name
+            if not f.exists():
+                return self._send(404, b"no cut/" + obj.encode() + b"/"
+                                  + name.encode() + b"; run cut/run_cut.py")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(f.stat().st_size))
+            self.send_header("Cache-Control", "max-age=300")
+            self.end_headers()
+            with f.open("rb") as fh:
+                while True:
+                    chunk = fh.read(1 << 20)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        elif p.startswith("/vendor/"):
+            # locally-vendored JS modules (three, OrbitControls, GLTFLoader,
+            # gaussian-splats-3d) so the viewer works with NO internet. Served
+            # with a JS mime type — ES-module <script type=module> imports are
+            # rejected by the browser unless the response is a JS content-type.
+            base = (HERE / "vendor").resolve()
+            f = (base / p[len("/vendor/"):].lstrip("/")).resolve()
+            if f.is_file() and base in f.parents:      # blocks ../ traversal
+                ctype = "text/javascript" if f.suffix == ".js" else "application/octet-stream"
+                self._send(200, f.read_bytes(), ctype, cache=True)
+            else:
+                self._send(404, b"no such vendor file")
         else:
             self._send(404, b"not found")
 

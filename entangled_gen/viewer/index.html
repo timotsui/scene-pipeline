@@ -33,8 +33,13 @@
        <label><input type="checkbox" id="showGlts"> GLTS</label>
        <label><input type="checkbox" id="showColl"> collider</label>
        <label title="mesh-overlap regions from collide.py --export: bright red = over the 0.05 acceptance threshold, dim red = tolerated contact"><input type="checkbox" id="showOverlap"> collisions</label>
+       <label title="splat_analyzer bridged boxes (bridge_boxes.py, Step 6): OWLv2 camera-ring clusters in the RAW frame, cyan wireframes. Caveats: centers are front-surface-biased, depth extent fabricated as (w+h)/2, always axis-aligned"><input type="checkbox" id="showAna"> analyzer boxes</label>
+       <label title="GaussianCut output (Step 11): cut/obj_004/background.ply — the scene splat with the cut object removed. RAW frame, same rows as gen_raw.ply minus the object; loads lazily on first tick. Tip: untick 'splat' to compare original vs cut without double-drawing"><input type="checkbox" id="showCutBg"> cut background</label>
+       <label title="GaussianCut output (Step 11): cut/obj_004/foreground.ply — the extracted object's Gaussians alone (382 for the lamp)"><input type="checkbox" id="showCutFg"> lamp only (cut fg)</label>
+       <label title="scene graph (graph/build_graph.py + build_edges.py + describe_nodes.py, Steps 1-3): detection-node boxes colored by confidence tier (green confirmed / amber candidate / red weak) + typed relation edges as lines. RAW frame. Click a box for its appearance card (description, crops, edges); tier + edge-type sub-toggles appear below when on"><input type="checkbox" id="showGraph"> graph nodes</label>
        <span id="amBoxes"></span>
        <span id="hifiNote" class="dim"></span></div>
+  <div id="graphRow" style="display:none"></div>
   <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
        y <input type="number" id="ry" value="0" step="90" style="width:52px">
        z <input type="number" id="rz" value="180" step="90" style="width:52px">
@@ -67,9 +72,9 @@
 <div id="info" class="panel"></div>
 <script type="importmap">
 { "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "gaussian-splats-3d": "https://unpkg.com/@mkkellogg/gaussian-splats-3d@0.4.7/build/gaussian-splats-3d.module.js"
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/",
+    "gaussian-splats-3d": "./vendor/gaussian-splats-3d.module.js"
 } }
 </script>
 <script type="module">
@@ -593,6 +598,295 @@ try {
   console.log(`collisions layer: ${cj.pairs.length} pairs, ${nBad} over threshold`);
 } catch (e) { console.warn('no collisions.json', e); }
 $('showOverlap').onchange = e => ovGroup.visible = e.target.checked;
+
+// ---------------- analyzer boxes (splat_analyzer bridge, Step 6/8) --------
+// bridged_boxes.json = analyzer/bridge_boxes.py output: OWLv2 camera-ring
+// clusters fused to 3D boxes, RAW frame (same as the manifest -- no flip, no
+// scale). Pure cyan 0x00ffff: distinct from the manifest palette's muted
+// teal 0x5ad2d2, the amodal-splat turquoise 0x30d5c8, and the measure blue
+// 0x66ddff. Labels (label + id) always-on -- hover would need raycast wiring.
+// Caveats (metadata in the file): surface-biased centers, fabricated depth
+// extent (w+h)/2, always axis-aligned.
+const anaGroup = new THREE.Group(); worldGroup.add(anaGroup);
+anaGroup.visible = false;
+try {
+  const aj = await (await fetch('analyzer_boxes.json?' + sq)).json();
+  const ACOL = 0x00ffff;
+  for (const o of aj.objects || []) {
+    anaGroup.add(objBox(o.center, o.size, 0, ACOL));
+    const lb = wideSprite(o.label + ' ' + o.id, '#00e5ff', 0.7);
+    lb.position.set(o.center[0], o.center[1] + o.size[1] / 2 + 0.05,
+                    o.center[2]);
+    anaGroup.add(lb);
+  }
+  console.log('analyzer layer: ' + (aj.objects || []).length + ' boxes');
+} catch (e) { console.warn('no analyzer boxes', e); }
+$('showAna').onchange = e => anaGroup.visible = e.target.checked;
+
+// ---------------- scene graph layer (graph/ Steps 1-3, review Step 4) -----
+// scene_graph.json = graph/build_graph.py + build_edges.py + describe_nodes.py
+// output: detection nodes + envelope architecture nodes + typed edges, RAW
+// frame (same as the analyzer layer -- no flip, no scale). Node boxes colored
+// by confidence tier with per-tier toggles; edges drawn as center-to-center
+// lines colored by type with per-type toggles (edges to envelope PLANE nodes
+// project the detection center onto the plane; dim line = z_fabricated
+// caveat: depth extents are fabricated as (w+h)/2, overlap numbers inflated).
+// Click a node box -> floating card (bottom right) with appearance + crops
+// (served via /graph_crops/) + its edge list with numeric evidence. Box
+// markers: "⚠ label dispute" = VLM description disagrees with the detector
+// label; "? undescribed" = appearance pass failed; "~ floating" = no ON and
+// no IN edge (wall art or detection junk). Everything here is additive: no
+// other layer or handler is touched.
+const graphGroup = new THREE.Group(); worldGroup.add(graphGroup);
+graphGroup.visible = false;
+const G_TIER_COL = { confirmed: 0x33ee66, candidate: 0xffb020, weak: 0xff3333 };
+const G_EDGE_COL = { ON: 0x33ee66, IN: 0x3c82e6, IN_WALL: 0x8844dd,
+                     ATTACHED: 0xaa66ff, INTERPENETRATES: 0xff3333 };
+const gHex = c => '#' + c.toString(16).padStart(6, '0');
+const gNodeEntries = [];        // {n, grp}
+let gSel = null;
+const gInfo = document.createElement('div');
+gInfo.className = 'panel';
+gInfo.style.cssText = 'right:8px;bottom:8px;width:380px;max-height:62vh;' +
+                      'overflow-y:auto;display:none;z-index:11';
+document.body.appendChild(gInfo);
+function gClear() {
+  if (gSel) {
+    setHighlight(gSel.grp, false);
+    gSel.grp.userData.edges.material.color.set(gSel.grp.userData.baseColor);
+    gSel = null;
+  }
+  gInfo.style.display = 'none';
+}
+$('showGraph').onchange = e => {
+  graphGroup.visible = e.target.checked;
+  $('graphRow').style.display =
+      (e.target.checked && gNodeEntries.length) ? 'block' : 'none';
+  if (!e.target.checked) gClear();
+};
+try {
+  const gj = await (await fetch('scene_graph.json?' + sq)).json();
+  const gNodes = {}; (gj.nodes || []).forEach(n => gNodes[n.id] = n);
+  const gEdgesByNode = {};
+  for (const e of (gj.edges || [])) {
+    (gEdgesByNode[e.a] = gEdgesByNode[e.a] || []).push(e);
+    (gEdgesByNode[e.b] = gEdgesByNode[e.b] || []).push(e);
+  }
+  const gFloat = new Set((((gj.edge_summary || {}).floating) || []).map(f => f.id));
+  // ---- node boxes (detection nodes only; envelope arch nodes are planes) --
+  for (const n of gj.nodes || []) {
+    if (n.source !== 'detection') continue;
+    const col = G_TIER_COL[n.confidence_tier] ?? 0xcccccc;
+    const grp = objBox(n.geometry.center, n.geometry.size, 0, col);
+    grp.userData.gnode = n;
+    grp.userData.baseColor = col;
+    const marks = [];
+    if (n.appearance && n.appearance.label_agreement === false)
+      marks.push(['⚠ label dispute', '#ffaa33']);
+    if (!n.appearance) marks.push(['? undescribed', '#ff77ff']);
+    if (gFloat.has(n.id)) marks.push(['~ floating', '#88aacc']);
+    marks.forEach(([t, c], i) => {   // same +y label offset as the other layers
+      const sp = wideSprite(t, c, 0.6);
+      sp.position.set(0, n.geometry.size[1] / 2 + 0.06 + i * 0.1, 0);
+      grp.add(sp);
+    });
+    graphGroup.add(grp);
+    gNodeEntries.push({ n, grp });
+  }
+  // ---- edge lines: one group per type, solid + dim (z_fabricated) --------
+  const gEdgeGroups = {}, gEdgeCounts = {};
+  const gAnchor = (nb, from) => {       // envelope plane node -> projection
+    const g = nb.geometry || {};
+    if (g.center) return g.center;
+    if (g.plane) {
+      const p = from.slice();
+      p[{ x: 0, y: 1, z: 2 }[g.plane.axis]] = g.plane.value_raw;
+      return p;
+    }
+    return from;
+  };
+  {
+    const pos = {};                     // type -> {solid: [], dim: []}
+    for (const e of gj.edges || []) {
+      const na = gNodes[e.a], nb = gNodes[e.b];
+      if (!na || !nb || !na.geometry.center) continue;   // a is detection
+      const ca = na.geometry.center, cb = gAnchor(nb, ca);
+      const k = (e.caveats || []).includes('z_fabricated') ? 'dim' : 'solid';
+      (pos[e.type] = pos[e.type] || { solid: [], dim: [] })[k]
+          .push(ca[0], ca[1], ca[2], cb[0], cb[1], cb[2]);
+      gEdgeCounts[e.type] = (gEdgeCounts[e.type] || 0) + 1;
+    }
+    for (const [t, b] of Object.entries(pos)) {
+      const tg = new THREE.Group();
+      for (const [k, arr] of [['solid', b.solid], ['dim', b.dim]]) {
+        if (!arr.length) continue;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position',
+            new THREE.BufferAttribute(new Float32Array(arr), 3));
+        const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+            color: G_EDGE_COL[t] ?? 0xffffff, transparent: true,
+            opacity: k === 'dim' ? 0.22 : 0.85, depthTest: false }));
+        ls.renderOrder = 198;
+        tg.add(ls);
+      }
+      tg.visible = t === 'ON';          // default: only ON edges drawn
+      graphGroup.add(tg);
+      gEdgeGroups[t] = tg;
+    }
+  }
+  // ---- HUD sub-row: tier toggles + edge-type toggles + legend ------------
+  const gTiers = ['confirmed', 'candidate', 'weak'];
+  const tierN = {};
+  gNodeEntries.forEach(en =>
+      tierN[en.n.confidence_tier] = (tierN[en.n.confidence_tier] || 0) + 1);
+  let gh = 'graph tiers: ';
+  for (const t of gTiers)
+    gh += '<label style="color:' + gHex(G_TIER_COL[t]) + '">' +
+          '<input type="checkbox" checked id="gTier_' + t + '"> ' + t +
+          ' (' + (tierN[t] || 0) + ')</label> ';
+  gh += ' · edges: ';
+  for (const t of ['ON', 'IN', 'IN_WALL', 'ATTACHED', 'INTERPENETRATES'])
+    gh += '<label style="color:' + gHex(G_EDGE_COL[t]) + '">' +
+          '<input type="checkbox"' + (t === 'ON' ? ' checked' : '') +
+          ' id="gEdge_' + t + '"> ' + t + ' (' + (gEdgeCounts[t] || 0) +
+          ')</label> ';
+  gh += '<div class="dim">dim line = z_fabricated evidence (fabricated depth ' +
+        'extents inflate overlaps) · markers: ⚠ label dispute · ? undescribed ' +
+        '· ~ floating (no ON/IN edge) · click a box = node card ' +
+        '(appearance + crops + edges) · Esc closes</div>';
+  $('graphRow').innerHTML = gh;
+  const applyTiers = () => gNodeEntries.forEach(en =>
+      en.grp.visible = $('gTier_' + en.n.confidence_tier).checked);
+  gTiers.forEach(t => $('gTier_' + t).onchange = applyTiers);
+  for (const t of Object.keys(gEdgeGroups))
+    $('gEdge_' + t).onchange = e => gEdgeGroups[t].visible = e.target.checked;
+  // ---- click card --------------------------------------------------------
+  const gEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const gNum = v => typeof v === 'number' ? Math.round(v * 1000) / 1000 : gEsc(v);
+  const gEv = e => Object.entries(e.evidence || {})
+      .map(([k, v]) => k + ' ' + gNum(v)).join(', ');
+  function gShow(en) {
+    const n = en.n, ap = n.appearance, pv = n.provenance || {};
+    let h = '<h3>' + n.id + ' — ' + gEsc(n.label) +
+        ' <span style="color:' + gHex(G_TIER_COL[n.confidence_tier] ?? 0xcccccc)
+        + '">[' + n.confidence_tier + ']</span></h3>' +
+        '<div class="dim">' + n.type + ' · cat ' + gEsc(n.canonical_category) +
+        ' · votes ' + pv.votes + ' · peak ' + gNum(pv.peak_score) +
+        (pv.matched_manifest_id ? ' · manifest ' + pv.matched_manifest_id : '')
+        + '</div>';
+    if ((n.geometry.caveats || []).length)
+      h += '<div class="dim">caveats: ' + n.geometry.caveats.join(', ') + '</div>';
+    if (ap) {
+      if (ap.label_agreement === false)
+        h += '<div style="color:#ffaa33">⚠ label dispute — VLM description ' +
+             'disagrees with the detector label</div>';
+      h += '<div style="color:#cfe3cf;font-style:italic">“' +
+           gEsc(ap.description) + '”</div><div class="dim">colors ' +
+           gEsc((ap.colors || []).join(', ')) + ' · material ' +
+           gEsc(ap.material) + ' · style ' + gEsc(ap.style) + '</div>';
+    } else {
+      h += '<div style="color:#ff77ff">? undescribed — appearance pass ' +
+           'returned nothing for this node</div>';
+    }
+    const crops = ((n.views || {}).crops || []);
+    if (crops.length)
+      h += '<div>' + crops.map(c => {
+        const nm = String(c.path).split(/[\\\/]/).pop();
+        return '<img src="graph_crops/' + nm + '?' + sq +
+               '" loading="lazy" style="height:84px;margin:2px;' +
+               'border-radius:3px;cursor:pointer" ' +
+               'onclick="window.open(this.src)" title="frame ' + c.frame_idx +
+               ', det ' + gNum(c.det_score) + '">';
+      }).join('') + '</div>';
+    const el = gEdgesByNode[n.id] || [];
+    if (el.length) {
+      h += '<div style="color:#ffe27f;margin-top:4px">edges (' + el.length +
+           ')</div>';
+      for (const e of el.slice(0, 24)) {
+        const out = e.a === n.id, oid = out ? e.b : e.a, on = gNodes[oid];
+        const arrow = e.type === 'INTERPENETRATES' ? '↔' : (out ? '→' : '←');
+        const dim = (e.caveats || []).includes('z_fabricated');
+        h += '<div style="font-size:12px' + (dim ? ';opacity:.5' : '') + '">' +
+             '<span style="color:' + gHex(G_EDGE_COL[e.type] ?? 0xffffff) +
+             '">' + e.type + '</span> ' + arrow + ' ' + oid +
+             (on ? ' ' + gEsc(on.label) : '') +
+             ' <span class="dim">(' + gEv(e) + ')</span></div>';
+      }
+      if (el.length > 24)
+        h += '<div class="dim">… +' + (el.length - 24) +
+             ' more — see graph_review.html</div>';
+    } else {
+      h += '<div class="dim">no edges (floating)</div>';
+    }
+    h += '<div class="dim">click empty space or Esc to close</div>';
+    gInfo.innerHTML = h;
+    gInfo.style.display = 'block';
+  }
+  // own pointerdown listener, registered AFTER the main one (which already
+  // set `mouse`/`ray` for this event); shows its OWN card div, so the main
+  // handler's selection logic is untouched.
+  renderer.domElement.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0 || !graphGroup.visible || placeMode || measMode) return;
+    const vis = gNodeEntries.filter(en => en.grp.visible);
+    const picks = vis.map(en => en.grp.userData.pick);
+    const hits = ray.intersectObjects(picks, false);
+    gClear();
+    if (!hits.length) return;
+    const en = vis[picks.indexOf(hits[0].object)];
+    gSel = en;
+    setHighlight(en.grp, true, 0xffee44);
+    gShow(en);
+  });
+  addEventListener('keydown', e => { if (e.key === 'Escape') gClear(); });
+  console.log('graph layer: ' + gNodeEntries.length + ' node boxes, ' +
+              (gj.edges || []).length + ' edges ' + JSON.stringify(gEdgeCounts));
+} catch (e) { console.warn('no scene_graph.json', e); }
+
+// ---------------- cut splat layers (GaussianCut, Step 11) ----------------
+// /cut_background.ply = the scene with the cut object removed;
+// /cut_foreground.ply = the extracted object alone. Both are row-subsets of
+// gen_raw.ply (RAW frame, identical property layout), so they drop into
+// worldGroup exactly like the hi-fi layer — no flip, no scale. One lazy
+// DropInViewer per layer, loaded on first tick (same options as enableHifi).
+// To compare original vs cut background, untick "splat" (master) so the two
+// full-room splats are not alpha-blended on top of each other.
+const cutLayers = {};   // route -> { viewer, loading }
+async function toggleCutLayer(route, box) {
+  const st = cutLayers[route] ?? (cutLayers[route] = { viewer: null, loading: false });
+  if (st.viewer) { st.viewer.visible = box.checked; return; }
+  if (!box.checked || st.loading) return;
+  st.loading = true;
+  msg('loading ' + route + ' …');
+  try {
+    const GaussianSplats3D = await import('gaussian-splats-3d');
+    const v = new GaussianSplats3D.DropInViewer({
+      sharedMemoryForWorkers: false,   // avoids COOP/COEP header requirements
+      gpuAcceleratedSort: false,       // safest default; CPU sort in a worker
+      freeIntermediateSplatData: true,
+    });
+    await v.addSplatScene(route + '?' + sq, {
+      showLoadingUI: false,
+      progressiveLoad: true,
+      splatAlphaRemovalThreshold: 5,
+      // query string defeats the lib's endsWith('.ply') format sniffing —
+      // must be explicit or addSplatScene throws immediately
+      format: GaussianSplats3D.SceneFormat.Ply,
+    });
+    worldGroup.add(v);
+    st.viewer = v;
+    st.viewer.visible = box.checked;
+    msg(route + ' on');
+  } catch (err) {
+    console.error(route + ' load failed', err);
+    msg(route + ' FAILED: ' + (err && err.message ? err.message : err));
+    box.checked = false;
+  } finally {
+    st.loading = false;
+  }
+}
+$('showCutBg').onchange = e => toggleCutLayer('cut_background.ply', e.target);
+$('showCutFg').onchange = e => toggleCutLayer('cut_foreground.ply', e.target);
 
 // ---------------- composed meshes (composition C6 glb) ----------------
 // composed_scene2.glb is exported in the RENDER (upright) frame; worldGroup
