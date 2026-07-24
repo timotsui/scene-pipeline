@@ -18,13 +18,9 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 import paths  # noqa: E402
 
-ap = argparse.ArgumentParser()
-ap.add_argument("--scene", default="bedroom", help="default scene for /")
-ap.add_argument("--port", type=int, default=8321)
-args = ap.parse_args()
-
-CAPS = paths.OUT / "viewer_caps"   # shared data root (local_paths.json), not the repo tree
-CAPS.mkdir(parents=True, exist_ok=True)
+# set in main(); class H reads these module globals at request time
+args = None
+CAPS = None
 
 
 def placement_file(sc):
@@ -292,7 +288,21 @@ class H(BaseHTTPRequestHandler):
         pass
 
 
-print(f"[viewer] default scene={args.scene} http://localhost:{args.port} "
-      f"(?scene=<name> to switch; live files: out/<scene>/live_placement.json)",
-      flush=True)
-ThreadingHTTPServer(("127.0.0.1", args.port), H).serve_forever()
+def main():
+    global args, CAPS
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--scene", default="bedroom", help="default scene for /")
+    ap.add_argument("--port", type=int, default=8321)
+    args = ap.parse_args()
+
+    CAPS = paths.OUT / "viewer_caps"   # shared data root (local_paths.json), not the repo tree
+    CAPS.mkdir(parents=True, exist_ok=True)
+
+    print(f"[viewer] default scene={args.scene} http://localhost:{args.port} "
+          f"(?scene=<name> to switch; live files: out/<scene>/live_placement.json)",
+          flush=True)
+    ThreadingHTTPServer(("127.0.0.1", args.port), H).serve_forever()
+
+
+if __name__ == "__main__":
+    main()

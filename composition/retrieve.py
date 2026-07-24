@@ -46,21 +46,37 @@ def catalog():
                 s = a["size"]
                 a["size_yup_cm"] = ([s[0], s[2], s[1]] if isinstance(s, list)
                                     and len(s) == 3 else s)
-        try:
-            from measure import load_cache
-            measured = load_cache()
-            n = 0
-            for a in _CATALOG:
-                m = measured.get(a["uid"])
-                if m:
-                    a["size_yup_cm"] = m
-                    n += 1
-            if n:
-                print(f"[retrieve] {n} sizes from measured-mesh cache", flush=True)
-        except Exception as e:
-            print(f"[retrieve] measured-size cache unavailable ({e})", flush=True)
+        n = refresh_sizes()
+        if n:
+            print(f"[retrieve] {n} sizes from measured-mesh cache", flush=True)
+        else:
+            print("[retrieve] WARNING: no measured-mesh sizes — run measure.py "
+                  "then re-run (annotation sizes are unreliable, see README)",
+                  flush=True)
         print(f"[retrieve] catalog: {len(_CATALOG)} annotated assets", flush=True)
     return _CATALOG
+
+
+def refresh_sizes():
+    """Re-apply measure.py's mesh-size cache onto the loaded catalog rows.
+
+    THE sanctioned channel for callers that extend the measure cache
+    mid-process (loop.py's add op): shortlist consumers hold the same row
+    objects, so the refresh is visible everywhere. Returns rows updated.
+    """
+    try:
+        from measure import load_cache
+        measured = load_cache()
+    except Exception as e:
+        print(f"[retrieve] measured-size cache unavailable ({e})", flush=True)
+        return 0
+    n = 0
+    for a in _CATALOG or []:
+        m = measured.get(a["uid"])
+        if m:
+            a["size_yup_cm"] = m
+            n += 1
+    return n
 
 
 def _tokens(s):

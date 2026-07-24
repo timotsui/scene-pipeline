@@ -38,7 +38,7 @@ import retrieve2
 import thumbs
 from bridge import call_agent_json
 from comp_paths import paths
-from retrieve import catalog
+import retrieve
 
 MAX_ITERS = 4
 EDITS_PER_ITER = 4
@@ -164,12 +164,8 @@ def apply_add(sc, edit, state, sl, ctx, model):
     if not cands:
         return None, None, "no candidates"
     measure.ensure([c["uid"] for c in cands])
-    sizes = measure.load_cache()
-    for a in catalog():                    # refresh in place; by_category()
-        m = sizes.get(a["uid"])            # holds the same row objects
-        if m:
-            a["size_yup_cm"] = m
-    cands = retrieve2.shortlist_box(box, mount, cats)
+    retrieve.refresh_sizes()               # explicit API — shortlist consumers
+    cands = retrieve2.shortlist_box(box, mount, cats)   # hold the same rows
 
     med = pick_policy.scene_median_scale(sl["boxes"])
     slo, shi = pick_policy.SCALE_BAND[0] * med, pick_policy.SCALE_BAND[1] * med

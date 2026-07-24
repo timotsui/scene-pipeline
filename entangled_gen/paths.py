@@ -27,8 +27,12 @@ if (HERE / "local_paths.json").exists():
     OUT = Path(_cfg["out"])
     W5 = Path(_cfg["week5"])
 else:
+    _cfg = {}
     OUT = HERE / "out"
     W5 = HERE.parent.parent / "week5" / "splat_to_placement"   # realplayroom data
+
+CFG = _cfg                 # full parsed config — comp_paths.py reads its keys here
+REPO_ROOT = HERE.parent    # scene-pipeline/ (launch_*.bat live here)
 
 # local copies of the week5 render tools (2026-07-05) — edit these, not week5
 RENDERTOOLS = HERE / "rendertools"

@@ -26,7 +26,17 @@ import sys
 import numpy as np
 import open3d as o3d
 
-OUT = "/mnt/d/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import paths  # noqa: E402  (entangled_gen/paths.py — OUT from local_paths.json)
+
+
+def _wsl(p):
+    """Windows drive path -> /mnt form (this script runs under WSL)."""
+    s = str(p).replace("\\", "/")
+    return f"/mnt/{s[0].lower()}{s[2:]}" if len(s) > 1 and s[1] == ":" else s
+
+
+OUT = _wsl(paths.OUT)
 C0 = 0.28209479177387814
 
 

@@ -65,7 +65,7 @@ def run(sc):
     pkg = paths.package_dir(sc)
     slf = pkg / "shortlists2.json"
     sl = json.loads(slf.read_text())
-    from review_server import make_crops
+    from crops import make_crops
     make_crops(sc, sl["boxes"])          # ensures the clean query crops exist
     model, proc, dev = _load()
 

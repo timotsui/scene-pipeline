@@ -35,6 +35,10 @@ def scene_median_scale(boxes):
 def run(sc, top_n=TOP_N):
     pkg = paths.package_dir(sc)
     sl = json.loads((pkg / "shortlists2.json").read_text())
+    if not any(c.get("clip") is not None
+               for b in sl["boxes"] for c in b["candidates"]):
+        print("[pick] WARNING: no clip scores in shortlists2.json — "
+              "relevance.py has not run; picking on fit alone", flush=True)
     med = scene_median_scale(sl["boxes"])
     lo, hi = SCALE_BAND[0] * med, SCALE_BAND[1] * med
     print(f"[pick] scene-median scale x{med:.2f} -> admissible band "

@@ -14,10 +14,9 @@ import sys
 import time
 import uuid
 
-from comp_paths import BRIDGE_DIR
+from comp_paths import BRIDGE_DIR, CLAUDE_EXE
 
 POWERSHELL = "powershell.exe"
-CLAUDE_EXE = r"C:\Users\T\.local\bin\claude.exe"
 CALL_TIMEOUT_S = 900
 
 

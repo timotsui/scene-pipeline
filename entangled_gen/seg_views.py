@@ -36,57 +36,6 @@ PROMPTS = {
 GENERIC_PROMPT = ("bed. chair. table. sofa. wardrobe. window. door. lamp. rug. "
                   "television. nightstand. shelf. picture. curtain.")
 
-ap = argparse.ArgumentParser()
-ap.add_argument("--scene", default="playroom")
-ap.add_argument("--views-dir", default="", help="override views directory")
-ap.add_argument("--glob", default="gpu_yaw*.webp", help="view filename glob")
-ap.add_argument("--out-dir", default="", help="override output directory")
-ap.add_argument("--prompt", default="", help="override detection vocab")
-ap.add_argument("--box-thr", type=float, default=0.35,
-                help="GroundingDINO box threshold (lower for promised-but-missed words)")
-args = ap.parse_args()
-sc = args.scene
-
-VIEWS_DIR = Path(args.views_dir) if args.views_dir else paths.views_dir(sc)
-VIEWS = sorted(VIEWS_DIR.glob(args.glob))
-OUT = Path(args.out_dir) if args.out_dir else paths.seg_dir(sc)
-OUT.mkdir(parents=True, exist_ok=True)
-
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"device: {DEVICE}  scene: {sc}  views: {len(VIEWS)}", flush=True)
-
-PROMPT = args.prompt if args.prompt else PROMPTS.get(sc, GENERIC_PROMPT)
-
-# ---------------- GroundingDINO (dedicated API — the zero-shot pipeline
-# mis-handles grounding-dino: whole-image boxes) ----------------
-from transformers import AutoProcessor, GroundingDinoForObjectDetection
-
-print("loading GroundingDINO...", flush=True)
-gd_proc = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-base")
-gd = GroundingDinoForObjectDetection.from_pretrained("IDEA-Research/grounding-dino-base").to(DEVICE)
-gd.eval()
-
-def detect(img, prompt, box_thr=0.35, text_thr=0.25):
-    inputs = gd_proc(images=img, text=prompt, return_tensors="pt").to(DEVICE)
-    with torch.no_grad():
-        outputs = gd(**inputs)
-    res = gd_proc.post_process_grounded_object_detection(
-        outputs, inputs["input_ids"], threshold=box_thr, text_threshold=text_thr,
-        target_sizes=[img.size[::-1]])[0]
-    dets = []
-    for score, label, box in zip(res["scores"], res["text_labels"] if "text_labels" in res else res["labels"], res["boxes"]):
-        x0, y0, x1, y1 = [float(v) for v in box]
-        dets.append({"label": str(label), "score": float(score),
-                     "box": {"xmin": x0, "ymin": y0, "xmax": x1, "ymax": y1}})
-    return dets
-
-# ---------------- SAM ----------------
-from transformers import SamModel, SamProcessor
-
-print("loading SAM...", flush=True)
-sam = SamModel.from_pretrained("facebook/sam-vit-base").to(DEVICE)
-sam_proc = SamProcessor.from_pretrained("facebook/sam-vit-base")
-
 # ---------------- helpers ----------------
 def draw_boxes(img, dets):
     from PIL import ImageDraw, ImageFont
@@ -107,32 +56,88 @@ def overlay_masks(img, masks):
     return Image.fromarray(base.astype(np.uint8))
 
 # ---------------- run ----------------
-all_dets = {}
-for vp in VIEWS:
-    name = vp.stem
-    img = Image.open(vp).convert("RGB")
-    print(f"\n=== {name} ===", flush=True)
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--scene", default="playroom")
+    ap.add_argument("--views-dir", default="", help="override views directory")
+    ap.add_argument("--glob", default="gpu_yaw*.webp", help="view filename glob")
+    ap.add_argument("--out-dir", default="", help="override output directory")
+    ap.add_argument("--prompt", default="", help="override detection vocab")
+    ap.add_argument("--box-thr", type=float, default=0.35,
+                    help="GroundingDINO box threshold (lower for promised-but-missed words)")
+    args = ap.parse_args()
+    sc = args.scene
 
-    dets = detect(img, PROMPT, box_thr=args.box_thr)
-    # keep it readable
-    dets = sorted(dets, key=lambda d: -d["score"])[:20]
-    for d in dets:
-        print(f'  {d["label"]:18s} {d["score"]:.2f}  {d["box"]}', flush=True)
-    all_dets[name] = dets
+    views_dir = Path(args.views_dir) if args.views_dir else paths.views_dir(sc)
+    views = sorted(views_dir.glob(args.glob))
+    out = Path(args.out_dir) if args.out_dir else paths.seg_dir(sc)
+    out.mkdir(parents=True, exist_ok=True)
 
-    draw_boxes(img, dets).save(OUT / f"{name}_boxes.png")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"device: {device}  scene: {sc}  views: {len(views)}", flush=True)
 
-    if dets:
-        boxes = [[[d["box"]["xmin"], d["box"]["ymin"], d["box"]["xmax"], d["box"]["ymax"]] for d in dets]]
-        inputs = sam_proc(img, input_boxes=boxes, return_tensors="pt").to(DEVICE)
+    prompt = args.prompt if args.prompt else PROMPTS.get(sc, GENERIC_PROMPT)
+
+    # GroundingDINO (dedicated API — the zero-shot pipeline mis-handles
+    # grounding-dino: whole-image boxes)
+    from transformers import AutoProcessor, GroundingDinoForObjectDetection
+
+    print("loading GroundingDINO...", flush=True)
+    gd_proc = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-base")
+    gd = GroundingDinoForObjectDetection.from_pretrained("IDEA-Research/grounding-dino-base").to(device)
+    gd.eval()
+
+    def detect(img, prompt, box_thr=0.35, text_thr=0.25):
+        inputs = gd_proc(images=img, text=prompt, return_tensors="pt").to(device)
         with torch.no_grad():
-            outs = sam(**inputs, multimask_output=False)
-        masks = sam_proc.image_processor.post_process_masks(
-            outs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu())[0]
-        masks = masks.squeeze(1).numpy().astype(bool)  # (n, H, W)
-        overlay_masks(img, list(masks)).save(OUT / f"{name}_masks.png")
-        np.save(OUT / f"{name}_masks.npy", masks)
+            outputs = gd(**inputs)
+        res = gd_proc.post_process_grounded_object_detection(
+            outputs, inputs["input_ids"], threshold=box_thr, text_threshold=text_thr,
+            target_sizes=[img.size[::-1]])[0]
+        dets = []
+        for score, label, box in zip(res["scores"], res["text_labels"] if "text_labels" in res else res["labels"], res["boxes"]):
+            x0, y0, x1, y1 = [float(v) for v in box]
+            dets.append({"label": str(label), "score": float(score),
+                         "box": {"xmin": x0, "ymin": y0, "xmax": x1, "ymax": y1}})
+        return dets
 
-with open(OUT / "detections.json", "w") as f:
-    json.dump(all_dets, f, indent=2)
-print("\nwrote", OUT / "detections.json", flush=True)
+    # SAM
+    from transformers import SamModel, SamProcessor
+
+    print("loading SAM...", flush=True)
+    sam = SamModel.from_pretrained("facebook/sam-vit-base").to(device)
+    sam_proc = SamProcessor.from_pretrained("facebook/sam-vit-base")
+
+    all_dets = {}
+    for vp in views:
+        name = vp.stem
+        img = Image.open(vp).convert("RGB")
+        print(f"\n=== {name} ===", flush=True)
+
+        dets = detect(img, prompt, box_thr=args.box_thr)
+        # keep it readable
+        dets = sorted(dets, key=lambda d: -d["score"])[:20]
+        for d in dets:
+            print(f'  {d["label"]:18s} {d["score"]:.2f}  {d["box"]}', flush=True)
+        all_dets[name] = dets
+
+        draw_boxes(img, dets).save(out / f"{name}_boxes.png")
+
+        if dets:
+            boxes = [[[d["box"]["xmin"], d["box"]["ymin"], d["box"]["xmax"], d["box"]["ymax"]] for d in dets]]
+            inputs = sam_proc(img, input_boxes=boxes, return_tensors="pt").to(device)
+            with torch.no_grad():
+                outs = sam(**inputs, multimask_output=False)
+            masks = sam_proc.image_processor.post_process_masks(
+                outs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu())[0]
+            masks = masks.squeeze(1).numpy().astype(bool)  # (n, H, W)
+            overlay_masks(img, list(masks)).save(out / f"{name}_masks.png")
+            np.save(out / f"{name}_masks.npy", masks)
+
+    with open(out / "detections.json", "w") as f:
+        json.dump(all_dets, f, indent=2)
+    print("\nwrote", out / "detections.json", flush=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,7 @@
 {
   "out": "ABSOLUTE/PATH/TO/pipeline-data/out",
-  "week5": "ABSOLUTE/PATH/TO/week5/splat_to_placement"
+  "week5": "ABSOLUTE/PATH/TO/week5/splat_to_placement",
+  "objathor": "ABSOLUTE/PATH/TO/objathor-assets/2023_09_23",
+  "claude_exe": "OPTIONAL: path to claude.exe (default: PATH lookup, then ~/.local/bin)",
+  "bridge_dir": "OPTIONAL: scratch dir for bridge.py prompts (default: system temp)"
 }

@@ -138,8 +138,7 @@ def main():
     env = bridged.get("envelope_sanity", {})
     n_only = match["analyzer_only_count"]
 
-    viewer_bat = (r"D:\T\Documents\GeorgiaTech\Summer2026\scene-pipeline"
-                  r"\launch_viewer.bat")
+    viewer_bat = paths.REPO_ROOT / "launch_viewer.bat"
     this_page = adir / "comparison.html"
 
     out = [f"<!DOCTYPE html><html><head><meta charset='utf-8'>"
