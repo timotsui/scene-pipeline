@@ -107,10 +107,6 @@ All numpy/matplotlib so far — **no CUDA, no install** beyond the base env.
 - Perspective cameras placed from raw coords fight occlusion + ST's coordinate flip → orthographic numpy wins for plan.
 - playroom is a **partial real capture** (one side genuinely unscanned = real void, not a framing bug) → InteriorGS
   (complete, metric, GT) is the better workhorse; playroom = the messy-real second source.
-| 03 | *(next)* | `render_view(pos, look_at)` + depth + **pixel→world bridge** (CPU first; gsplat only if needed) | ⬜ |
-| 04 | *(next)* | hand 3–4 views to a VLM → "list objects + point at them"; check back-projection to 3D | ⬜ |
-| — | *(later)* | active-perception view server + active-vs-passive ablation; scene graph → GLTS backend | ⬜ |
-
 ## Findings so far (these define the contribution, not bugs)
 - **No absolute scale** — COLMAP units are arbitrary (room core ≈ 7×18×5 units). Metric truth must come from the verify layer.
 - **Not gravity-aligned** — raw splat is tilted; floor-plane estimation (generic canonicalization) is required. ✅ handled in 02.

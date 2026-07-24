@@ -10,7 +10,7 @@ format.** Nothing downstream knows or cares which implementation produced them.
 
 | # | stage | current method | reads | writes (THE CONTRACT) |
 |---|-------|----------------|-------|----------------------|
-| 1 | generate | SceneDreamer360 (PanFusion pano → per-crop ZoeDepth → 3DGS); runners in `gen/scenedreamer360/` | prompt | `gen_raw.ply` (3DGS ply, 62-float layout) + optional `generator_pano.jpg`, `pano_frames/` |
+| 1 | generate | Marble (harvest bundle = pano + splat + collider + prompt; downloader in week8/marble-harvest). Candidate local backends live under `gen/<method>/` (hunyuanworld, matrix3d, spag4d, worldmirror — see `docs/GEN_BACKEND_EVAL_PLAN.md`) | prompt | `gen_raw.ply` (3DGS ply, 62-float layout) + `bundle_path.txt` (→ bundle with `prompt.txt`) + optional `generator_pano.jpg`, `pano_frames/` |
 | 2 | render | `rendertools/shot.py` (splat-transform GPU) | `gen_raw.ply` | `views/gpu_yaw{000,090,180,270}.webp` + same-stem `.json` sidecars (`cam`,`look`,`up`,`fov`,`near`,`res`) |
 | 3 | segment | `seg_views.py` (GroundingDINO + SAM) | the webps | `seg/detections.json` (`{view: [{label,score,box},...]}`) + `seg/<view>_masks.npy` (bool `(n,H,W)`, SAME ORDER as detections) |
 | 4 | lift | `lift_views.py` (point z-buffer depth + unproject + merge) | masks + sidecars + ply | `scene_manifest.json` (see frame contract below) + `seg/manifest_overlay_*.png` + `seg/manifest_plan_*.png` |
@@ -78,6 +78,52 @@ Docs: `cut/FEASIBILITY_GAUSSIANCUT.md` (formats + loader constraints),
 (plan + progress log). Demo artifact: `cut/integration_demo.py` →
 `OUT/<scene>/cut/integration_demo/integration_demo.html` (same composition
 over original / cut / tinted backgrounds, side by side).
+
+## The pano path — week8 object-ID lane (alternative stages 2–4)
+
+Same viewpoint as the yaw views, better angular resolution (98 boxes vs 19 on
+bedroom_marble), NOT more coverage. Orchestrated end-to-end by `run_scene.py`
+(reads `bundle_path.txt`); communicates through the same per-scene folder:
+
+| # | stage | script | reads | writes (THE CONTRACT) |
+|---|-------|--------|-------|----------------------|
+| p1 | crop | `crop_pano.py` | bundle equirect pano | `pano_crops/*.webp` + same-stem `.json` sidecars |
+| p2 | vocab | `vocab_from_prompt.py` | bundle `prompt.txt` | `seg_pano/vocab.txt` (GroundingDINO prompt: nouns + synonyms; also printed for capture) |
+| p3 | segment | `seg_views.py --views-dir pano_crops --out-dir seg_pano --prompt <vocab>` | crops + vocab | `seg_pano/detections.json` + `seg_pano/<crop>_masks.npy` (same formats as stage 3) |
+| p4 | gate | `seg_pano_overlay.py` | crops + detections | `seg_pano/pano_overlay.png` + crop montage (user checkpoint) |
+| p5 | lift | `lift_pano.py` | crops + seg_pano + collider | `scene_manifest_pano.json` |
+| p6 | raw variants | `manifest_pano_to_raw.py` | `scene_manifest_pano.json` | `scene_manifest_panoraw_*.json` (viewer variants via `?man=`) |
+
+Side utility: `tag_crops.py` → `seg_pano/tags.json` (per-crop open-vocab tags).
+
+## The analyzer lane — detection comparison (side lane, 2026-07-21)
+
+Compares our manifest against an EXTERNAL splat_analyzer run (WSL tool; its
+`analyzer/<job>/interactions.json` + transforms are produced OUTSIDE this
+module and dropped into the scene folder — no in-repo producer).
+
+| # | stage | script | reads | writes (THE CONTRACT) |
+|---|-------|--------|-------|----------------------|
+| a1 | bridge | `analyzer/bridge_boxes.py` | `analyzer/<job>/interactions.json` + manifest + `envelope.npz` | `analyzer/bridged_boxes.json` (manifest-style boxes, RAW frame) + `analyzer/match_report.json` |
+| a2 | compare | `analyzer/build_comparison.py` | bridged + match + interactions | `analyzer/comparison.html` (Checkpoint 4 page); viewer layer via `/analyzer_boxes.json` |
+
+## The graph lane — semantic scene graph (2026-07-22, plan: docs/PLAN_SCENE_GRAPH.md)
+
+Unifies the extractions into one graph. ORDERING: needs a1 (bridged boxes) and
+stage 5 (`envelope.npz`) to have run for the scene.
+
+| # | stage | script | reads | writes (THE CONTRACT) |
+|---|-------|--------|-------|----------------------|
+| g1 | nodes | `graph/build_graph.py` | `analyzer/bridged_boxes.json` + `match_report.json` + manifest + envelope | `scene_graph.json` (nodes) |
+| g2 | edges | `graph/build_edges.py` | `scene_graph.json` | `scene_graph.json` (geometric edges filled; self-check exits 1 on violation) |
+| g3 | appearance | `graph/describe_nodes.py` (VLM via claude.exe) | scene_graph + analyzer frames | `graph/crops/` + appearance fields in `scene_graph.json` |
+| g4 | review | `graph/graph_review.py` | scene_graph (+ match + composed_state2) | `graph_review.html`; viewer layer via `/scene_graph.json` |
+
+**Numbering note:** "Step N" in analyzer/cut/graph docstrings refers to the
+checkpoint list of the governing plan doc (`docs/PLAN_GAUSSIAN_CUT_AND_SPLAT_
+ANALYZER.md` for analyzer+cut, `docs/PLAN_SCENE_GRAPH.md` for graph). The stage
+ids here (1–7, p1–p6, c1–c4, a1–a2, g1–g4) are the pipeline contract numbering;
+mapping: a1=Step 6, a2=Step 8, c1=Step 7, c2=Step 9, c3=Step 10, c4=Step 11.
 
 ## What the sources can and cannot know (2026-07-15)
 

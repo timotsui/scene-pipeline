@@ -8,7 +8,15 @@ repos/
 *.ply
 *.pkl
 
+# real_scan data dirs (module is code-only; data lives in the week5 folder)
+real_scan/data/
+real_scan/outputs/
+real_scan/views/
+real_scan/package/views/
+real_scan/triage/
+real_scan/triage_struct/
+
 # python
 __pycache__/
 *.pyc
-composition/*.log
+*.log

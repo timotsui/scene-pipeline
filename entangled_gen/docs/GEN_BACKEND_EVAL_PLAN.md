@@ -39,7 +39,7 @@ positions.
 **Eval kit per scene (identical for every backend):**
 1. Backend output → adapter → `gen_raw.ply` (mesh backends: sample to colored
    point ply).
-2. `render_views.py` → RGB views  →  ⛔ user glances: is the scene itself worth
+2. the render stage (`rendertools/shot.py` via `scene_ready.py`) → RGB views  →  ⛔ user glances: is the scene itself worth
    lifting? (reject here = cheapest rejection point)
 3. `seg_views.py` + `lift_views.py` (auto 4-hypothesis frame calibration) →
    manifest + overlay PNGs.
@@ -159,7 +159,7 @@ default backend; losers documented as related-work data points.
    6.2 GB, RAM 15+12 swap, guards armed; (c) recon script still to write.
 4. [ ] After (1): `bash gen/spag4d/run_spag.sh <bedroom_hw1 pano> bedroom_spag`
    → gen_raw.ply (seconds, 2–12 GB VRAM, deadman armed) → eval kit stages
-   render_views → seg_views → lift_views → viewer prep. User judges pano +
+   render (shot.py) → seg_views → lift_views → viewer prep. User judges pano +
    boxes whenever ready (⛔ gates 2.1/2.3 still theirs).
 Parked: Marble (user: skip), HW1 scenegen (decision 1.4 pending), playroom
 lifts (one scene per pipeline until cross-backend comparison).

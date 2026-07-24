@@ -1,5 +1,9 @@
 # Scene Proposer — isolated step (v0)
 
+> Seeded from the week5 real-scan experiments; the starter pack it consumes
+> lives in `../real_scan/package/` (paths below are relative to `proposer/`).
+> Works equally on a generated scene's package (`entangled_gen` stage 6).
+
 Turn *perception* of the real playroom into a **structured scene proposal** that a
 Holodeck/GLTS-style composer can place. Runs in isolation: input is only the starter
 pack; output is one JSON. No solver/renderer is wired in yet.
@@ -10,11 +14,11 @@ pack; output is one JSON. No solver/renderer is wired in yet.
   So emit composer-ready input, not finished coordinates for everything (see Output).
 
 ## Input (the starter pack, nothing else)
-- `../package/views/plan_ortho.webp` — top-down footprint (positions, spacing).
-- `../package/views/view_*.webp` — 8 eye-level headings (appearance, height, what's on what).
-- `../package/manifest.json` — the frame: origin = standpoint, **North=−z, East=+x,
+- `../real_scan/package/views/plan_ortho.webp` — top-down footprint (positions, spacing).
+- `../real_scan/package/views/view_*.webp` — 8 eye-level headings (appearance, height, what's on what).
+- `../real_scan/package/manifest.json` — the frame: origin = standpoint, **North=−z, East=+x,
   South=+z, West=−x, up=+y**, floor y≈−3.2, ceiling≈+2.3, extents. All coords MUST be
-  in this frame. Render more views if unsure: `python ../package/view.py <heading>`.
+  in this frame. Render more views if unsure: `python ../real_scan/package/view.py <heading>`.
 
 ## Two stages
 1. **Object proposal** — list every object you can identify: `category`, `anchor` flag,
@@ -49,7 +53,7 @@ Relation vocabulary (Holodeck-aligned): `on`, `against_wall`, `in_front_of`, `be
 ## Verification loop (isolation, no solver)
 For any anchor, re-render its bbox to check size/location against the real scene:
 ```
-python ../shot.py 0,0,0 0,0,-3 --box=<xmin,ymin,zmin,xmax,ymax,zmax>
+python ../real_scan/shot.py 0,0,0 0,0,-3 --box=<xmin,ymin,zmin,xmax,ymax,zmax>
 ```
 If the clip isolates exactly that object, the geometry is right; else adjust and repeat.
 
