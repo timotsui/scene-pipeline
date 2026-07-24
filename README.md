@@ -29,6 +29,9 @@ Every arrow is a per-scene file contract with a working implementation
 open: verify-judge sensitivity, facing initialization, the asset-catalog
 ceiling, and the deferred loop ops (swap / remove / flip_facing).
 
+Interactive map of all of this: open `pipeline_map.html` in a browser
+(self-contained, no server needed — click any stage for its contract card).
+
 Stage docs, in reading order:
 
 1. `entangled_gen/PIPELINE.md` — gen → views → seg → lift contracts (+ pano,

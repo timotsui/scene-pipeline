@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>scene-pipeline — architecture map</title>
+<style>
+  :root {
+    --paper: #F3F5F7; --panel: #FFFFFF; --ink: #1C2530; --ink-2: #5A6B7E;
+    --line: #D5DCE3; --pill-bg: #E9EDF1; --pill-ink: #3D4C5C;
+    --eg: #0E8A83; --eg-soft: #E1F0EF; --comp: #C0741D; --comp-soft: #F6ECDF;
+    --lane: #7A5EA8; --lane-soft: #EDE8F5; --frozen: #8B97A3;
+    --sel: #1C2530;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --paper: #141A21; --panel: #1C242E; --ink: #DCE3EA; --ink-2: #93A2B1;
+    --line: #2C3742; --pill-bg: #232E3A; --pill-ink: #AFBECB;
+    --eg: #3FC1B7; --eg-soft: #17332F; --comp: #E8A04C; --comp-soft: #33270F;
+    --lane: #A98FD6; --lane-soft: #291F3A; --frozen: #6B7885;
+    --sel: #DCE3EA;
+  } }
+  :root[data-theme="dark"] {
+    --paper: #141A21; --panel: #1C242E; --ink: #DCE3EA; --ink-2: #93A2B1;
+    --line: #2C3742; --pill-bg: #232E3A; --pill-ink: #AFBECB;
+    --eg: #3FC1B7; --eg-soft: #17332F; --comp: #E8A04C; --comp-soft: #33270F;
+    --lane: #A98FD6; --lane-soft: #291F3A; --frozen: #6B7885;
+    --sel: #DCE3EA;
+  }
+  :root[data-theme="light"] {
+    --paper: #F3F5F7; --panel: #FFFFFF; --ink: #1C2530; --ink-2: #5A6B7E;
+    --line: #D5DCE3; --pill-bg: #E9EDF1; --pill-ink: #3D4C5C;
+    --eg: #0E8A83; --eg-soft: #E1F0EF; --comp: #C0741D; --comp-soft: #F6ECDF;
+    --lane: #7A5EA8; --lane-soft: #EDE8F5; --frozen: #8B97A3;
+    --sel: #1C2530;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body { margin: 0; }
+  .wrap {
+    font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink);
+    background: var(--paper); min-height: 100vh; padding: 28px 20px 80px;
+  }
+  .mono { font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace; }
+
+  header.top { max-width: 1180px; margin: 0 auto 26px; }
+  .kicker { font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--ink-2); margin-bottom: 6px; }
+  h1 { font-size: 26px; font-weight: 650; margin: 0 0 8px; letter-spacing: -.01em;
+       text-wrap: balance; }
+  .rule { max-width: 62ch; color: var(--ink-2); font-size: 13.5px; line-height: 1.55;
+          margin: 0 0 14px; }
+  .rule b { color: var(--ink); font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px;
+            color: var(--ink-2); align-items: center; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+         margin-right: 5px; vertical-align: -1px; }
+
+  .grid { max-width: 1180px; margin: 0 auto; display: grid;
+          grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
+  @media (max-width: 940px) { .grid { grid-template-columns: 1fr; }
+    #panel { position: static !important; max-height: none !important; } }
+
+  /* ---------- flow ---------- */
+  .phase { border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+           margin-bottom: 18px; overflow: hidden; }
+  .phase-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+             padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .phase-n { font-size: 12px; color: var(--ink-2); }
+  .phase-t { font-size: 16px; font-weight: 650; letter-spacing: -.005em; }
+  .mod-tag { font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+             padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+  .mod-eg   { color: var(--eg);   background: var(--eg-soft); }
+  .mod-comp { color: var(--comp); background: var(--comp-soft); }
+  .mod-lane { color: var(--lane); background: var(--lane-soft); }
+  .phase-body { padding: 14px 16px 16px; }
+
+  .chain { display: flex; flex-direction: column; align-items: stretch; }
+  .stage { display: flex; align-items: center; gap: 10px; width: 100%;
+           text-align: left; background: var(--panel); color: var(--ink);
+           border: 1px solid var(--line); border-left: 4px solid var(--line);
+           border-radius: 8px; padding: 9px 12px; cursor: pointer;
+           font: inherit; font-size: 13.5px; }
+  .stage:hover { border-color: var(--ink-2); }
+  .stage:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+  .stage.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel) inset; }
+  .stage .sid { font-size: 11px; color: var(--ink-2); min-width: 30px; }
+  .stage .sname { font-weight: 600; }
+  .stage .sscript { margin-left: auto; font-size: 12px; color: var(--ink-2); }
+  .st-eg   { border-left-color: var(--eg); }
+  .st-comp { border-left-color: var(--comp); }
+  .st-lane { border-left-color: var(--lane); }
+  .st-frozen { border-left-color: var(--frozen); color: var(--ink-2); }
+
+  .contract { display: flex; align-items: center; gap: 8px; padding: 5px 0 5px 14px; }
+  .contract .arrow { color: var(--ink-2); font-size: 12px; }
+  .fpill { font-size: 11.5px; background: var(--pill-bg); color: var(--pill-ink);
+           border-radius: 5px; padding: 2px 8px; white-space: nowrap; }
+  .contract .why { font-size: 11.5px; color: var(--ink-2); overflow: hidden;
+                   text-overflow: ellipsis; white-space: nowrap; }
+
+  .lanes { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
+  .lanes-h { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+             color: var(--lane); margin-bottom: 8px; font-weight: 600; }
+  .lanes .chain { gap: 6px; }
+  .chain > * + .stage { margin-top: 0; }
+  .chain .stage + .stage { margin-top: 6px; }
+
+  .sats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 620px) { .sats { grid-template-columns: 1fr; } }
+
+  .badge { font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+           border: 1px solid currentColor; border-radius: 4px; padding: 1px 6px; }
+  .b-frozen { color: var(--frozen); }
+  .b-active { color: var(--eg); }
+  .b-user { color: var(--comp); }
+
+  /* ---------- detail panel ---------- */
+  #panel { position: sticky; top: 16px; max-height: calc(100vh - 32px);
+           overflow-y: auto; border: 1px solid var(--line); border-radius: 10px;
+           background: var(--panel); padding: 16px 18px; }
+  #panel .eyebrow { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+                    font-weight: 600; margin-bottom: 6px; }
+  #panel h2 { font-size: 17px; margin: 0 0 4px; font-weight: 650; }
+  #panel .script { font-size: 12.5px; color: var(--ink-2); margin-bottom: 12px;
+                   overflow-wrap: anywhere; }
+  #panel h3 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+              color: var(--ink-2); margin: 14px 0 6px; font-weight: 600; }
+  #panel ul { list-style: none; margin: 0; padding: 0; display: flex;
+              flex-wrap: wrap; gap: 5px; }
+  #panel li { font-size: 11.5px; background: var(--pill-bg); color: var(--pill-ink);
+              border-radius: 5px; padding: 3px 8px; overflow-wrap: anywhere; }
+  #panel li.w { box-shadow: 0 0 0 1px var(--line) inset; font-weight: 600; }
+  #panel .note { font-size: 12.5px; line-height: 1.55; color: var(--ink-2);
+                 margin: 12px 0 0; max-width: 60ch; }
+  #panel .note b { color: var(--ink); }
+  .hint { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="kicker">scene-pipeline · CS 8903 · updated 2026-07-23</div>
+  <h1>Architecture map — modules, stages, contracts</h1>
+  <p class="rule"><b>The isolation rule:</b> stages communicate only through
+  per-scene files (the pills on the arrows). Swapping a method for any stage =
+  writing the same files in the same format. One sanctioned code seam:
+  <span class="mono">comp_paths.py → paths.py</span>.</p>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--eg)"></span>entangled_gen/</span>
+    <span><span class="dot" style="background:var(--comp)"></span>composition/</span>
+    <span><span class="dot" style="background:var(--lane)"></span>side lanes</span>
+    <span><span class="dot" style="background:var(--frozen)"></span>frozen / seed</span>
+    <span><span class="fpill mono">file.json</span> = a contract</span>
+    <span>· click any stage for its contract card</span>
+  </div>
+</header>
+
+<div class="grid">
+<div id="flow">
+
+  <!-- ================= PHASE 1 ================= -->
+  <section class="phase">
+    <div class="phase-h"><span class="phase-n">PHASE 1</span>
+      <span class="phase-t">Generate — text → world</span>
+      <span class="mod-tag mod-eg">entangled_gen/</span></div>
+    <div class="phase-body"><div class="chain">
+      <button class="stage st-eg" data-k="gen"><span class="sid">1</span>
+        <span class="sname">world generation</span>
+        <span class="sscript mono">Marble (+ gen/&lt;method&gt;)</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">gen_raw.ply</span>
+        <span class="fpill mono">bundle: pano + collider + prompt.txt</span></div>
+    </div></div>
+  </section>
+
+  <!-- ================= PHASE 2 ================= -->
+  <section class="phase">
+    <div class="phase-h"><span class="phase-n">PHASE 2</span>
+      <span class="phase-t">Extract — splat → scene manifest</span>
+      <span class="mod-tag mod-eg">entangled_gen/</span></div>
+    <div class="phase-body"><div class="chain">
+      <button class="stage st-eg" data-k="render"><span class="sid">2</span>
+        <span class="sname">render views</span>
+        <span class="sscript mono">rendertools/shot.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">views/gpu_yaw*.webp</span>
+        <span class="fpill mono">*.json camera sidecars</span></div>
+      <button class="stage st-eg" data-k="seg"><span class="sid">3</span>
+        <span class="sname">detect + segment</span>
+        <span class="sscript mono">seg_views.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">seg/detections.json</span>
+        <span class="fpill mono">*_masks.npy</span>
+        <span class="why">vocab word list → GroundingDINO boxes → SAM masks</span></div>
+      <button class="stage st-eg" data-k="lift"><span class="sid">4</span>
+        <span class="sname">depth-lift</span>
+        <span class="sscript mono">lift_views.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">scene_manifest.json</span>
+        <span class="why">THE handoff: objects + 3D boxes, RAW frame</span></div>
+      <button class="stage st-eg" data-k="env"><span class="sid">5</span>
+        <span class="sname">envelope</span>
+        <span class="sscript mono">envelope.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">envelope.npz</span></div>
+      <button class="stage st-eg" data-k="pkg"><span class="sid">6</span>
+        <span class="sname">agent package</span>
+        <span class="sscript mono">agent_package.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">package/GUIDE.md + views</span></div>
+    </div>
+
+    <div class="lanes">
+      <div class="lanes-h">Side lanes (branch off the same scene folder)</div>
+      <div class="chain">
+        <button class="stage st-lane" data-k="pano"><span class="sid mono">p1–p6</span>
+          <span class="sname">pano path</span>
+          <span class="sscript mono">run_scene.py</span></button>
+        <button class="stage st-lane" data-k="cut"><span class="sid mono">c1–c4</span>
+          <span class="sname">object cut-out</span>
+          <span class="sscript mono">cut/ (GaussianCut)</span></button>
+        <button class="stage st-lane" data-k="analyzer"><span class="sid mono">a1–a2</span>
+          <span class="sname">detection comparison</span>
+          <span class="sscript mono">analyzer/</span></button>
+        <button class="stage st-lane" data-k="graph"><span class="sid mono">g1–g4</span>
+          <span class="sname">scene graph</span> <span class="badge b-active">active</span>
+          <span class="sscript mono">graph/</span></button>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <!-- ================= PHASE 3 ================= -->
+  <section class="phase">
+    <div class="phase-h"><span class="phase-n">PHASE 3</span>
+      <span class="phase-t">Reconstruct — manifest → asset scene</span>
+      <span class="mod-tag mod-comp">composition/</span></div>
+    <div class="phase-body"><div class="chain">
+      <button class="stage st-comp" data-k="c1"><span class="sid">C1</span>
+        <span class="sname">shortlist</span>
+        <span class="sscript mono">retrieve2.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">package/shortlists2.json</span></div>
+      <button class="stage st-comp" data-k="c2"><span class="sid">C2+</span>
+        <span class="sname">thumbs · measure · CLIP</span>
+        <span class="sscript mono">thumbs / measure / relevance</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">shortlists2.json + clip fields</span>
+        <span class="why">measure re-runs C1: true sizes shift shortlists</span></div>
+      <button class="stage st-comp" data-k="c4"><span class="sid">C4</span>
+        <span class="sname">review viewer</span> <span class="badge b-user">user gate</span>
+        <span class="sscript mono">review_server.py :8322</span></button>
+      <button class="stage st-comp" data-k="c5"><span class="sid">C5</span>
+        <span class="sname">pick</span>
+        <span class="sscript mono">pick.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">package/picks2.json</span></div>
+      <button class="stage st-comp" data-k="c6"><span class="sid">C6</span>
+        <span class="sname">place</span>
+        <span class="sscript mono">place2.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">composed_state2.json</span>
+        <span class="fpill mono">composed_scene2.glb</span></div>
+    </div></div>
+  </section>
+
+  <!-- ================= PHASE 4 ================= -->
+  <section class="phase">
+    <div class="phase-h"><span class="phase-n">PHASE 4</span>
+      <span class="phase-t">Refine loop — propose → verify</span>
+      <span class="mod-tag mod-comp">composition/</span></div>
+    <div class="phase-body"><div class="chain">
+      <button class="stage st-comp" data-k="c7"><span class="sid">C7</span>
+        <span class="sname">VLM loop {add, nudge}</span>
+        <span class="sscript mono">loop.py + collide.py</span></button>
+      <div class="contract"><span class="arrow">↓</span>
+        <span class="fpill mono">package/edits.jsonl</span>
+        <span class="fpill mono">updated composed_state2.json</span>
+        <span class="why">journaled trace = paper artifact</span></div>
+    </div></div>
+  </section>
+
+  <!-- ================= satellites ================= -->
+  <div class="sats">
+    <section class="phase" style="margin:0">
+      <div class="phase-body"><div class="chain">
+        <button class="stage st-frozen" data-k="realscan">
+          <span class="sname">real_scan/</span> <span class="badge b-frozen">frozen</span>
+          <span class="sscript">alternative scene source</span></button>
+      </div>
+      <p class="hint" style="margin:8px 0 0">Real captures (InteriorGS / SOG)
+      decoded to the same splat-PLY + renders the chain consumes. Optional —
+      kept for a generality experiment.</p></div>
+    </section>
+    <section class="phase" style="margin:0">
+      <div class="phase-body"><div class="chain">
+        <button class="stage st-frozen" data-k="proposer">
+          <span class="sname">proposer/</span> <span class="badge b-frozen">seed</span>
+          <span class="sscript">docs-only protocol</span></button>
+      </div>
+      <p class="hint" style="margin:8px 0 0">Describe-the-scene → composer-ready
+      proposal JSON (Holodeck/GLTS style). No code yet; protocol spec only.</p></div>
+    </section>
+  </div>
+
+</div>
+
+<aside id="panel" aria-live="polite">
+  <div class="hint">Click any stage to see its contract: the script, what it
+  <b>reads</b>, what it <b>writes</b> (the contract), and status notes.</div>
+</aside>
+</div>
+</div>
+
+<script>
+const S = {
+gen: {mod:"eg", eyebrow:"entangled_gen / stage 1", name:"World generation",
+  script:"Marble harvest bundle (week8/marble-harvest downloader); candidate local backends: gen/hunyuanworld · matrix3d · spag4d · worldmirror",
+  reads:["text prompt"],
+  writes:["gen_raw.ply (3DGS, 62-float layout)","bundle_path.txt → prompt.txt","generator_pano.jpg (opt)"],
+  note:"Swap point: a new generator = a new gen/<method>/ folder that deposits gen_raw.ply into a fresh scene folder. First scene from a new source: run the cube frame-verification (debug_cube_ply.py)."},
+render: {mod:"eg", eyebrow:"entangled_gen / stage 2", name:"Render views",
+  script:"rendertools/shot.py (splat-transform GPU; frozen week5 copy)",
+  reads:["gen_raw.ply"],
+  writes:["views/gpu_yaw{000,090,180,270}.webp","same-stem .json sidecars (cam, look, up, fov, res)"],
+  note:"Sidecar cameras are in the RENDER (upright) frame — part of the contract. Known hole: fov 75 × 4 views = 300° of 360°; four 15° wedges are never rendered."},
+seg: {mod:"eg", eyebrow:"entangled_gen / stage 3", name:"Detect + segment",
+  script:"seg_views.py — vocab word list → GroundingDINO (open-vocab boxes) → SAM (masks)",
+  reads:["views/*.webp","detection vocab (per-room list, or vocab_from_prompt on the pano path)"],
+  writes:["seg/detections.json {view: [{label, score, box}]}","seg/<view>_masks.npy (bool n×H×W, same order)"],
+  note:"Detection is effectively single-view on bedroom_marble: 15/20 detections in one view, exactly one cross-view merge. The C7 loop's add op is the designed answer."},
+lift: {mod:"eg", eyebrow:"entangled_gen / stage 4 (+4.5)", name:"Depth-lift",
+  script:"lift_views.py (z-buffer depth + unproject + merge) · amodal_apply.py (stage 4.5)",
+  reads:["masks + sidecars + gen_raw.ply"],
+  writes:["scene_manifest.json (frame block, RAW coords)","seg/manifest_overlay_*.png (user artifact)","scene_manifest_modal.json (4.5 snapshot)"],
+  note:"THE central handoff. Self-calibrates the frame per scene (4 sign hypotheses vs the webps). Stage 4.5 rewrites boxes with one amodal method; composition must then re-run from C1."},
+env: {mod:"eg", eyebrow:"entangled_gen / stage 5", name:"Envelope",
+  script:"envelope.py (occupancy voxels → floor/clearance)",
+  reads:["gen_raw.ply","scene_manifest.json"],
+  writes:["envelope.npz","envelope_heatmap.png","viewer clearance layer"],
+  note:"Free-space map consumed by placement validation and the graph lane."},
+pkg: {mod:"eg", eyebrow:"entangled_gen / stage 6", name:"Agent package",
+  script:"agent_package.py (orchestrated by scene_ready.py, mtime-driven)",
+  reads:["manifest + overlays + views"],
+  writes:["package/GUIDE.md","copied views/overlays/manifest"],
+  note:"The bundle handed across the module boundary to composition."},
+pano: {mod:"lane", eyebrow:"entangled_gen / pano path p1–p6", name:"Pano object-ID lane",
+  script:"run_scene.py → crop_pano · vocab_from_prompt · seg_views · seg_pano_overlay · lift_pano · manifest_pano_to_raw",
+  reads:["bundle equirect pano","bundle prompt.txt"],
+  writes:["pano_crops/*.webp + sidecars","seg_pano/vocab.txt · detections.json","scene_manifest_pano.json","scene_manifest_panoraw_*.json"],
+  note:"Same viewpoint as the yaw views at better angular resolution (98 boxes vs 19) — more detail, NOT more coverage. Alternative implementation of stages 2–4."},
+cut: {mod:"lane", eyebrow:"entangled_gen / cut lane c1–c4", name:"Object cut-out (GaussianCut)",
+  script:"cut/prep_views → make_masks → run_cut (WSL) → render_cut_review",
+  reads:["gen_raw.ply","manifest box for the chosen object","view sidecars"],
+  writes:["cut/<obj>/foreground.ply","cut/<obj>/background.ply (same 62-float layout)","stats.json + cut_review.html"],
+  note:"Removes one object's Gaussians — the entanglement/ghost fix. background.ply feeds composition via place2 --background auto (file contract). Re-cuts write new variant folders, never overwrite."},
+analyzer: {mod:"lane", eyebrow:"entangled_gen / analyzer lane a1–a2", name:"Detection comparison",
+  script:"analyzer/bridge_boxes.py → build_comparison.py",
+  reads:["analyzer/<job>/interactions.json (EXTERNAL splat_analyzer run)","manifest","envelope.npz"],
+  writes:["analyzer/bridged_boxes.json (RAW-frame boxes)","match_report.json","comparison.html (checkpoint page)"],
+  note:"Input produced outside the repo by the WSL splat_analyzer tool — the one contract with no in-repo producer. Feeds the graph lane."},
+graph: {mod:"lane", eyebrow:"entangled_gen / graph lane g1–g4 (ACTIVE)", name:"Semantic scene graph",
+  script:"graph/build_graph → build_edges → describe_nodes (VLM) → graph_review",
+  reads:["analyzer/bridged_boxes.json + match_report.json","manifest","envelope.npz"],
+  writes:["scene_graph.json (nodes + typed edges + appearance)","graph/crops/","graph_review.html"],
+  note:"Ordering: needs the analyzer lane and stage 5 first. Governed by docs/PLAN_SCENE_GRAPH.md; review verdicts pending."},
+c1: {mod:"comp", eyebrow:"composition / C1", name:"Shortlist",
+  script:"retrieve2.py — category tiers (exact > token subset > overlap), orientation-aware fit over 6 perms, tiling k=1..3",
+  reads:["scene_manifest.json","objathor annotations.json.gz"],
+  writes:["package/shortlists2.json"],
+  note:"Category-only gating (descriptions never vote — kills the v0 rug hijack). Labels with no lexical match go through one batch agent call."},
+c2: {mod:"comp", eyebrow:"composition / C2 · C2.5 · C3", name:"Thumbs · measure · CLIP",
+  script:"thumbs.py · measure.py · relevance.py (CLIP ViT-B/16)",
+  reads:["shortlists2.json","objathor meshes","review_crops/<id>_clean.png"],
+  writes:["_thumbs/<uid>.png (dataset cache)","_mesh_sizes.json + _mesh_yaw.json (canonical-yaw fix)","additive clip / clip_txt fields in shortlists2.json"],
+  note:"measure fixes the ~34% mis-rotated meshes (yaw fix) and TRUE sizes shift the shortlists → re-run C1. CLIP re-orders, never filters."},
+c4: {mod:"comp", eyebrow:"composition / C4 — USER CHECKPOINT", name:"Review viewer",
+  script:"review_server.py :8322 (look-only) · asset_viewer.py :8323",
+  reads:["shortlists2.json + views + thumbs"],
+  writes:["package/review_crops/*.png"],
+  note:"Two candidate strips per box (dimension-fit order, CLIP order); glowing frame = fits inside natively. Judging the stages, not driving them — selection is C5's job."},
+c5: {mod:"comp", eyebrow:"composition / C5", name:"Pick",
+  script:"pick.py — fit tolerance band (score ≤ 0.8, ×0.5–1.6 of scene-median scale), argmax clip inside it",
+  reads:["shortlists2.json"],
+  writes:["package/picks2.json (+ top-3 alternates)"],
+  note:"Fit is a band, never an argmax. Empty band → top-5 by fit, flagged gate_relaxed. Warns if relevance.py hasn't run."},
+c6: {mod:"comp", eyebrow:"composition / C6", name:"Place",
+  script:"place2.py — perm rotation + uniform fit scale + tiling; --clean (tinted floor) · --background auto|cut|tinted|original",
+  reads:["picks2.json + shortlists2.json + manifest (+ cut background.ply)"],
+  writes:["package/composed_state2.json","composed2_view_*.png","composed_scene2.glb"],
+  note:"Facing (0/180) initialization still open. Background resolver prefers the newest cut background, falls back to tinted floor."},
+c7: {mod:"comp", eyebrow:"composition / C7 — refine loop", name:"VLM propose → verify",
+  script:"loop.py — critique (one VLM call) → validate (caps, room shell, collide.py voxel collision) → apply ONE edit → verify better|worse|neutral → journal",
+  reads:["composed_state2.json + views + shortlists2 + manifest + edits.jsonl (Reflexion memory)"],
+  writes:["package/edits.jsonl (append-only trace)","updated composed_state2.json","per-edit renders under package/loop/"],
+  note:"Ops scoped to {add, nudge}; add re-enters the chain at C1 for that box only — 'pick object after layout' inside the loop. Accept only 'better'; neutral/worse revert. Stops when an iteration yields nothing new."},
+realscan: {mod:"frozen", eyebrow:"real_scan/ — FROZEN side module", name:"Real-scan leg",
+  script:"01_inspect → 02_clean → 03/04 render/orbit → 05_planview · decode_sog · decompress_interiorgs · find_bedroom",
+  reads:["InteriorGS / SuperSplat captures (SOG, compressed ply)"],
+  writes:["cleaned room PLY","views + plan renders","agent starter pack (package/)"],
+  note:"Gets a scene by scanning reality instead of generating it; ends at the same splat-PLY + renders the chain consumes. Zero cross-module imports. Not needed for the main chain — kept for a generality experiment."},
+proposer: {mod:"frozen", eyebrow:"proposer/ — seed (docs only)", name:"Scene proposer",
+  script:"PROPOSER.md protocol — no code yet",
+  reads:["a scene's starter pack (views + manifest)"],
+  writes:["proposal JSON: anchors with geometry, non-anchors as constraints"],
+  note:"Describe-the-real-scene → composer-ready input for a Holodeck/GLTS-style solver. Works equally on generated scenes."}
+};
+const MODC = {eg:"var(--eg)", comp:"var(--comp)", lane:"var(--lane)", frozen:"var(--frozen)"};
+const panel = document.getElementById("panel");
+let selBtn = null;
+function esc(t){const d=document.createElement("span");d.textContent=t;return d.innerHTML;}
+function show(k, btn){
+  const s = S[k]; if (!s) return;
+  if (selBtn) selBtn.classList.remove("sel");
+  selBtn = btn; btn.classList.add("sel");
+  panel.innerHTML =
+    `<div class="eyebrow" style="color:${MODC[s.mod]}">${esc(s.eyebrow)}</div>` +
+    `<h2>${esc(s.name)}</h2>` +
+    `<div class="script mono">${esc(s.script)}</div>` +
+    `<h3>Reads</h3><ul>${s.reads.map(r=>`<li class="mono">${esc(r)}</li>`).join("")}</ul>` +
+    `<h3>Writes — the contract</h3><ul>${s.writes.map(w=>`<li class="mono w">${esc(w)}</li>`).join("")}</ul>` +
+    `<p class="note">${esc(s.note)}</p>`;
+  if (window.matchMedia("(max-width: 940px)").matches &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    panel.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+document.querySelectorAll(".stage").forEach(b =>
+  b.addEventListener("click", () => show(b.dataset.k, b)));
+</script>
+</body>
+</html>
