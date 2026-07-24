@@ -54,9 +54,7 @@ Stage docs, in reading order:
 (and how to swap in an alternative method for any stage) are in
 `entangled_gen/PIPELINE.md` and `composition/README.md`. Exactly one
 sanctioned cross-module code seam exists: `composition/comp_paths.py` imports
-`entangled_gen/paths.py` (every composition file routes through it). Known
-exception under review: `entangled_gen/cut/integration_demo.py` imports
-`composition/place2` (demo artifact — see PLAN_REPO_CLEANUP.md item 8).
+`entangled_gen/paths.py` (every composition file routes through it).
 
 ## Data
 

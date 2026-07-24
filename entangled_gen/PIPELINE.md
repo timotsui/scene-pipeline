@@ -75,9 +75,11 @@ earlier attempt.
 
 Docs: `cut/FEASIBILITY_GAUSSIANCUT.md` (formats + loader constraints),
 `cut/ENV.md` (WSL env build), `docs/PLAN_GAUSSIAN_CUT_AND_SPLAT_ANALYZER.md`
-(plan + progress log). Demo artifact: `cut/integration_demo.py` →
-`OUT/<scene>/cut/integration_demo/integration_demo.html` (same composition
-over original / cut / tinted backgrounds, side by side).
+(plan + progress log). Demo artifact: `../composition/integration_demo.py`
+(moved there 2026-07-23 — it composes, so it lives with composition; the cut
+lane's outputs reach it as files) → `OUT/<scene>/cut/integration_demo/
+integration_demo.html` (same composition over original / cut / tinted
+backgrounds, side by side).
 
 ## The pano path — week8 object-ID lane (alternative stages 2–4)
 

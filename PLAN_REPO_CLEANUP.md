@@ -10,7 +10,10 @@ Repo-wide there are exactly TWO cross-module code imports:
 1. `composition/comp_paths.py:8-9` → `entangled_gen/paths.py` — the sanctioned
    single-chokepoint seam (~20 composition files route through it).
 2. `entangled_gen/cut/integration_demo.py:44-46` → `composition/place2` — the
-   reverse edge (architecture-level cycle). PARKED, user decision pending.
+   reverse edge (architecture-level cycle). RESOLVED 2026-07-23: user approved
+   the recommended move → file now lives at `composition/integration_demo.py`
+   (imports via comp_paths like every other composition file); all code edges
+   point one direction.
 
 `real_scan/` and `proposer/` cross zero boundaries. No tracked binaries
 (156 tracked files, all code/docs/small JSON). proposer/ contains no code.
@@ -34,7 +37,7 @@ Repo-wide there are exactly TWO cross-module code imports:
 | 5 | Coupling + guards: `make_crops` out of review_server → shared `crops.py`; `retrieve.py` explicit refresh API (loop.py:168 stops mutating catalog rows); `pick.py` warns when `clip` missing; catalog() warns when measure cache empty; `__main__` guards: seg_views, viewer/serve, spag_convert, download_weights, test_roundtrip | DONE `f496d1c` |
 | 6 | Docs: PIPELINE.md += analyzer/ + graph/ stage tables + pano contracts + numbering reconciliation; root README refresh (new lanes, local_paths claim fix, real_scan = frozen optional); real_scan README dup fragment; PROPOSER.md dangling week5 paths; .gitignore gaps; killed OFFLINE_VIEWER_FIX_PLAN.md | DONE `8e66c8a` |
 | 7 | Interactive pipeline HTML artifact (modules → sub-modules → contracts) | DONE — claude.ai/code/artifact/12c4d24b-3a70-4329-ba96-f80fc89558c2 |
-| 8 | Circular dep resolution | PARKED (user) |
+| 8 | Circular dep resolution | DONE — demo moved to composition/ (user-approved) |
 
 ## Stale-docs kill policy
 

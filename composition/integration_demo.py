@@ -33,17 +33,12 @@ Usage:  python integration_demo.py --scene bedroom_marble --object obj_004
 """
 import argparse
 import json
-import sys
 import time
-from pathlib import Path
 
 from PIL import Image
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))                       # entangled_gen
-sys.path.insert(0, str(HERE.parent.parent / "composition"))  # place2 et al.
-import paths   # noqa: E402
-import place2  # noqa: E402
+import place2
+from comp_paths import paths
 
 RES = 900
 CROP = 360     # same crop side as render_cut_review.py — comparable regions
@@ -233,7 +228,7 @@ composition default (that call is reserved for you).</p>
 {figs}
 
 <p class="dim">Generated {time.strftime('%Y-%m-%d %H:%M:%S')} by
-<code>scene-pipeline/entangled_gen/cut/integration_demo.py</code>. Mechanical build only —
+<code>scene-pipeline/composition/integration_demo.py</code>. Mechanical build only —
 no visual judgment was made by the tooling; the verdict is yours.</p>
 """
 
