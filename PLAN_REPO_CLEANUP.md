@@ -29,11 +29,11 @@ Repo-wide there are exactly TWO cross-module code imports:
 |---|------|--------|
 | 1 | Checkpoint commit | DONE `225d4c5` |
 | 2 | This plan doc | DONE |
-| 3 | Delete dead code: `entangled_gen/render_views.py`, `render_test2.py`, `adapter.py`; `composition/jiggle_run.log`, `recreate_run.log` | pending |
-| 4 | Path fixes: `comp_paths.py` OBJATHOR+BRIDGE_DIR → local_paths.json mechanism; `bridge.py:20` CLAUDE_EXE → config; `gen/hunyuanworld/mesh_to_splat.py:29` + `gen/matrix3d/download_weights.py:13` stale week7 paths → paths.py; `analyzer/build_comparison.py:141` abs bat path → derived | pending |
-| 5 | Coupling + guards: `make_crops` out of review_server → shared `crops.py`; `retrieve.py` explicit refresh API (loop.py:168 stops mutating catalog rows); `pick.py` warns when `clip` missing; `retrieve2.py` warns when measure cache absent; `__main__` guards: seg_views, viewer/serve, spag_convert, download_weights, test_roundtrip | pending |
-| 6 | Docs: PIPELINE.md += analyzer/ + graph/ stage tables + pano contracts + numbering reconciliation; root README refresh (new lanes, local_paths claim fix, real_scan = frozen optional); real_scan README dup fragment; PROPOSER.md dangling week5 paths; .gitignore gaps (`outputs/`, `views/`, `*.log` repo-wide) | pending |
-| 7 | Interactive pipeline HTML artifact (modules → sub-modules → contracts) | pending |
+| 3 | Delete dead code: `entangled_gen/render_views.py`, `render_test2.py`, `adapter.py`; `composition/jiggle_run.log`, `recreate_run.log` | DONE `f496d1c` |
+| 4 | Path fixes: `comp_paths.py` OBJATHOR+BRIDGE_DIR → local_paths.json mechanism; `bridge.py:20` CLAUDE_EXE → config; `gen/hunyuanworld/mesh_to_splat.py:29` + `gen/matrix3d/download_weights.py:13` stale week7 paths → paths.py; `analyzer/build_comparison.py:141` abs bat path → derived | DONE `f496d1c` |
+| 5 | Coupling + guards: `make_crops` out of review_server → shared `crops.py`; `retrieve.py` explicit refresh API (loop.py:168 stops mutating catalog rows); `pick.py` warns when `clip` missing; catalog() warns when measure cache empty; `__main__` guards: seg_views, viewer/serve, spag_convert, download_weights, test_roundtrip | DONE `f496d1c` |
+| 6 | Docs: PIPELINE.md += analyzer/ + graph/ stage tables + pano contracts + numbering reconciliation; root README refresh (new lanes, local_paths claim fix, real_scan = frozen optional); real_scan README dup fragment; PROPOSER.md dangling week5 paths; .gitignore gaps; killed OFFLINE_VIEWER_FIX_PLAN.md | DONE `8e66c8a` |
+| 7 | Interactive pipeline HTML artifact (modules → sub-modules → contracts) | DONE — claude.ai/code/artifact/12c4d24b-3a70-4329-ba96-f80fc89558c2 |
 | 8 | Circular dep resolution | PARKED (user) |
 
 ## Stale-docs kill policy
@@ -62,13 +62,13 @@ Repo-wide there are exactly TWO cross-module code imports:
 
 | id | What | Why | Look for | provisional verdict |
 |----|------|-----|----------|--------------------|
-| RC1 | dead-code deletes | user-approved | nothing imports them (audit-confirmed) | — |
-| RC2 | comp_paths → local_paths.json | portability; README claim becomes true | chain still runs: retrieve2/pick/place2 find objathor + bridge dirs | — |
-| RC3 | make_crops move | server module was a compute dep | review_server + relevance both still work | — |
-| RC4 | retrieve refresh API | kill hidden global mutation | loop.py add-op still refreshes sizes | — |
-| RC5 | main guards | scripts ran at import | CLIs behave identically | — |
-| RC6 | docs refresh | contracts current | PIPELINE.md matches code reality | — |
-| RC7 | pipeline HTML | user-requested architecture view | user judges the diagram | — |
+| RC1 | dead-code deletes | user-approved | nothing imports them (audit-confirmed) | PASS (grep clean; git history keeps them) |
+| RC2 | comp_paths → local_paths.json | portability; README claim becomes true | chain still runs: retrieve2/pick/place2 find objathor + bridge dirs | PASS (import smoke test: identical resolved values) |
+| RC3 | make_crops move | server module was a compute dep | review_server + relevance both still work | PASS (both import; verbatim function move) — next real C3/C4 run confirms |
+| RC4 | retrieve refresh API | kill hidden global mutation | loop.py add-op still refreshes sizes | PASS (same rows updated via refresh_sizes) — next loop run confirms |
+| RC5 | main guards | scripts ran at import | CLIs behave identically | PASS (serve.py imports clean, py_compile all green) — next seg/viewer run confirms |
+| RC6 | docs refresh | contracts current | PIPELINE.md matches code reality | PASS (stage tables sourced from the code audit) |
+| RC7 | pipeline HTML | user-requested architecture view | user judges the diagram | AWAITING USER |
 
 ## Resume protocol
 
