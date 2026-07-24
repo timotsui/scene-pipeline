@@ -159,6 +159,9 @@
               border-radius: 0; padding: 1px 0; margin: 0 0 3px 18px;
               font-size: 12.5px; line-height: 1.5; color: var(--ink);
               max-width: 58ch; }
+  #panel .rev { font-size: 11.5px; font-family: "Cascadia Code", Consolas,
+                monospace; overflow-wrap: anywhere; margin: 2px 0; }
+  #panel .rev a { color: var(--t3); }
   #panel .note { font-size: 12.5px; line-height: 1.55; color: var(--ink-2);
                  margin: 12px 0 0; max-width: 60ch; }
   #panel .note b { color: var(--ink); }
@@ -566,6 +569,8 @@ p5: {mod:"lane", eyebrow:"track 2 · pano", name:"Depth-lift (pano)",
        "Before lifting, p4 renders the detection overlay for your yes/no"],
   reads:["pano_crops + seg_pano + bundle collider"],
   writes:["scene_manifest_pano.json"],
+  review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/seg_pano/pano_overlay.png",
+           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/seg_pano/pano_overlay.png"}],
   note:"Different script from track 1's lift_views.py — same concept, pano-specific geometry."},
 p6: {mod:"lane", eyebrow:"track 2 · pano", name:"Convert to RAW frame",
   script:"manifest_pano_to_raw.py",
@@ -580,6 +585,8 @@ cut: {mod:"lane", eyebrow:"tool — track-agnostic (splat + one box in)", name:"
        "Save the lamp alone, and the room with the lamp cleanly gone (background.ply) — the fix for objects 'ghosting' through their mesh replacements"],
   reads:["gen_raw.ply","manifest box for the chosen object","view sidecars"],
   writes:["cut/<obj>/foreground.ply","cut/<obj>/background.ply (same 62-float layout)","stats.json + cut_review.html"],
+  review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/cut/obj_004_v2/cut_review.html (newest variant)",
+           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/cut/obj_004_v2/cut_review.html"}],
   note:"Removes one object's Gaussians — the entanglement/ghost fix. background.ply feeds composition via place2 --background auto (file contract). Re-cuts write new variant folders, never overwrite."},
 a1: {mod:"lane", eyebrow:"track 3 · geometric", name:"Bridge to our box format",
   script:"analyzer/bridge_boxes.py",
@@ -593,6 +600,8 @@ a2: {mod:"lane", eyebrow:"track 3 · geometric — user gate", name:"Comparison 
   how:["A side-by-side page: what track 3 caught that track 1 missed, and vice versa"],
   reads:["bridged_boxes.json + match_report.json + interactions.json"],
   writes:["analyzer/comparison.html (checkpoint page)","viewer layer via /analyzer_boxes.json"],
+  review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/comparison.html",
+           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/comparison.html"}],
   note:"This is where the track bake-off gets judged head-to-head. Your verdicts here decide which discovery method wins."},
 g1: {mod:"lane", eyebrow:"converge — unifies all three tracks (ACTIVE)", name:"Graph nodes from all streams",
   script:"graph/build_graph.py",
@@ -620,6 +629,8 @@ g4: {mod:"lane", eyebrow:"converge — scene graph · user gate", name:"Graph re
        "Also serves the graph as a viewer layer (/scene_graph.json)"],
   reads:["scene_graph.json (+ match_report, composed_state2 when present)"],
   writes:["graph_review.html","viewer layer via /scene_graph.json"],
+  review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/graph_review.html",
+           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/graph_review.html"}],
   note:"Your verdicts here are pending — the graph currently has no downstream consumer until they land."},
 c1: {mod:"comp", eyebrow:"composition / C1", name:"Shortlist",
   script:"retrieve2.py — category tiers (exact > token subset > overlap), orientation-aware fit over 6 perms, tiling k=1..3",
@@ -643,6 +654,10 @@ c4: {mod:"comp", eyebrow:"composition / C4 — USER CHECKPOINT", name:"Review vi
        "You look and judge the stages' quality here — nothing gets picked in this step"],
   reads:["shortlists2.json + views + thumbs"],
   writes:["package/review_crops/*.png"],
+  review:[{t:"http://localhost:8322 (start: python composition/review_server.py --scene <scene>)",
+           h:"http://localhost:8322"},
+          {t:"http://localhost:8323 — asset viewer (asset_viewer.py)",
+           h:"http://localhost:8323"}],
   note:"Two candidate strips per box (dimension-fit order, CLIP order); glowing frame = fits inside natively. Judging the stages, not driving them — selection is C5's job."},
 c5: {mod:"comp", eyebrow:"composition / C5", name:"Pick",
   script:"pick.py — fit tolerance band (score ≤ 0.8, ×0.5–1.6 of scene-median scale), argmax clip inside it",
@@ -697,6 +712,8 @@ viewer: {mod:"lane", eyebrow:"sink — where the tracks get judged", name:"Splat
        "Writes nothing — the arrows that end here end at your eyes"],
   reads:["gen_raw.ply","scene_manifest*.json (?man= variants)","analyzer/bridged_boxes.json","scene_graph.json","clearance/collision layers"],
   writes:["nothing — look-only"],
+  review:[{t:"http://localhost:8321 (start: python entangled_gen/viewer/serve.py)",
+           h:"http://localhost:8321"}],
   note:"Several arrows end here on purpose: the pano RAW variants and the scene graph are awaiting your verdicts, so today their consumer is you. If a pano manifest is ever promoted to THE manifest, its arrow would re-route into stage 5."}
 };
 const MODC = {eg:"var(--eg)", comp:"var(--comp)", lane:"var(--lane)", frozen:"var(--frozen)"};
@@ -714,6 +731,8 @@ function show(k, btn){
     (s.how ? `<h3>How it works</h3><ul class="how">${s.how.map(h=>`<li>${esc(h)}</li>`).join("")}</ul>` : "") +
     `<h3>Reads</h3><ul>${s.reads.map(r=>`<li class="mono">${esc(r)}</li>`).join("")}</ul>` +
     `<h3>Writes — the contract</h3><ul>${s.writes.map(w=>`<li class="mono w">${esc(w)}</li>`).join("")}</ul>` +
+    (s.review ? `<h3>Review — full path</h3>` + s.review.map(r =>
+      `<div class="rev">${r.h ? `<a href="${r.h}" target="_blank" rel="noopener">${esc(r.t)}</a>` : esc(r.t)}</div>`).join("") : "") +
     `<p class="note">${esc(s.note)}</p>`;
   if (window.matchMedia("(max-width: 940px)").matches &&
       !window.matchMedia("(prefers-reduced-motion: reduce)").matches)
