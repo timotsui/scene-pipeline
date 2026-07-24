@@ -9,28 +9,28 @@
     --paper: #F3F5F7; --panel: #FFFFFF; --ink: #1C2530; --ink-2: #5A6B7E;
     --line: #D5DCE3; --pill-bg: #E9EDF1; --pill-ink: #3D4C5C;
     --eg: #0E8A83; --eg-soft: #E1F0EF; --comp: #C0741D; --comp-soft: #F6ECDF;
-    --lane: #7A5EA8; --lane-soft: #EDE8F5; --frozen: #8B97A3;
+    --lane: #7A5EA8; --lane-soft: #EDE8F5; --frozen: #8B97A3; --t3: #2F6DB3;
     --sel: #1C2530;
   }
   @media (prefers-color-scheme: dark) { :root {
     --paper: #141A21; --panel: #1C242E; --ink: #DCE3EA; --ink-2: #93A2B1;
     --line: #2C3742; --pill-bg: #232E3A; --pill-ink: #AFBECB;
     --eg: #3FC1B7; --eg-soft: #17332F; --comp: #E8A04C; --comp-soft: #33270F;
-    --lane: #A98FD6; --lane-soft: #291F3A; --frozen: #6B7885;
+    --lane: #A98FD6; --lane-soft: #291F3A; --frozen: #6B7885; --t3: #6FA3E0;
     --sel: #DCE3EA;
   } }
   :root[data-theme="dark"] {
     --paper: #141A21; --panel: #1C242E; --ink: #DCE3EA; --ink-2: #93A2B1;
     --line: #2C3742; --pill-bg: #232E3A; --pill-ink: #AFBECB;
     --eg: #3FC1B7; --eg-soft: #17332F; --comp: #E8A04C; --comp-soft: #33270F;
-    --lane: #A98FD6; --lane-soft: #291F3A; --frozen: #6B7885;
+    --lane: #A98FD6; --lane-soft: #291F3A; --frozen: #6B7885; --t3: #6FA3E0;
     --sel: #DCE3EA;
   }
   :root[data-theme="light"] {
     --paper: #F3F5F7; --panel: #FFFFFF; --ink: #1C2530; --ink-2: #5A6B7E;
     --line: #D5DCE3; --pill-bg: #E9EDF1; --pill-ink: #3D4C5C;
     --eg: #0E8A83; --eg-soft: #E1F0EF; --comp: #C0741D; --comp-soft: #F6ECDF;
-    --lane: #7A5EA8; --lane-soft: #EDE8F5; --frozen: #8B97A3;
+    --lane: #7A5EA8; --lane-soft: #EDE8F5; --frozen: #8B97A3; --t3: #2F6DB3;
     --sel: #1C2530;
   }
   * { box-sizing: border-box; }
@@ -86,23 +86,47 @@
   .stage .sid { font-size: 11px; color: var(--ink-2); min-width: 30px; }
   .stage .sname { font-weight: 600; }
   .stage .sscript { margin-left: auto; font-size: 12px; color: var(--ink-2); }
-  .st-eg   { border-left-color: var(--eg); }
-  .st-comp { border-left-color: var(--comp); }
-  .st-lane { border-left-color: var(--lane); }
   .st-frozen { border-left-color: var(--frozen); color: var(--ink-2); }
 
-  .contract { display: flex; align-items: center; gap: 8px; padding: 5px 0 5px 14px; }
-  .contract .arrow { color: var(--ink-2); font-size: 12px; }
   .fpill { font-size: 11.5px; background: var(--pill-bg); color: var(--pill-ink);
            border-radius: 5px; padding: 2px 8px; white-space: nowrap; }
-  .contract .why { font-size: 11.5px; color: var(--ink-2); overflow: hidden;
-                   text-overflow: ellipsis; white-space: nowrap; }
 
-  .lanes { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
-  .lanes-h { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-             color: var(--lane); margin-bottom: 8px; font-weight: 600; }
-  .lanes .chain { gap: 6px; }
   .chain > * + .stage { margin-top: 0; }
+
+  /* ---------- the dataflow graph ---------- */
+  svg.pipe { display: block; width: 100%; height: auto; }
+  .node { cursor: pointer; }
+  .node .nbox { fill: var(--panel); stroke: var(--line); }
+  .node:hover .nbox { stroke: var(--ink-2); }
+  .node.sel .nbox { stroke: var(--sel); stroke-width: 1.6; }
+  .node.ndash .nbox { stroke-dasharray: 5 4; }
+  .node.sink .nbox { fill: var(--pill-bg); stroke: var(--ink-2);
+                     stroke-dasharray: 5 4; }
+  .b-eg { fill: var(--eg); } .b-comp { fill: var(--comp); }
+  .b-lane { fill: var(--lane); } .b-frozen { fill: var(--frozen); }
+  .b-t3 { fill: var(--t3); } .b-tool { fill: var(--ink-2); }
+  .ntitle { font-size: 13px; font-weight: 600; fill: var(--ink); }
+  .nscript { font-size: 10.5px; fill: var(--ink-2);
+             font-family: "Cascadia Code", Consolas, monospace; }
+  .nsub { font-size: 10.5px; fill: var(--ink); }
+  .ngate { fill: var(--comp); font-size: 9.5px; font-weight: 600; }
+  .nactive { fill: var(--eg); font-size: 9.5px; font-weight: 700; }
+  .nshare { fill: var(--ink-2); font-size: 9.5px; font-weight: 600; }
+  .plabel { font-size: 11px; font-weight: 600; letter-spacing: .12em; }
+  .pl-eg { fill: var(--eg); } .pl-comp { fill: var(--comp); }
+  .pl-lane { fill: var(--lane); } .pl-t3 { fill: var(--t3); }
+  .pl-bus { fill: var(--ink-2); }
+  .edge { fill: none; stroke-width: 1.5; }
+  .e-eg { stroke: var(--eg); } .e-lane { stroke: var(--lane); }
+  .e-comp { stroke: var(--comp); } .e-frozen { stroke: var(--frozen); }
+  .e-t3 { stroke: var(--t3); } .e-bus { stroke: var(--ink-2); opacity: .8; }
+  .e-dash { stroke-dasharray: 5 4; }
+  .elab { font-size: 10px; font-family: "Cascadia Code", Consolas, monospace;
+          fill: var(--ink-2); paint-order: stroke; stroke: var(--panel);
+          stroke-width: 3px; stroke-linejoin: round; }
+  #ah-eg path { fill: var(--eg); } #ah-lane path { fill: var(--lane); }
+  #ah-comp path { fill: var(--comp); } #ah-frozen path { fill: var(--frozen); }
+  #ah-t3 path { fill: var(--t3); } #ah-bus path { fill: var(--ink-2); }
   .chain .stage + .stage { margin-top: 6px; }
 
   .sats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -148,142 +172,300 @@
   <div class="kicker">scene-pipeline · CS 8903 · updated 2026-07-23</div>
   <h1>Architecture map — modules, stages, contracts</h1>
   <p class="rule"><b>The isolation rule:</b> stages communicate only through
-  per-scene files (the pills on the arrows). Swapping a method for any stage =
-  writing the same files in the same format. One sanctioned code seam:
-  <span class="mono">comp_paths.py → paths.py</span>.</p>
+  per-scene files — every arrow is a file, labeled with its name. Swapping a
+  method = writing the same files in the same format. <b>No track is
+  privileged:</b> the three discovery tracks compete for the same contract
+  (splat → object boxes); downstream consumes whichever manifest wins. One
+  sanctioned code seam: <span class="mono">comp_paths.py → paths.py</span>.</p>
   <div class="legend">
-    <span><span class="dot" style="background:var(--eg)"></span>entangled_gen/</span>
-    <span><span class="dot" style="background:var(--comp)"></span>composition/</span>
-    <span><span class="dot" style="background:var(--lane)"></span>side lanes</span>
-    <span><span class="dot" style="background:var(--frozen)"></span>frozen / seed</span>
-    <span><span class="fpill mono">file.json</span> = a contract</span>
-    <span>· click any stage for its contract card</span>
+    <span><span class="dot" style="background:var(--eg)"></span>track 1 · yaw views</span>
+    <span><span class="dot" style="background:var(--lane)"></span>track 2 · pano</span>
+    <span><span class="dot" style="background:var(--t3)"></span>track 3 · geometric</span>
+    <span><span class="dot" style="background:var(--comp)"></span>downstream</span>
+    <span>split color bar = shared / unifying</span>
+    <span>dashed = external or loop-back</span>
+    <span>· click any box for its contract card</span>
   </div>
 </header>
 
 <div class="grid">
 <div id="flow">
 
-  <!-- ================= PHASE 1 ================= -->
+  <!-- ================= THE GRAPH ================= -->
   <section class="phase">
-    <div class="phase-h"><span class="phase-n">PHASE 1</span>
-      <span class="phase-t">Generate — text → world</span>
-      <span class="mod-tag mod-eg">entangled_gen/</span></div>
-    <div class="phase-body"><div class="chain">
-      <button class="stage st-eg" data-k="gen"><span class="sid">1</span>
-        <span class="sname">world generation</span>
-        <span class="sscript mono">Marble (+ gen/&lt;method&gt;)</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">gen_raw.ply</span>
-        <span class="fpill mono">bundle: pano + collider + prompt.txt</span></div>
-    </div></div>
-  </section>
+    <div class="phase-h"><span class="phase-n">DATAFLOW</span>
+      <span class="phase-t">Three competing discovery tracks · shared modules drawn once · one downstream consumer</span></div>
+    <div class="phase-body">
+    <svg class="pipe" viewBox="0 0 800 1592" role="img"
+         aria-label="scene-pipeline dataflow graph">
+      <defs>
+        <marker id="ah-eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
+          markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ah-lane" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
+          markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ah-comp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
+          markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ah-t3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
+          markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ah-bus" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
+          markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
 
-  <!-- ================= PHASE 2 ================= -->
-  <section class="phase">
-    <div class="phase-h"><span class="phase-n">PHASE 2</span>
-      <span class="phase-t">Extract — splat → scene manifest</span>
-      <span class="mod-tag mod-eg">entangled_gen/</span></div>
-    <div class="phase-body"><div class="chain">
-      <button class="stage st-eg" data-k="render"><span class="sid">2</span>
-        <span class="sname">render views</span>
-        <span class="sscript mono">rendertools/shot.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">views/gpu_yaw*.webp</span>
-        <span class="fpill mono">*.json camera sidecars</span></div>
-      <button class="stage st-eg" data-k="seg"><span class="sid">3</span>
-        <span class="sname">detect + segment</span>
-        <span class="sscript mono">seg_views.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">seg/detections.json</span>
-        <span class="fpill mono">*_masks.npy</span>
-        <span class="why">vocab word list → GroundingDINO boxes → SAM masks</span></div>
-      <button class="stage st-eg" data-k="lift"><span class="sid">4</span>
-        <span class="sname">depth-lift</span>
-        <span class="sscript mono">lift_views.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">scene_manifest.json</span>
-        <span class="why">THE handoff: objects + 3D boxes, RAW frame</span></div>
-      <button class="stage st-eg" data-k="env"><span class="sid">5</span>
-        <span class="sname">envelope</span>
-        <span class="sscript mono">envelope.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">envelope.npz</span></div>
-      <button class="stage st-eg" data-k="pkg"><span class="sid">6</span>
-        <span class="sname">agent package</span>
-        <span class="sscript mono">agent_package.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">package/GUIDE.md + views</span></div>
+      <!-- ===== generate ===== -->
+      <g class="node" data-k="gen" transform="translate(276,24)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-eg" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">1 · generate world</text>
+        <text class="nscript" x="14" y="31">Marble bundle · gen/&lt;method&gt;</text></g>
+      <path class="edge e-bus" d="M392,64 V92"/>
+      <path class="edge e-bus" d="M124,92 H660"/>
+      <path class="edge e-bus" d="M124,92 V120" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M328,92 V120" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M449,92 V120" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M660,92 V120" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="130" y="104">gen_raw.ply</text>
+      <text class="elab" x="334" y="104">pano.jpg</text>
+      <text class="elab" x="455" y="104">prompt.txt</text>
+      <text class="elab" x="666" y="104">gen_raw.ply</text>
+
+      <!-- ===== the three tracks ===== -->
+      <text class="plabel pl-eg" x="8" y="116">TRACK 1 · YAW VIEWS</text>
+      <text class="plabel pl-lane" x="276" y="116">TRACK 2 · PANO</text>
+      <text class="plabel pl-t3" x="544" y="116">TRACK 3 · GEOMETRIC</text>
+
+      <g class="node" data-k="render" transform="translate(8,122)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-eg" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">render 4 views</text>
+        <text class="nscript" x="14" y="31">rendertools/shot.py</text></g>
+      <g class="node" data-k="p1" transform="translate(276,122)">
+        <rect class="nbox" width="104" height="40" rx="8"/>
+        <rect class="b-lane" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">p1 · crop</text>
+        <text class="nscript" x="14" y="31">crop_pano.py</text></g>
+      <g class="node" data-k="p2" transform="translate(390,122)">
+        <rect class="nbox" width="118" height="40" rx="8"/>
+        <rect class="b-lane" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">p2 · word list</text>
+        <text class="nscript" x="14" y="31">vocab_from_prompt</text></g>
+      <g class="node ndash" data-k="ext" transform="translate(544,122)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">splat_analyzer</text>
+        <text class="nscript" x="14" y="31">WSL tool — outside repo</text></g>
+
+      <!-- into the shared detect module -->
+      <path class="edge e-eg" d="M124,162 V234" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="200">views/*.webp</text>
+      <path class="edge e-lane" d="M328,162 V234" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="334" y="200">pano_crops/</text>
+      <path class="edge e-lane" d="M449,162 V200 H390 V234" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="455" y="190">vocab.txt</text>
+
+      <g class="node" data-k="seg" transform="translate(110,236)">
+        <rect class="nbox" width="300" height="48" rx="8"/>
+        <rect class="b-eg" width="4" height="24" rx="2"/>
+        <rect class="b-lane" y="24" width="4" height="24" rx="2"/>
+        <text class="ntitle" x="14" y="17">detect + segment
+          <tspan class="nshare"> · SHARED — both tracks</tspan></text>
+        <text class="nscript" x="14" y="31">seg_views.py — GroundingDINO + SAM</text></g>
+
+      <path class="edge e-eg" d="M124,284 V330" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="314">seg/detections.json</text>
+      <path class="edge e-lane" d="M392,284 V330" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="398" y="314">seg_pano/detections.json</text>
+
+      <g class="node" data-k="lift" transform="translate(8,332)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-eg" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">depth-lift</text>
+        <text class="nscript" x="14" y="31">lift_views.py (+ 4.5 amodal)</text></g>
+      <g class="node" data-k="p5" transform="translate(276,332)">
+        <rect class="nbox" width="232" height="52" rx="8"/>
+        <rect class="b-lane" width="4" height="52" rx="2"/>
+        <text class="ntitle" x="14" y="17">p5 · depth-lift (pano)</text>
+        <text class="nscript" x="14" y="31">lift_pano.py</text>
+        <text class="nsub" x="14" y="45">after p4 overlay gate<tspan class="ngate"> · USER GATE</tspan></text></g>
+
+      <!-- track 1 manifest + its taps -->
+      <path class="edge e-eg" d="M124,372 V434" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="404">scene_manifest.json</text>
+      <path class="edge e-eg" d="M240,342 H254 V424 H560 V498" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="430" y="420">manifest</text>
+      <path class="edge e-eg" d="M240,352 H262 V620 H274" marker-end="url(#ah-eg)"/>
+      <path class="edge e-eg" d="M240,362 H270 V1080 H542" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="300" y="1076">one object's manifest box</text>
+
+      <g class="node" data-k="env" transform="translate(8,436)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-eg" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">envelope — free-space util</text>
+        <text class="nscript" x="14" y="31">envelope.py</text></g>
+      <g class="node" data-k="p6" transform="translate(276,436)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-lane" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">p6 · convert to RAW</text>
+        <text class="nscript" x="14" y="31">manifest_pano_to_raw.py</text></g>
+      <path class="edge e-lane" d="M392,384 V434" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="398" y="412">scene_manifest_pano.json</text>
+
+      <!-- track 3 spine -->
+      <path class="edge e-t3 e-dash" d="M660,162 V498" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="664" y="290" text-anchor="middle"
+        transform="rotate(-90 664 290)">interactions.json</text>
+      <g class="node" data-k="a1" transform="translate(544,500)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">a1 · bridge to our boxes</text>
+        <text class="nscript" x="14" y="31">bridge_boxes.py</text></g>
+
+      <!-- envelope bus -->
+      <path class="edge e-eg" d="M124,476 V970" marker-end="url(#ah-eg)"/>
+      <path class="edge e-eg" d="M124,520 H542" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="300" y="516">envelope.npz</text>
+      <path class="edge e-eg" d="M124,632 H274" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="150" y="628">envelope.npz</text>
+      <text class="elab" x="130" y="942">manifest + envelope + views</text>
+
+      <!-- ===== converge and judge ===== -->
+      <text class="plabel pl-bus" x="276" y="592">CONVERGE &amp; JUDGE</text>
+      <path class="edge e-t3" d="M660,540 V598" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="666" y="572">bridged_boxes.json</text>
+      <path class="edge e-t3" d="M660,540 V560 H460 V598" marker-end="url(#ah-t3)"/>
+      <g class="node" data-k="g1" transform="translate(276,600)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-eg" width="4" height="13" rx="2"/>
+        <rect class="b-lane" y="13" width="4" height="13" rx="2"/>
+        <rect class="b-t3" y="26" width="4" height="14" rx="2"/>
+        <text class="ntitle" x="14" y="17">g1 · nodes (all streams)
+          <tspan class="nactive"> · ACTIVE</tspan></text>
+        <text class="nscript" x="14" y="31">graph/build_graph.py</text></g>
+      <path class="edge e-bus" d="M392,640 V664" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="656">scene_graph.json — nodes</text>
+      <g class="node" data-k="g2" transform="translate(276,666)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-tool" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">g2 · geometric edges</text>
+        <text class="nscript" x="14" y="31">graph/build_edges.py</text></g>
+      <path class="edge e-bus" d="M392,706 V730" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="722">+ typed edges</text>
+      <g class="node" data-k="g3" transform="translate(276,732)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-tool" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">g3 · VLM appearance</text>
+        <text class="nscript" x="14" y="31">graph/describe_nodes.py</text></g>
+      <path class="edge e-bus" d="M392,772 V796" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="788">+ appearance · crops/</text>
+      <g class="node" data-k="g4" transform="translate(276,798)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-tool" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">g4 · review page
+          <tspan class="ngate"> · USER GATE</tspan></text>
+        <text class="nscript" x="14" y="31">graph/graph_review.py</text></g>
+      <g class="node" data-k="a2" transform="translate(544,600)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-t3" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">a2 · compare tracks 1 vs 3
+          <tspan class="ngate"> · USER GATE</tspan></text>
+        <text class="nscript" x="14" y="31">build_comparison.py</text></g>
+      <path class="edge e-t3 e-dash" d="M660,470 H532 V752 H510" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="536" y="690" text-anchor="middle"
+        transform="rotate(-90 536 690)">job frames</text>
+
+      <path class="edge e-bus" d="M392,838 V870" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="860">scene_graph.json — full</text>
+      <path class="edge e-lane" d="M392,476 V566 H524 V886 H510" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="528" y="660" text-anchor="middle"
+        transform="rotate(-90 528 660)">panoraw variants</text>
+      <path class="edge e-t3" d="M660,644 V902 H510" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="556" y="896">boxes layer</text>
+      <g class="node sink" data-k="viewer" transform="translate(276,872)">
+        <rect class="nbox" width="232" height="54" rx="8"/>
+        <rect class="b-eg" width="4" height="18" rx="2"/>
+        <rect class="b-lane" y="18" width="4" height="18" rx="2"/>
+        <rect class="b-t3" y="36" width="4" height="18" rx="2"/>
+        <text class="ntitle" x="14" y="17">splat viewer — judging bench</text>
+        <text class="nscript" x="14" y="31">viewer/serve.py :8321</text>
+        <text class="nsub" x="14" y="45">look-only · every track lands here</text></g>
+
+      <!-- ===== downstream ===== -->
+      <text class="plabel pl-comp" x="8" y="958">DOWNSTREAM — CONSUMES THE WINNING MANIFEST (TODAY: TRACK 1'S)</text>
+      <g class="node" data-k="pkg" transform="translate(8,972)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-eg" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">agent package</text>
+        <text class="nscript" x="14" y="31">agent_package.py</text></g>
+      <path class="edge e-comp" d="M124,1012 V1060" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1040">package/ — sole handoff</text>
+      <g class="node" data-k="c1" transform="translate(8,1062)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-comp" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">C1 · shortlist</text>
+        <text class="nscript" x="14" y="31">retrieve2.py</text></g>
+      <path class="edge e-comp" d="M124,1102 V1150" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1130">shortlists2.json</text>
+      <g class="node" data-k="c2" transform="translate(8,1152)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-comp" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">C2+ · thumbs · measure · CLIP</text>
+        <text class="nscript" x="14" y="31">thumbs / measure / relevance</text></g>
+      <path class="edge e-comp" d="M124,1192 V1240" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1220">+ true sizes · + CLIP scores</text>
+      <g class="node" data-k="c4" transform="translate(8,1242)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-comp" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">C4 · review viewer
+          <tspan class="ngate"> · USER GATE</tspan></text>
+        <text class="nscript" x="14" y="31">review_server.py :8322</text></g>
+      <path class="edge e-comp" d="M124,1282 V1330" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1310">(judged, unchanged)</text>
+      <g class="node" data-k="c5" transform="translate(8,1332)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-comp" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">C5 · pick</text>
+        <text class="nscript" x="14" y="31">pick.py</text></g>
+      <path class="edge e-comp" d="M124,1372 V1420" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1400">picks2.json</text>
+      <g class="node" data-k="c6" transform="translate(8,1422)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-comp" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">C6 · place</text>
+        <text class="nscript" x="14" y="31">place2.py — bg resolver</text></g>
+      <path class="edge e-comp" d="M124,1462 V1510" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1490">composed_state2.json</text>
+      <g class="node" data-k="c7" transform="translate(8,1512)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-comp" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">C7 · VLM loop {add, nudge}</text>
+        <text class="nscript" x="14" y="31">loop.py + collide.py</text></g>
+      <path class="edge e-comp" d="M124,1552 V1566" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="140" y="1578">edits.jsonl — the journaled trace</text>
+
+      <!-- loop-backs -->
+      <path class="edge e-comp e-dash" d="M8,1172 H2 V1102 H6" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="20" y="1124">measure re-runs C1</text>
+      <path class="edge e-comp e-dash" d="M240,1532 H250 V1082 H242" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="254" y="1310" text-anchor="middle"
+        transform="rotate(-90 254 1310)">C7 add op re-enters C1</text>
+
+      <!-- the cut tool -->
+      <path class="edge e-bus" d="M508,44 H792 V1102 H778" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="789" y="560" text-anchor="middle"
+        transform="rotate(-90 789 560)">gen_raw.ply</text>
+      <g class="node" data-k="cut" transform="translate(544,1062)">
+        <rect class="nbox" width="232" height="96" rx="8"/>
+        <rect class="b-tool" width="4" height="96" rx="2"/>
+        <text class="ntitle" x="14" y="17">object cut-out — tool</text>
+        <text class="nscript" x="14" y="31">cut/ — GaussianCut</text>
+        <text class="nsub" x="14" y="46"><tspan class="nscript">c1</tspan> pack views + cameras</text>
+        <text class="nsub" x="14" y="59"><tspan class="nscript">c2</tspan> object masks (SAM)</text>
+        <text class="nsub" x="14" y="72"><tspan class="nscript">c3</tspan> graph cut (WSL)</text>
+        <text class="nsub" x="14" y="85"><tspan class="nscript">c4</tspan> before/after page<tspan class="ngate"> · USER GATE</tspan></text></g>
+      <path class="edge e-bus" d="M660,1158 V1442 H242" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="664" y="1290" text-anchor="middle"
+        transform="rotate(-90 664 1290)">background.ply</text>
+    </svg>
     </div>
-
-    <div class="lanes">
-      <div class="lanes-h">Side lanes (branch off the same scene folder)</div>
-      <div class="chain">
-        <button class="stage st-lane" data-k="pano"><span class="sid mono">p1–p6</span>
-          <span class="sname">pano path</span>
-          <span class="sscript mono">run_scene.py</span></button>
-        <button class="stage st-lane" data-k="cut"><span class="sid mono">c1–c4</span>
-          <span class="sname">object cut-out</span>
-          <span class="sscript mono">cut/ (GaussianCut)</span></button>
-        <button class="stage st-lane" data-k="analyzer"><span class="sid mono">a1–a2</span>
-          <span class="sname">detection comparison</span>
-          <span class="sscript mono">analyzer/</span></button>
-        <button class="stage st-lane" data-k="graph"><span class="sid mono">g1–g4</span>
-          <span class="sname">scene graph</span> <span class="badge b-active">active</span>
-          <span class="sscript mono">graph/</span></button>
-      </div>
-    </div>
-    </div>
-  </section>
-
-  <!-- ================= PHASE 3 ================= -->
-  <section class="phase">
-    <div class="phase-h"><span class="phase-n">PHASE 3</span>
-      <span class="phase-t">Reconstruct — manifest → asset scene</span>
-      <span class="mod-tag mod-comp">composition/</span></div>
-    <div class="phase-body"><div class="chain">
-      <button class="stage st-comp" data-k="c1"><span class="sid">C1</span>
-        <span class="sname">shortlist</span>
-        <span class="sscript mono">retrieve2.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">package/shortlists2.json</span></div>
-      <button class="stage st-comp" data-k="c2"><span class="sid">C2+</span>
-        <span class="sname">thumbs · measure · CLIP</span>
-        <span class="sscript mono">thumbs / measure / relevance</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">shortlists2.json + clip fields</span>
-        <span class="why">measure re-runs C1: true sizes shift shortlists</span></div>
-      <button class="stage st-comp" data-k="c4"><span class="sid">C4</span>
-        <span class="sname">review viewer</span> <span class="badge b-user">user gate</span>
-        <span class="sscript mono">review_server.py :8322</span></button>
-      <button class="stage st-comp" data-k="c5"><span class="sid">C5</span>
-        <span class="sname">pick</span>
-        <span class="sscript mono">pick.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">package/picks2.json</span></div>
-      <button class="stage st-comp" data-k="c6"><span class="sid">C6</span>
-        <span class="sname">place</span>
-        <span class="sscript mono">place2.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">composed_state2.json</span>
-        <span class="fpill mono">composed_scene2.glb</span></div>
-    </div></div>
-  </section>
-
-  <!-- ================= PHASE 4 ================= -->
-  <section class="phase">
-    <div class="phase-h"><span class="phase-n">PHASE 4</span>
-      <span class="phase-t">Refine loop — propose → verify</span>
-      <span class="mod-tag mod-comp">composition/</span></div>
-    <div class="phase-body"><div class="chain">
-      <button class="stage st-comp" data-k="c7"><span class="sid">C7</span>
-        <span class="sname">VLM loop {add, nudge}</span>
-        <span class="sscript mono">loop.py + collide.py</span></button>
-      <div class="contract"><span class="arrow">↓</span>
-        <span class="fpill mono">package/edits.jsonl</span>
-        <span class="fpill mono">updated composed_state2.json</span>
-        <span class="why">journaled trace = paper artifact</span></div>
-    </div></div>
   </section>
 
   <!-- ================= satellites ================= -->
@@ -328,7 +510,7 @@ gen: {mod:"eg", eyebrow:"entangled_gen / stage 1", name:"World generation",
   reads:["text prompt"],
   writes:["gen_raw.ply (3DGS, 62-float layout)","bundle_path.txt → prompt.txt","generator_pano.jpg (opt)"],
   note:"Swap point: a new generator = a new gen/<method>/ folder that deposits gen_raw.ply into a fresh scene folder. First scene from a new source: run the cube frame-verification (debug_cube_ply.py)."},
-render: {mod:"eg", eyebrow:"entangled_gen / stage 2", name:"Render views",
+render: {mod:"eg", eyebrow:"track 1 · yaw views", name:"Render views",
   script:"rendertools/shot.py (splat-transform GPU; frozen week5 copy)",
   how:["Put a virtual camera at eye height (1.6 m) inside the splat",
        "Take 4 photos, turning 90° between shots — like standing in the room looking around",
@@ -336,15 +518,15 @@ render: {mod:"eg", eyebrow:"entangled_gen / stage 2", name:"Render views",
   reads:["gen_raw.ply"],
   writes:["views/gpu_yaw{000,090,180,270}.webp","same-stem .json sidecars (cam, look, up, fov, res)"],
   note:"Sidecar cameras are in the RENDER (upright) frame — part of the contract. Known hole: fov 75 × 4 views = 300° of 360°; four 15° wedges are never rendered."},
-seg: {mod:"eg", eyebrow:"entangled_gen / stage 3", name:"Detect + segment",
-  script:"seg_views.py — vocab word list → GroundingDINO (open-vocab boxes) → SAM (masks)",
+seg: {mod:"eg", eyebrow:"SHARED MODULE — tracks 1 + 2", name:"Detect + segment",
+  script:"seg_views.py — one script, both tracks: track 1 passes the yaw webps, track 2 passes pano crops (--views-dir pano_crops --prompt <vocab>)",
   how:["Start from a word list of things to look for (hand-picked per room type; the pano path builds it from the prompt's nouns instead)",
        "GroundingDINO reads that list and draws a box around every word it can find in each photo",
        "SAM turns each box into an exact pixel outline (a mask)"],
   reads:["views/*.webp","detection vocab (per-room list, or vocab_from_prompt on the pano path)"],
   writes:["seg/detections.json {view: [{label, score, box}]}","seg/<view>_masks.npy (bool n×H×W, same order)"],
   note:"Detection is effectively single-view on bedroom_marble: 15/20 detections in one view, exactly one cross-view merge. The C7 loop's add op is the designed answer."},
-lift: {mod:"eg", eyebrow:"entangled_gen / stage 4 (+4.5)", name:"Depth-lift",
+lift: {mod:"eg", eyebrow:"track 1 · yaw views (+4.5 amodal)", name:"Depth-lift",
   script:"lift_views.py (z-buffer depth + unproject + merge) · amodal_apply.py (stage 4.5)",
   how:["For each mask, ask the splat how far away those pixels are (depth)",
        "Push the pixels out into 3D and shrink-wrap a box around them",
@@ -366,15 +548,32 @@ pkg: {mod:"eg", eyebrow:"entangled_gen / stage 6", name:"Agent package",
   reads:["manifest + overlays + views"],
   writes:["package/GUIDE.md","copied views/overlays/manifest"],
   note:"The bundle handed across the module boundary to composition."},
-pano: {mod:"lane", eyebrow:"entangled_gen / pano path p1–p6", name:"Pano object-ID lane",
-  script:"run_scene.py → crop_pano · vocab_from_prompt · seg_views · seg_pano_overlay · lift_pano · manifest_pano_to_raw",
-  how:["Cut the panorama into normal camera views — sharper than the 4 yaw photos",
-       "Pull the nouns out of the generation prompt to build the word list (spaCy parser)",
-       "Run the same detect → outline → lift chain on those crops"],
-  reads:["bundle equirect pano","bundle prompt.txt"],
-  writes:["pano_crops/*.webp + sidecars","seg_pano/vocab.txt · detections.json","scene_manifest_pano.json","scene_manifest_panoraw_*.json"],
-  note:"Same viewpoint as the yaw views at better angular resolution (98 boxes vs 19) — more detail, NOT more coverage. Alternative implementation of stages 2–4."},
-cut: {mod:"lane", eyebrow:"entangled_gen / cut lane c1–c4", name:"Object cut-out (GaussianCut)",
+p1: {mod:"lane", eyebrow:"track 2 · pano", name:"Crop pano into flat views",
+  script:"crop_pano.py (orchestrated with the rest of the track by run_scene.py)",
+  how:["Cut the generator's panorama into normal perspective views — same standpoint as track 1's renders, sharper pixels"],
+  reads:["bundle equirect pano"],
+  writes:["pano_crops/*.webp + same-stem .json sidecars"],
+  note:"Track 2's replacement for track 1's render step: instead of photographing the splat, reuse the generator's own panorama."},
+p2: {mod:"lane", eyebrow:"track 2 · pano", name:"Word list from the prompt",
+  script:"vocab_from_prompt.py (spaCy — nouns + synonyms)",
+  how:["Pull the nouns out of the generation prompt to build the detection word list automatically"],
+  reads:["bundle prompt.txt"],
+  writes:["seg_pano/vocab.txt"],
+  note:"Track 2's replacement for track 1's hand-picked per-room vocab. Both feed the SAME shared detect module."},
+p5: {mod:"lane", eyebrow:"track 2 · pano", name:"Depth-lift (pano)",
+  script:"lift_pano.py — preceded by the p4 overlay gate (seg_pano_overlay.py, user checkpoint)",
+  how:["Same lift idea as track 1, adapted to the pano crops: depth per mask, unproject, box",
+       "Before lifting, p4 renders the detection overlay for your yes/no"],
+  reads:["pano_crops + seg_pano + bundle collider"],
+  writes:["scene_manifest_pano.json"],
+  note:"Different script from track 1's lift_views.py — same concept, pano-specific geometry."},
+p6: {mod:"lane", eyebrow:"track 2 · pano", name:"Convert to RAW frame",
+  script:"manifest_pano_to_raw.py",
+  how:["Re-express the pano manifest in the RAW splat frame so it's directly comparable with track 1's"],
+  reads:["scene_manifest_pano.json"],
+  writes:["scene_manifest_panoraw_*.json (viewer variants via ?man=)"],
+  note:"Track 2's terminus today: judged in the viewer against track 1 (98 boxes vs 19 on bedroom_marble — more detail, NOT more coverage). Same file format as THE manifest, so promoting it downstream is a wiring change, not a rewrite."},
+cut: {mod:"lane", eyebrow:"tool — track-agnostic (splat + one box in)", name:"Object cut-out (GaussianCut)",
   script:"cut/prep_views → make_masks → run_cut (WSL) → render_cut_review",
   how:["Pick one object (say, the lamp) and gather photos + masks of it from many angles",
        "A graph cut sorts every Gaussian blob: part of the lamp, or part of the room",
@@ -382,22 +581,46 @@ cut: {mod:"lane", eyebrow:"entangled_gen / cut lane c1–c4", name:"Object cut-o
   reads:["gen_raw.ply","manifest box for the chosen object","view sidecars"],
   writes:["cut/<obj>/foreground.ply","cut/<obj>/background.ply (same 62-float layout)","stats.json + cut_review.html"],
   note:"Removes one object's Gaussians — the entanglement/ghost fix. background.ply feeds composition via place2 --background auto (file contract). Re-cuts write new variant folders, never overwrite."},
-analyzer: {mod:"lane", eyebrow:"entangled_gen / analyzer lane a1–a2", name:"Detection comparison",
-  script:"analyzer/bridge_boxes.py → build_comparison.py",
-  how:["A separate tool clusters the splat into objects on its own — no word list, pure geometry+appearance",
-       "Convert its clusters into our box format and match them against our manifest",
-       "A side-by-side page shows what each method caught that the other missed"],
-  reads:["analyzer/<job>/interactions.json (EXTERNAL splat_analyzer run)","manifest","envelope.npz"],
-  writes:["analyzer/bridged_boxes.json (RAW-frame boxes)","match_report.json","comparison.html (checkpoint page)"],
-  note:"Input produced outside the repo by the WSL splat_analyzer tool — the one contract with no in-repo producer. Feeds the graph lane."},
-graph: {mod:"lane", eyebrow:"entangled_gen / graph lane g1–g4 (ACTIVE)", name:"Semantic scene graph",
-  script:"graph/build_graph → build_edges → describe_nodes (VLM) → graph_review",
-  how:["Every extracted object becomes a node in one graph",
-       "Geometry supplies the edges: on-top-of, next-to, against-wall",
-       "A vision model looks at each object's photo crop and writes a short appearance description"],
-  reads:["analyzer/bridged_boxes.json + match_report.json","manifest","envelope.npz"],
-  writes:["scene_graph.json (nodes + typed edges + appearance)","graph/crops/","graph_review.html"],
-  note:"Ordering: needs the analyzer lane and stage 5 first. Governed by docs/PLAN_SCENE_GRAPH.md; review verdicts pending."},
+a1: {mod:"lane", eyebrow:"track 3 · geometric", name:"Bridge to our box format",
+  script:"analyzer/bridge_boxes.py",
+  how:["Convert splat_analyzer's clusters into manifest-style 3D boxes in the RAW frame",
+       "Match them against track 1's manifest — who found what"],
+  reads:["analyzer/<job>/interactions.json (external run)","scene_manifest.json","envelope.npz"],
+  writes:["analyzer/bridged_boxes.json (RAW-frame boxes)","analyzer/match_report.json"],
+  note:"Makes track 3 speak the same box language as tracks 1 and 2, so the graph and the comparison can consume it."},
+a2: {mod:"lane", eyebrow:"track 3 · geometric — user gate", name:"Comparison page",
+  script:"analyzer/build_comparison.py",
+  how:["A side-by-side page: what track 3 caught that track 1 missed, and vice versa"],
+  reads:["bridged_boxes.json + match_report.json + interactions.json"],
+  writes:["analyzer/comparison.html (checkpoint page)","viewer layer via /analyzer_boxes.json"],
+  note:"This is where the track bake-off gets judged head-to-head. Your verdicts here decide which discovery method wins."},
+g1: {mod:"lane", eyebrow:"converge — unifies all three tracks (ACTIVE)", name:"Graph nodes from all streams",
+  script:"graph/build_graph.py",
+  how:["Every extracted object — track 1 boxes matched with track 3 clusters — becomes a node in one graph"],
+  reads:["analyzer/bridged_boxes.json + match_report.json","scene_manifest.json","envelope.npz"],
+  writes:["scene_graph.json (nodes)"],
+  note:"Ordering: needs a1 and the envelope first. Governed by docs/PLAN_SCENE_GRAPH.md. The four g-modules pipeline over ONE accumulating file: scene_graph.json gains nodes → edges → appearance."},
+g2: {mod:"lane", eyebrow:"converge — scene graph", name:"Geometric edges",
+  script:"graph/build_edges.py",
+  how:["Geometry supplies typed relations between nodes: on-top-of, next-to, against-wall",
+       "Runs a self-check and exits nonzero on a violated invariant"],
+  reads:["scene_graph.json"],
+  writes:["scene_graph.json (typed edges filled in)"],
+  note:"Pure geometry — no model calls. Same file in, same file enriched out."},
+g3: {mod:"lane", eyebrow:"converge — scene graph", name:"VLM appearance",
+  script:"graph/describe_nodes.py (VLM via claude.exe)",
+  how:["Crop each node's best photo from the analyzer job frames",
+       "A vision model writes a short appearance description per node"],
+  reads:["scene_graph.json","analyzer job frames (crops source)"],
+  writes:["graph/crops/","scene_graph.json (appearance fields)"],
+  note:"The only model-calling step in the graph chain — everything else is geometry."},
+g4: {mod:"lane", eyebrow:"converge — scene graph · user gate", name:"Graph review page",
+  script:"graph/graph_review.py",
+  how:["Interactive page over the finished graph — nodes, edges, appearance, crops",
+       "Also serves the graph as a viewer layer (/scene_graph.json)"],
+  reads:["scene_graph.json (+ match_report, composed_state2 when present)"],
+  writes:["graph_review.html","viewer layer via /scene_graph.json"],
+  note:"Your verdicts here are pending — the graph currently has no downstream consumer until they land."},
 c1: {mod:"comp", eyebrow:"composition / C1", name:"Shortlist",
   script:"retrieve2.py — category tiers (exact > token subset > overlap), orientation-aware fit over 6 perms, tiling k=1..3",
   how:["For each 3D box, search the asset catalog by category words only (descriptions don't get a vote)",
@@ -459,7 +682,22 @@ proposer: {mod:"frozen", eyebrow:"proposer/ — seed (docs only)", name:"Scene p
        "Big anchor furniture gets exact positions; small stuff gets relations only ('on the desk') — the solver places those"],
   reads:["a scene's starter pack (views + manifest)"],
   writes:["proposal JSON: anchors with geometry, non-anchors as constraints"],
-  note:"Describe-the-real-scene → composer-ready input for a Holodeck/GLTS-style solver. Works equally on generated scenes."}
+  note:"Describe-the-real-scene → composer-ready input for a Holodeck/GLTS-style solver. Works equally on generated scenes."},
+ext: {mod:"frozen", eyebrow:"track 3 · geometric — external producer", name:"splat_analyzer",
+  script:"WSL tool outside this repo — the one contract with no in-repo producer",
+  how:["Track 3's discovery engine: clusters the raw splat into candidate objects on its own — pure geometry + appearance, no word list",
+       "Its job folder (interactions.json + transforms) is dropped into the scene folder by hand"],
+  reads:["gen_raw.ply (its own run over the scene)"],
+  writes:["analyzer/<job>/interactions.json"],
+  note:"A fundamentally different discovery paradigm from tracks 1 and 2: bottom-up geometric clustering instead of top-down word-list detection. Bridged into our box format by a1."},
+viewer: {mod:"lane", eyebrow:"sink — where the tracks get judged", name:"Splat viewer",
+  script:"viewer/serve.py --port 8321 (route-table server, vendored libs, offline)",
+  how:["One local page that overlays every extraction on the actual splat",
+       "Layers: THE manifest boxes · pano manifest variants (?man=) · analyzer boxes · scene graph · clearance · collision",
+       "Writes nothing — the arrows that end here end at your eyes"],
+  reads:["gen_raw.ply","scene_manifest*.json (?man= variants)","analyzer/bridged_boxes.json","scene_graph.json","clearance/collision layers"],
+  writes:["nothing — look-only"],
+  note:"Several arrows end here on purpose: the pano RAW variants and the scene graph are awaiting your verdicts, so today their consumer is you. If a pano manifest is ever promoted to THE manifest, its arrow would re-route into stage 5."}
 };
 const MODC = {eg:"var(--eg)", comp:"var(--comp)", lane:"var(--lane)", frozen:"var(--frozen)"};
 const panel = document.getElementById("panel");
@@ -481,7 +719,7 @@ function show(k, btn){
       !window.matchMedia("(prefers-reduced-motion: reduce)").matches)
     panel.scrollIntoView({behavior:"smooth", block:"nearest"});
 }
-document.querySelectorAll(".stage").forEach(b =>
+document.querySelectorAll(".stage, .node").forEach(b =>
   b.addEventListener("click", () => show(b.dataset.k, b)));
 </script>
 </body>

@@ -71,7 +71,31 @@ Repo-wide there are exactly TWO cross-module code imports:
 | RC4 | retrieve refresh API | kill hidden global mutation | loop.py add-op still refreshes sizes | PASS (same rows updated via refresh_sizes) — next loop run confirms |
 | RC5 | main guards | scripts ran at import | CLIs behave identically | PASS (serve.py imports clean, py_compile all green) — next seg/viewer run confirms |
 | RC6 | docs refresh | contracts current | PIPELINE.md matches code reality | PASS (stage tables sourced from the code audit) |
-| RC7 | pipeline HTML | user-requested architecture view | user judges the diagram | AWAITING USER |
+| RC7 | pipeline HTML | user-requested architecture view | user judges the diagram | PASS — user approved 2026-07-23 evening after full rework (see addendum) |
+
+## Addendum 2026-07-23 evening — pipeline_map.html rework (user-driven)
+
+The item-7 card-chain map was iteratively rebuilt with the user into a single
+SVG dataflow graph. Settled representation (user: "much much better"):
+
+- **Three competing discovery tracks, no main chain**: track 1 yaw-views
+  (teal), track 2 pano (purple), track 3 geometric / splat_analyzer (blue,
+  new `--t3` color). All compete for one contract: splat → object boxes.
+  Downstream composition is labeled as consuming "the winning manifest
+  (today: track 1's)".
+- **Every sub-step is its own node**: p1–p6, a1–a2, g1–g4 drawn as boxes
+  (c1–c4 stay as sub-lines inside the cut tool box). Shared module
+  `seg_views.py` drawn ONCE spanning tracks 1+2 with a split color bar.
+- **Every arrow is a labeled file**; external producer (splat_analyzer) and
+  the viewer ("judging bench" sink) are drawn nodes, so no arrow dead-ends.
+  Loop-backs (measure→C1, C7 add→C1) drawn dashed.
+- Detail-panel cards updated to track language; validation: tags balanced,
+  every data-k has a card, no dangling markers.
+
+Representation rules the user insisted on (apply to future diagrams): show
+topology with drawn arrows and boxes, never text annotations; every input
+and output must land on a drawn node; forks must leave from the stage that
+produces the file.
 
 ## Resume protocol
 
