@@ -632,14 +632,15 @@ $('showCams').onchange = e => camGroup.visible = e.target.checked;
 // layer or handler is touched.
 const graphGroup = new THREE.Group(); worldGroup.add(graphGroup);
 graphGroup.visible = false;
-const G_CAT_COL = { clean: 0x33ee66, naming: 0xffb020, same_cand: 0xff5ad1 };
+const G_CAT_COL = { clean: 0x33ee66, naming: 0xffb020, same_cand: 0xff5ad1,
+                    arch: 0x8899aa };
 const G_CAT_LBL = { clean: 'single label', naming: 'naming open',
-                    same_cand: 'same-candidate' };
+                    same_cand: 'same-candidate', arch: 'architecture' };
 // edge palette deliberately DISJOINT from the node-box palette above
 // (user 07-26: green edge lines were unreadable against green boxes)
 const G_EDGE_COL = { ON: 0x00e5ff, IN: 0x3c82e6, IN_WALL: 0x8844dd,
                      ATTACHED: 0xaa66ff, INTERPENETRATES: 0xff3333,
-                     SAME_CANDIDATE: 0xffffff };
+                     SAME_CANDIDATE: 0xffffff, NEAR: 0xff7f2a };
 const gHex = c => '#' + c.toString(16).padStart(6, '0');
 const gNodeEntries = [];        // {n, grp, cat}
 let gSel = null;
@@ -655,17 +656,14 @@ gInfo.style.cssText = 'right:8px;bottom:8px;width:380px;max-height:62vh;' +
                       'overflow-y:auto;display:none;z-index:11';
 document.body.appendChild(gInfo);
 function gClear() {
-  if (gSel) {
-    setHighlight(gSel.grp, false);
-    gSel.grp.userData.edges.material.color.set(gSel.grp.userData.baseColor);
-    gSel.grp.userData.fill.material.color.set(gSel.grp.userData.baseColor);
-    gSel = null;
-  }
-  for (const en of gNbrSel) {
+  const unlight = en => {           // reset; arch keeps its faint fill
     setHighlight(en.grp, false);
     en.grp.userData.edges.material.color.set(en.grp.userData.baseColor);
     en.grp.userData.fill.material.color.set(en.grp.userData.baseColor);
-  }
+    if (en.cat === 'arch') en.grp.userData.fill.visible = true;
+  };
+  if (gSel) { unlight(gSel); gSel = null; }
+  gNbrSel.forEach(unlight);
   gNbrSel.length = 0;
   if (gConnGroup) gConnGroup.clear();
   if (gEdgeDim) gEdgeDim(false);
@@ -692,9 +690,41 @@ try {
     if (e.type === 'SAME_CANDIDATE') { gSameCand.add(e.a); gSameCand.add(e.b); }
   const gCat = n => gSameCand.has(n.id) ? 'same_cand'
       : (n.label_provisional ? 'naming' : 'clean');
-  // ---- node boxes (detection nodes only; envelope arch nodes are planes) --
+  // ---- node boxes: detection nodes + measured architecture (room shell
+  // planes drawn as thin gray clickable slabs; floor/ceiling slabs sized
+  // from the wall spans, walls from their fitted plane + extent) ----
+  const archDeferred = [];        // floor/ceiling wait for wall spans
+  const wallSpan = { x: [], z: [] };
+  const addArch = (n, center, size) => {
+    const col = G_CAT_COL.arch;
+    const grp = objBox(center, size, 0, col);
+    grp.userData.gnode = n;
+    grp.userData.baseColor = col;
+    // architecture slabs keep a faint PERSISTENT fill (user 07-26:
+    // "slightly opaque so i can see it better, but not fully")
+    grp.userData.fill.visible = true;
+    grp.userData.fill.material.opacity = 0.12;
+    graphGroup.add(grp);
+    gNodeEntries.push({ n, grp, cat: 'arch' });
+  };
   for (const n of gj.nodes || []) {
-    if (n.source !== 'detection') continue;
+    if (n.source !== 'detection') {
+      const p = (n.geometry || {}).plane, ext = (n.geometry || {}).extent;
+      if (!p) continue;
+      if (p.axis === 'y') { archDeferred.push(n); continue; }
+      if (!ext || !ext.y_raw) continue;
+      const tKey = p.axis === 'x' ? 'z_raw' : 'x_raw';
+      const t = ext[tKey], yy = ext.y_raw;
+      if (!t) continue;
+      wallSpan[p.axis].push(p.value_raw);
+      const cy = (yy[0] + yy[1]) / 2, ct = (t[0] + t[1]) / 2;
+      const sy = Math.abs(yy[1] - yy[0]), st = Math.abs(t[1] - t[0]);
+      if (p.axis === 'x')
+        addArch(n, [p.value_raw, cy, ct], [0.02, sy, st]);
+      else
+        addArch(n, [ct, cy, p.value_raw], [st, sy, 0.02]);
+      continue;
+    }
     const cat = gCat(n);
     const col = G_CAT_COL[cat];
     const grp = objBox(n.geometry.center, n.geometry.size, 0, col);
@@ -711,6 +741,15 @@ try {
     });
     graphGroup.add(grp);
     gNodeEntries.push({ n, grp, cat });
+  }
+  // floor/ceiling slabs spanning the measured wall rectangle
+  if (wallSpan.x.length >= 2 && wallSpan.z.length >= 2) {
+    const xr = [Math.min(...wallSpan.x), Math.max(...wallSpan.x)];
+    const zr = [Math.min(...wallSpan.z), Math.max(...wallSpan.z)];
+    for (const n of archDeferred)
+      addArch(n, [(xr[0] + xr[1]) / 2, n.geometry.plane.value_raw,
+                  (zr[0] + zr[1]) / 2],
+              [xr[1] - xr[0], 0.02, zr[1] - zr[0]]);
   }
   // ---- edge lines: one group per type, solid + dim (z_fabricated) --------
   const gEdgeGroups = {}, gEdgeCounts = {};
@@ -771,7 +810,7 @@ try {
         m.opacity = on ? 0.12 : m.userData.baseOpacity);
   }
   // ---- HUD sub-row: record-status toggles + edge-type toggles + legend ----
-  const gCats = ['clean', 'naming', 'same_cand'];
+  const gCats = ['clean', 'naming', 'same_cand', 'arch'];
   const catN = {};
   gNodeEntries.forEach(en => catN[en.cat] = (catN[en.cat] || 0) + 1);
   let gh = 'record nodes: ';
@@ -781,7 +820,7 @@ try {
           G_CAT_LBL[t] + ' (' + (catN[t] || 0) + ')</label> ';
   gh += ' · edges: ';
   for (const t of ['ON', 'IN', 'IN_WALL', 'ATTACHED', 'INTERPENETRATES',
-                   'SAME_CANDIDATE'])
+                   'SAME_CANDIDATE', 'NEAR'])
     gh += '<label style="color:' + gHex(G_EDGE_COL[t]) + '">' +
           '<input type="checkbox" checked' +
           ' id="gEdge_' + t + '"> ' + t + ' (' + (gEdgeCounts[t] || 0) +
@@ -814,8 +853,13 @@ try {
     for (const e of (gEdgesByNode[n.id] || [])) {
       const oid = e.a === n.id ? e.b : e.a;
       const other = gNodes[oid];
-      if (other) {
-        const ca = n.geometry.center, cb = gAnchor(other, ca);
+      let ca = null, cb = null;
+      if (other && n.geometry.center) {           // detection node selected
+        ca = n.geometry.center; cb = gAnchor(other, ca);
+      } else if (other && other.geometry.center) { // wall/plane selected
+        ca = other.geometry.center; cb = gAnchor(n, ca);
+      }
+      if (ca) {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(
             new Float32Array([...ca, ...cb]), 3));
@@ -836,12 +880,34 @@ try {
         (n.label_provisional
             ? ' <span style="color:#ffb020">[provisional]</span>' : '') +
         ' <span style="color:' + gHex(G_CAT_COL[cat]) + '">[' +
-        G_CAT_LBL[cat] + ']</span></h3>' +
-        '<div class="dim">' + n.type + ' · peak ' + gNum(pv.peak_score) +
-        ' · ' + ((n.evidence || {}).members || []).length + ' detections / ' +
-        ((n.evidence || {}).views || []).length + ' views' +
-        ((pv.flags || []).length ? ' · ' + pv.flags.join(', ') : '') +
-        '</div>';
+        G_CAT_LBL[cat] + ']</span></h3>';
+    if (n.source === 'envelope') {
+      const p = n.geometry.plane || {}, ev = n.evidence || {};
+      h += '<div class="dim">' + gEsc(pv.detector || 'envelope') +
+           ' · plane ' + p.axis + ' = ' + gNum(p.value_raw) + ' (raw)' +
+           (ev.measured ? ' · MEASURED' : ' · placeholder') + '</div>';
+      if (ev.point_count)
+        h += '<div class="dim">fit: ' + ev.point_count + ' pts' +
+             (ev.collider ? ' · collider agrees Δ ' +
+              gNum(ev.collider.delta_m) + ' m (' +
+              gNum(ev.collider.collider_area_m2) + ' m²)' : '') +
+             (ev.observed_coverage != null ? ' · splat covers ' +
+              Math.round(ev.observed_coverage * 100) + '% of the span ' +
+              '(rest behind curtains/furniture/openings)' : '') + '</div>';
+      if ((ev.parallel_surfaces || []).length)
+        h += '<div class="dim">parallel surfaces: ' +
+             ev.parallel_surfaces.map(s => gNum(s.value_raw) +
+             (s.collider ? '✓' : '')).join(' · ') +
+             ' <span style="opacity:.7">(curtains / fronts / faces — ' +
+             'recorded, not judged)</span></div>';
+    } else {
+      h += '<div class="dim">' + n.type + ' · peak ' + gNum(pv.peak_score) +
+           ' · ' + ((n.evidence || {}).members || []).length +
+           ' detections / ' + ((n.evidence || {}).views || []).length +
+           ' views' +
+           ((pv.flags || []).length ? ' · ' + pv.flags.join(', ') : '') +
+           '</div>';
+    }
     // full label multiset — the record's plural truth
     const tally = {};
     for (const L of n.labels || []) {
@@ -911,10 +977,16 @@ try {
     // same spot again cycles through them (same fix as the method-box
     // layers: nearest-surface-wins made nested/behind boxes unclickable)
     const under = [...new Set(hits.map(h => vis[picks.indexOf(h.object)]))];
-    under.sort((a, b) => {
-      const sa = a.n.geometry.size, sb = b.n.geometry.size;
-      return sa[0] * sa[1] * sa[2] - sb[0] * sb[1] * sb[2];
-    });
+    // objects first (smallest volume wins), architecture slabs LAST:
+    // thin slabs "win" a volume sort falsely, and every ray crosses
+    // floor/ceiling/walls — they'd swallow the first clicks
+    const gVol = en => {
+      const g = en.n.geometry;
+      if (g.size) return g.size[0] * g.size[1] * g.size[2];
+      return 1e9;
+    };
+    under.sort((a, b) => (a.cat === 'arch') - (b.cat === 'arch')
+                         || gVol(a) - gVol(b));
     const key = Math.round(ev.clientX / 8) + ',' + Math.round(ev.clientY / 8);
     if (gPickCycle.key === key) gPickCycle.i = (gPickCycle.i + 1) % under.length;
     else { gPickCycle.key = key; gPickCycle.i = 0; }

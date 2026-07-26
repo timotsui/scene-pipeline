@@ -249,7 +249,10 @@
     reference the record, never overwrite it. The judged graph
     <b>replaces the manifest</b> as the downstream contract;
     picks/placement state move OUT. Offline ⇒ unresolved stays
-    unresolved — never a guessed merge.</p>
+    unresolved — never a guessed merge. Same-day additions: the
+    <b>measured room shell</b> (4w) supplies the architecture nodes, and
+    the <b>no-floater invariant</b> guarantees every object connects to
+    something (explicit NEAR fallbacks otherwise, self-check enforced).</p>
   </section>
   <section class="dcard">
     <span class="dstat ds-prop">later</span>
@@ -311,7 +314,7 @@
       <path class="edge e-bus" d="M30,92 V778" marker-end="url(#ah-bus)"/>
       <path class="edge e-bus" d="M468,92 V240" marker-end="url(#ah-bus)"/>
       <path class="edge e-bus" d="M660,92 V126" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="36" y="104">gen_raw.ply</text>
+      <text class="elab" x="36" y="104">gen_raw.ply · collider (opt)</text>
       <text class="elab" x="474" y="110">prompt.txt</text>
       <text class="elab" x="666" y="104">gen_raw.ply</text>
 
@@ -426,13 +429,21 @@
 
 
       <!-- ===== 2.4 PLACE ===== -->
-      <g class="node" data-k="env" transform="translate(8,780)">
+      <g class="node" data-k="shell" transform="translate(8,780)">
+        <rect class="nbox" width="232" height="52" rx="8"/>
+        <rect class="b-eg" width="4" height="52" rx="2"/>
+        <text class="ntitle" x="14" y="17">4w · room shell — measured</text>
+        <text class="nscript" x="14" y="31">room_shell.py (+ --audit)</text>
+        <text class="nsub" x="14" y="45">N wall segments · collider cross-check</text></g>
+      <path class="edge e-eg" d="M240,800 H274" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="243" y="794">room_shell.json</text>
+      <path class="edge e-eg" d="M124,832 V844" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="842">room_shell.json — measured bounds</text>
+      <g class="node" data-k="env" transform="translate(8,846)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-eg" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">4e · envelope (free space)</text>
-        <text class="nscript" x="14" y="31">envelope.py</text></g>
-      <path class="edge e-eg" d="M240,800 H274" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="243" y="794">envelope.npz</text>
+        <text class="nscript" x="14" y="31">envelope.py — rewired 07-26</text></g>
       <path class="edge e-eg" d="M124,644 V654" marker-end="url(#ah-eg)"/>
       <text class="elab" x="130" y="652">scene_manifest_pano2c_rc.json — CANONICAL 108</text>
       <g class="node" data-k="post" transform="translate(8,656)">
@@ -448,7 +459,7 @@
       <text class="elab" x="346" y="708">f30 manifest → record (verbatim)</text>
 
       <!-- envelope bus -->
-      <path class="edge e-eg" d="M124,820 V1178" marker-end="url(#ah-eg)"/>
+      <path class="edge e-eg" d="M124,886 V1178" marker-end="url(#ah-eg)"/>
       <text class="elab" x="130" y="1150">canonical manifest + envelope + crops</text>
 
       <g class="node" data-k="g1" transform="translate(276,780)">
@@ -742,13 +753,27 @@ a1: {mod:"t3", eyebrow:"SIDE TOOL · bridge — a format adapter, nothing more",
   reads:["analyzer/<job>/interactions.json","scene_manifest (match target)"],
   writes:["analyzer/bridged_boxes.json","analyzer/match_report.json"],
   note:"Record-only today: nothing in the pipeline consumes its output — the cyan viewer layer is the last reader (graph v1's analyzer seeding is deprecated by the record-then-judge rebuild). Its envelope.npz input is deliberately NOT drawn as an arrow: that was a report-only frame-mismatch check from the vetting era, never a functional dependency."},
-env: {mod:"eg", eyebrow:"4e · 2.4 PLACE — envelope", name:"Envelope",
-  script:"envelope.py (occupancy voxels → floor/clearance)",
+shell: {mod:"eg", eyebrow:"4w · 2.4 PLACE — room shell · BUILT 07-26 (R11 gate open)", name:"Room shell — measured walls · ceiling · floor",
+  script:"room_shell.py (W1 fit; --audit = the W0 three-way report) — PLAN_ROOM_SHELL.md",
+  how:["The record's architecture was PLACEHOLDERS (walls = splat p1/p99 extent) — the W0 audit measured them off by up to 0.4 m",
+       "VERTICAL-PRISM assumption (user): a plan cell is wall-like only if its splat reaches within 0.2 m of the ceiling — furniture (the bed) self-removes",
+       "Fit: floor + ceiling from y-histogram peaks; per side the OUTERMOST strong density peak = the structural plane; parallel surfaces within 0.6 m (curtain planes, wardrobe fronts, visible wall faces) recorded as evidence, never judged",
+       "Collider cross-check (Marble bundles; user: 'the collider mesh is rather good'): all 4 walls agree within 5–36 mm; degrades to absent on other scenes",
+       "Wall extents: SPAN to the perpendicular planes (the room rectangle — what the slabs draw) + the OBSERVED extent (splat actually on the plane: 27–45%% here — the rest hides behind curtains/furniture/openings); observed_coverage doubles as an occlusion metric",
+       "Schema = N wall segments; v1 fits one outer segment per side (box rooms = N=4 special case, alcoves/L-rooms are a fitter upgrade, not a schema change)"],
+  reads:["gen_raw.ply","collider_registered.glb (optional cross-check)","legacy frame block (r2r only — carried into the output so the legacy read dies downstream)"],
+  writes:["room_shell.json — planes + extents + evidence + parallel surfaces","room_shell_audit.json / .png (W0)"],
+  review:[{t:"REVIEW_LOG R11 — gray architecture slabs vs collider + splat, viewer :8321",
+           h:"http://localhost:8321/?scene=bedroom_marble"}],
+  note:"Feeds BOTH consumers: the graph record's architecture nodes and envelope.py's room bounds. With measured bounds the envelope floor-warp tightened from tens of cm to ±0.03 m."},
+env: {mod:"eg", eyebrow:"4e · 2.4 PLACE — envelope · rewired 07-26", name:"Envelope (free space / clearance)",
+  script:"envelope.py (occupancy voxels → local floor + clearance)",
   how:["Dice the room into small 3D cells and mark which ones contain splat",
-       "That yields the floor height and a map of free space for placing new things"],
-  reads:["gen_raw.ply","canonical manifest"],
+       "That yields the per-cell local floor (warp map) and a clearance map of free space for placing new things",
+       "REWIRED 07-26: room bounds + floor/ceiling come from room_shell.json (measured); the legacy scene_manifest.json frame is only the fallback when no shell exists"],
+  reads:["gen_raw.ply","room_shell.json (measured bounds; legacy frame = fallback)"],
   writes:["envelope.npz","envelope_heatmap.png","viewer clearance layer"],
-  note:"Free-space map consumed by placement validation and the graph lane. Rewire pending: currently reads the legacy scene_manifest.json."},
+  note:"Free-space map consumed by placement validation. The architecture-measurement role moved OUT to room_shell.py — envelope keeps clearance/warp/placement checks only."},
 g1: {mod:"eg", eyebrow:"4g1 · PASS 1 — RECORD · rebuild NEXT", name:"Record — assemble nodes + evidence",
   script:"graph/build_graph.py — rework: pano-track input (the analyzer-seeded v1 is deprecated)",
   how:["DECIDED 07-26 pm (amended late): the graph is record THEN judge — pass 1 writes down everything already known and commits to NOTHING",
@@ -758,21 +783,22 @@ g1: {mod:"eg", eyebrow:"4g1 · PASS 1 — RECORD · rebuild NEXT", name:"Record 
        "Evidence as pointers: member detection ids, per-view 2D boxes, mask refs, source tiles; per-node crops are CUT here (deterministic image × box) so the record is reviewable by eye and pass 2 reads them",
        "Scene-level record: frame conventions (up axis — the mirror-bug lesson), source lineage incl. prompt.txt, envelope summary",
        "Open questions recorded AS open — deterministic, byte-reproducible, zero model calls"],
-  reads:["scene_manifest_pano2c_rc_f30.json (verbatim — no dedup stage)","envelope.npz","rig_sp0/lift_poolc.json (member evidence)","rig_sp0/ pano + crop sidecars (crop cutting)","prompt.txt"],
+  reads:["scene_manifest_pano2c_rc_f30.json (verbatim — no dedup stage)","room_shell.json (measured architecture nodes; envelope grid bounds = fallback)","rig_sp0/lift_poolc.json (member evidence)","rig_sp0/ pano + crop sidecars (crop cutting)","prompt.txt"],
   writes:["scene_graph.json — record layer: nodes + evidence + open questions","graph/crops/ (per-node, deterministic)"],
   note:"Downstream state (retrieval picks, placement, cut status) moves OUT of the graph — v1 attached it; under record-then-judge those are consumers, not evidence. The record alone is deliberately NOT consumable as 'the scene': it refuses to commit names and merges — the downstream contract is record + verdicts. Governed by docs/PLAN_SCENE_GRAPH.md §0a."},
 g2: {mod:"eg", eyebrow:"4g2 · PASS 1 — RECORD · edges · USER GATE", name:"Geometric edges + the candidate queue",
   script:"graph/build_edges.py",
   how:["Threshold arithmetic on boxes — ON (support), IN (containment), ATTACHED/IN_WALL (architecture), INTERPENETRATES — every edge carries its numbers (contact gap, overlap fraction)",
        "SAME_CANDIDATE edges computed HERE from box geometry (no dedup stage): IoU ≥ .40 AND (IoU ≥ .60 = zone confident, or containment ≥ .90 = zone gray) — the open 'same object or part?' questions drawn as graph structure, both nodes present",
-       "Still record: reproducible, no model calls; self-check exits nonzero on a violated invariant",
+       "NO-FLOATER INVARIANT (user rule 07-26): every detection node must hold ≥1 structural edge (ON/IN/IN_WALL/ATTACHED); isolated nodes get ONE caveated NEAR fallback edge (nearest supporter/floor/wall — incl. the shell's parallel surfaces — with deduped runner-up alternatives recorded); enforced in the self-check",
+       "Still record: reproducible, no model calls; self-check exits nonzero on a violated invariant (frame sign + no-floater)",
        "RECORD REVIEW (user gate): eyeball nodes, edges, and the candidate queue BEFORE any VLM spend — same discipline as the rest of the pipeline"],
-  reads:["scene_graph.json (record: nodes)","envelope.npz"],
-  writes:["scene_graph.json (+ geometric edges + SAME_CANDIDATE queue)"],
+  reads:["scene_graph.json (record: nodes incl. shell architecture)"],
+  writes:["scene_graph.json (+ geometric edges + SAME_CANDIDATE queue + NEAR fallbacks)"],
   note:"The edges recorded here double as the judge's cheap facts: 'both boxes ATTACHED to the ceiling at 2.7 m, one inside the other' nearly decides lamp-vs-ceiling-light before the VLM sees a pixel."},
 g3: {mod:"lane", eyebrow:"4g3 · PASS 2 — JUDGE · VLM · gated on record review", name:"Judge — same-vs-part → naming → appearance",
   script:"graph/ judge passes — claude.exe VLM (batched, cached); appearance keeps the describe_nodes.py machinery",
-  how:["The judge does NOT wander the graph — it visits the SAME_CANDIDATE queue: one cached call per edge, given both nodes' crops, their label multisets, and the edge's geometric facts",
+  how:["The judge does NOT wander the graph — it visits explicit queues: the SAME_CANDIDATE edges, the naming disputes, and the NEAR fallbacks (each = one cached call given crops + label multisets + the edge's geometric facts)",
        "Three verdicts: SAME OBJECT → merge the nodes (both originals' evidence retained, affected geometric edges re-derived) · PART OF → edge converts to PART_OF · DISTINCT → edge dropped",
        "Order matters: merges first, THEN naming — a merged node is named once, over the union of both multisets",
        "Naming pass: every node with a disputed multiset gets its canonical name from crops + facts (height, size, ATTACHED edges) — the fix for score-picked 'lamp' on a ceiling fixture",
