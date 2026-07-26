@@ -65,6 +65,10 @@ def main():
     ap.add_argument("--prompt", default="", help="override detection vocab")
     ap.add_argument("--box-thr", type=float, default=0.35,
                     help="GroundingDINO box threshold (lower for promised-but-missed words)")
+    ap.add_argument("--pace", type=float, default=0.0,
+                    help="seconds to sleep between views — the laptop hard-"
+                         "crashes under sustained GPU burst (2026-07-25); "
+                         "use ~2 for long runs")
     args = ap.parse_args()
     sc = args.scene
 
@@ -76,7 +80,18 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device: {device}  scene: {sc}  views: {len(views)}", flush=True)
 
-    prompt = args.prompt if args.prompt else PROMPTS.get(sc, GENERIC_PROMPT)
+    # vocab priority (decided 2026-07-25): explicit --prompt > the scene's
+    # vocab.json (vocab_build.py — prompt-mining ∪ VLM look-pass, THE word
+    # list) > legacy per-room dict (kept only as the no-vocab.json fallback)
+    vocab_file = paths.scene_dir(sc) / "vocab.json"
+    if args.prompt:
+        prompt = args.prompt
+    elif vocab_file.exists():
+        prompt = json.loads(vocab_file.read_text(encoding="utf-8"))["queries"]["gdino"]
+        print(f"vocab: {vocab_file}", flush=True)
+    else:
+        prompt = PROMPTS.get(sc, GENERIC_PROMPT)
+        print("vocab: legacy room dict (no vocab.json — run vocab_build.py)", flush=True)
 
     # GroundingDINO (dedicated API — the zero-shot pipeline mis-handles
     # grounding-dino: whole-image boxes)
@@ -133,6 +148,9 @@ def main():
             masks = masks.squeeze(1).numpy().astype(bool)  # (n, H, W)
             overlay_masks(img, list(masks)).save(out / f"{name}_masks.png")
             np.save(out / f"{name}_masks.npy", masks)
+        if args.pace > 0:
+            import time
+            time.sleep(args.pace)
 
     with open(out / "detections.json", "w") as f:
         json.dump(all_dets, f, indent=2)
