@@ -27,6 +27,56 @@ def placement_file(sc):
     return paths.live_placement(sc)
 
 
+def box_sources(sc):
+    """Method-organized box sets (2026-07-25 reorg): one entry per
+    detection/lift METHOD, so competing methods are compared side by side.
+    Registry order = HUD order. Only entries whose file exists are served."""
+    sd = paths.scene_dir(sc)
+    return [
+        ("pano_track", "PANO TRACK (canonical · thr 0.2)",
+         sd / "scene_manifest_pano2c_rc.json", "#ffd24d",
+         "THE pano track (user-canonical 2026-07-26), 20%% floor "
+         "everywhere (user: drop the 0.40 gate): self-rendered pano at "
+         "(0,0)+1.6m -> 20-crop rig -> BATCHED-vocab detect thr 0.20 -> "
+         "z-buffer lift -> robust merge q.05 -> RECENTER round as the "
+         "real filter (20 refined, 15 marginal singletons refuted by "
+         "close-up, 8 confirmed). 135 objects; floor-gap min +0.012"),
+        ("pano_track_rcdelta", "pano track · Δ before recenter (thr 0.2)",
+         sd / "scene_manifest_pano_rcdelta.json", "#ff5a5a",
+         "the BEFORE-state of everything the recenter round changed: the "
+         "refuted objects (since deleted, with close-up evidence) + the "
+         "pre-refinement boxes of objects whose bounds moved. Canonical = "
+         "the full scene after recenter; toggle both to see before vs "
+         "after"),
+        ("pano_track_gatekills", "pano track · Δ gate kills",
+         sd / "scene_manifest_pano_gatekills.json", "#b06aff",
+         "DELTA layer: only the 33 objects the confidence gate killed "
+         "(best detection < 0.40) — the gate's audit trail; real objects "
+         "found here are candidates for recenter-verification rescue"),
+        # sweep-lane entries (G3/robust/gated/G4) RETIRED from the HUD
+        # 2026-07-26 — superseded by the canonical pano track; manifests
+        # stay on disk (scene_manifest_sweep*.json) for the record
+        ("recenter_C1", "pano 1.0 · recenter C1 (superseded)",
+         sd / "recenter_experiment" / "manifest_C1_raw.json", "#f0a028",
+         "Marble-pano lane, superseded by the canonical PANO TRACK "
+         "(carries the +6.5cm registration pedestal); kept for comparison"),
+        ("analyzer", "analyzer · OWLv2 vote",
+         sd / "analyzer" / "bridged_boxes.json", "#00ffff",
+         "splat_analyzer bridged clusters: surface-biased centers, "
+         "fabricated depth extent (w+h)/2"),
+        ("fuse", "fuse · 3h2 pool",
+         sd / "scene_manifest_fuse.json", "#33ee66",
+         "unified lift pool + ported vote (SPEC_3H2_FUSE) — appears once built"),
+        ("legacy_v1", "yaw4 mask-lift +amodal (old manifest)",
+         paths.manifest(sc), "#8899aa",
+         "the old default scene_manifest.json: 4 gpu_yaw renders -> "
+         "GroundingDINO+SAM -> per-pixel z-buffer mask lift -> label+IoU "
+         "merge (lift_views.py), then splat-amodal box extension "
+         "(amodal_apply.py, 2026-07-15). 4-yaw observation retired 07-24 — "
+         "kept for method comparison"),
+    ]
+
+
 class H(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="text/plain", cache=False):
         self.send_response(code)
@@ -75,18 +125,8 @@ class H(BaseHTTPRequestHandler):
                 man = json.loads(manf.read_text())
                 meta["floor_y"] = man["frame"]["floor_y"]
                 meta["ceiling_y"] = man["frame"]["ceiling_y"]
-            # exact rig cameras from the shot.py sidecars, so the viewer's
-            # photo-pose buttons match the webps even when the rig is not at
-            # the origin (e.g. marble scenes: floor-origin, eye at +1.6)
-            poses = {}
-            for vj in sorted((paths.OUT / sc / "views").glob("gpu_yaw*.json")):
-                try:
-                    d = json.loads(vj.read_text())
-                    poses[vj.stem] = {"cam": d["cam"], "look": d["look"],
-                                      "fov": d.get("fov", 75)}
-                except Exception:
-                    pass
-            meta["poses"] = poses
+            # (gpu_yaw photo-pose harvesting removed 2026-07-25 — yaw track
+            # retired; startup pose is now derived from floor_y client-side)
             self._send(200, json.dumps(meta).encode(), "application/json")
         elif p == "/manifest.json":
             # ?man=<variant> serves scene_manifest_<variant>.json (e.g. the
@@ -110,13 +150,20 @@ class H(BaseHTTPRequestHandler):
             f = placement_file(sc)
             body = f.read_bytes() if f.exists() else b'{"placements":[]}'
             self._send(200, body, "application/json")
-        elif p == "/amodal.json":
-            # amodal_boxes.py comparison output (extraction experiment)
-            f = paths.scene_dir(sc) / "amodal_boxes.json"
-            if f.exists():
+        elif p == "/box_sources.json":
+            # method-box registry: which competing box sets exist for sc
+            out = [{"key": k, "label": lb, "color": c, "note": nt}
+                   for k, lb, f, c, nt in box_sources(sc) if f.exists()]
+            self._send(200, json.dumps({"sources": out}).encode(),
+                       "application/json")
+        elif p == "/boxes.json":
+            # one method box set, by registry key (?src=<key>)
+            src = (q.get("src") or [""])[0]
+            f = next((f for k, _, f, _, _ in box_sources(sc) if k == src), None)
+            if f is not None and f.exists():
                 self._send(200, f.read_bytes(), "application/json")
             else:
-                self._send(404, b"no amodal_boxes.json; run amodal_boxes.py")
+                self._send(404, b"unknown or missing box source; see /box_sources.json")
         elif p == "/collisions.json":
             # collide.py --export output: mesh-overlap pairs + RENDER-frame
             # overlap boxes for the viewer's collision layer
@@ -139,6 +186,26 @@ class H(BaseHTTPRequestHandler):
                 self._send(404, b"no analyzer/bridged_boxes.json; run "
                                 b"analyzer/bridge_boxes.py --scene "
                                 + sc.encode())
+        elif p == "/analyzer_cameras.json":
+            # splat_analyzer job cameras (transforms.json verbatim): sampled
+            # standpoints + per-frame OpenCV c2w poses, RAW frame (the tool
+            # never transforms its input). ?job=<name> picks a job dir;
+            # default = newest analyzer/job_*/ that has a transforms.json.
+            # job is sanitized like sc, so the path cannot traverse.
+            job = (q.get("job") or [""])[0]
+            job = "".join(ch for ch in job if ch.isalnum() or ch in "_-")
+            base = paths.scene_dir(sc) / "analyzer"
+            if job:
+                cands = [base / job / "transforms.json"]
+            else:
+                cands = sorted(base.glob("job_*/transforms.json"),
+                               key=lambda f: f.stat().st_mtime, reverse=True)
+            f = next((c for c in cands if c.exists()), None)
+            if f is not None:
+                self._send(200, f.read_bytes(), "application/json")
+            else:
+                self._send(404, b"no analyzer job transforms.json; drop a "
+                                b"splat_analyzer job dir into analyzer/")
         elif p == "/scene_graph.json":
             # graph/build_graph.py + build_edges.py + describe_nodes.py output
             # (Steps 1-3 -- scene graph): nodes + typed edges + appearance,
@@ -162,13 +229,6 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), "image/png", cache=True)
             else:
                 self._send(404, b"no such graph crop")
-        elif p == "/glts.glb":
-            # GLTS baseline scene (newest glts_comparison* package in OUT)
-            cands = sorted(paths.OUT.glob("glts_comparison*/glts_scene.glb"))
-            if cands:
-                self._send(200, cands[-1].read_bytes(), "model/gltf-binary")
-            else:
-                self._send(404, b"no glts_comparison*/glts_scene.glb in OUT")
         elif p == "/composed.glb":
             # composition C6 output (RENDER frame; browser flips via
             # frame.raw_to_render, self-inverse)
@@ -192,33 +252,6 @@ class H(BaseHTTPRequestHandler):
             f = paths.OUT / sc / "gen_raw.ply"
             if not f.exists():
                 return self._send(404, b"no gen_raw.ply for this scene")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Length", str(f.stat().st_size))
-            self.send_header("Cache-Control", "max-age=300")
-            self.end_headers()
-            with f.open("rb") as fh:
-                while True:
-                    chunk = fh.read(1 << 20)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-        elif p in ("/cut_background.ply", "/cut_foreground.ply"):
-            # GaussianCut outputs (Step 11 — cut-review build): background =
-            # the scene splat with the cut object removed, foreground = the
-            # extracted object alone. Row-subsets of gen_raw.ply (RAW frame,
-            # identical property layout). ?obj=<id> picks the object folder
-            # (default obj_004); sanitized like sc so the path cannot
-            # traverse. background is ~100 MB -> streamed like /splat.ply.
-            obj = (q.get("obj") or ["obj_004"])[0]
-            obj = "".join(ch for ch in obj if ch.isalnum() or ch in "_-") \
-                or "obj_004"
-            name = ("background.ply" if p == "/cut_background.ply"
-                    else "foreground.ply")
-            f = paths.scene_dir(sc) / "cut" / obj / name
-            if not f.exists():
-                return self._send(404, b"no cut/" + obj.encode() + b"/"
-                                  + name.encode() + b"; run cut/run_cut.py")
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(f.stat().st_size))

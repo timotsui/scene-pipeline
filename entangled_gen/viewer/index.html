@@ -23,22 +23,19 @@
 <div id="hud" class="panel">
   <div><b>live placement viewer</b> — scene: <select id="scSel"></select></div>
   <div class="dim">drag orbit · wheel zoom · right-drag pan · WASD move, E/Q (or R/F)
-       up/down, Shift fast · click object = inspect</div>
+       up/down, Shift fast · click = inspect smallest box under cursor,
+       click again = cycle overlapping boxes</div>
   <div><label><input type="checkbox" id="showSplat" checked> splat</label>
        <label><input type="checkbox" id="clipCeil" checked> clip ceiling</label>
-       <label><input type="checkbox" id="showMan" checked> manifest</label>
        <label><input type="checkbox" id="showClr" checked> clearance</label>
        <label><input type="checkbox" id="hifi" checked> hi-fi splats</label>
        <label><input type="checkbox" id="showComp"> composed</label>
-       <label><input type="checkbox" id="showGlts"> GLTS</label>
-       <label><input type="checkbox" id="showColl"> collider</label>
+       <label title="collider_registered.glb — the Marble bundle's collider MESH, ICP-registered into the RAW frame (collider_register.py). Not boxes: the actual mesh surface, for judging mesh↔splat alignment"><input type="checkbox" id="showColl"> collider mesh</label>
        <label title="mesh-overlap regions from collide.py --export: bright red = over the 0.05 acceptance threshold, dim red = tolerated contact"><input type="checkbox" id="showOverlap"> collisions</label>
-       <label title="splat_analyzer bridged boxes (bridge_boxes.py, Step 6): OWLv2 camera-ring clusters in the RAW frame, cyan wireframes. Caveats: centers are front-surface-biased, depth extent fabricated as (w+h)/2, always axis-aligned"><input type="checkbox" id="showAna"> analyzer boxes</label>
-       <label title="GaussianCut output (Step 11): cut/obj_004/background.ply — the scene splat with the cut object removed. RAW frame, same rows as gen_raw.ply minus the object; loads lazily on first tick. Tip: untick 'splat' to compare original vs cut without double-drawing"><input type="checkbox" id="showCutBg"> cut background</label>
-       <label title="GaussianCut output (Step 11): cut/obj_004/foreground.ply — the extracted object's Gaussians alone (382 for the lamp)"><input type="checkbox" id="showCutFg"> lamp only (cut fg)</label>
+       <label title="splat_analyzer job cameras (newest analyzer/job_*/transforms.json; ?job=<name> to pick): the density-sampled standpoints as numbered spheres + one short ray per rendered frame along its look direction (az &times; el sweep per standpoint). RAW frame, color = standpoint"><input type="checkbox" id="showCams"> analyzer cams</label>
        <label title="scene graph (graph/build_graph.py + build_edges.py + describe_nodes.py, Steps 1-3): detection-node boxes colored by confidence tier (green confirmed / amber candidate / red weak) + typed relation edges as lines. RAW frame. Click a box for its appearance card (description, crops, edges); tier + edge-type sub-toggles appear below when on"><input type="checkbox" id="showGraph"> graph nodes</label>
-       <span id="amBoxes"></span>
        <span id="hifiNote" class="dim"></span></div>
+  <div title="one box set per detection/lift METHOD (2026-07-25 reorg) — toggle against each other to compare; click a visible box to inspect">boxes by method: <span id="boxSources" class="dim">loading…</span></div>
   <div id="graphRow" style="display:none"></div>
   <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
        y <input type="number" id="ry" value="0" step="90" style="width:52px">
@@ -57,11 +54,6 @@
        <button id="placeBtn">place (P)</button>
        <button id="measBtn">measure (M)</button>
        <button id="bmBtn">bookmark (B)</button><span id="msg"></span></div>
-  <div>photo pose: <button class="poseBtn" data-look="0,0,3">yaw000</button>
-       <button class="poseBtn" data-look="3,0,0">yaw090</button>
-       <button class="poseBtn" data-look="0,0,-3">yaw180</button>
-       <button class="poseBtn" data-look="-3,0,0">yaw270</button>
-       <span class="dim">= same pose as gpu_yawNNN.webp (eye at rig, fov 75)</span></div>
   <div class="dim">selected: arrows move (shift=×5) · PgUp/Dn height · Q/E rotate ·
       Del remove · Esc deselect</div>
   <div class="dim">grid: fine 0.25 m, bright 1 m · box colors: green ok ·
@@ -108,8 +100,6 @@ addEventListener('resize', () => {
 const $ = id => document.getElementById(id);
 const msg = t => $('msg').textContent = ' ' + t;
 
-// photo-pose: replicate the gpu_yawNNN.webp cameras exactly (eye at rig origin,
-// look 3 m out, fov 75) so the viewer can be compared 1:1 against the renders.
 function setPose(eye, look, fov) {
   camera.position.set(...eye);
   // pivot 0.4 m ahead of the eye instead of at the (possibly distant) look
@@ -122,15 +112,6 @@ function setPose(eye, look, fov) {
   camera.fov = fov; camera.updateProjectionMatrix();
   controls.update();
 }
-document.querySelectorAll('.poseBtn').forEach(b => b.onclick = () => {
-  // prefer the exact sidecar camera of the matching webp (meta.poses, from
-  // the server); fall back to the legacy origin rig for scenes without views
-  const p = meta.poses && meta.poses['gpu_' + b.textContent];
-  if (p) setPose(p.cam.split(',').map(Number), p.look.split(',').map(Number),
-                 parseFloat(p.fov) || 75);
-  else setPose([0, 0, 0], b.dataset.look.split(',').map(Number), 75);
-  msg('pose ' + b.textContent + (p ? ' (sidecar)' : ' (default rig)'));
-});
 { // optional URL override: ?cam=x,y,z&target=x,y,z&fov=NN (for headless captures)
   const q = new URLSearchParams(location.search);
   if (q.get('cam') && q.get('target'))
@@ -193,14 +174,21 @@ sel_.onchange = () => location.search = '?scene=' + sel_.value;
 // ---------------- scene points ----------------
 const meta = await (await fetch('meta.json?' + sq)).json();
 const floorY = meta.floor_y ?? -1.6;
-{ // default startup pose = the yaw000 photo camera (per-scene correct rig,
-  // e.g. marble: eye at (0,1.6,0) looking level). URL ?cam still wins; scenes
-  // without view sidecars keep the legacy origin start.
+{ // default startup pose: eye 1.6 m above the floor at the room center,
+  // looking level along +z (yaw-pose sidecars retired with the yaw track).
+  // URL ?cam still wins. The eye is computed in the RAW frame, then mapped
+  // through the display rotation (rx/ry/rz boxes, default z=180) because the
+  // camera lives OUTSIDE worldGroup — raw coords alone put it under the
+  // floor on up=-y scenes.
   const q = new URLSearchParams(location.search);
-  if (!q.get('cam') && meta.poses && meta.poses.gpu_yaw000) {
-    const p = meta.poses.gpu_yaw000;
-    setPose(p.cam.split(',').map(Number), p.look.split(',').map(Number),
-            parseFloat(p.fov) || 75);
+  if (!q.get('cam') && meta.floor_y !== undefined) {
+    const us = floorY > (meta.ceiling_y ?? 10) ? -1 : 1;   // raw up sign
+    const ey = floorY + us * 1.6;
+    const d2r = id => (parseFloat($(id).value) || 0) * Math.PI / 180;
+    const eul = new THREE.Euler(d2r('rx'), d2r('ry'), d2r('rz'));
+    const eye = new THREE.Vector3(0, ey, 0).applyEuler(eul);
+    const look = new THREE.Vector3(0, ey, 3).applyEuler(eul);
+    setPose(eye.toArray(), look.toArray(), 75);
   }
 }
 const buf = await (await fetch('scene.bin?' + sq)).arrayBuffer();
@@ -446,114 +434,81 @@ function setHighlight(grp, on, hlColor = 0xffee44) {
   if (on) { edges.material.color.set(hlColor); fill.material.color.set(hlColor); }
 }
 
-// ---------------- manifest boxes ----------------
-const manGroup = new THREE.Group(); worldGroup.add(manGroup);
-const manEntries = [];   // {o, grp}
+// ---------------- frame info (quiet fetch) ----------------
+// scene_manifest.json is no longer drawn as its own layer (it is the
+// "legacy v1" method source below), but its frame block still carries
+// raw_to_render used by the composed + collisions layers.
 let manifest = null;
-try {
-  manifest = await (await fetch('manifest.json?' + sq)).json();
-  // same per-object palette as the manifest_overlay_*.png files, so a box's
-  // color in the viewer matches its color in the photoreal overlays
-  const PAL = [0xe63c3c, 0x3c82e6, 0x3cbe5a, 0xf0a028, 0xaa5ae6,
-               0xf05ab4, 0x5ad2d2, 0xa0a03c, 0xfafafa, 0x8c5a32];
-  for (const o of manifest.objects) {
-    const c = [(o.aabb_min[0]+o.aabb_max[0])/2, (o.aabb_min[1]+o.aabb_max[1])/2,
-               (o.aabb_min[2]+o.aabb_max[2])/2];
-    const s = [o.aabb_max[0]-o.aabb_min[0], o.aabb_max[1]-o.aabb_min[1],
-               o.aabb_max[2]-o.aabb_min[2]];
-    const col = PAL[manEntries.length % PAL.length];
-    const grp = objBox(c, s, 0, col);
-    grp.userData.man = o;
-    grp.userData.baseColor = col;
-    manGroup.add(grp);
-    const lb = textSprite(o.label,
-                          '#' + col.toString(16).padStart(6, '0'), 1.4);
-    lb.position.set(o.aabb_min[0], o.aabb_max[1] + 0.07, o.aabb_min[2]);
-    manGroup.add(lb);
-    manEntries.push({ o, grp });
-  }
-} catch (e) { console.warn('no manifest', e); }
-$('showMan').onchange = e => manGroup.visible = e.target.checked;
+try { manifest = await (await fetch('manifest.json?' + sq)).json(); }
+catch (e) { console.warn('no manifest (frame info)', e); }
 
-// ---------------- amodal box variants (extraction experiment) -----------
-// amodal_boxes.py output: per-method extended boxes; only CHANGED boxes are
-// drawn — toggle a method against the raw manifest layer to compare.
+// ---------------- boxes by method (2026-07-25 reorg) ----------------
+// /box_sources.json = server-side registry: one box set per detection/lift
+// METHOD (recenter C0/C1, analyzer, future 3h2 fuse, legacy v1), each its own
+// color + toggle, so competing methods are compared directly against each
+// other. Accepts manifest-style objects (aabb_min/max) and analyzer bridged
+// objects (center/size). Click a visible box to inspect; the live-placement
+// legality check tests against whichever sources are currently visible.
+const boxSrcs = [];   // {s, group, entries:[{o, grp}], cb}
+function objCS(o) {   // center/size from either schema
+  if (o.aabb_min && o.aabb_max) return [
+    [(o.aabb_min[0] + o.aabb_max[0]) / 2, (o.aabb_min[1] + o.aabb_max[1]) / 2,
+     (o.aabb_min[2] + o.aabb_max[2]) / 2],
+    [o.aabb_max[0] - o.aabb_min[0], o.aabb_max[1] - o.aabb_min[1],
+     o.aabb_max[2] - o.aabb_min[2]]];
+  return [o.center, o.size];
+}
+function visibleBoxEntries() {
+  const out = [];
+  for (const b of boxSrcs) if (b.group.visible) out.push(...b.entries);
+  return out;
+}
 try {
-  const am = await (await fetch('amodal.json?' + sq)).json();
-  const AMCOL = { splat: 0x30d5c8, collider: 0xffa500, prior: 0xff5ad2 };
-  for (const [meth, boxes] of Object.entries(am.methods || {})) {
-    const changed = boxes.filter(b => b.changed);
-    if (!changed.length) continue;
-    const g = new THREE.Group();
-    g.visible = false;
-    worldGroup.add(g);
-    const col = AMCOL[meth] || 0xffffff;
-    for (const b of changed) {
-      const c = [(b.aabb_min[0] + b.aabb_max[0]) / 2,
-                 (b.aabb_min[1] + b.aabb_max[1]) / 2,
-                 (b.aabb_min[2] + b.aabb_max[2]) / 2];
-      const s = [b.aabb_max[0] - b.aabb_min[0], b.aabb_max[1] - b.aabb_min[1],
-                 b.aabb_max[2] - b.aabb_min[2]];
-      g.add(objBox(c, s, 0, col));
+  const reg = await (await fetch('box_sources.json?' + sq)).json();
+  $('boxSources').textContent = '';
+  for (const s of reg.sources || []) {
+    let data;
+    try { data = await (await fetch('boxes.json?' + sq + '&src=' + s.key)).json(); }
+    catch (e) { console.warn('box source ' + s.key + ' failed', e); continue; }
+    const col = parseInt(s.color.slice(1), 16);
+    const group = new THREE.Group();
+    group.visible = false;
+    worldGroup.add(group);
+    const entries = [];
+    for (const o of data.objects || []) {
+      const [c, sz] = objCS(o);
+      if (!c || !sz) continue;
+      const grp = objBox(c, sz, 0, col);
+      grp.userData.man = o;
+      grp.userData.baseColor = col;
+      group.add(grp);
+      const lb = textSprite(o.label, s.color, 1.2);
+      lb.position.set(c[0] - sz[0] / 2, c[1] + sz[1] / 2 + 0.07, c[2] - sz[2] / 2);
+      group.add(lb);
+      entries.push({ o, grp });
     }
-    const suspect = meth === 'collider' && (am.collider_iou || 0) < 0.5;
     const lab = document.createElement('label');
+    lab.style.color = s.color;
+    lab.style.marginRight = '8px';
+    lab.title = s.note || s.key;
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     lab.appendChild(cb);
-    lab.append(` ${meth} (${changed.length}${suspect ? ' ⚠reg' : ''})`);
-    lab.style.color = '#' + col.toString(16).padStart(6, '0');
-    lab.title = suspect
-      ? 'collider registration IoU ' + am.collider_iou + ' — distrust these boxes'
-      : meth + '-extended boxes (changed only)';
-    $('amBoxes').appendChild(lab);
-    cb.onchange = e => g.visible = e.target.checked;
+    lab.append(' ' + s.label + ' (' + entries.length + ')');
+    $('boxSources').appendChild(lab);
+    cb.onchange = e => {
+      group.visible = e.target.checked;
+      if (sel && sel.kind === 'man') sel = null;
+      applySelection();
+      redraw();   // placement legality depends on visible sources
+    };
+    boxSrcs.push({ s, group, entries, cb });
   }
-} catch (e) { console.warn('no amodal boxes', e); }
-
-// ---------------- GLTS baseline scene (side-by-side comparable) ----------
-// glts_scene.glb has its own origin (GLTS builds the room from scratch), so
-// it is parked NEXT TO the splat room: floor-aligned, just beyond the room's
-// +x extent — WASD between the two.
-const gltsGroup = new THREE.Group(); worldGroup.add(gltsGroup);
-{
-  const rr = (manifest && manifest.frame && manifest.frame.raw_to_render) || [1, 1, 1];
-  gltsGroup.scale.set(rr[0], rr[1], rr[2]);   // content added in RENDER coords
+  if (!boxSrcs.length) $('boxSources').textContent = 'none for this scene';
+} catch (e) {
+  console.warn('no box sources', e);
+  $('boxSources').textContent = 'unavailable';
 }
-gltsGroup.visible = false;
-let gltsLoaded = false;
-$('showGlts').onchange = async e => {
-  gltsGroup.visible = e.target.checked;
-  if (!e.target.checked || gltsLoaded) return;
-  try {
-    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
-    const gltf = await new GLTFLoader().loadAsync('glts.glb?' + sq);
-    gltf.scene.traverse(o => {
-      if (o.isMesh) {
-        o.material = new THREE.MeshBasicMaterial({
-          map: o.material.map || null,
-          color: o.material.color || new THREE.Color(0xffffff),
-          side: THREE.DoubleSide });
-      }
-    });
-    const fr = manifest.frame, rr = fr.raw_to_render || [1, 1, 1];
-    const a = fr.extent_p1.map((v, i) => v * rr[i]);
-    const b = fr.extent_p99.map((v, i) => v * rr[i]);
-    const bb = new THREE.Box3().setFromObject(gltf.scene);
-    gltf.scene.position.add(new THREE.Vector3(
-      (Math.max(a[0], b[0]) + 0.8 + (bb.max.x - bb.min.x) / 2)
-        - (bb.min.x + bb.max.x) / 2,
-      fr.floor_y * rr[1] - bb.min.y,
-      (a[2] + b[2]) / 2 - (bb.min.z + bb.max.z) / 2));
-    gltsGroup.add(gltf.scene);
-    gltsLoaded = true;
-    msg('GLTS baseline parked next to the room (+x side)');
-  } catch (err) {
-    msg('GLTS glb unavailable: ' + err.message);
-    e.target.checked = false;
-    gltsGroup.visible = false;
-  }
-};
 
 // ---------------- mesh-collision overlaps (collide.py --export) ---------
 // collisions.json boxes are the RENDER-frame AABBs of the voxels two placed
@@ -599,29 +554,49 @@ try {
 } catch (e) { console.warn('no collisions.json', e); }
 $('showOverlap').onchange = e => ovGroup.visible = e.target.checked;
 
-// ---------------- analyzer boxes (splat_analyzer bridge, Step 6/8) --------
-// bridged_boxes.json = analyzer/bridge_boxes.py output: OWLv2 camera-ring
-// clusters fused to 3D boxes, RAW frame (same as the manifest -- no flip, no
-// scale). Pure cyan 0x00ffff: distinct from the manifest palette's muted
-// teal 0x5ad2d2, the amodal-splat turquoise 0x30d5c8, and the measure blue
-// 0x66ddff. Labels (label + id) always-on -- hover would need raycast wiring.
-// Caveats (metadata in the file): surface-biased centers, fabricated depth
-// extent (w+h)/2, always axis-aligned.
-const anaGroup = new THREE.Group(); worldGroup.add(anaGroup);
-anaGroup.visible = false;
+// ---------------- analyzer cameras (splat_analyzer job standpoints) -------
+// analyzer_cameras.json = the job's transforms.json verbatim: density-
+// band-pass-sampled standpoints + per-frame OpenCV c2w poses (az x el sweep
+// per standpoint), RAW frame like the analyzer boxes -- no flip, no scale.
+// One numbered sphere per standpoint + one short ray per frame along the
+// camera forward (+Z column of c2w). Color = standpoint. Additive: no other
+// layer or handler is touched.
+const camGroup = new THREE.Group(); worldGroup.add(camGroup);
+camGroup.visible = false;
 try {
-  const aj = await (await fetch('analyzer_boxes.json?' + sq)).json();
-  const ACOL = 0x00ffff;
-  for (const o of aj.objects || []) {
-    anaGroup.add(objBox(o.center, o.size, 0, ACOL));
-    const lb = wideSprite(o.label + ' ' + o.id, '#00e5ff', 0.7);
-    lb.position.set(o.center[0], o.center[1] + o.size[1] / 2 + 0.05,
-                    o.center[2]);
-    anaGroup.add(lb);
+  const cj = await (await fetch('analyzer_cameras.json?' + sq)).json();
+  const CCOLS = [0x2f6db3, 0x0e8a83, 0xc0741d, 0x7a5ea8,
+                 0xb3382f, 0x3d7a2f, 0x8a6d0e, 0xb3568a];
+  (cj.camera_positions || []).forEach((p, i) => {
+    const col = CCOLS[i % CCOLS.length];
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12),
+                             new THREE.MeshBasicMaterial({ color: col }));
+    s.position.set(p[0], p[1], p[2]);
+    camGroup.add(s);
+    const lb = wideSprite('cam ' + i,
+                          '#' + col.toString(16).padStart(6, '0'), 0.7);
+    lb.position.set(p[0], p[1] + 0.16, p[2]);  // same +y label offset as the other layers
+    camGroup.add(lb);
+  });
+  const RAY = 0.35, byPos = new Map();
+  for (const fr of cj.frames || []) {
+    const m = fr.transform_matrix, i = fr.position_idx;
+    if (!byPos.has(i)) byPos.set(i, []);
+    const o = [m[0][3], m[1][3], m[2][3]];      // c2w translation = camera pos
+    byPos.get(i).push(o[0], o[1], o[2],         // ray: pos -> pos + fwd*RAY
+                      o[0] + m[0][2] * RAY, o[1] + m[1][2] * RAY,
+                      o[2] + m[2][2] * RAY);
   }
-  console.log('analyzer layer: ' + (aj.objects || []).length + ' boxes');
-} catch (e) { console.warn('no analyzer boxes', e); }
-$('showAna').onchange = e => anaGroup.visible = e.target.checked;
+  for (const [i, verts] of byPos) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    camGroup.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+      color: CCOLS[i % CCOLS.length], transparent: true, opacity: 0.55 })));
+  }
+  console.log('analyzer cams: ' + (cj.camera_positions || []).length +
+              ' standpoints, ' + (cj.frames || []).length + ' frame rays');
+} catch (e) { console.warn('no analyzer cameras', e); }
+$('showCams').onchange = e => camGroup.visible = e.target.checked;
 
 // ---------------- scene graph layer (graph/ Steps 1-3, review Step 4) -----
 // scene_graph.json = graph/build_graph.py + build_edges.py + describe_nodes.py
@@ -843,51 +818,6 @@ try {
               (gj.edges || []).length + ' edges ' + JSON.stringify(gEdgeCounts));
 } catch (e) { console.warn('no scene_graph.json', e); }
 
-// ---------------- cut splat layers (GaussianCut, Step 11) ----------------
-// /cut_background.ply = the scene with the cut object removed;
-// /cut_foreground.ply = the extracted object alone. Both are row-subsets of
-// gen_raw.ply (RAW frame, identical property layout), so they drop into
-// worldGroup exactly like the hi-fi layer — no flip, no scale. One lazy
-// DropInViewer per layer, loaded on first tick (same options as enableHifi).
-// To compare original vs cut background, untick "splat" (master) so the two
-// full-room splats are not alpha-blended on top of each other.
-const cutLayers = {};   // route -> { viewer, loading }
-async function toggleCutLayer(route, box) {
-  const st = cutLayers[route] ?? (cutLayers[route] = { viewer: null, loading: false });
-  if (st.viewer) { st.viewer.visible = box.checked; return; }
-  if (!box.checked || st.loading) return;
-  st.loading = true;
-  msg('loading ' + route + ' …');
-  try {
-    const GaussianSplats3D = await import('gaussian-splats-3d');
-    const v = new GaussianSplats3D.DropInViewer({
-      sharedMemoryForWorkers: false,   // avoids COOP/COEP header requirements
-      gpuAcceleratedSort: false,       // safest default; CPU sort in a worker
-      freeIntermediateSplatData: true,
-    });
-    await v.addSplatScene(route + '?' + sq, {
-      showLoadingUI: false,
-      progressiveLoad: true,
-      splatAlphaRemovalThreshold: 5,
-      // query string defeats the lib's endsWith('.ply') format sniffing —
-      // must be explicit or addSplatScene throws immediately
-      format: GaussianSplats3D.SceneFormat.Ply,
-    });
-    worldGroup.add(v);
-    st.viewer = v;
-    st.viewer.visible = box.checked;
-    msg(route + ' on');
-  } catch (err) {
-    console.error(route + ' load failed', err);
-    msg(route + ' FAILED: ' + (err && err.message ? err.message : err));
-    box.checked = false;
-  } finally {
-    st.loading = false;
-  }
-}
-$('showCutBg').onchange = e => toggleCutLayer('cut_background.ply', e.target);
-$('showCutFg').onchange = e => toggleCutLayer('cut_foreground.ply', e.target);
-
 // ---------------- composed meshes (composition C6 glb) ----------------
 // composed_scene2.glb is exported in the RENDER (upright) frame; worldGroup
 // content is RAW. raw_to_render is an elementwise sign flip and self-inverse,
@@ -927,7 +857,7 @@ $('showComp').onchange = async e => {
 // ---------------- bundle collider (registered) ----------------
 // collider_registered.glb is ALREADY in the RAW frame (collider_register.py
 // bakes the ICP transform in), and worldGroup is RAW -> no scale flip here,
-// unlike compGroup/gltsGroup above. Drawn as flat-shaded orange so it reads
+// unlike compGroup above. Drawn as flat-shaded orange so it reads
 // against the splat's photoreal colors when both layers are on.
 const collGroup = new THREE.Group(); worldGroup.add(collGroup);
 collGroup.visible = false;
@@ -938,16 +868,22 @@ $('showColl').onchange = async e => {
   try {
     const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
     const gltf = await new GLTFLoader().loadAsync('collider.glb?' + sq);
-    gltf.scene.traverse(o => {
-      if (o.isMesh) {
-        o.material = new THREE.MeshLambertMaterial({
-          color: 0xff8844, side: THREE.DoubleSide,
-          transparent: true, opacity: 0.85 });
-      }
-    });
+    // unlit on purpose: a lit material renders BLACK if the light setup is
+    // off (bit us 07-25), and every other layer here is unlit anyway. Faint
+    // fill for surface reading + wireframe overlay so the splat stays
+    // visible through the mesh — alignment is judged at the edges.
+    const collFill = new THREE.MeshBasicMaterial({
+      color: 0xff8844, side: THREE.DoubleSide,
+      transparent: true, opacity: 0.22, depthWrite: false });
+    const collWire = new THREE.MeshBasicMaterial({
+      color: 0xffaa66, wireframe: true, transparent: true, opacity: 0.6 });
+    const collMeshes = [];
+    gltf.scene.traverse(o => { if (o.isMesh) collMeshes.push(o); });
+    for (const m of collMeshes) {
+      m.material = collFill;
+      m.add(new THREE.Mesh(m.geometry, collWire));  // same transform → exact overlay
+    }
     collGroup.add(gltf.scene);
-    // the scene has no lights (splat points are unlit) -> give this layer its own
-    collGroup.add(new THREE.HemisphereLight(0xffffff, 0x334455, 2.2));
     collLoaded = true;
     msg('collider loaded (registered, raw frame)');
   } catch (err) {
@@ -961,13 +897,18 @@ $('showColl').onchange = async e => {
 const liveGroup = new THREE.Group(); worldGroup.add(liveGroup);
 let placements = [], lastTxt = '', suppressUntil = 0;
 let sel = null;   // {kind:'man'|'pl', idx}
+const pickCycle = { key: '', i: 0 };   // same-spot click cycling
 const COLORS = { ok: 0x33ee66, env: 0xffaa22, hit: 0xff3333 };
 const plEntries = [];  // {p, grp, status}
 
 function checkPlacement(p) {
   const [w, h, d] = p.size;
-  for (const e of manEntries) {
-    const lo = e.o.aabb_min, hi = e.o.aabb_max;
+  // obstacle set = the box sources currently toggled on (method-organized;
+  // with none visible only the envelope check applies)
+  for (const e of visibleBoxEntries()) {
+    const [c, sz] = objCS(e.o);
+    const lo = [c[0]-sz[0]/2, c[1]-sz[1]/2, c[2]-sz[2]/2];
+    const hi = [c[0]+sz[0]/2, c[1]+sz[1]/2, c[2]+sz[2]/2];
     if (p.center[0]+w/2 > lo[0] && p.center[0]-w/2 < hi[0] &&
         p.center[1]+h/2 > lo[1] && p.center[1]-h/2 < hi[1] &&
         p.center[2]+d/2 > lo[2] && p.center[2]-d/2 < hi[2])
@@ -1013,18 +954,19 @@ function redraw() {
 }
 
 function applySelection() {
-  manEntries.forEach(e => setHighlight(e.grp, false) ||
-                          e.grp.userData.edges.material.color.set(
-                              e.grp.userData.baseColor ?? 0x808080));
+  boxSrcs.forEach(b => b.entries.forEach(e => {
+    setHighlight(e.grp, false);
+    e.grp.userData.edges.material.color.set(e.grp.userData.baseColor ?? 0x808080);
+  }));
   plEntries.forEach((e) => {
     setHighlight(e.grp, false);
     e.grp.userData.edges.material.color.set(COLORS[e.chk.status]);
   });
   $('info').style.display = 'none';
   if (!sel) return;
-  if (sel.kind === 'man' && manEntries[sel.idx]) {
-    setHighlight(manEntries[sel.idx].grp, true, 0x66ccff);
-    showManInfo(manEntries[sel.idx].o);
+  if (sel.kind === 'man' && sel.entry) {
+    setHighlight(sel.entry.grp, true, 0x66ccff);
+    showManInfo(sel.entry.o, sel.src);
   } else if (sel.kind === 'pl' && plEntries[sel.idx]) {
     setHighlight(plEntries[sel.idx].grp, true, 0xffee44);
     showPlInfo(plEntries[sel.idx]);
@@ -1032,15 +974,26 @@ function applySelection() {
 }
 
 function row(k, v) { return '<tr><td>' + k + '</td><td>' + v + '</td></tr>'; }
-function showManInfo(o) {
-  const e = envAt((o.aabb_min[0]+o.aabb_max[0])/2, (o.aabb_min[2]+o.aabb_max[2])/2);
-  $('info').innerHTML = '<h3>' + o.id + ' — ' + o.label + '</h3><table>'
-    + row('size', o.size.map(fmt).join(' × ') + ' m (W×H×D)')
-    + row('center', o.center.map(fmt).join(', '))
-    + row('bottom y', fmt(o.aabb_min[1]) + ' m (floor ' + fmt(floorY) + ')')
-    + row('score', o.score)
-    + row('seen in', (o.views || []).join(', ') || '—')
-    + row('detections', o.n_detections + ' (' + o.n_points + ' px lifted)')
+function showManInfo(o, src) {
+  // works for every method schema: manifest-style (aabb + score/views/
+  // n_detections/flags) and analyzer bridged (center/size + frames evidence)
+  const [c, sz] = objCS(o);
+  const e = envAt(c[0], c[2]);
+  $('info').innerHTML = '<h3>' + (o.id ?? '') + ' — ' + o.label
+    + (src ? ' <span style="color:' + src.s.color + '">[' + src.s.label + ']</span>' : '')
+    + '</h3><table>'
+    + row('size', sz.map(fmt).join(' × ') + ' m (W×H×D)')
+    + row('center', c.map(fmt).join(', '))
+    + row('bottom y', fmt(c[1] - sz[1]/2) + ' m (floor ' + fmt(floorY) + ')')
+    + (o.score !== undefined ? row('score', o.score) : '')
+    + (o.views ? row('seen in', o.views.join(', ') || '—') : '')
+    + (o.n_detections !== undefined
+        ? row('detections', o.n_detections
+              + (o.n_whole !== undefined ? ' (' + o.n_whole + ' whole)' : '')
+              + (o.n_points !== undefined ? ' (' + o.n_points + ' px lifted)' : ''))
+        : '')
+    + (o.frames ? row('evidence', o.frames.length + ' frames') : '')
+    + ((o.flags || []).length ? row('flags', o.flags.join(', ')) : '')
     + (e ? row('env here', (e.floor ? 'floor ✓' : 'NO floor') + ', clear ' +
                fmt(e.clear) + ' m' + (e.dev !== null ? ', floor dev ' +
                (e.dev >= 0 ? '+' : '') + fmt(e.dev) + ' m' : '')) : '')
@@ -1184,21 +1137,43 @@ renderer.domElement.addEventListener('pointerdown', ev => {
     }
     return;
   }
-  // pick placements first, then manifest
+  // pick placements first, then the visible method box sources
   const plPicks = plEntries.map(e => e.grp.userData.pick);
   let hits = ray.intersectObjects(plPicks, false);
   if (hits.length) {
     sel = { kind: 'pl', idx: plPicks.indexOf(hits[0].object) };
     applySelection(); return;
   }
-  if (manGroup.visible) {
-    const manPicks = manEntries.map(e => e.grp.userData.pick);
-    hits = ray.intersectObjects(manPicks, false);
-    if (hits.length) {
-      sel = { kind: 'man', idx: manPicks.indexOf(hits[0].object) };
-      applySelection(); return;
+  // gather EVERY box under the cursor across all visible sources (nearest-
+  // surface-wins made boxes behind/inside bigger boxes unclickable):
+  // default pick = SMALLEST box hit; clicking the same spot again cycles
+  // through the overlapping boxes.
+  const cand = new Map();          // entry -> {entry, src}
+  for (const b of boxSrcs) {
+    if (!b.group.visible) continue;
+    const picks = b.entries.map(e => e.grp.userData.pick);
+    for (const h of ray.intersectObjects(picks, false)) {
+      const entry = b.entries[picks.indexOf(h.object)];
+      if (!cand.has(entry)) cand.set(entry, { entry, src: b });
     }
   }
+  if (cand.size) {
+    const vol = c => {
+      const [, s] = objCS(c.entry.o);
+      return (s ? s[0] * s[1] * s[2] : 1e9);
+    };
+    const list = [...cand.values()].sort((a, b2) => vol(a) - vol(b2));
+    const key = Math.round(ev.clientX / 8) + ',' + Math.round(ev.clientY / 8);
+    if (pickCycle.key === key) pickCycle.i = (pickCycle.i + 1) % list.length;
+    else { pickCycle.key = key; pickCycle.i = 0; }
+    const c = list[pickCycle.i];
+    sel = { kind: 'man', entry: c.entry, src: c.src };
+    if (list.length > 1)
+      msg('box ' + (pickCycle.i + 1) + '/' + list.length +
+          ' under cursor — click again for next');
+    applySelection(); return;
+  }
+  pickCycle.key = '';
   sel = null; applySelection();
 });
 
