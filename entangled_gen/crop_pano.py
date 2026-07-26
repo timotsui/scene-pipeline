@@ -66,6 +66,10 @@ def main():
     ap.add_argument("--pano", default="", help="equirect png (default: bundle *_pano.png)")
     ap.add_argument("--res", type=int, default=RES)
     ap.add_argument("--fov", type=float, default=FOV)
+    ap.add_argument("--out-dir", default="",
+                    help="override output dir (default pano_crops/ — pass "
+                         "this for self-rendered panos so the Marble crops "
+                         "are not clobbered)")
     a = ap.parse_args()
 
     if a.pano:
@@ -80,7 +84,7 @@ def main():
     print(f"pano {W}x{H}  {panof.name}")
 
     r3 = paths.load_r3()
-    outd = paths.pano_crops_dir(a.scene)
+    outd = Path(a.out_dir) if a.out_dir else paths.pano_crops_dir(a.scene)
     outd.mkdir(parents=True, exist_ok=True)
 
     n_out = 0
