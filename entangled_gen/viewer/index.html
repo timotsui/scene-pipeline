@@ -32,10 +32,20 @@
        <label><input type="checkbox" id="showComp"> composed</label>
        <label title="collider_registered.glb — the Marble bundle's collider MESH, ICP-registered into the RAW frame (collider_register.py). Not boxes: the actual mesh surface, for judging mesh↔splat alignment"><input type="checkbox" id="showColl"> collider mesh</label>
        <label title="mesh-overlap regions from collide.py --export: bright red = over the 0.05 acceptance threshold, dim red = tolerated contact"><input type="checkbox" id="showOverlap"> collisions</label>
-       <label title="splat_analyzer job cameras (newest analyzer/job_*/transforms.json; ?job=<name> to pick): the density-sampled standpoints as numbered spheres + one short ray per rendered frame along its look direction (az &times; el sweep per standpoint). RAW frame, color = standpoint"><input type="checkbox" id="showCams"> analyzer cams</label>
-       <label title="scene graph (graph/build_graph.py + build_edges.py + describe_nodes.py, Steps 1-3): detection-node boxes colored by confidence tier (green confirmed / amber candidate / red weak) + typed relation edges as lines. RAW frame. Click a box for its appearance card (description, crops, edges); tier + edge-type sub-toggles appear below when on"><input type="checkbox" id="showGraph"> graph nodes</label>
+       <label title="STAGE 3 — the pano funnel's END STATE and pass-1 RECORD of the scene graph (record-then-judge, PLAN_SCENE_GRAPH.md §0a): every f30 object = one node (NOTHING pre-merged — duplicates included, by design), with full label multisets + evidence crops + geometric edges; probable-duplicate pairs = SAME_CANDIDATE edges (confident IoU≥.6 / gray) and MERGING IS A JUDGE VERDICT (pass 2). Click a box = its record card. Green = single label · amber = naming open · pink = in a same-candidate pair. Sub-toggles appear below when on. THE R1 review artifact"><input type="checkbox" id="showGraph"> graph record (stage 3)</label>
        <span id="hifiNote" class="dim"></span></div>
-  <div title="one box set per detection/lift METHOD (2026-07-25 reorg) — toggle against each other to compare; click a visible box to inspect">boxes by method: <span id="boxSources" class="dim">loading…</span></div>
+  <details class="dim" title="the upstream detection stages that feed the graph record: stage 1 (recentered full set, 108) → stage 2 (f30 score filter, 102) → stage 3 = the graph record toggle in the main row (same 102 objects as record nodes + edges; no dedup stage — merging is a judge verdict). Toggle stages against each other to see what each one changed; click a visible box to inspect">
+    <summary>pano track · detect stages</summary>
+    <div style="margin:2px 0 0 12px"><span id="boxSources" class="dim">loading…</span></div>
+  </details>
+  <details class="dim" title="superseded / reference-only layers — decisions on record (see pipeline_map.html); files stay on disk, nothing deleted">
+    <summary>archive / reference (superseded methods)</summary>
+    <div style="margin:4px 0 0 12px">
+       <label title="splat_analyzer job cameras (newest analyzer/job_*/transforms.json; ?job=<name> to pick): the density-sampled standpoints as numbered spheres + one short ray per rendered frame along its look direction (az &times; el sweep per standpoint). RAW frame, color = standpoint. REFERENCE — analyzer demoted to side tool 07-26"><input type="checkbox" id="showCams"> analyzer cams</label>
+       <span class="dim" title="the analyzer-seeded graph v1 is archived on disk as scene_graph_v1.json + graph/crops_v1 (2026-07-26); the live graph-record layer above replaced it">graph v1 → archived on disk</span>
+    </div>
+    <div style="margin:2px 0 0 12px">boxes: <span id="boxSourcesArch" class="dim">loading…</span></div>
+  </details>
   <div id="graphRow" style="display:none"></div>
   <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
        y <input type="number" id="ry" value="0" step="90" style="width:52px">
@@ -466,6 +476,7 @@ function visibleBoxEntries() {
 try {
   const reg = await (await fetch('box_sources.json?' + sq)).json();
   $('boxSources').textContent = '';
+  $('boxSourcesArch').textContent = '';
   for (const s of reg.sources || []) {
     let data;
     try { data = await (await fetch('boxes.json?' + sq + '&src=' + s.key)).json(); }
@@ -495,7 +506,9 @@ try {
     cb.type = 'checkbox';
     lab.appendChild(cb);
     lab.append(' ' + s.label + ' (' + entries.length + ')');
-    $('boxSources').appendChild(lab);
+    // 2026-07-26: archive-group sources render in the collapsed
+    // archive/reference section, current ones in the main row
+    $(s.group === 'archive' ? 'boxSourcesArch' : 'boxSources').appendChild(lab);
     cb.onchange = e => {
       group.visible = e.target.checked;
       if (sel && sel.kind === 'man') sel = null;
@@ -504,10 +517,14 @@ try {
     };
     boxSrcs.push({ s, group, entries, cb });
   }
-  if (!boxSrcs.length) $('boxSources').textContent = 'none for this scene';
+  if (!$('boxSources').childElementCount)
+    $('boxSources').textContent = 'none for this scene';
+  if (!$('boxSourcesArch').childElementCount)
+    $('boxSourcesArch').textContent = 'none';
 } catch (e) {
   console.warn('no box sources', e);
   $('boxSources').textContent = 'unavailable';
+  $('boxSourcesArch').textContent = 'unavailable';
 }
 
 // ---------------- mesh-collision overlaps (collide.py --export) ---------
@@ -598,28 +615,40 @@ try {
 } catch (e) { console.warn('no analyzer cameras', e); }
 $('showCams').onchange = e => camGroup.visible = e.target.checked;
 
-// ---------------- scene graph layer (graph/ Steps 1-3, review Step 4) -----
-// scene_graph.json = graph/build_graph.py + build_edges.py + describe_nodes.py
-// output: detection nodes + envelope architecture nodes + typed edges, RAW
-// frame (same as the analyzer layer -- no flip, no scale). Node boxes colored
-// by confidence tier with per-tier toggles; edges drawn as center-to-center
-// lines colored by type with per-type toggles (edges to envelope PLANE nodes
-// project the detection center onto the plane; dim line = z_fabricated
-// caveat: depth extents are fabricated as (w+h)/2, overlap numbers inflated).
-// Click a node box -> floating card (bottom right) with appearance + crops
-// (served via /graph_crops/) + its edge list with numeric evidence. Box
-// markers: "⚠ label dispute" = VLM description disagrees with the detector
-// label; "? undescribed" = appearance pass failed; "~ floating" = no ON and
-// no IN edge (wall art or detection junk). Everything here is additive: no
-// other layer or handler is touched.
+// ---------------- scene graph layer — pass-1 RECORD (2026-07-26 rebuild) --
+// scene_graph.json = graph/build_graph.py + build_edges.py output on the
+// PANO TRACK: record nodes (full label multisets, evidence member crops,
+// open questions) + geometric edges + SAME_CANDIDATE open-question edges,
+// RAW frame (no flip, no scale). Node boxes colored by open-question
+// status: green = single label, amber = naming open (label_provisional),
+// pink = participates in a SAME_CANDIDATE pair; per-status toggles.
+// Edges drawn as center-to-center lines colored by type with per-type
+// toggles (edges to envelope PLANE nodes project the detection center onto
+// the plane). Click a node box -> floating RECORD card (bottom right):
+// label multiset with scores, dedup lineage, evidence crops (served via
+// /graph_crops/), edge list with numeric evidence. NO judgments here —
+// the judge pass adds verdicts later. The analyzer-seeded v1 layer is
+// archived (scene_graph_v1.json). Everything here is additive: no other
+// layer or handler is touched.
 const graphGroup = new THREE.Group(); worldGroup.add(graphGroup);
 graphGroup.visible = false;
-const G_TIER_COL = { confirmed: 0x33ee66, candidate: 0xffb020, weak: 0xff3333 };
-const G_EDGE_COL = { ON: 0x33ee66, IN: 0x3c82e6, IN_WALL: 0x8844dd,
-                     ATTACHED: 0xaa66ff, INTERPENETRATES: 0xff3333 };
+const G_CAT_COL = { clean: 0x33ee66, naming: 0xffb020, same_cand: 0xff5ad1 };
+const G_CAT_LBL = { clean: 'single label', naming: 'naming open',
+                    same_cand: 'same-candidate' };
+// edge palette deliberately DISJOINT from the node-box palette above
+// (user 07-26: green edge lines were unreadable against green boxes)
+const G_EDGE_COL = { ON: 0x00e5ff, IN: 0x3c82e6, IN_WALL: 0x8844dd,
+                     ATTACHED: 0xaa66ff, INTERPENETRATES: 0xff3333,
+                     SAME_CANDIDATE: 0xffffff };
 const gHex = c => '#' + c.toString(16).padStart(6, '0');
-const gNodeEntries = [];        // {n, grp}
+const gNodeEntries = [];        // {n, grp, cat}
 let gSel = null;
+const gPickCycle = { key: '', i: 0 };   // same-spot reclick cycling
+// click-highlight state: neighbors tinted, selected node's edges drawn
+// bright in gConnGroup, all batched edge lines dimmed meanwhile
+const gNbrSel = [];             // neighbor entries currently tinted
+let gConnGroup = null;          // bright connection lines (set in try{})
+let gEdgeDim = null;            // fn(on) dims/restores batched edge lines
 const gInfo = document.createElement('div');
 gInfo.className = 'panel';
 gInfo.style.cssText = 'right:8px;bottom:8px;width:380px;max-height:62vh;' +
@@ -629,8 +658,17 @@ function gClear() {
   if (gSel) {
     setHighlight(gSel.grp, false);
     gSel.grp.userData.edges.material.color.set(gSel.grp.userData.baseColor);
+    gSel.grp.userData.fill.material.color.set(gSel.grp.userData.baseColor);
     gSel = null;
   }
+  for (const en of gNbrSel) {
+    setHighlight(en.grp, false);
+    en.grp.userData.edges.material.color.set(en.grp.userData.baseColor);
+    en.grp.userData.fill.material.color.set(en.grp.userData.baseColor);
+  }
+  gNbrSel.length = 0;
+  if (gConnGroup) gConnGroup.clear();
+  if (gEdgeDim) gEdgeDim(false);
   gInfo.style.display = 'none';
 }
 $('showGraph').onchange = e => {
@@ -648,17 +686,23 @@ try {
     (gEdgesByNode[e.b] = gEdgesByNode[e.b] || []).push(e);
   }
   const gFloat = new Set((((gj.edge_summary || {}).floating) || []).map(f => f.id));
+  // nodes appearing in any SAME_CANDIDATE edge (open same-vs-part question)
+  const gSameCand = new Set();
+  for (const e of gj.edges || [])
+    if (e.type === 'SAME_CANDIDATE') { gSameCand.add(e.a); gSameCand.add(e.b); }
+  const gCat = n => gSameCand.has(n.id) ? 'same_cand'
+      : (n.label_provisional ? 'naming' : 'clean');
   // ---- node boxes (detection nodes only; envelope arch nodes are planes) --
   for (const n of gj.nodes || []) {
     if (n.source !== 'detection') continue;
-    const col = G_TIER_COL[n.confidence_tier] ?? 0xcccccc;
+    const cat = gCat(n);
+    const col = G_CAT_COL[cat];
     const grp = objBox(n.geometry.center, n.geometry.size, 0, col);
     grp.userData.gnode = n;
     grp.userData.baseColor = col;
     const marks = [];
-    if (n.appearance && n.appearance.label_agreement === false)
-      marks.push(['⚠ label dispute', '#ffaa33']);
-    if (!n.appearance) marks.push(['? undescribed', '#ff77ff']);
+    if (cat === 'naming') marks.push(['? naming', '#ffb020']);
+    if (cat === 'same_cand') marks.push(['? same/part', '#ff5ad1']);
     if (gFloat.has(n.id)) marks.push(['~ floating', '#88aacc']);
     marks.forEach(([t, c], i) => {   // same +y label offset as the other layers
       const sp = wideSprite(t, c, 0.6);
@@ -666,7 +710,7 @@ try {
       grp.add(sp);
     });
     graphGroup.add(grp);
-    gNodeEntries.push({ n, grp });
+    gNodeEntries.push({ n, grp, cat });
   }
   // ---- edge lines: one group per type, solid + dim (z_fabricated) --------
   const gEdgeGroups = {}, gEdgeCounts = {};
@@ -700,39 +744,59 @@ try {
             new THREE.BufferAttribute(new Float32Array(arr), 3));
         const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
             color: G_EDGE_COL[t] ?? 0xffffff, transparent: true,
-            opacity: k === 'dim' ? 0.22 : 0.85, depthTest: false }));
+            // faint by default — the full graph is visible but subtle;
+            // clicking a node raises ITS edges to full opacity (gShow)
+            opacity: k === 'dim' ? 0.10 : 0.30, depthTest: false }));
         ls.renderOrder = 198;
         tg.add(ls);
       }
-      tg.visible = t === 'ON';          // default: only ON edges drawn
+      tg.visible = true;    // EXPLICIT: every edge type drawn (faint)
       graphGroup.add(tg);
       gEdgeGroups[t] = tg;
     }
   }
-  // ---- HUD sub-row: tier toggles + edge-type toggles + legend ------------
-  const gTiers = ['confirmed', 'candidate', 'weak'];
-  const tierN = {};
-  gNodeEntries.forEach(en =>
-      tierN[en.n.confidence_tier] = (tierN[en.n.confidence_tier] || 0) + 1);
-  let gh = 'graph tiers: ';
-  for (const t of gTiers)
-    gh += '<label style="color:' + gHex(G_TIER_COL[t]) + '">' +
-          '<input type="checkbox" checked id="gTier_' + t + '"> ' + t +
-          ' (' + (tierN[t] || 0) + ')</label> ';
+  // ---- click-highlight plumbing ----
+  const gEntryById = {};
+  gNodeEntries.forEach(en => gEntryById[en.n.id] = en);
+  gConnGroup = new THREE.Group();
+  graphGroup.add(gConnGroup);
+  {
+    const mats = [];
+    for (const tg of Object.values(gEdgeGroups))
+      tg.traverse(o => { if (o.isLineSegments) mats.push(o.material); });
+    mats.forEach(m => m.userData.baseOpacity = m.opacity);
+    // selection does NOT hide the rest of the graph — other edges drop to
+    // a still-visible whisper while the selected node's go full opacity
+    gEdgeDim = on => mats.forEach(m =>
+        m.opacity = on ? 0.12 : m.userData.baseOpacity);
+  }
+  // ---- HUD sub-row: record-status toggles + edge-type toggles + legend ----
+  const gCats = ['clean', 'naming', 'same_cand'];
+  const catN = {};
+  gNodeEntries.forEach(en => catN[en.cat] = (catN[en.cat] || 0) + 1);
+  let gh = 'record nodes: ';
+  for (const t of gCats)
+    gh += '<label style="color:' + gHex(G_CAT_COL[t]) + '">' +
+          '<input type="checkbox" checked id="gCat_' + t + '"> ' +
+          G_CAT_LBL[t] + ' (' + (catN[t] || 0) + ')</label> ';
   gh += ' · edges: ';
-  for (const t of ['ON', 'IN', 'IN_WALL', 'ATTACHED', 'INTERPENETRATES'])
+  for (const t of ['ON', 'IN', 'IN_WALL', 'ATTACHED', 'INTERPENETRATES',
+                   'SAME_CANDIDATE'])
     gh += '<label style="color:' + gHex(G_EDGE_COL[t]) + '">' +
-          '<input type="checkbox"' + (t === 'ON' ? ' checked' : '') +
+          '<input type="checkbox" checked' +
           ' id="gEdge_' + t + '"> ' + t + ' (' + (gEdgeCounts[t] || 0) +
           ')</label> ';
-  gh += '<div class="dim">dim line = z_fabricated evidence (fabricated depth ' +
-        'extents inflate overlaps) · markers: ⚠ label dispute · ? undescribed ' +
-        '· ~ floating (no ON/IN edge) · click a box = node card ' +
-        '(appearance + crops + edges) · Esc closes</div>';
+  gh += '<div class="dim">RECORD layer — no judgments yet: amber box = open ' +
+        'naming question, pink box = open same-vs-part question · ' +
+        '~ floating = no ON/IN edge (wall art etc., honest) · ALL edge ' +
+        'types drawn faint by default (explicit graph; untick to hide a ' +
+        'type) · click a box = its record card + ITS edges at full ' +
+        'strength, neighbors tinted blue, the rest stay whisper-faint · ' +
+        'edge colors ≠ box colors · Esc closes</div>';
   $('graphRow').innerHTML = gh;
-  const applyTiers = () => gNodeEntries.forEach(en =>
-      en.grp.visible = $('gTier_' + en.n.confidence_tier).checked);
-  gTiers.forEach(t => $('gTier_' + t).onchange = applyTiers);
+  const applyCats = () => gNodeEntries.forEach(en =>
+      en.grp.visible = $('gCat_' + en.cat).checked);
+  gCats.forEach(t => $('gCat_' + t).onchange = applyCats);
   for (const t of Object.keys(gEdgeGroups))
     $('gEdge_' + t).onchange = e => gEdgeGroups[t].visible = e.target.checked;
   // ---- click card --------------------------------------------------------
@@ -742,38 +806,73 @@ try {
   const gEv = e => Object.entries(e.evidence || {})
       .map(([k, v]) => k + ' ' + gNum(v)).join(', ');
   function gShow(en) {
-    const n = en.n, ap = n.appearance, pv = n.provenance || {};
-    let h = '<h3>' + n.id + ' — ' + gEsc(n.label) +
-        ' <span style="color:' + gHex(G_TIER_COL[n.confidence_tier] ?? 0xcccccc)
-        + '">[' + n.confidence_tier + ']</span></h3>' +
-        '<div class="dim">' + n.type + ' · cat ' + gEsc(n.canonical_category) +
-        ' · votes ' + pv.votes + ' · peak ' + gNum(pv.peak_score) +
-        (pv.matched_manifest_id ? ' · manifest ' + pv.matched_manifest_id : '')
-        + '</div>';
-    if ((n.geometry.caveats || []).length)
-      h += '<div class="dim">caveats: ' + n.geometry.caveats.join(', ') + '</div>';
-    if (ap) {
-      if (ap.label_agreement === false)
-        h += '<div style="color:#ffaa33">⚠ label dispute — VLM description ' +
-             'disagrees with the detector label</div>';
-      h += '<div style="color:#cfe3cf;font-style:italic">“' +
-           gEsc(ap.description) + '”</div><div class="dim">colors ' +
-           gEsc((ap.colors || []).join(', ')) + ' · material ' +
-           gEsc(ap.material) + ' · style ' + gEsc(ap.style) + '</div>';
-    } else {
-      h += '<div style="color:#ff77ff">? undescribed — appearance pass ' +
-           'returned nothing for this node</div>';
+    const n = en.n, pv = n.provenance || {};
+    const cat = en.cat;
+    // ---- highlight this node's connections: tint neighbor boxes, draw its
+    // edges bright in their type color, dim every other edge line ----
+    gConnGroup.clear();
+    for (const e of (gEdgesByNode[n.id] || [])) {
+      const oid = e.a === n.id ? e.b : e.a;
+      const other = gNodes[oid];
+      if (other) {
+        const ca = n.geometry.center, cb = gAnchor(other, ca);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(
+            new Float32Array([...ca, ...cb]), 3));
+        const ln = new THREE.Line(geo, new THREE.LineBasicMaterial({
+            color: G_EDGE_COL[e.type] ?? 0xffffff, transparent: true,
+            opacity: 1.0, depthTest: false }));
+        ln.renderOrder = 201;
+        gConnGroup.add(ln);
+      }
+      const nen = gEntryById[oid];
+      if (nen && nen !== en) {
+        setHighlight(nen.grp, true, 0x8fd0ff);   // neighbor tint
+        gNbrSel.push(nen);
+      }
     }
-    const crops = ((n.views || {}).crops || []);
-    if (crops.length)
-      h += '<div>' + crops.map(c => {
-        const nm = String(c.path).split(/[\\\/]/).pop();
-        return '<img src="graph_crops/' + nm + '?' + sq +
-               '" loading="lazy" style="height:84px;margin:2px;' +
-               'border-radius:3px;cursor:pointer" ' +
-               'onclick="window.open(this.src)" title="frame ' + c.frame_idx +
-               ', det ' + gNum(c.det_score) + '">';
-      }).join('') + '</div>';
+    gEdgeDim(true);
+    let h = '<h3>' + n.id + ' — ' + gEsc(n.label) +
+        (n.label_provisional
+            ? ' <span style="color:#ffb020">[provisional]</span>' : '') +
+        ' <span style="color:' + gHex(G_CAT_COL[cat]) + '">[' +
+        G_CAT_LBL[cat] + ']</span></h3>' +
+        '<div class="dim">' + n.type + ' · peak ' + gNum(pv.peak_score) +
+        ' · ' + ((n.evidence || {}).members || []).length + ' detections / ' +
+        ((n.evidence || {}).views || []).length + ' views' +
+        ((pv.flags || []).length ? ' · ' + pv.flags.join(', ') : '') +
+        '</div>';
+    // full label multiset — the record's plural truth
+    const tally = {};
+    for (const L of n.labels || []) {
+      const t = tally[L.label] = tally[L.label] || { n: 0, best: 0 };
+      t.n++; t.best = Math.max(t.best, L.score);
+    }
+    const tk = Object.keys(tally).sort((a, b) => tally[b].best - tally[a].best);
+    if (tk.length)
+      h += '<div>labels: ' + tk.map(l =>
+          '<span style="color:' + (l === n.label ? '#cfe3cf' : '#9fb4c8') +
+          '">' + gEsc(l) + ' <span class="dim">(x' + tally[l].n + ', best ' +
+          gNum(tally[l].best) + ')</span></span>').join(' · ') + '</div>';
+    if (pv.dedup && pv.dedup.merged)
+      h += '<div class="dim">dedup-merged; absorbed: ' +
+           (pv.dedup.absorbed || []).map(x =>
+               x.id + ' ' + gEsc(x.label)).join(', ') +
+           (pv.dedup.alt_labels && pv.dedup.alt_labels.length
+               ? ' · alt: ' + pv.dedup.alt_labels.map(gEsc).join(', ') : '') +
+           '</div>';
+    if ((n.open_questions || []).length)
+      h += '<div style="color:#ffb020">open: ' +
+           n.open_questions.join(', ') + ' — awaits the judge pass</div>';
+    const mems = ((n.evidence || {}).members || []).filter(m => m.crop);
+    if (mems.length)
+      h += '<div>' + mems.map(m =>
+        '<img src="graph_crops/' + m.crop + '?' + sq +
+        '" loading="lazy" style="height:84px;margin:2px;' +
+        'border-radius:3px;cursor:pointer" ' +
+        'onclick="window.open(this.src)" title="' + gEsc(m.view) + ' · ' +
+        gEsc(m.label) + ' ' + gNum(m.score) +
+        (m.truncated ? ' · truncated' : '') + '">').join('') + '</div>';
     const el = gEdgesByNode[n.id] || [];
     if (el.length) {
       h += '<div style="color:#ffe27f;margin-top:4px">edges (' + el.length +
@@ -807,10 +906,24 @@ try {
     const picks = vis.map(en => en.grp.userData.pick);
     const hits = ray.intersectObjects(picks, false);
     gClear();
-    if (!hits.length) return;
-    const en = vis[picks.indexOf(hits[0].object)];
+    if (!hits.length) { gPickCycle.key = ''; return; }
+    // every record node under the cursor, SMALLEST box first; clicking the
+    // same spot again cycles through them (same fix as the method-box
+    // layers: nearest-surface-wins made nested/behind boxes unclickable)
+    const under = [...new Set(hits.map(h => vis[picks.indexOf(h.object)]))];
+    under.sort((a, b) => {
+      const sa = a.n.geometry.size, sb = b.n.geometry.size;
+      return sa[0] * sa[1] * sa[2] - sb[0] * sb[1] * sb[2];
+    });
+    const key = Math.round(ev.clientX / 8) + ',' + Math.round(ev.clientY / 8);
+    if (gPickCycle.key === key) gPickCycle.i = (gPickCycle.i + 1) % under.length;
+    else { gPickCycle.key = key; gPickCycle.i = 0; }
+    const en = under[gPickCycle.i];
     gSel = en;
     setHighlight(en.grp, true, 0xffee44);
+    if (under.length > 1)
+      msg('record node ' + (gPickCycle.i + 1) + '/' + under.length +
+          ' under cursor — click again for next');
     gShow(en);
   });
   addEventListener('keydown', e => { if (e.key === 'Escape') gClear(); });

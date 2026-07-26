@@ -28,78 +28,74 @@ def placement_file(sc):
 
 
 def box_sources(sc):
-    """Method-organized box sets (2026-07-25 reorg): one entry per
-    detection/lift METHOD, so competing methods are compared side by side.
+    """Method-organized box sets (2026-07-25 reorg; 2026-07-26 grouped):
+    one entry per detection/lift METHOD. group='current' = the canonical
+    lane; group='archive' = superseded/reference methods, rendered in the
+    HUD's collapsed archive section (files stay on disk — nothing deleted).
     Registry order = HUD order. Only entries whose file exists are served."""
     sd = paths.scene_dir(sc)
     return [
-        ("pano_track", "PANO TRACK (canonical · thr 0.2)",
+        # ---- current: the pano-track funnel, upstream -> downstream ----
+        # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->
+        # stage 3 = geometry dedup + GRAPH RECORD (the "graph record"
+        # toggle in the main checkbox row — richer view than a box layer)
+        ("pano_track", "pano · stage 1 · recentered full set", "current",
          sd / "scene_manifest_pano2c_rc.json", "#ffd24d",
-         "THE pano track (user-canonical 2026-07-26), 20%% floor "
-         "everywhere (user: drop the 0.40 gate): self-rendered pano at "
-         "(0,0)+1.6m -> 20-crop rig -> BATCHED-vocab detect thr 0.20 -> "
-         "z-buffer lift -> robust merge q.05 -> RECENTER round as the "
-         "real filter (20 refined, 15 marginal singletons refuted by "
-         "close-up, 8 confirmed). 135 objects; floor-gap min +0.012"),
-        ("pano_track_f30", "pano track · f30 (score ≥ 0.30)",
+         "STAGE 1 — the most UPSTREAM full manifest (input to stage 2): "
+         "detection chain output after the recenter round. Self-rendered "
+         "pano at (0,0)+1.6m -> 20-crop rig -> batched-vocab detect thr "
+         "0.20 -> z-buffer lift -> robust merge q.05 -> RECENTER as the "
+         "real filter (42 phantoms refuted by aimed close-ups, no "
+         "arithmetic gate). 108 objects; floor-gap min +0.012"),
+        ("pano_track_f30", "pano · stage 2 · f30 score filter", "current",
          sd / "scene_manifest_pano2c_rc_f30.json", "#7fd4ff",
-         "canonical manifest after the hard 0.30 score filter "
-         "(manifest_filter.py, user 2026-07-26: no reruns, pure "
-         "post-processing). 102 objects — drops 6 (3 toy, 2 book, 1 "
-         "conditioner); NOTE 3 of the 6 were retake-confirmed by their "
-         "close-ups (scores .27-.28) — the filter overrules the verifier "
-         "there. Dropped objects preserved in the file's filtered_out"),
-        ("pano_track_f30_dd", "pano track · f30+dedup",
-         sd / "scene_manifest_pano2c_rc_f30_dd.json", "#4dc3ff",
-         "post-processing step 2 (manifest_dedup.py): duplicate-box merge "
-         "on the f30 set, 102 -> 92. Confident zone IoU>=0.6 merges on "
-         "geometry alone (same volume = same object); gray zone "
-         "(IoU 0.4-0.6, containment>=0.9) judged by ONE batched haiku "
-         "call on the label pair (cached; door|window=same -> merged, "
-         "bookshelf|shelf + book|shelf=part-of -> kept). Merged objects "
-         "keep every name (alt_labels); absorbed boxes preserved in "
-         "dedup_removed; 8 kept-but-overlapping pairs in overlap_report"),
-        ("pano_track_rcdelta", "pano track · Δ before recenter (thr 0.2)",
-         sd / "scene_manifest_pano_rcdelta.json", "#ff5a5a",
-         "the BEFORE-state of everything the recenter round changed: the "
-         "refuted objects (since deleted, with close-up evidence) + the "
-         "pre-refinement boxes of objects whose bounds moved. Canonical = "
-         "the full scene after recenter; toggle both to see before vs "
-         "after"),
-        ("pano_track_gatekills", "pano track · Δ gate kills",
-         sd / "scene_manifest_pano_gatekills.json", "#b06aff",
-         "DELTA layer: only the 33 objects the confidence gate killed "
-         "(best detection < 0.40) — the gate's audit trail; real objects "
-         "found here are candidates for recenter-verification rescue"),
+         "STAGE 2 — stage 1 after the hard 0.30 score filter "
+         "(manifest_filter.py; no reruns, pure post-processing): 102 "
+         "objects, 6 dropped (3 toy, 2 book, 1 conditioner; 3 of the 6 "
+         "were retake-confirmed — the filter overrules the verifier "
+         "there; drops preserved in filtered_out). INPUT to stage 3 = the "
+         "scene-graph RECORD (same 102 objects as nodes, duplicate pairs "
+         "as SAME_CANDIDATE edges — no dedup stage, merging is a judge "
+         "verdict; toggle 'graph record' above)"),
+        # Δ pre-recenter audit layer REMOVED from the HUD (user, 07-26
+        # late, "for simplicity"); the file stays on disk
+        # (scene_manifest_pano_rcdelta.json — 42 refuted + 26 pre-
+        # refinement boxes) and pano_track_diffs.py can regenerate it.
+        # ---- archive / reference: superseded by decisions on record ----
+        # REMOVED from the HUD entirely (user, 07-26 late): f30+dedup
+        # geometry-only (redundant view — the 'graph record' layer draws
+        # the same 93 boxes with the full card; the FILE stays the record
+        # builder's input), f30+dedup LLM version (retired method), and
+        # Δ gate kills (audit of the dropped 0.40 gate). Files untouched
+        # on disk: scene_manifest_pano2c_rc_f30_dd.json / _dd_llm.json /
+        # scene_manifest_pano_gatekills.json.
         # sweep-lane entries (G3/robust/gated/G4) RETIRED from the HUD
         # 2026-07-26 — superseded by the canonical pano track; manifests
-        # stay on disk (scene_manifest_sweep*.json) for the record
+        # stay on disk (scene_manifest_sweep*.json) for the record.
+        # fuse · 3h2 pool entry REMOVED 2026-07-26 — never built; the
+        # multiview-vote idea lives on the map's parked-ideas card.
         ("recenter_C1", "pano 1.0 · recenter C1 (superseded)",
-         sd / "recenter_experiment" / "manifest_C1_raw.json", "#f0a028",
+         "archive", sd / "recenter_experiment" / "manifest_C1_raw.json",
+         "#f0a028",
          "Marble-pano lane, superseded by the canonical PANO TRACK "
          "(carries the +6.5cm registration pedestal); kept for comparison"),
-        ("analyzer_hybrid", "analyzer + OUR lift (hybrid)",
-         sd / "scene_manifest_analyzer_hybrid.json", "#00c89a",
-         "the 3h2 hybrid: analyzer's OWLv2 detections AND clustering kept "
-         "1:1, geometry replaced by our SAM + z-buffer lift + robust "
-         "per-axis fusion. Floor-ish gap median +0.53 -> +0.11, boxes "
-         "touch the floor; volumes measured not fabricated (median 2.2x "
-         "theirs)"),
-        ("analyzer", "analyzer · OWLv2 vote (their lift)",
-         sd / "analyzer" / "bridged_boxes.json", "#00ffff",
-         "splat_analyzer bridged clusters: surface-biased centers, "
-         "fabricated depth extent (w+h)/2 — toggle against the hybrid to "
-         "see the lift swap alone"),
-        ("fuse", "fuse · 3h2 pool",
-         sd / "scene_manifest_fuse.json", "#33ee66",
-         "unified lift pool + ported vote (SPEC_3H2_FUSE) — appears once built"),
-        ("legacy_v1", "yaw4 mask-lift +amodal (old manifest)",
-         paths.manifest(sc), "#8899aa",
-         "the old default scene_manifest.json: 4 gpu_yaw renders -> "
-         "GroundingDINO+SAM -> per-pixel z-buffer mask lift -> label+IoU "
-         "merge (lift_views.py), then splat-amodal box extension "
-         "(amodal_apply.py, 2026-07-15). 4-yaw observation retired 07-24 — "
-         "kept for method comparison"),
+        ("analyzer_hybrid", "analyzer + OUR lift (hybrid · closed)",
+         "archive", sd / "scene_manifest_analyzer_hybrid.json", "#00c89a",
+         "REFERENCE (experiment closed 07-26): analyzer's OWLv2 detections "
+         "AND clustering kept 1:1, geometry replaced by our SAM + z-buffer "
+         "lift + robust per-axis fusion. Verdict: their clustering shreds "
+         "(8x bed); the pano track won the FIND comparison"),
+        ("analyzer", "analyzer · OWLv2 vote (reference)",
+         "archive", sd / "analyzer" / "bridged_boxes.json", "#00ffff",
+         "REFERENCE (analyzer demoted to side tool 07-26): bridged "
+         "clusters — surface-biased centers, fabricated depth extent "
+         "(w+h)/2; kept runnable as an independent second opinion"),
+        ("legacy_v1", "yaw4 mask-lift +amodal (retired)",
+         "archive", paths.manifest(sc), "#8899aa",
+         "ARCHIVED: the old default scene_manifest.json: 4 gpu_yaw renders "
+         "-> GroundingDINO+SAM -> per-pixel z-buffer mask lift -> "
+         "label+IoU merge (lift_views.py), then splat-amodal box extension "
+         "(amodal_apply.py, 2026-07-15). 4-yaw observation retired 07-24"),
     ]
 
 
@@ -178,14 +174,14 @@ class H(BaseHTTPRequestHandler):
             self._send(200, body, "application/json")
         elif p == "/box_sources.json":
             # method-box registry: which competing box sets exist for sc
-            out = [{"key": k, "label": lb, "color": c, "note": nt}
-                   for k, lb, f, c, nt in box_sources(sc) if f.exists()]
+            out = [{"key": k, "label": lb, "group": gp, "color": c, "note": nt}
+                   for k, lb, gp, f, c, nt in box_sources(sc) if f.exists()]
             self._send(200, json.dumps({"sources": out}).encode(),
                        "application/json")
         elif p == "/boxes.json":
             # one method box set, by registry key (?src=<key>)
             src = (q.get("src") or [""])[0]
-            f = next((f for k, _, f, _, _ in box_sources(sc) if k == src), None)
+            f = next((f for k, _, _, f, _, _ in box_sources(sc) if k == src), None)
             if f is not None and f.exists():
                 self._send(200, f.read_bytes(), "application/json")
             else:
