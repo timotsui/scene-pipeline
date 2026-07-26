@@ -202,8 +202,92 @@ def build_detection_nodes(man, pool):
     return nodes
 
 
+def build_shell_nodes(shell):
+    """Architecture nodes from the MEASURED room shell (room_shell.py W1,
+    PLAN_ROOM_SHELL.md): wall segments with fitted planes + evidence +
+    parallel candidate surfaces, measured floor/ceiling. All values RAW
+    (shell stores upright; raw = upright * r2r componentwise)."""
+    r2r = shell["frame"]["raw_to_render"]
+    sy = r2r[1]
+    floor_raw = shell["floor_y_raw"]
+    ceil_raw = shell["ceiling_y_raw"]
+
+    def node(nid, category, plane, extent, evidence):
+        return {
+            "id": nid, "source": "envelope", "type": "architecture",
+            "label": nid.replace("arch_", "").replace("_", " "),
+            "label_provisional": False,
+            "labels": [], "distinct_labels": [category],
+            "geometry": {"plane": plane, "extent": extent, "yaw": None,
+                         "amodal": None},
+            "evidence": {"views": [], "n_detections": 0, "n_whole": 0,
+                         "members": [], **(evidence or {})},
+            "provenance": {"manifest": None, "peak_score": None,
+                           "flags": [], "detector": "room_shell.py (W1)"},
+            "open_questions": [],
+        }
+
+    fnote = ("RAW frame, physical up = -y: floor is the numeric MAX y "
+             "plane (floor_y > ceiling_y numerically); MEASURED from the "
+             "splat y-histogram peak (room_shell.py)")
+    ns = [
+        node("arch_floor", "floor",
+             {"axis": "y", "value_raw": floor_raw,
+              "inward_normal_raw": [0, -1, 0], "note": fnote}, None,
+             {"measured": True}),
+        node("arch_ceiling", "ceiling",
+             {"axis": "y", "value_raw": ceil_raw,
+              "inward_normal_raw": [0, 1, 0],
+              "note": "numeric MIN y = physical top; MEASURED"}, None,
+             {"measured": True,
+              "collider_planes": [p for p in
+                                  (shell.get("collider") or {}).get(
+                                      "planes", []) if p["axis"] == "y"]}),
+    ]
+    for w in shell["walls"]:
+        col = 0 if w["axis"] == "x" else 2
+        tcol = 2 if w["axis"] == "x" else 0
+        s_ax, s_t = r2r[col], r2r[tcol]
+        val_raw = round(w["plane_upright_m"] * s_ax, 3)
+        normal_raw = [0.0, 0.0, 0.0]
+        normal_raw[col] = w["inward_normal_upright"][col] * s_ax
+        ext = None
+        span = w.get("extent_tangent_span_m") or w.get(
+            "extent_tangent_observed_m")
+        if span:
+            t = sorted(v * s_t for v in span)
+            ext = {("z_raw" if w["axis"] == "x" else "x_raw"):
+                   [round(t[0], 3), round(t[1], 3)],
+                   "y_raw": sorted([round(floor_raw, 3),
+                                    round(ceil_raw, 3)])}
+        observed = None
+        if w.get("extent_tangent_observed_m"):
+            o = sorted(v * s_t for v in w["extent_tangent_observed_m"])
+            observed = [round(o[0], 3), round(o[1], 3)]
+        parallels = [{"value_raw": round(p["position"] * s_ax, 3),
+                      "point_count": p["point_count"],
+                      "collider": p.get("collider")}
+                     for p in w.get("parallel_surfaces", [])]
+        ns.append(node(
+            "arch_" + w["id"], "wall",
+            {"axis": w["axis"], "value_raw": val_raw,
+             "inward_normal_raw": normal_raw,
+             "note": "MEASURED structural plane (outermost strong "
+                     "candidate; vertical-prism wall-cell fit)"},
+            ext,
+            {"measured": True,
+             "point_count": w["evidence"]["point_count"],
+             "collider": w["evidence"]["collider"],
+             "observed_tangent_raw": observed,
+             "observed_coverage": w["evidence"].get("observed_coverage"),
+             "parallel_surfaces": parallels}))
+    return ns
+
+
 def build_envelope_nodes(env):
-    """floor / ceiling / 4 walls as first-class architecture nodes.
+    """FALLBACK when no room_shell.json exists: floor / ceiling / 4 walls
+    from the envelope grid bounds (splat p1..p99 extent — placeholders,
+    W0 audit measured them off by up to 0.4 m; run room_shell.py).
     RAW frame: physical up = -y, so the FLOOR is the numeric MAX y plane.
     (Unchanged v1 machinery, reshaped to the record schema.)"""
     x0, z0, cell = float(env["x0"]), float(env["z0"]), float(env["cell"])
@@ -275,7 +359,13 @@ def main():
     det_nodes = build_detection_nodes(man, pool)
     for n in det_nodes:
         n["provenance"]["manifest"] = a.manifest
-    env_nodes = build_envelope_nodes(envelope.load(scene))
+    shell_f = sdir / "room_shell.json"
+    if shell_f.exists():
+        env_nodes = build_shell_nodes(json.loads(shell_f.read_text()))
+        arch_src = f"room_shell.json (measured, {len(env_nodes) - 2} walls)"
+    else:
+        env_nodes = build_envelope_nodes(envelope.load(scene))
+        arch_src = "envelope grid bounds (PLACEHOLDER — run room_shell.py)"
     nodes = det_nodes + env_nodes
 
     n_cut = n_skip = n_missing = 0
@@ -310,6 +400,7 @@ def main():
             "lift_pool": str(input_paths["pool"]),
             "crop_source": str(input_paths["crop_src"]),
             "pano_meta": str(input_paths["pano_meta"]),
+            "architecture_source": arch_src,
             "generation_prompt": prompt_text,
         },
         "counts": {
@@ -336,7 +427,7 @@ def main():
 
     print(f"[record] wrote {out}")
     print(f"[record] {len(nodes)} nodes = {len(det_nodes)} detection + "
-          f"{len(env_nodes)} envelope")
+          f"{len(env_nodes)} architecture ({arch_src})")
     print(f"[record] label multisets: {len(naming_nodes)} nodes provisional "
           f"(open naming question): {naming_nodes}")
     print("[record] same-candidate pairs: computed from geometry by "

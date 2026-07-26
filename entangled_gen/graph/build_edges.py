@@ -69,8 +69,21 @@ INTERPENETRATES (unordered; a < b by id):
   detection-node pairs with box overlap volume > 0.001 m3 that hold NO
   other edge. Evidence: overlap volume + fraction of the smaller box.
 
+NEAR (fallback — the "no standing floaters" invariant, user 2026-07-26:
+  with a measured shell, every object must connect to SOMETHING):
+  any detection node with NO structural edge (ON / IN / IN_WALL /
+  ATTACHED) gets ONE NEAR edge to its geometrically best candidate —
+  nearest supporter top (xz overlap >= 0.2), floor, ceiling, or wall
+  plane INCLUDING the wall's recorded parallel surfaces (a picture can
+  hang on the visible wall face 0.2 m inside the structural plane).
+  Explicitly caveated fallback_connection, status "unresolved" — the
+  judge confirms or retypes it; the record never silently widens the
+  real thresholds. Floor is always a candidate, so the invariant cannot
+  fail.
+
 Sanity lists (edge_summary + stdout; nothing invented):
   floating          detection nodes with no ON and no IN
+  isolated_resolved nodes that needed a NEAR fallback (audit list)
   wall_attached     detection nodes holding IN_WALL / ATTACHED (fact list)
   underground       nodes whose center sits physically below the floor
 
@@ -146,9 +159,11 @@ def main():
     env = {n["id"]: n for n in graph["nodes"] if n["source"] == "envelope"}
     floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
     ceil_y = env["arch_ceiling"]["geometry"]["plane"]["value_raw"]
-    walls = {nid: env[nid]["geometry"]["plane"]
-             for nid in ("arch_wall_x0", "arch_wall_x1",
-                         "arch_wall_z0", "arch_wall_z1")}
+    # any wall node (measured room_shell segments OR legacy grid-bound
+    # placeholders) — id-agnostic so N-segment shells just work
+    walls = {nid: n["geometry"]["plane"] for nid, n in env.items()
+             if nid.startswith("arch_wall") and
+             n["geometry"].get("plane", {}).get("axis") in ("x", "z")}
 
     edges = []
     paired = set()          # frozenset({a,b}) for every emitted edge
@@ -225,9 +240,16 @@ def main():
                 best = (wid, d, plane)
         if best and best[1] <= WALL_TOL:
             wid, d, plane = best
+            # on-wall footprint: the node's box projected onto the wall —
+            # tangent (horizontal along the wall) + vertical intervals, RAW.
+            tcol = 2 if plane["axis"] == "x" else 0
             add("IN_WALL", n["id"], wid,
                 {"wall_distance_m": round(d, 3), "wall_axis": plane["axis"],
-                 "wall_value_raw": plane["value_raw"]}, [])
+                 "wall_value_raw": plane["value_raw"],
+                 "on_wall_tangent_raw": [round(g["aabb_min"][tcol], 3),
+                                         round(g["aabb_max"][tcol], 3)],
+                 "on_wall_y_raw": [round(g["aabb_min"][1], 3),
+                                   round(g["aabb_max"][1], 3)]}, [])
         dc = interval_plane_dist(g["aabb_min"][1], g["aabb_max"][1], ceil_y)
         if dc <= WALL_TOL:
             add("ATTACHED", n["id"], "arch_ceiling",
@@ -294,6 +316,67 @@ def main():
             {"overlap_vol_m3": round(ov, 5),
              "frac_of_smaller": round(frac, 3)}, [])
 
+    # ---------------- NEAR fallback: no standing floaters ------------------
+    STRUCT = ("ON", "IN", "IN_WALL", "ATTACHED")
+    connected = set()
+    for e in edges:
+        if e["type"] in STRUCT:
+            connected.add(e["a"])
+            connected.add(e["b"])
+    isolated = [n for n in det if n["id"] not in connected]
+    for n in isolated:
+        g = n["geometry"]
+        bottom_h = h(g["aabb_max"][1])
+        foot_a = g["size"][0] * g["size"][2]
+        cands = []
+        for b in det:
+            if b["id"] == n["id"]:
+                continue
+            gb = b["geometry"]
+            frac = xz_overlap_area(g, gb) / foot_a if foot_a > 0 else 0.0
+            if frac < 0.2:
+                continue
+            gap = bottom_h - h(gb["aabb_min"][1])
+            cands.append((abs(gap), "support", b["id"],
+                          {"gap_m": round(gap, 3),
+                           "overlap_frac_of_a": round(frac, 3)}))
+        gapf = floor_y - g["aabb_max"][1]
+        cands.append((abs(gapf), "floor", "arch_floor",
+                      {"gap_m": round(gapf, 3)}))
+        dc = interval_plane_dist(g["aabb_min"][1], g["aabb_max"][1], ceil_y)
+        cands.append((dc, "ceiling", "arch_ceiling",
+                      {"distance_m": round(dc, 3)}))
+        for wid, plane in walls.items():
+            k = 0 if plane["axis"] == "x" else 2
+            d = interval_plane_dist(g["aabb_min"][k], g["aabb_max"][k],
+                                    plane["value_raw"])
+            cands.append((d, "wall", wid, {"distance_m": round(d, 3)}))
+            for ps in (env[wid]["evidence"].get("parallel_surfaces") or []):
+                d2 = interval_plane_dist(g["aabb_min"][k], g["aabb_max"][k],
+                                         ps["value_raw"])
+                cands.append((d2, "wall", wid,
+                              {"distance_m": round(d2, 3),
+                               "via_parallel_surface_raw": ps["value_raw"]}))
+        cands.sort(key=lambda c: c[0])
+        _, hint, target, ev = cands[0]
+        # runners-up recorded too — a straddled parallel surface scores
+        # distance 0 even when "on the floor, gap 0.19" is the truer
+        # story; one candidate per (relation, target), judge decides
+        alts, seen = [], {(hint, target)}
+        for _, h2, t2, e2 in cands[1:]:
+            if (h2, t2) in seen:
+                continue
+            seen.add((h2, t2))
+            alts.append({"relation_hint": h2, "target": t2, **e2})
+            if len(alts) == 3:
+                break
+        add("NEAR", n["id"], target,
+            {"relation_hint": hint, **ev, "alternatives": alts},
+            ["fallback_connection — outside normal thresholds; for the "
+             "judge"], status="unresolved")
+    isolated_resolved = [{"id": n["id"], "label": n["label"]}
+                         for n in isolated]
+
     # ---------------- sanity lists ----------------
     contained = {e["a"] for e in edges if e["type"] == "IN"}
     floating = []
@@ -330,6 +413,16 @@ def main():
     ok &= not on_ceiling
     checks.append({"rule": "nothing ON ceiling",
                    "passed": not on_ceiling})
+    # invariant: every detection node connected (structural or NEAR)
+    conn2 = set()
+    for e in edges:
+        if e["type"] in STRUCT + ("NEAR",):
+            conn2.add(e["a"])
+            conn2.add(e["b"])
+    still_iso = [n["id"] for n in det if n["id"] not in conn2]
+    ok &= not still_iso
+    checks.append({"rule": "no standing floaters (every object connected)",
+                   "isolated": still_iso, "passed": not still_iso})
 
     counts = {}
     for e in edges:
@@ -350,6 +443,7 @@ def main():
         },
         "edge_counts": counts,
         "floating": floating,
+        "isolated_resolved_by_near": isolated_resolved,
         "wall_attached": wall_attached,
         "underground": underground,
         "top_interpenetrates": [
@@ -375,6 +469,11 @@ def main():
         print(f"           {f['id']} {f['label']:<18} floor_gap "
               f"{f['floor_gap_m']:+.3f} m")
     print(f"[edges] wall/ceiling-attached nodes: {len(wall_attached)}")
+    ne = [e for e in edges if e["type"] == "NEAR"]
+    print(f"[edges] NEAR fallbacks (no-floater invariant): {len(ne)}")
+    for e in ne:
+        print(f"           ~ {e['a']} → {e['b']} "
+              f"[{e['evidence']['relation_hint']}] {e['evidence']}")
     if underground:
         print(f"[edges] underground centers: {underground}")
     print("[edges] top INTERPENETRATES by overlap volume:")

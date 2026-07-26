@@ -148,4 +148,29 @@ Format per entry:
 - **USER VERDICT (record correctness / R1 gate):**
 - **USER VERDICT (SAME_CANDIDATE pair quality — any pink pair that is really two objects):**
 
+## R11 — Room shell: measured walls / ceiling / floor (W3 gate, 2026-07-26 late)
+- **What / paths:** viewer :8321 → "graph record (stage 3)" → the new gray
+  **architecture** slabs (4 walls + floor + ceiling), each clickable —
+  card shows the fitted plane, fit point count, collider agreement Δ, and
+  the recorded parallel surfaces. Data:
+  `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\room_shell.json`
+  (+ audit: `room_shell_audit.json` / `.png`).
+- **Why:** the record's architecture was placeholders off by up to 0.4 m;
+  32 IN_WALL facts and the envelope's room bounds now stand on these
+  measured planes. Wrong walls poison wall-attachment facts and
+  placement bounds.
+- **Look for:** (1) toggle the collider mesh layer against the gray wall
+  slabs — do the slabs sit ON the collider walls (they should: Δ 5–36 mm
+  on all four)?; (2) does each wall slab hug the visible wall in the
+  splat, not a curtain/wardrobe face (structural = OUTERMOST strong
+  plane by design — the curtain plane +1.51/+1.61 and the z_low face
+  −0.73 are recorded as parallel surfaces instead)?; (3) click a wall:
+  its IN_WALL neighbors light up — are those really wall-mounted things
+  (pictures, windows, doors)?; (4) floor/ceiling slabs at the right
+  heights (measured 0.000 / +2.764 upright; collider agrees ≤ 4 mm).
+- **Assumptions on record:** vertical-prism walls (floor→ceiling), one
+  outer segment per side in v1 (schema already takes N segments),
+  parallel candidates recorded not judged.
+- **USER VERDICT (shell correctness / W3 gate):**
+
 _(further entries appended as artifacts land)_

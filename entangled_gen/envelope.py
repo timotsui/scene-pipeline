@@ -203,6 +203,26 @@ def main():
     ap.add_argument("--ply", default="")
     args = ap.parse_args()
     ply = Path(args.ply) if args.ply else paths.ply(args.scene)
+    # room bounds: MEASURED shell when present (room_shell.py W1 —
+    # PLAN_ROOM_SHELL.md; the W0 audit showed the legacy p1/p99 extents
+    # are off by up to 0.4 m), legacy manifest frame as the fallback.
+    shell_f = paths.scene_dir(args.scene) / "room_shell.json"
+    if shell_f.exists():
+        s = json.loads(shell_f.read_text())
+        r2r = s["frame"]["raw_to_render"]
+        xs = sorted(w["plane_upright_m"] * r2r[0] for w in s["walls"]
+                    if w["axis"] == "x")
+        zs = sorted(w["plane_upright_m"] * r2r[2] for w in s["walls"]
+                    if w["axis"] == "z")
+        if len(xs) >= 2 and len(zs) >= 2:
+            print(f"[envelope] bounds from room_shell.json (measured): "
+                  f"x {xs[0]:+.3f}..{xs[-1]:+.3f}  z {zs[0]:+.3f}..{zs[-1]:+.3f}")
+            env = compute(ply, s["floor_y_raw"], s["ceiling_y_raw"],
+                          xs[0], xs[-1], zs[0], zs[-1], r2r=r2r)
+            save(env, args.scene)
+            return
+        print("[envelope] room_shell.json lacks 2 walls per axis — "
+              "falling back to the legacy frame")
     man = json.loads(paths.manifest(args.scene).read_text())
     fr = man["frame"]
     (x0, _, z0), (x1, _, z1) = fr["extent_p1"], fr["extent_p99"]
