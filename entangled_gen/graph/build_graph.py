@@ -1,94 +1,73 @@
 """
-Step 1 -- node-assembly: build the unified semantic scene graph (NODES ONLY).
+Pass 1 -- the RECORD builder (record-then-judge, PLAN_SCENE_GRAPH.md 0a).
 
-Writes out/<scene>/scene_graph.json with every node the pipeline knows about
-and edges: [] (Step 2 -- graph/build_edges.py -- fills the edges array; rerunning
-THIS script resets edges to [] by design, so run Step 2 again after).
+Rebuilt 2026-07-26 on the PANO TRACK (the analyzer-seeded v1 is archived as
+scene_graph_v1.json / graph/crops_v1). Writes out/<scene>/scene_graph.json
+with the RECORD layer only: nodes + evidence + open questions, edges: []
+(graph/build_edges.py fills geometric edges + the SAME_CANDIDATE queue;
+rerunning THIS script resets edges by design, so run edges again after).
 
-USER DECISION (2026-07-22, PLAN_SCENE_GRAPH.md section 2): the node seed is the
-ANALYZER box set (analyzer/bridged_boxes.json, 103 boxes ana_000..ana_102), not
-the manifest, not a union. Manifest metadata (amodal status, cut status,
-retrieval picks, placement poses) attaches to nodes VIA the existing
-analyzer<->manifest match mapping in analyzer/match_report.json.
+THE RECORD COMMITS TO NOTHING. It writes down everything extraction already
+knows, deterministically (zero model calls, byte-reproducible):
+  - NO MERGING ANYWHERE IN PASS 1 (user amendment 2026-07-26 late: "record
+    both objects and indicate their relationship faithfully") -- every f30
+    manifest object = one node, duplicates included; probable-duplicate
+    pairs are recorded as SAME_CANDIDATE edges by build_edges.py (zone
+    "confident" IoU>=0.6 / "gray" IoU .40-.60 + containment>=.90) and
+    MERGING IS A JUDGE VERDICT, reversible by rerunning one cached pass.
+    The former manifest_dedup.py stage is RETIRED;
+  - every candidate LABEL from every member detection, with scores -- the
+    full multiset; label_provisional wherever more than one distinct label
+    exists (canonical naming = the judge pass, NOT here);
+  - evidence as pointers: member detections (2D box, view, score), plus a
+    deterministically CUT crop image per member (graph/crops/) so the record
+    is reviewable by eye and the judge pass reads them;
+  - downstream state (retrieval picks, placement, cut status) is NOT here
+    (v1 reversal): those are consumers of the graph, not evidence.
 
-FRAME (the #1 silent-failure class): everything is the RAW gen_raw.ply frame.
-Physical up = -y (rot180 convention, see paths.py docstring + scene_manifest
-frame block): floor_y (0.029) > ceiling_y (-2.793) NUMERICALLY. The physical
-BOTTOM of a box is its MAX y in raw coordinates; physical height h = -y_raw.
+FRAME (the #1 silent-failure class): everything is the RAW gen_raw.ply
+frame. Physical up = -y (rot180 convention): floor_y > ceiling_y
+NUMERICALLY; a box's physical BOTTOM is its MAX raw y.
 
 ---------------------------------------------------------------------------
-NODE SCHEMA (this docstring is the contract)
+RECORD NODE SCHEMA (this docstring is the contract)
 ---------------------------------------------------------------------------
-Detection nodes (103, ids ana_000..ana_102, source "splat_analyzer job_high"):
+Detection nodes (ids = manifest obj_XXX -- identity is preserved):
+  id, source: "detection", type: "object"
+      (windows/doors/curtains stay ordinary object nodes -- USER DECISION
+       07-26: no label-based architecture typing; geometry edges + the
+       judge settle typing later)
+  label               primary label (manifest), a PLACEHOLDER not a verdict
+  label_provisional   true iff the node's label multiset has >1 distinct
+                      label (incl. dedup alt_labels)
+  labels              the full multiset: [{label, score, view, member}]
+                      sorted by score desc, one entry per member detection
+  geometry            center/size/aabb_min/aabb_max (RAW, meters),
+                      yaw: null (honest gap), amodal: null (honest gap --
+                      amodal completion was never computed for the pano
+                      track; the old amodal_boxes.json belongs to the
+                      retired legacy manifest's ids)
+  evidence            {views, n_detections, n_whole, members: [{member
+                      (index into the lift pool), view, label, score,
+                      box_2d [xmin,ymin,xmax,ymax] in that view's 960px
+                      crop image, truncated, crop (graph/crops/<file> or
+                      null)}]}
+  provenance          {manifest (file this node came from), peak_score,
+                      flags (recenter_refined / retake_confirmed / ...)}
+  open_questions      subset of ["naming"] -- naming iff label_provisional
+                      (same-vs-part questions live on SAME_CANDIDATE edges,
+                      filled by build_edges.py)
 
-  id                    "ana_XXX" (envelope nodes: "arch_floor", "arch_ceiling",
-                        "arch_wall_x0" / "arch_wall_x1" / "arch_wall_z0" /
-                        "arch_wall_z1")
-  label                 detector label as emitted (e.g. "desk lamp")
-  canonical_category    label mapped through the synonym map copied from
-                        match_report.json (e.g. "desk lamp" -> "lamp");
-                        labels not in any group map to themselves
-  synonyms              full member list of the synonym group ([label] if none)
-  type                  "architecture" for labels {window, door, curtain,
-                        air conditioner, ceiling light} and for all
-                        envelope-derived nodes; "object" otherwise
-  source                "detection" | "envelope"
-  geometry              detection nodes: center/size/aabb_min/aabb_max (RAW,
-                        meters), yaw: null (HONEST GAP -- the analyzer never
-                        estimates orientation), rotation_quat_xyzw (always
-                        identity), caveats list (subset of):
-                          "surface_bias"      centroid biased toward the
-                                              camera-visible surface
-                          "fabricated_z_extent"  box depth extent fabricated
-                                              as (w+h)/2, never measured
-                          "axis_aligned"      identity rotation by tool design
-                          "center_outside_envelope"       (bridge sanity flag)
-                          "extent_partially_outside_envelope"  (bridge flag)
-                        envelope nodes: plane {axis, value_raw, note} + extent
-                        (raw-frame intervals), caveats []
-  provenance            detection: {detector: "splat_analyzer job_high",
-                        votes, peak_score, standpoint_count (distinct camera
-                        standpoints among evidence frames, via
-                        transforms.json position_idx), matched_manifest_id
-                        (or null), match_distance_m (or null),
-                        manifest: {...donor metadata: label, score, center,
-                        size, aabb, n_points, views, n_detections,
-                        amodal_extended} or null}
-                        envelope: {detector: "envelope.npz"}
-  confidence_tier       "confirmed"  -- has a manifest match (19 nodes; the
-                                       matched set's minimum votes is 9)
-                        "candidate"  -- no match, votes >= 8 (threshold = the
-                                       analyzer's own config-default min_votes;
-                                       observed vote distribution over the 103:
-                                       min 3 / median 23 / max 56)
-                        "weak"       -- no match, votes < 8 (min-vote
-                                       survivors, single-standpoint clusters)
-                        envelope nodes: "confirmed" (structural, derived from
-                        the splat itself, not a detector)
-  views                 {evidence_frames: sorted unique frame indices from
-                        analyzer job_high interactions.json, best_crop: null
-                        (Step 3 -- appearance-pass -- fills)}
-  gaussians             {cut: false} for everything except the node matched to
-                        obj_004 (= ana_101), which gets {cut: true,
-                        source_object, variant, foreground_ply, count,
-                        background_ply, stats_json} from cut/obj_004_v2/
-  state                 {pick_uid, pick: {category, scale, fit, clip,
-                        n_admissible, gate_relaxed} | null, placement_pose:
-                        [per-part {part, center, size, perm, scale, mount,
-                        yaw?}] | null} -- from package/picks2.json and
-                        package/composed_state2.json via the manifest match;
-                        nulls when the node has no manifest match or no state
+Envelope nodes (6, source "envelope", type "architecture"): arch_floor
+(plane y=floor_y raw -- the NUMERIC MAX y), arch_ceiling, arch_wall_x0/x1/
+z0/z1 -- same plane/extent geometry as v1 (unchanged machinery).
 
-Envelope nodes (6): arch_floor (plane y=floor_y raw -- the NUMERIC MAX y),
-arch_ceiling (plane y=ceiling_y raw -- the numeric MIN y), arch_wall_x0/x1/
-z0/z1 (vertical planes at the envelope grid's x/z bounds; inward normal
-recorded in raw axis terms).
-
-Top level: scene, frame contract (copied semantics), node_seed_decision,
-provenance (input file paths + the manifest-based collide export
-package/collisions.json recorded FOR PROVENANCE ONLY -- fresh INTERPENETRATES
-edges are computed from analyzer boxes by build_edges.py), counts, nodes,
-edges: [].
+Top level: scene, layer: {record: true, judged: false} (the judge pass
+adds verdict fields later, REFERENCING these nodes, never overwriting),
+frame contract, lineage (manifest chain + pool + seg dir + pano meta +
+bundle prompt.txt text -- the generation prompt is evidence), counts,
+open_questions {same_candidate_pairs (from the manifest's
+deferred_semantic), naming_nodes}, nodes, edges: [].
 
 Standalone + idempotent (pure function of its inputs; no timestamps).
 Run:  python graph/build_graph.py --scene bedroom_marble
@@ -103,182 +82,130 @@ sys.path.insert(0, str(HERE.parent))
 import paths     # noqa: E402
 import envelope  # noqa: E402
 
-ARCH_LABELS = {"window", "door", "curtain", "air conditioner", "ceiling light"}
-CANDIDATE_MIN_VOTES = 8   # = analyzer config-default min_votes; see docstring
+CROP_PAD = 0.10      # fractional padding around the 2D box when cutting crops
+MANIFEST_DEFAULT = "scene_manifest_pano2c_rc_f30.json"
+POOL_DEFAULT = "rig_sp0/lift_poolc.json"
+CROPSRC_DEFAULT = "rig_sp0/crops"
 
 
-def load_inputs(scene):
+def load_inputs(scene, a):
     sdir = paths.scene_dir(scene)
     p = {
-        "bridged_boxes": sdir / "analyzer" / "bridged_boxes.json",
-        "match_report": sdir / "analyzer" / "match_report.json",
-        "interactions": sdir / "analyzer" / "job_high" / "interactions.json",
-        "transforms": sdir / "analyzer" / "job_high" / "transforms.json",
-        "manifest": paths.manifest(scene),
+        "manifest": sdir / a.manifest,
+        "pool": sdir / a.pool,
+        "crop_src": sdir / a.crop_src,
         "envelope": paths.envelope_npz(scene),
-        "picks": sdir / "package" / "picks2.json",
-        "composed_state": sdir / "package" / "composed_state2.json",
-        "collisions": sdir / "package" / "collisions.json",   # optional
-        "cut_stats": sdir / "cut" / "obj_004_v2" / "stats.json",
+        "bundle_path": sdir / "bundle_path.txt",       # optional
+        "pano_meta": sdir / "rig_sp0" / "pano_selfrender_meta.json",
     }
-    missing = [k for k, f in p.items()
-               if not f.exists() and k != "collisions"]
+    missing = [k for k, f in p.items() if not f.exists()
+               and k not in ("bundle_path",)]
     if missing:
-        raise SystemExit(f"[graph] MISSING inputs: {missing}")
-    data = {k: (json.loads(f.read_text()) if f.suffix == ".json" and f.exists()
-                else None) for k, f in p.items()}
-    data["envelope"] = envelope.load(scene)
-    return p, data
+        raise SystemExit(f"[record] MISSING inputs: {missing}")
+    man = json.loads(p["manifest"].read_text())
+    pool = json.loads(p["pool"].read_text())["pool"]
+    prompt_text = None
+    if p["bundle_path"].exists():
+        pf = Path(p["bundle_path"].read_text().strip()) / "prompt.txt"
+        if pf.exists():
+            prompt_text = pf.read_text(encoding="utf-8",
+                                       errors="replace").strip()
+    return p, man, pool, prompt_text
 
 
-def synonym_lookup(match):
-    groups = match["synonym_groups"]
-    label2group = {m: g for g, ms in groups.items() for m in ms}
+def cut_crops(nodes, pool, crop_src, crop_dir, recrop):
+    """Deterministic crop per member detection: pad the 2D box by CROP_PAD,
+    clamp to the view image, save PNG. Skips existing files unless --recrop
+    (content is a pure function of view image x box, so skipping is safe)."""
+    from PIL import Image
+    crop_dir.mkdir(parents=True, exist_ok=True)
+    cache = {}
+    n_cut = n_skip = n_missing = 0
+    for n in nodes:
+        for m in n["evidence"]["members"]:
+            src = crop_src / f"{m['view']}.webp"
+            if not src.exists():
+                m["crop"] = None
+                n_missing += 1
+                continue
+            out = crop_dir / f"{n['id']}_m{m['member']:03d}.png"
+            m["crop"] = out.name
+            if out.exists() and not recrop:
+                n_skip += 1
+                continue
+            if m["view"] not in cache:
+                cache[m["view"]] = Image.open(src).convert("RGB")
+            im = cache[m["view"]]
+            x0, y0, x1, y1 = m["box_2d"]
+            px, py = (x1 - x0) * CROP_PAD, (y1 - y0) * CROP_PAD
+            box = (max(0, int(x0 - px)), max(0, int(y0 - py)),
+                   min(im.width, int(x1 + px)), min(im.height, int(y1 + py)))
+            if box[2] <= box[0] or box[3] <= box[1]:
+                m["crop"] = None
+                n_missing += 1
+                continue
+            im.crop(box).save(out)
+            n_cut += 1
+    return n_cut, n_skip, n_missing
 
-    def canon(label):
-        return label2group.get(label.strip().lower(), label.strip().lower())
 
-    def syns(label):
-        g = label2group.get(label.strip().lower())
-        return list(groups[g]) if g else [label.strip().lower()]
-
-    return canon, syns
-
-
-def evidence_and_standpoints(inter, transforms):
-    """Per analyzer object (by bridge enumeration order -> ana_XXX):
-    sorted unique evidence frame indices + distinct standpoint count."""
-    f2sp = {i: fr.get("position_idx")
-            for i, fr in enumerate(transforms.get("frames", []))}
-    out = {}
-    for i, o in enumerate(inter["objects"]):
-        frames = sorted({f["frame_idx"] for f in o["frames"]})
-        sps = {f2sp.get(fi) for fi in frames} - {None}
-        out[f"ana_{i:03d}"] = (frames, len(sps))
-    return out
-
-
-def build_detection_nodes(data, input_paths):
-    bridged = data["bridged_boxes"]
-    match = data["match_report"]
-    canon, syns = synonym_lookup(match)
-    ev = evidence_and_standpoints(data["interactions"], data["transforms"])
-
-    # match mapping: ana id -> manifest row
-    ana2man = {r["analyzer_id"]: r for r in match["manifest_to_analyzer"]
-               if r.get("matched")}
-    man_objs = {o["id"]: o for o in data["manifest"]["objects"]}
-
-    # per-manifest-group placement parts from composed_state2
-    place_by_group = {}
-    for e in data["composed_state"]["objects"]:
-        place_by_group.setdefault(e["group"], []).append(e)
-
-    env_flags = bridged.get("envelope_sanity", {})
-    centers_out = set(env_flags.get("centers_outside_ids", []))
-    extents_out = set(env_flags.get("extents_partially_outside_ids", []))
-
-    cut_stats = data["cut_stats"]
-    cut_manifest_id = cut_stats["object"]          # "obj_004"
-    cut_dir = input_paths["cut_stats"].parent
-
+def build_detection_nodes(man, pool):
     nodes = []
-    enrich = {"manifest": 0, "pick": 0, "placement": 0, "cut": 0}
-    for o in bridged["objects"]:
-        nid = o["id"]
-        label = o["label"]
-        geom_caveats = ["surface_bias", "fabricated_z_extent", "axis_aligned"]
-        if nid in centers_out:
-            geom_caveats.append("center_outside_envelope")
-        if nid in extents_out:
-            geom_caveats.append("extent_partially_outside_envelope")
-
-        row = ana2man.get(nid)
-        manifest_meta = None
-        state = {"pick_uid": None, "pick": None, "placement_pose": None}
-        if row:
-            enrich["manifest"] += 1
-            mo = man_objs[row["manifest_id"]]
-            manifest_meta = {
-                "id": mo["id"], "label": mo["label"], "score": mo["score"],
-                "center": mo["center"], "size": mo["size"],
-                "aabb_min": mo["aabb_min"], "aabb_max": mo["aabb_max"],
-                "n_points": mo.get("n_points"), "views": mo.get("views"),
-                "n_detections": mo.get("n_detections"),
-                "amodal_extended": mo.get("amodal_extended"),
-            }
-            pick = data["picks"].get(row["manifest_id"])
-            if pick:
-                enrich["pick"] += 1
-                state["pick_uid"] = pick["uid"]
-                state["pick"] = {k: pick.get(k) for k in
-                                 ("category", "scale", "fit", "clip",
-                                  "n_admissible", "gate_relaxed")}
-            parts = place_by_group.get(row["manifest_id"])
-            if parts:
-                enrich["placement"] += 1
-                state["placement_pose"] = [
-                    {k: e[k] for k in
-                     ("part", "center", "size", "perm", "scale", "mount")
-                     } | ({"yaw": e["yaw"]} if "yaw" in e else {})
-                    for e in parts]
-
-        gaussians = {"cut": False}
-        if row and row["manifest_id"] == cut_manifest_id:
-            enrich["cut"] += 1
-            gaussians = {
-                "cut": True,
-                "source_object": cut_manifest_id,
-                "variant": cut_stats.get("variant"),
-                "foreground_ply": str(cut_dir / "foreground.ply"),
-                "count": cut_stats["foreground_gaussians"],
-                "background_ply": str(cut_dir / "background.ply"),
-                "stats_json": str(input_paths["cut_stats"]),
-            }
-
-        votes = o["votes"]
-        if row:
-            tier = "confirmed"
-        elif votes >= CANDIDATE_MIN_VOTES:
-            tier = "candidate"
-        else:
-            tier = "weak"
-
-        frames, n_sp = ev[nid]
+    for o in man["objects"]:
+        members = []
+        for idx in o.get("members", []):
+            L = pool[idx]
+            b = L["box"]
+            members.append({
+                "member": idx,
+                "view": L["view"],
+                "label": L["label"],
+                "score": round(L["score"], 3),
+                "box_2d": [round(b["xmin"], 1), round(b["ymin"], 1),
+                           round(b["xmax"], 1), round(b["ymax"], 1)],
+                "truncated": bool(L.get("trunc")),
+                "crop": None,          # cut_crops() fills
+            })
+        members.sort(key=lambda m: -m["score"])
+        distinct = sorted({m["label"] for m in members} | {o["label"]})
+        provisional = len(distinct) > 1
         nodes.append({
-            "id": nid,
-            "label": label,
-            "canonical_category": canon(label),
-            "synonyms": syns(label),
-            "type": "architecture" if label in ARCH_LABELS else "object",
+            "id": o["id"],
             "source": "detection",
+            "type": "object",
+            "label": o["label"],
+            "label_provisional": provisional,
+            "labels": members and [
+                {"label": m["label"], "score": m["score"],
+                 "view": m["view"], "member": m["member"]}
+                for m in members] or [],
+            "distinct_labels": distinct,
             "geometry": {
                 "center": o["center"], "size": o["size"],
                 "aabb_min": o["aabb_min"], "aabb_max": o["aabb_max"],
                 "yaw": None,
-                "rotation_quat_xyzw": o["rotation_quat_xyzw"],
-                "caveats": geom_caveats,
+                "amodal": None,
+            },
+            "evidence": {
+                "views": o.get("views", []),
+                "n_detections": o.get("n_detections"),
+                "n_whole": o.get("n_whole"),
+                "members": members,
             },
             "provenance": {
-                "detector": "splat_analyzer job_high",
-                "votes": votes,
-                "peak_score": o["peak_score"],
-                "standpoint_count": n_sp,
-                "matched_manifest_id": row["manifest_id"] if row else None,
-                "match_distance_m": row["distance_m"] if row else None,
-                "manifest": manifest_meta,
+                "manifest": None,          # filled by main() (file name)
+                "peak_score": o["score"],
+                "flags": [f for f in o.get("flags", [])],
             },
-            "confidence_tier": tier,
-            "views": {"evidence_frames": frames, "best_crop": None},
-            "gaussians": gaussians,
-            "state": state,
+            "open_questions": (["naming"] if provisional else []),
         })
-    return nodes, enrich
+    return nodes
 
 
 def build_envelope_nodes(env):
     """floor / ceiling / 4 walls as first-class architecture nodes.
-    RAW frame: physical up = -y, so the FLOOR is the numeric MAX y plane."""
+    RAW frame: physical up = -y, so the FLOOR is the numeric MAX y plane.
+    (Unchanged v1 machinery, reshaped to the record schema.)"""
     x0, z0, cell = float(env["x0"]), float(env["z0"]), float(env["cell"])
     nx, nz = int(env["nx"]), int(env["nz"])
     x1, z1 = x0 + nx * cell, z0 + nz * cell
@@ -286,16 +213,17 @@ def build_envelope_nodes(env):
 
     def node(nid, category, plane, extent):
         return {
-            "id": nid, "label": nid.replace("arch_", ""),
-            "canonical_category": category,
-            "synonyms": [], "type": "architecture", "source": "envelope",
+            "id": nid, "source": "envelope", "type": "architecture",
+            "label": nid.replace("arch_", ""),
+            "label_provisional": False,
+            "labels": [], "distinct_labels": [category],
             "geometry": {"plane": plane, "extent": extent, "yaw": None,
-                         "caveats": []},
-            "provenance": {"detector": "envelope.npz"},
-            "confidence_tier": "confirmed",
-            "views": {"evidence_frames": [], "best_crop": None},
-            "gaussians": {"cut": False},
-            "state": {"pick_uid": None, "pick": None, "placement_pose": None},
+                         "amodal": None},
+            "evidence": {"views": [], "n_detections": 0, "n_whole": 0,
+                         "members": []},
+            "provenance": {"manifest": None, "peak_score": None,
+                           "flags": [], "detector": "envelope.npz"},
+            "open_questions": [],
         }
 
     fnote = ("RAW frame, physical up = -y: floor is the numeric MAX y plane "
@@ -305,13 +233,11 @@ def build_envelope_nodes(env):
     ns = [
         node("arch_floor", "floor",
              {"axis": "y", "value_raw": round(floor_y, 3),
-              "inward_normal_raw": [0, -1, 0], "note": fnote},
-             ext_xz),
+              "inward_normal_raw": [0, -1, 0], "note": fnote}, ext_xz),
         node("arch_ceiling", "ceiling",
              {"axis": "y", "value_raw": round(ceil_y, 3),
               "inward_normal_raw": [0, 1, 0],
-              "note": "numeric MIN y = physical top"},
-             ext_xz),
+              "note": "numeric MIN y = physical top"}, ext_xz),
     ]
     ext_y = {"y_raw": [round(ceil_y, 3), round(floor_y, 3)]}
     walls = [("arch_wall_x0", "x", x0, [1, 0, 0],
@@ -334,96 +260,92 @@ def build_envelope_nodes(env):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", default="bedroom_marble")
-    args = ap.parse_args()
-    scene = args.scene
+    ap.add_argument("--manifest", default=MANIFEST_DEFAULT)
+    ap.add_argument("--pool", default=POOL_DEFAULT)
+    ap.add_argument("--crop-src", default=CROPSRC_DEFAULT)
+    ap.add_argument("--no-crops", action="store_true",
+                    help="skip crop cutting (crop refs stay null)")
+    ap.add_argument("--recrop", action="store_true",
+                    help="re-cut crops even if the files exist")
+    a = ap.parse_args()
+    scene = a.scene
+    sdir = paths.scene_dir(scene)
 
-    input_paths, data = load_inputs(scene)
-    det_nodes, enrich = build_detection_nodes(data, input_paths)
-    env_nodes = build_envelope_nodes(data["envelope"])
+    input_paths, man, pool, prompt_text = load_inputs(scene, a)
+    det_nodes = build_detection_nodes(man, pool)
+    for n in det_nodes:
+        n["provenance"]["manifest"] = a.manifest
+    env_nodes = build_envelope_nodes(envelope.load(scene))
     nodes = det_nodes + env_nodes
 
-    man_frame = data["manifest"]["frame"]
-    coll = data["collisions"]
-    coll_prov = None
-    if coll is not None:
-        coll_prov = {
-            "path": str(input_paths["collisions"]),
-            "state": coll.get("state"),
-            "frame": coll.get("frame"),
-            "n_pairs": len(coll.get("pairs", [])),
-            "note": ("manifest/composition-based collide export, recorded for "
-                     "provenance ONLY (and it is in the RENDER frame, not "
-                     "raw); INTERPENETRATES edges in this graph are computed "
-                     "fresh from the analyzer boxes by graph/build_edges.py"),
-        }
+    n_cut = n_skip = n_missing = 0
+    if not a.no_crops:
+        n_cut, n_skip, n_missing = cut_crops(
+            det_nodes, pool, input_paths["crop_src"],
+            sdir / "graph" / "crops", a.recrop)
 
-    tiers = {}
-    types = {}
-    for n in nodes:
-        tiers[n["confidence_tier"]] = tiers.get(n["confidence_tier"], 0) + 1
-        types[n["type"]] = types.get(n["type"], 0) + 1
+    naming_nodes = [n["id"] for n in det_nodes if n["label_provisional"]]
 
+    man_frame = man["frame"]
     graph = {
         "scene": scene,
-        "generated_by": ("graph/build_graph.py (Step 1 -- node-assembly) + "
-                         "graph/build_edges.py (Step 2 -- geometric-edges)"),
+        "generated_by": ("graph/build_graph.py (pass 1 -- RECORD: nodes + "
+                         "evidence) + graph/build_edges.py (pass 1 -- RECORD:"
+                         " geometric edges + SAME_CANDIDATE queue)"),
+        "layer": {"record": True, "judged": False,
+                  "note": ("record-then-judge (PLAN_SCENE_GRAPH.md 0a): "
+                           "this file currently holds the RECORD only; the "
+                           "judge passes add verdict fields referencing "
+                           "these nodes, never overwriting them")},
         "frame": {
             "space": "raw",
             "up": man_frame["up"],
             "floor_y": man_frame["floor_y"],
-            "ceiling_y": man_frame["ceiling_y"],
-            "note": ("ALL geometry in RAW gen_raw.ply space; physical up = -y "
-                     "(rot180), floor_y > ceiling_y numerically; a box's "
-                     "physical BOTTOM is its MAX raw y. render space = raw * "
-                     "raw_to_render elementwise."),
-            "raw_to_render": man_frame.get("raw_to_render"),
+            "note": ("ALL geometry in RAW gen_raw.ply space; physical up = "
+                     "-y (rot180), floor_y > ceiling_y numerically; a box's "
+                     "physical BOTTOM is its MAX raw y."),
         },
-        "node_seed_decision": (
-            "USER DECISION 2026-07-22: nodes seeded from the analyzer's 103 "
-            "bridged boxes (NOT the manifest, NOT a union); manifest/cut/pick/"
-            "placement metadata attached via analyzer/match_report.json"),
-        "provenance": {
-            "inputs": {k: str(v) for k, v in input_paths.items()},
-            "collide_export": coll_prov,
+        "lineage": {
+            "manifest": str(input_paths["manifest"]),
+            "lift_pool": str(input_paths["pool"]),
+            "crop_source": str(input_paths["crop_src"]),
+            "pano_meta": str(input_paths["pano_meta"]),
+            "generation_prompt": prompt_text,
         },
         "counts": {
             "nodes": len(nodes),
             "detection_nodes": len(det_nodes),
             "envelope_nodes": len(env_nodes),
-            "by_type": types,
-            "by_tier": tiers,
-            "enrichment": enrich,
+            "label_provisional_nodes": len(naming_nodes),
+            "same_candidate_pairs": 0,     # build_edges.py fills
+            "crops": {"cut": n_cut, "skipped_existing": n_skip,
+                      "missing": n_missing},
+        },
+        "open_questions": {
+            # SAME_CANDIDATE pairs are computed from geometry by
+            # build_edges.py (no pre-merged dedup stage anymore)
+            "same_candidate_pairs": [],
+            "naming_nodes": naming_nodes,
         },
         "nodes": nodes,
         "edges": [],
     }
 
-    out = paths.scene_dir(scene) / "scene_graph.json"
+    out = sdir / "scene_graph.json"
     out.write_text(json.dumps(graph, indent=1))
 
-    # ---------------- sanity report ----------------
-    print(f"[graph] wrote {out}")
-    print(f"[graph] {len(nodes)} nodes = {len(det_nodes)} detection + "
+    print(f"[record] wrote {out}")
+    print(f"[record] {len(nodes)} nodes = {len(det_nodes)} detection + "
           f"{len(env_nodes)} envelope")
-    print(f"[graph] by type: {types}")
-    print(f"[graph] by tier: {tiers}  (candidate threshold: votes >= "
-          f"{CANDIDATE_MIN_VOTES}, no manifest match)")
-    print(f"[graph] enrichment: manifest metadata on {enrich['manifest']} "
-          f"nodes, picks on {enrich['pick']}, placement poses on "
-          f"{enrich['placement']}, gaussian cut on {enrich['cut']}")
-    n_match = len([r for r in data["match_report"]["manifest_to_analyzer"]
-                   if r.get("matched")])
-    n_only = data["match_report"]["analyzer_only_count"]
-    n_near = len(det_nodes) - n_match - n_only
-    print(f"[graph] match accounting: {n_match} matched + {n_only} "
-          f"analyzer-only + {n_near} unmatched-but-near-a-compatible-manifest-"
-          f"object (duplicate clusters within the 0.75 m radius)")
-    unattached_state = [g for g in data["picks"]
-                        if g.startswith("add_")]
-    if unattached_state:
-        print(f"[graph] note: composition state groups with NO node to attach "
-              f"to (loop additions, no manifest object): {unattached_state}")
-    print("[graph] edges: [] (run graph/build_edges.py next)")
+    print(f"[record] label multisets: {len(naming_nodes)} nodes provisional "
+          f"(open naming question): {naming_nodes}")
+    print("[record] same-candidate pairs: computed from geometry by "
+          "build_edges.py (no pre-merge dedup stage)")
+    print(f"[record] crops: {n_cut} cut, {n_skip} already on disk, "
+          f"{n_missing} missing/degenerate")
+    print(f"[record] generation prompt: "
+          f"{'attached (' + str(len(prompt_text)) + ' chars)' if prompt_text else 'NOT FOUND (lineage.generation_prompt = null)'}")
+    print("[record] edges: [] (run graph/build_edges.py next)")
 
 
 if __name__ == "__main__":

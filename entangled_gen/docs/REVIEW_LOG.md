@@ -116,4 +116,36 @@ Format per entry:
   UPDATE block. Door+window merges and the bookshelf thicket were not
   individually ruled on — re-review with the reworked dedup.
 
+## R10 — Checkpoint R1: the scene-graph RECORD (pass 1, 2026-07-26 evening; REBUILT late same evening per the §0a.0 no-pre-merge amendment)
+- **What / paths:** viewer layer **"graph record (stage 3)"** (main toggle
+  row) at `http://localhost:8321/?scene=bedroom_marble` — **102 detection
+  nodes (= the f30 set verbatim, NOTHING pre-merged) + 6 envelope nodes**
+  from
+  `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\scene_graph.json`.
+  Record layer only: label multisets + 465 referenced evidence crops + geometric
+  edges (ON 41 · IN 105 · IN_WALL 29 · ATTACHED 3 · INTERPENETRATES 31)
+  + **14 SAME_CANDIDATE edges (10 confident IoU ≥ .6, 4 gray)** — the
+  open same-vs-part questions, both nodes of every pair present (user
+  amendment: "record both objects and indicate their relationship
+  faithfully"; merging is a judge verdict). The dedup stage is retired;
+  `_dd` / `_dd_llm` manifests remain on disk unused.
+- **Why:** Checkpoint R1 of record-then-judge (PLAN_SCENE_GRAPH.md §0a +
+  §0a.0) — the record must be right BEFORE any VLM spend: the judge
+  passes consume exactly what this layer shows, and the same-vs-part pass
+  will visit each of the 14 pink edges.
+- **Look for:** (1) node boxes = real objects (toggle vs "pano · stage 2 ·
+  f30"— should be the SAME 102 boxes); (2) the 14 pink pairs — confident
+  ones (chair↔office chair, lamp↔ceiling light, door↔window ×2,
+  rug/mat/yoga-mat triple, side-table↔desk, bookshelf↔shelf ×2) should
+  each look like ONE object detected twice; gray ones (shelf↔book,
+  bookshelf↔shelf ×2, door↔window) genuinely ambiguous; anything pink
+  that's actually TWO distinct objects is a finding; (3) evidence crops
+  on the cards — do they show the object (they feed the judge)?;
+  (4) ON edges sane (self-check PASSes numerically); 16 floating = wall
+  pictures + plants-on-furniture + ceiling lamp obj_062 (obj_007 is
+  ATTACHED to ceiling); (5) the books-in-shelves IN clusters look right.
+- **Evening session — no provisional verdict; user judges directly.**
+- **USER VERDICT (record correctness / R1 gate):**
+- **USER VERDICT (SAME_CANDIDATE pair quality — any pink pair that is really two objects):**
+
 _(further entries appended as artifacts land)_

@@ -1,84 +1,78 @@
 """
-Step 2 -- geometric-edges: fill the edges array of out/<scene>/scene_graph.json.
+Pass 1 -- RECORD, step 2: geometric edges + the SAME_CANDIDATE queue.
 
-Reads the node-only graph written by graph/build_graph.py (Step 1) and rewrites
-the SAME file with the edges array filled + an edge_summary block. Standalone +
-idempotent (pure function of the node geometry; rerunning reproduces the same
-edges). NEXT-TO / adjacency is deliberately ABSENT (deferred to the v2 VLM
-pass per PLAN_SCENE_GRAPH.md section 2).
+Reads the node-only record written by graph/build_graph.py and rewrites the
+SAME file with the edges array filled + an edge_summary block. Standalone +
+idempotent (pure function of the node geometry; rerunning reproduces the
+same edges). Still RECORD: threshold arithmetic on boxes, zero model calls,
+every edge carries its numbers. NEXT-TO / adjacency is deliberately ABSENT
+(a judge-side v2 pass). Reworked 2026-07-26 for the pano-track record
+(analyzer-era z_fabricated caveats retired -- pano boxes are measured by
+z-buffer lift + robust merge, not fabricated).
 
 FRAME: RAW gen_raw.ply space, physical up = -y (rot180). Physical height
-h = -y_raw. A box's physical BOTTOM face is its MAX raw y (aabb_max[1]); its
-physical TOP face is its MIN raw y (aabb_min[1]). The floor plane is the
-numeric MAX y plane (floor_y = +0.029 > ceiling_y = -2.793). Getting this sign
-wrong inverts every ON edge -- a numeric self-check below verifies the
-manifest-confirmed floor-standing objects (rug obj_006/ana_063, rug obj_018/
-ana_065, bed obj_001/ana_072) end up ON arch_floor, and that NOTHING is ON
-arch_ceiling; the script exits 1 if that check fails.
+h = -y_raw. A box's physical BOTTOM face is its MAX raw y (aabb_max[1]);
+its physical TOP face is its MIN raw y. The floor plane is the numeric MAX
+y plane. Getting this sign wrong inverts every ON edge -- a generic numeric
+self-check below verifies that at least one bed/rug-labeled node (when one
+exists) is ON arch_floor and that NOTHING is ON arch_ceiling; exits 1 on
+failure.
 
 ---------------------------------------------------------------------------
-EDGE TYPES + THRESHOLDS (all documented choices; every edge carries numeric
+EDGE TYPES + THRESHOLDS (documented choices; every edge carries numeric
 evidence -- auditable, not vibes)
 ---------------------------------------------------------------------------
 Every edge: {type, a, b, evidence: {numbers}, caveats: []}.
 
-ON (a supported-by b; a = object-typed detection node):
+ON (a supported-by b):
   contact test between a's physical bottom and b's physical top:
       gap_m = bottom_h(a) - top_h(b)      (+ = air between, - = penetration)
-  accepted when -0.15 <= gap_m <= +0.08 AND the horizontal (xz) overlap area
-  covers >= 30% of a's footprint. The air side (+0.08) is inside the 3-8 cm
-  spec range; the penetration side is widened to 0.15 m because the analyzer
-  FABRICATES each box's depth extent as (w+h)/2 (bridged_boxes.json caveats):
-  supporter tops are inflated physically UPWARD, so a truly-supported object's
-  bottom systematically lands BELOW the inflated top (measured here: desk lamp
-  ana_101 on desk ana_094 gap -0.139, monitor ana_100 on desk gap -0.103).
-  Resolution: the SINGLE best supporter = smallest |gap_m| (tie: larger
-  overlap fraction). Supporter candidates are object-typed detection nodes
-  only; pairs already holding an IN edge are excluded (containment wins over
-  support). Fallback: nodes with no object supporter are tested against the
-  floor plane:
-      gap_floor_m = floor_h - bottom_h(a) ... i.e. (floor_y - aabb_max[1])
-  ON arch_floor when gap_floor_m <= +0.15 AND (gap_floor_m >= -0.15 OR the
-  box STRADDLES the floor: bottom below the floor plane but center physically
-  above it -- the fabricated-extent signature; rug ana_063 overshoots 0.274 m
-  BELOW the floor while its center sits above). The +-0.15 floor band exceeds
-  the 3-8 cm spec range DELIBERATELY, calibrated on the manifest-confirmed
-  floor-standing set: bed ana_072 bottom sits 0.142 m above the floor plane
-  (surface-bias / under-reach), planter ana_016 0.142, desk ana_094 0.112 --
-  an 8 cm band would false-float all of them. The next cohort up starts at
-  0.152 (duplicate shelf clusters), so 0.15 is the largest confirmed floor-
-  stander + epsilon; anything beyond lands in the floating list instead of
-  getting an invented edge.
+  accepted when -0.15 <= gap_m <= +0.08 AND the horizontal (xz) overlap
+  covers >= 30% of a's footprint. Thresholds carried over from v1 where
+  they were calibrated; the penetration side stays wide because merged
+  boxes still over-reach (robust-merge unions + recenter refinements).
+  Single best supporter = smallest |gap_m| (tie: larger overlap). Pairs
+  already holding an IN edge are excluded (containment wins over support).
+  Fallback: floor test, gap_floor_m = floor_y - aabb_max[1]; ON arch_floor
+  when gap_floor_m <= +0.15 AND (>= -0.15 OR the box STRADDLES the floor:
+  bottom below the plane, center physically above). The +-0.15 band is the
+  v1 calibration; pano-track floor gaps measure far tighter (min +0.012),
+  revisit after the record review.
 
 IN (containment; smaller-volume box IN larger):
-  overlap_volume / volume(smaller box) >= 0.6 (documented threshold; target
-  case = books inside shelves). Detection-node pairs only. Carries caveat
-  "z_fabricated" (overlap volumes are inflated by fabricated extents).
+  overlap_volume / volume(smaller) >= 0.6. Detection-node pairs only.
 
-IN_WALL (architecture-typed DETECTION node -> envelope wall arch_wall_*):
-  distance from the node's box (interval on the wall axis) to the nearest
-  envelope wall plane <= 0.10 m (0 when the box straddles the plane).
-  Nearest wall only.
+IN_WALL / ATTACHED (ceiling) -- ALL detection nodes vs envelope planes
+  (label-blind by design: windows/doors are ordinary object nodes since
+  07-26; whether a node hugs a wall is a geometric FACT the judge uses,
+  not a typing decision):
+  IN_WALL: node box within 0.10 m of the nearest envelope wall plane.
+  ATTACHED: node box within 0.10 m of the ceiling plane.
+  (v1's curtain->window label rule DROPPED: label-conditioned semantics
+  belong to the judge, not the record.)
 
-ATTACHED:
-  (a) architecture-typed detection node -> arch_ceiling when its box lies
-      within 0.10 m of the ceiling plane (same rule as IN_WALL; gives ceiling
-      lights their anchor -- documented extension of the wall rule);
-  (b) curtain -> window when their boxes overlap in 3D, or their xz
-      projections overlap with a vertical gap <= 0.10 m.
+SAME_CANDIDATE (the open "same object or part?" questions -- computed HERE
+  from geometry since the 07-26-late amendment: NO pre-merge dedup stage,
+  the record keeps both objects of every suspect pair):
+  detection-node pairs with IoU >= 0.40 AND (IoU >= 0.60 OR containment
+  >= 0.90). Evidence: iou, containment, zone ("confident" = IoU >= 0.60,
+  two boxes sharing most of their volume -- almost certainly one object
+  detected twice; "gray" = IoU .40-.60 + containment >= .90 -- same-vs-
+  part genuinely ambiguous), center height difference, both labels.
+  status: "open" -- the judge pass resolves EVERY pair (confident zone
+  included) to merge / PART_OF / distinct; merging is a judge VERDICT,
+  never a record operation. These pairs are excluded from IN and
+  INTERPENETRATES (already represented). High-containment LOW-IoU nesting
+  (book in shelf, IoU < 0.40) stays plain IN -- unchanged.
 
 INTERPENETRATES (unordered; a < b by id):
-  detection-node pairs with box overlap volume > 0.001 m3 that hold NO other
-  edge (ON / IN / ATTACHED) between them. Evidence: overlap volume +
-  normalized value (volume / smaller box volume). ALWAYS carries caveat
-  "z_fabricated" -- fabricated depth extents inflate every overlap; the
-  review page dims these.
+  detection-node pairs with box overlap volume > 0.001 m3 that hold NO
+  other edge. Evidence: overlap volume + fraction of the smaller box.
 
-Sanity lists (edge_summary block + stdout; nothing invented):
-  floating              object-typed detection nodes with no ON and no IN
-  unattached_architecture  architecture-typed detection nodes with no
-                           IN_WALL / ATTACHED
-  underground           nodes whose center sits physically below the floor
+Sanity lists (edge_summary + stdout; nothing invented):
+  floating          detection nodes with no ON and no IN
+  wall_attached     detection nodes holding IN_WALL / ATTACHED (fact list)
+  underground       nodes whose center sits physically below the floor
 
 Run:  python graph/build_edges.py --scene bedroom_marble
 """
@@ -93,12 +87,14 @@ import paths  # noqa: E402
 
 TOL_ON_AIR = 0.08          # m, max air gap bottom(a) above top(b)
 TOL_ON_PEN = 0.15          # m, max penetration of a's bottom into b
-FLOOR_TOL = 0.15           # m, |gap| band around the floor plane (see docstring)
+FLOOR_TOL = 0.15           # m, |gap| band around the floor plane
 MIN_FOOT_OVERLAP = 0.30    # fraction of a's xz footprint over b
 IN_FRAC = 0.60             # overlap volume / smaller volume
 WALL_TOL = 0.10            # m, box-to-plane distance for IN_WALL / ceiling
-CURTAIN_VGAP = 0.10        # m, vertical adjacency for curtain->window
 INTERP_MIN_VOL = 0.001     # m3
+SC_IOU_CONF = 0.60         # SAME_CANDIDATE confident zone: IoU >= this
+SC_IOU_MIN = 0.40          # SAME_CANDIDATE floor: IoU >= this
+SC_CONTAIN = 0.90          # gray zone also needs containment >= this
 
 
 def h(y_raw):
@@ -125,8 +121,8 @@ def xz_overlap_area(a, b):
                          b["aabb_min"][2], b["aabb_max"][2]))
 
 
-def vol(n):
-    s = n["size"]
+def vol(g):
+    s = g["size"]
     return s[0] * s[1] * s[2]
 
 
@@ -146,8 +142,6 @@ def main():
     det = [n for n in graph["nodes"] if n["source"] == "detection"]
     geom = {n["id"]: n["geometry"] for n in det}
     label = {n["id"]: n["label"] for n in det}
-    objects = [n for n in det if n["type"] == "object"]
-    arch_det = [n for n in det if n["type"] == "architecture"]
 
     env = {n["id"]: n for n in graph["nodes"] if n["source"] == "envelope"}
     floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
@@ -159,16 +153,52 @@ def main():
     edges = []
     paired = set()          # frozenset({a,b}) for every emitted edge
 
-    def add(etype, a, b, evidence, caveats):
+    def add(etype, a, b, evidence, caveats, **extra):
         edges.append({"type": etype, "a": a, "b": b,
-                      "evidence": evidence, "caveats": caveats})
+                      "evidence": evidence, "caveats": caveats, **extra})
         paired.add(frozenset((a, b)))
+
+    # ---------------- SAME_CANDIDATE (computed from geometry) --------------
+    # No pre-merge dedup stage (amendment 07-26 late): both objects of every
+    # probable-duplicate pair are nodes; the pair itself is this open edge.
+    sc_pairs = []
+    for i in range(len(det)):
+        for j in range(i + 1, len(det)):
+            ga, gb = det[i]["geometry"], det[j]["geometry"]
+            ov = box_overlap_vol(ga, gb)
+            if ov <= 0:
+                continue
+            va, vb = vol(ga), vol(gb)
+            iou = ov / (va + vb - ov)
+            contain = ov / min(va, vb)
+            if iou >= SC_IOU_CONF:
+                zone = "confident"
+            elif iou >= SC_IOU_MIN and contain >= SC_CONTAIN:
+                zone = "gray"
+            else:
+                continue
+            hdiff = abs(h(ga["center"][1]) - h(gb["center"][1]))
+            a, b = det[i]["id"], det[j]["id"]
+            add("SAME_CANDIDATE", a, b,
+                {"iou": round(iou, 3), "containment": round(contain, 3),
+                 "zone": zone, "center_height_diff_m": round(hdiff, 3),
+                 "labels": [det[i]["label"], det[j]["label"]]},
+                [], status="open")
+            sc_pairs.append({"a": a, "a_label": det[i]["label"],
+                             "b": b, "b_label": det[j]["label"],
+                             "iou": round(iou, 3),
+                             "containment": round(contain, 3),
+                             "zone": zone})
+    graph.setdefault("open_questions", {})["same_candidate_pairs"] = sc_pairs
+    graph.setdefault("counts", {})["same_candidate_pairs"] = len(sc_pairs)
 
     # ---------------- IN (containment) ----------------
     in_pairs = set()
     for i in range(len(det)):
         for j in range(i + 1, len(det)):
             a, b = det[i], det[j]
+            if frozenset((a["id"], b["id"])) in paired:
+                continue          # SAME_CANDIDATE already represents it
             ov = box_overlap_vol(a["geometry"], b["geometry"])
             if ov <= 0:
                 continue
@@ -180,14 +210,12 @@ def main():
                     {"overlap_vol_m3": round(ov, 5),
                      "frac_of_smaller": round(frac, 3),
                      "vol_small_m3": round(min(va, vb), 5),
-                     "vol_big_m3": round(max(va, vb), 5)},
-                    ["z_fabricated"])
+                     "vol_big_m3": round(max(va, vb), 5)}, [])
                 in_pairs.add(frozenset((a["id"], b["id"])))
 
-    # ---------------- IN_WALL + ATTACHED (architecture) ----------------
-    for n in arch_det:
+    # ---------------- IN_WALL + ATTACHED (all nodes vs planes) -------------
+    for n in det:
         g = n["geometry"]
-        # nearest wall plane
         best = None
         for wid, plane in walls.items():
             k = 0 if plane["axis"] == "x" else 2
@@ -200,39 +228,20 @@ def main():
             add("IN_WALL", n["id"], wid,
                 {"wall_distance_m": round(d, 3), "wall_axis": plane["axis"],
                  "wall_value_raw": plane["value_raw"]}, [])
-        # ceiling attachment (same proximity rule against the ceiling plane)
         dc = interval_plane_dist(g["aabb_min"][1], g["aabb_max"][1], ceil_y)
         if dc <= WALL_TOL:
             add("ATTACHED", n["id"], "arch_ceiling",
                 {"ceiling_distance_m": round(dc, 3), "rule": "ceiling_plane"},
                 [])
 
-    # curtain -> window
-    curtains = [n for n in arch_det if n["label"] == "curtain"]
-    windows = [n for n in arch_det if n["label"] == "window"]
-    for c in curtains:
-        for w in windows:
-            gc, gw = c["geometry"], w["geometry"]
-            ov = box_overlap_vol(gc, gw)
-            xz = xz_overlap_area(gc, gw)
-            # vertical gap between the y intervals (0 if they overlap)
-            vgap = max(0.0, max(gc["aabb_min"][1], gw["aabb_min"][1])
-                       - min(gc["aabb_max"][1], gw["aabb_max"][1]))
-            if ov > 0 or (xz > 0 and vgap <= CURTAIN_VGAP):
-                add("ATTACHED", c["id"], w["id"],
-                    {"overlap_vol_m3": round(ov, 5),
-                     "xz_overlap_m2": round(xz, 4),
-                     "vertical_gap_m": round(vgap, 3),
-                     "rule": "curtain_window"}, ["z_fabricated"])
-
     # ---------------- ON (support) ----------------
     supported = {}
-    for a in objects:
+    for a in det:
         ga = a["geometry"]
         bottom_h = h(ga["aabb_max"][1])
         foot_a = ga["size"][0] * ga["size"][2]
         best = None
-        for b in objects:
+        for b in det:
             if b["id"] == a["id"]:
                 continue
             if frozenset((a["id"], b["id"])) in in_pairs:
@@ -253,8 +262,7 @@ def main():
             add("ON", a["id"], bid,
                 {"gap_m": round(gap, 3),
                  "overlap_frac_of_a": round(-negfrac, 3),
-                 "supporter": "object"},
-                ["z_fabricated"])
+                 "supporter": "object"}, [])
             supported[a["id"]] = bid
             continue
         # floor fallback
@@ -262,12 +270,10 @@ def main():
         center_above = h(ga["center"][1]) > h(floor_y)
         straddle = gap_floor < 0 and center_above
         if gap_floor <= FLOOR_TOL and (gap_floor >= -FLOOR_TOL or straddle):
-            cav = [] if -TOL_ON_AIR <= gap_floor <= TOL_ON_AIR \
-                else ["z_fabricated"]
             add("ON", a["id"], "arch_floor",
                 {"gap_m": round(gap_floor, 3),
                  "straddles_floor": straddle,
-                 "supporter": "floor"}, cav)
+                 "supporter": "floor"}, [])
             supported[a["id"]] = "arch_floor"
 
     # ---------------- INTERPENETRATES ----------------
@@ -286,50 +292,44 @@ def main():
     for ov, aid, bid, frac in interp:
         add("INTERPENETRATES", aid, bid,
             {"overlap_vol_m3": round(ov, 5),
-             "frac_of_smaller": round(frac, 3)}, ["z_fabricated"])
+             "frac_of_smaller": round(frac, 3)}, [])
 
     # ---------------- sanity lists ----------------
     contained = {e["a"] for e in edges if e["type"] == "IN"}
     floating = []
-    for a in objects:
+    for a in det:
         if a["id"] in supported or a["id"] in contained:
             continue
         gap_floor = floor_y - a["geometry"]["aabb_max"][1]
         floating.append({"id": a["id"], "label": a["label"],
-                         "floor_gap_m": round(gap_floor, 3),
-                         "tier": a["confidence_tier"]})
+                         "floor_gap_m": round(gap_floor, 3)})
     floating.sort(key=lambda f: f["floor_gap_m"])
-    anchored = {e["a"] for e in edges if e["type"] in ("IN_WALL", "ATTACHED")}
-    unattached_arch = [{"id": n["id"], "label": n["label"],
-                        "tier": n["confidence_tier"]}
-                       for n in arch_det if n["id"] not in anchored]
+    wall_attached = sorted({e["a"] for e in edges
+                            if e["type"] in ("IN_WALL", "ATTACHED")})
     underground = [{"id": n["id"], "label": n["label"],
                     "center_below_floor_m":
                         round(h(floor_y) - h(n["geometry"]["center"][1]), 3)}
                    for n in det if h(n["geometry"]["center"][1]) < h(floor_y)]
 
-    # ---------------- self-check (frame sign) ----------------
-    # manifest-confirmed floor-standing objects must be ON arch_floor
-    must_floor = {"obj_006": None, "obj_018": None, "obj_001": None}
-    for n in det:
-        mid = n["provenance"].get("matched_manifest_id")
-        if mid in must_floor:
-            must_floor[mid] = n["id"]
-    on_floor = {e["a"]: e for e in edges
+    # ---------------- self-check (frame sign, generic) ----------------
+    on_floor = {e["a"] for e in edges
                 if e["type"] == "ON" and e["b"] == "arch_floor"}
     on_ceiling = [e for e in edges
                   if e["type"] == "ON" and e["b"] == "arch_ceiling"]
+    anchor_labels = [n["id"] for n in det
+                     if any(w in n["label"] for w in ("bed", "rug"))]
     checks = []
     ok = True
-    for mid, nid in must_floor.items():
-        e = on_floor.get(nid)
-        passed = e is not None
+    if anchor_labels:
+        hit = sorted(set(anchor_labels) & on_floor)
+        passed = bool(hit)
         ok &= passed
-        checks.append({"manifest_id": mid, "node": nid,
-                       "on_floor": passed,
-                       "gap_m": e["evidence"]["gap_m"] if e else None})
+        checks.append({"rule": "some bed/rug node ON floor",
+                       "candidates": anchor_labels, "on_floor": hit,
+                       "passed": passed})
     ok &= not on_ceiling
-    checks.append({"nothing_on_ceiling": not on_ceiling})
+    checks.append({"rule": "nothing ON ceiling",
+                   "passed": not on_ceiling})
 
     counts = {}
     for e in edges:
@@ -342,17 +342,15 @@ def main():
             "on_penetration_max_m": TOL_ON_PEN,
             "floor_band_m": FLOOR_TOL,
             "floor_straddle_rule": ("bottom below floor plane accepted when "
-                                    "the box center is physically above it "
-                                    "(fabricated-extent overshoot)"),
+                                    "the box center is physically above it"),
             "min_footprint_overlap": MIN_FOOT_OVERLAP,
             "in_containment_frac": IN_FRAC,
             "wall_plane_dist_m": WALL_TOL,
-            "curtain_window_vertical_gap_m": CURTAIN_VGAP,
             "interpenetrates_min_vol_m3": INTERP_MIN_VOL,
         },
         "edge_counts": counts,
         "floating": floating,
-        "unattached_architecture": unattached_arch,
+        "wall_attached": wall_attached,
         "underground": underground,
         "top_interpenetrates": [
             {"a": aid, "b": bid, "labels": [label[aid], label[bid]],
@@ -365,14 +363,18 @@ def main():
     # ---------------- report ----------------
     print(f"[edges] wrote {gpath}")
     print(f"[edges] counts by type: {counts}")
+    sc_edges = [e for e in edges if e["type"] == "SAME_CANDIDATE"]
+    for e in sc_edges:
+        print(f"           ? SAME_CANDIDATE [{e['evidence']['zone']:9s}] "
+              f"{e['a']} <-> {e['b']} {e['evidence']['labels']} "
+              f"iou {e['evidence']['iou']} "
+              f"contain {e['evidence']['containment']}")
     print(f"[edges] floating objects ({len(floating)}; no support edge "
           f"invented):")
     for f in floating:
         print(f"           {f['id']} {f['label']:<18} floor_gap "
-              f"{f['floor_gap_m']:+.3f} m  [{f['tier']}]")
-    print(f"[edges] unattached architecture ({len(unattached_arch)}):")
-    for u in unattached_arch:
-        print(f"           {u['id']} {u['label']} [{u['tier']}]")
+              f"{f['floor_gap_m']:+.3f} m")
+    print(f"[edges] wall/ceiling-attached nodes: {len(wall_attached)}")
     if underground:
         print(f"[edges] underground centers: {underground}")
     print("[edges] top INTERPENETRATES by overlap volume:")

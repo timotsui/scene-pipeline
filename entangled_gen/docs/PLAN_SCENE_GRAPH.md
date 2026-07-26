@@ -7,16 +7,127 @@ protocol at bottom, checkpoints are hard stops unless autonomous mode is
 explicitly authorized).
 
 - Created: 2026-07-22
-- Current state: 🟡 PAUSED FOR REDESIGN (2026-07-26) — before any further
-  build, a user-led **"what IS the scene graph" design discussion**: passive
-  index over extraction outputs vs the stage where the pipeline COMMITS to
-  object identity (names, merges, relations), with everything upstream as
-  evidence. Two forces triggered this: (a) the pano-track rewire deprecates
-  the analyzer-seeded node set (v1 foundation), (b) the 07-26 decision below
-  moves dedup's semantic judgment into this stage. G1 (analyzer-seeded graph
-  review) is likely MOOT — superseded by the coming rebuild; Steps 1–4
-  remain DONE as machinery/lessons.
+- Current state: 🔴 CHECKPOINT R1 — record review WAITING ON USER
+  (2026-07-26 late; REVIEW_LOG R10, rebuilt per the §0a.0 amendment). The
+  design is settled (**record, then judge** — §0a; §0a.0: NO pre-merges,
+  dedup stage retired) AND pass 1 is BUILT: record builder (f30 → 108
+  nodes) + edges (incl. 14 SAME_CANDIDATE) + the viewer "graph record"
+  layer (progress rows R-0..R-2 below). Judge passes gated on R1. G1 (analyzer-seeded graph
+  review) is MOOT — v1 archived as scene_graph_v1.json / graph/crops_v1;
+  its Steps 1–4 remain DONE as machinery/lessons (edge thresholds,
+  appearance batching + cache, review-page builder).
 - Scene: bedroom_marble first (the fully-instrumented scene)
+
+## 0a. SETTLED 2026-07-26 (pm) — what the scene graph IS: record, then judge
+
+The record-vs-judge question resolved: **both, in that order** — two passes
+over one file, `scene_graph.json`.
+
+### 0a.0 AMENDMENT 2026-07-26 (late, user: "record both objects and
+### indicate their relationship faithfully") — NO pre-merges at all
+
+The earlier carve-out (geometry-only dedup doing confident IoU ≥ 0.6
+merges BEFORE the record) is REVOKED after the user saw obj_057 absorbed
+into obj_007 on the record card. Since even a confident merge is a
+commitment about object identity, it belongs to the judge:
+
+- **The dedup stage is RETIRED entirely** (`manifest_dedup.py` kept
+  runnable, banner in its docstring; nothing consumes it). The record
+  builds from the f30 manifest directly — every f30 object = one node,
+  duplicates included (bedroom_marble: 102 detection nodes).
+- **`build_edges.py` computes the duplicate-suspect pairs itself** as
+  SAME_CANDIDATE edges with a `zone` field: "confident" (IoU ≥ 0.60) or
+  "gray" (IoU .40–.60 + containment ≥ .90). Bedroom_marble: 14 edges =
+  10 confident + 4 gray (lamp↔ceiling-light is confident, both nodes
+  present, relationship stated with its numbers).
+- **The judge's same-vs-part pass resolves EVERY pair, confident zone
+  included** — a confident-zone verdict of "same" produces the merge as a
+  VERDICT (reversible, cached); the record is never edited.
+- Consequence: node-level naming questions now mostly ARISE at judge time
+  (post-merge, over the union multiset) rather than at record time.
+
+### 0a.1 Pass 1 — the RECORD (deterministic, zero LLM)
+
+Writes down everything extraction already knows; commits to nothing.
+Byte-reproducible. Contents:
+
+- **Scene-level:** frame conventions (up axis, units — the mirror-bug
+  lesson), source lineage (manifest version, pano bundle, **prompt.txt** —
+  the generation prompt is evidence), envelope summary (floor/ceiling
+  heights, wall planes).
+- **Nodes** = f30 manifest objects VERBATIM (§0a.0: no dedup stage,
+  duplicates included) + envelope architecture (floor/ceiling/walls).
+  Windows/doors/curtains are ordinary object nodes — typing settled later
+  by geometry + the judge.
+- **Labels, plural:** each node keeps the FULL label multiset from all
+  member detections with scores; primary label kept but
+  `label_provisional: true`. No winner picked.
+- **Geometry:** observed box AND amodal-completed box, each tagged with its
+  method; yaw null (honest gap).
+- **Evidence as pointers:** member detection ids, per-view 2D boxes, mask
+  refs, source tiles; per-node crops are CUT here (deterministic) so the
+  record is reviewable by eye and pass 2 reads them.
+- **Geometric edges** (still record — threshold arithmetic, numeric
+  evidence on every edge): ON, IN, ATTACHED/IN_WALL, INTERPENETRATES.
+- **Open questions recorded as open:** duplicate-suspect pairs (computed
+  from box geometry in build_edges.py, §0a.0) become **SAME_CANDIDATE
+  edges** carrying IoU / containment / zone (confident|gray) / height
+  difference.
+
+NOT in the record (reversal of v1): downstream state — retrieval picks,
+placement, cut status. Those are *consumers* of the graph, not evidence.
+
+### 0a.2 CHECKPOINT — record review (user gate, BEFORE any VLM spend)
+
+Eyeball nodes, geometric edges, the candidate queue, crops. Same
+What/Why/Look-for discipline as every other gate.
+
+### 0a.3 Pass 2 — the JUDGE (VLM via claude.exe, batched, cached)
+
+Verdicts are new fields REFERENCING the record, never overwriting it.
+Order matters:
+
+1. **Same-vs-part** — visits ONLY the SAME_CANDIDATE queue; one cached call
+   per edge (both nodes' crops + label multisets + the edge's geometric
+   facts). Verdicts: SAME OBJECT → merge nodes (evidence of both retained,
+   affected geometric edges re-derived) · PART OF → edge becomes PART_OF ·
+   DISTINCT → edge dropped. This REPLACES semantic dedup entirely.
+2. **Naming** — after merges, every node with a disputed multiset gets its
+   canonical name from crops + cheap facts (height, size, ATTACHED edges).
+   The lamp/ceiling-light fix.
+3. **Appearance** — v1 describe_nodes machinery + cache carried over
+   (§3a batching fixes apply).
+
+Degradation (automated-pipeline rule): LLM unavailable ⇒ provisional names
+stand, SAME_CANDIDATE stays unresolved — never a guessed merge.
+
+### 0a.4 The contract
+
+After the judge + the G-gate review, **the judged graph (record + verdicts)
+replaces the manifest as the downstream contract** — the 2→3 package and C1
+read `scene_graph.json`; the manifest becomes one more evidence input
+behind it. Two canonical files would drift; there is one.
+
+### 0a.5 Why this shape (recorded rationale)
+
+- Record-first gives a review checkpoint before any LLM spend.
+- The geometric edges recorded in pass 1 are exactly the cheap facts the
+  judge was spec'd to use.
+- A bad verdict is a one-pass cached rerun, not archaeology — provenance
+  on every verdict ("merge: geometry IoU 0.75" / "name: VLM, cache key X").
+- "Bridge the detection" (user's stated next step) and the record builder
+  are the SAME piece of work.
+
+### 0a.6 Build order
+
+1. ~~`manifest_dedup.py` geometry-only rework~~ — built, then RETIRED by
+   §0a.0 (no dedup stage; record reads f30 directly).
+2. Record builder (`graph/build_graph.py` rework, f30 input) +
+   `graph/build_edges.py` (+ SAME_CANDIDATE computed from geometry).
+3. **CHECKPOINT R1 — record review (user).**
+4. Judge passes: same-vs-part → naming → appearance.
+5. **CHECKPOINT G2 — judged-graph review (user)**, then consumer wiring
+   (package + C1 read the graph).
 
 ## 0. NEW DECISION 2026-07-26 (pm) — the graph inherits ALL semantic judgment
 
@@ -37,8 +148,9 @@ pano track it gains two passes:
 
 Upstream contract change this implies: `manifest_dedup.py` goes
 geometry-only (confident IoU ≥ 0.6 merges, labels all kept, primary label
-provisional) — spec in PLAN_SELF_PANO_RIG.md's top UPDATE block. None of
-this is built yet; it waits on the redefinition discussion above.
+provisional) — spec in PLAN_SELF_PANO_RIG.md's top UPDATE block. The
+redefinition discussion this waited on is RESOLVED — §0a above is the
+settled design; both passes described here land inside it (pass-2 judge).
 
 ## 1. Purpose (plain language)
 
@@ -159,8 +271,13 @@ bedroom_marble never re-pays):
 | 2 | geometric-edges | **DONE** | 320 edges: ON 35, IN 108 (books-in-shelves works: 21), IN_WALL 12, ATTACHED 7, INTERPENETRATES 158 (duplicate clusters self-expose; all z_fabricated-flagged). Frame self-check PASS (rug/bed ON floor, 0 ceiling edges). Documented threshold deviation: floor band ±0.15 m + straddle (spec 3–8 cm false-floated confirmed floor-standers); object-ON band asymmetric [−0.15,+0.08]. Floating: 20 flagged honestly (7 wall art; wall-mounted shelf ana_054; dup clusters) | 2026-07-22 |
 | 3 | appearance-pass | **DONE** | 102/103 detection nodes described (fail = ana_062 rug, weak tier: malformed twice → appearance null + vlm_failed, honest); coverage confirmed 19/19, candidate 70/70, weak 13/14; 11 label_disputes (label_agreement:false — dup-cluster beds ana_076/077/079, blur ana_012/093, misreads ana_039 painting→curtain, ana_083 pillow→throw blanket); appearance_meta + cache (16 calls + 1 retry, sonnet via claude.exe, API-key gotcha WAS live → stripped from child env); 309 crops; crop selection deviation documented in describe_nodes.py docstring (score ≥ 0.5×peak filter before top-K-by-area — pure area picked junk boxes, caught by smoke test); runtime → §3a (USER: fix later, results cached). Sample: ana_101 = "Thin copper-toned metal desk lamp arm angled up against a white curtained window" (is_label true) | 2026-07-22 |
 | 4 | graph-review build | **DONE** | `graph/graph_review.py` → `out\bedroom_marble\graph_review.html` (430 KB self-contained: G1 banner, stats, XZ minimap w/ per-type edge overlays, 109 node cards w/ 309 crops, 5 sortable edge tables (320 edges), sanity panel; rerun byte-identical). Viewer (additive, user scope-extension "whole graph visible"): serve.py `/scene_graph.json` + `/graph_crops/<file>` routes; index.html "graph nodes" layer = tier-colored boxes (per-tier toggles ✓25/70/14) + per-type edge lines (dim = z_fabricated) + click card (appearance + crops + edges) + dispute/undescribed/floating markers. curl-verified on :8329 (routes 200, traversal 404, old routes intact) | 2026-07-22 |
-| G1 | graph correctness review | **🔴 WAITING ON USER** | open `graph_review.html` + launch_viewer.bat → :8321 → "graph nodes" | 2026-07-22 |
-| 5 | consumer wiring + adjacency (v2) | gated on G1 | — | |
+| G1 | graph correctness review | **MOOT** (07-26) | superseded by the record-then-judge rebuild (§0a); v1 machinery/lessons retained | 2026-07-26 |
+| 5 | consumer wiring + adjacency (v2) | superseded | folded into §0a.6 step 5 | 2026-07-26 |
+| R-0 | dedup geometry-only rework (§0a.6 step 1) | **SUPERSEDED same evening** | geometry-only rework was built and run (102 → 93), then the user amendment (§0a.0) RETIRED the dedup stage entirely — no pre-merges; `manifest_dedup.py` banner'd, `_dd`/`_dd_llm` files remain on disk unused | 2026-07-26 |
+| R-1 | record builder (§0a.6 step 2) | **DONE (rebuilt per §0a.0)** | `graph/build_graph.py` = RECORD builder reading f30 directly (v1 archived: `scene_graph_v1.json`, `graph/crops_v1`): **108 nodes (102 det + 6 envelope)**, nothing pre-merged, full label multisets, evidence pointers + 465 referenced member crops from rig views, prompt.txt in lineage, amodal/yaw = null, downstream state OUT. `graph/build_edges.py`: label-blind IN_WALL/ATTACHED (curtain rule dropped), **SAME_CANDIDATE computed from geometry (14 = 10 confident + 4 gray)**, z_fabricated retired; edges ON 41 / IN 105 / IN_WALL 29 / ATTACHED 3 / INTERP 31; frame self-check PASS (bed+rug ON floor, nothing on ceiling) | 2026-07-26 |
+| R-2 | record review artifact | **DONE** | viewer "graph record" layer (main HUD row; v1 toggle retired): nodes colored by open-question status (green single-label / amber naming / pink same-candidate), SAME_CANDIDATE lines on by default, click card = the RECORD card (label multiset w/ scores, dedup lineage + absorbed boxes, open questions, member crops, edge list) | 2026-07-26 |
+| **R1** | **CHECKPOINT — record review (user)** | **🔴 WAITING ON USER** | REVIEW_LOG **R10**: viewer :8321 → "graph record"; also re-opens the dedup adoption verdict (R9) | 2026-07-26 |
+| J | judge passes (§0a.6 step 4: same-vs-part → naming → appearance) | gated on R1 | — | |
 
 ## 5. Resume protocol
 
