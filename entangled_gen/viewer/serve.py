@@ -60,10 +60,18 @@ def box_sources(sc):
          sd / "recenter_experiment" / "manifest_C1_raw.json", "#f0a028",
          "Marble-pano lane, superseded by the canonical PANO TRACK "
          "(carries the +6.5cm registration pedestal); kept for comparison"),
-        ("analyzer", "analyzer · OWLv2 vote",
+        ("analyzer_hybrid", "analyzer + OUR lift (hybrid)",
+         sd / "scene_manifest_analyzer_hybrid.json", "#00c89a",
+         "the 3h2 hybrid: analyzer's OWLv2 detections AND clustering kept "
+         "1:1, geometry replaced by our SAM + z-buffer lift + robust "
+         "per-axis fusion. Floor-ish gap median +0.53 -> +0.11, boxes "
+         "touch the floor; volumes measured not fabricated (median 2.2x "
+         "theirs)"),
+        ("analyzer", "analyzer · OWLv2 vote (their lift)",
          sd / "analyzer" / "bridged_boxes.json", "#00ffff",
          "splat_analyzer bridged clusters: surface-biased centers, "
-         "fabricated depth extent (w+h)/2"),
+         "fabricated depth extent (w+h)/2 — toggle against the hybrid to "
+         "see the lift swap alone"),
         ("fuse", "fuse · 3h2 pool",
          sd / "scene_manifest_fuse.json", "#33ee66",
          "unified lift pool + ported vote (SPEC_3H2_FUSE) — appears once built"),
