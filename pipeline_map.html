@@ -100,6 +100,8 @@
   .node:hover .nbox { stroke: var(--ink-2); }
   .node.sel .nbox { stroke: var(--sel); stroke-width: 1.6; }
   .node.ndash .nbox { stroke-dasharray: 5 4; }
+  .node.nref { opacity: .5; } .node.nref:hover, .node.nref.sel { opacity: 1; }
+  .e-ref { opacity: .4; } .lab-ref { opacity: .55; }
   .node.sink .nbox { fill: var(--pill-bg); stroke: var(--ink-2);
                      stroke-dasharray: 5 4; }
   .b-eg { fill: var(--eg); } .b-comp { fill: var(--comp); }
@@ -233,10 +235,22 @@
     softened slightly).</p>
   </section>
   <section class="dcard">
+    <span class="dstat ds-open">open 2026-07-26 pm</span>
+    <h2>POST-PROCESS — semantics move to the graph</h2>
+    <p><b>f30 filter adopted (108→102); dedup re-scoped after the R9 pass:</b>
+    geometry-only merges (IoU ≥ 0.6; all labels kept as alt_labels, primary
+    name provisional — score-based naming rejected: "lamp" beat "ceiling
+    light" on a ceiling fixture). ALL semantic judgment — canonical naming +
+    gray-zone same-vs-part — moves to the scene graph stage. OPEN, gates the
+    rework: <b>what IS the scene graph</b> — passive record of extractions,
+    or the stage that commits to object identity?</p>
+  </section>
+  <section class="dcard">
     <span class="dstat ds-prop">later</span>
     <h2>Parked ideas, in order of pull</h2>
     <p><b>Multiview vote, pano-style:</b> the analyzer's corroboration idea
-    (visibility-normalized, not absolute) over our rig + recenter views.
+    (visibility-normalized, not absolute) over our rig + recenter views —
+    design in SPEC_3H2_FUSE §7; off the flow graph, lives here only.
     <b>Cylindrical strip</b> for &gt;110° objects (2 named customers).
     <b>Standpoint #2</b> for occlusion. Batch-composition tuning.
     Sub-object enrichment scaling. GaussianCut stays parked (out of scope
@@ -297,7 +311,7 @@
 
       <!-- ===== lane titles ===== -->
       <text class="plabel pl-eg" x="8" y="116">THE PANO TRACK · CANONICAL 07-26</text>
-      <a href="splat_analyzer_map.html"><text class="plabel pl-t3" x="544" y="116">SIDE TOOL · SPLAT ANALYZER · SUB-MAP ↗</text></a>
+      <a href="splat_analyzer_map.html"><text class="plabel pl-t3" x="544" y="116" opacity=".65">SIDE TOOL · SPLAT ANALYZER · reference only · SUB-MAP ↗</text></a>
 
       <!-- ===== 2.1 OBSERVE ===== -->
       <g class="node" data-k="stitch" transform="translate(8,128)">
@@ -322,19 +336,51 @@
       <path class="edge e-eg" d="M240,160 H300 V242" marker-end="url(#ah-eg)"/>
       <text class="elab" x="306" y="216">pano (VLM look-pass)</text>
 
-      <!-- side tool: observation sweep -->
-      <g class="node ndash" data-k="asp" transform="translate(544,128)">
+      <!-- side tool: ext. splat_analyzer — REFERENCE ONLY (dimmed), steps kept
+           band-aligned with the canonical lane to show the correspondence -->
+      <g class="node ndash nref" data-k="asp" transform="translate(544,128)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-t3" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">a2 · sample standpoints</text>
         <text class="nscript" x="14" y="31">random + density guardrails</text></g>
-      <g class="node ndash" data-k="asw" transform="translate(544,196)">
+      <g class="node ndash nref" data-k="asw" transform="translate(544,196)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-t3" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">a3·a4 · 360° sweep render</text>
         <text class="nscript" x="14" y="31">az × el grid · 130° fov · +depth</text></g>
-      <path class="edge e-t3 e-dash" d="M660,168 V194" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="666" y="186">standpoints ×8, in-scene</text>
+      <path class="edge e-t3 e-dash e-ref" d="M660,168 V194" marker-end="url(#ah-t3)"/>
+      <text class="elab lab-ref" x="666" y="186">standpoints ×8, in-scene</text>
+
+      <!-- 2.2 DETECT · side-tool reference -->
+      <g class="node ndash nref" data-k="adet" transform="translate(544,378)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">a5·a7 · OWLv2 + vote</text>
+        <text class="nscript" x="14" y="31">detect every frame · two-sided vote</text></g>
+      <path class="edge e-t3 e-dash e-ref" d="M660,236 V376" marker-end="url(#ah-t3)"/>
+      <text class="elab lab-ref" x="666" y="330">24–192 frames + depth + cams</text>
+
+      <!-- 2.3 LIFT · side-tool reference: closed experiment + bridge adapter -->
+      <g class="node ndash nref" data-k="ahyb" transform="translate(544,470)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-t3" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">experiment · their detect × our lift</text>
+        <text class="nscript" x="14" y="31">analyzer/hybrid_lift.py — closed 07-26</text>
+        <text class="nsub" x="14" y="44">verdict: their clustering shreds (8× bed)</text></g>
+      <path class="edge e-t3 e-dash e-ref" d="M600,418 V468" marker-end="url(#ah-t3)"/>
+      <text class="elab lab-ref" x="606" y="448">evidence boxes</text>
+      <path class="edge e-t3 e-dash e-ref" d="M700,418 V450 H784 V672 H778" marker-end="url(#ah-t3)"/>
+      <text class="elab lab-ref" x="780" y="560" text-anchor="middle"
+        transform="rotate(-90 780 560)">interactions.json</text>
+      <g class="node ndash nref" data-k="a1" transform="translate(544,652)">
+        <rect class="nbox" width="232" height="52" rx="8"/>
+        <rect class="b-t3" width="4" height="52" rx="2"/>
+        <text class="ntitle" x="14" y="17">a-bridge · adapter to our box format</text>
+        <text class="nscript" x="14" y="31">analyzer/bridge_boxes.py</text>
+        <text class="nsub" x="14" y="45">interactions.json → bridged_boxes.json + match_report</text></g>
+      <path class="edge e-t3 e-dash e-ref" d="M660,704 V1082 H510" marker-end="url(#ah-t3)"/>
+      <text class="elab lab-ref" x="666" y="880" text-anchor="middle"
+        transform="rotate(-90 666 880)">bridged_boxes.json · record-only layer</text>
 
       <!-- ===== 2.2 DETECT ===== -->
       <path class="edge e-eg" d="M124,284 V368" marker-end="url(#ah-eg)"/>
@@ -348,14 +394,6 @@
         <text class="ntitle" x="14" y="17">P3 · batched detect + segment</text>
         <text class="nscript" x="14" y="31">seg_batched.py — GroundingDINO + SAM</text>
         <text class="nsub" x="14" y="44">6 prompts × ~5 terms · thr 0.20 · cross-batch NMS</text></g>
-
-      <g class="node ndash" data-k="adet" transform="translate(544,378)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-t3" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">a5·a7 · OWLv2 + vote</text>
-        <text class="nscript" x="14" y="31">detect every frame · two-sided vote</text></g>
-      <path class="edge e-t3 e-dash" d="M660,236 V376" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="666" y="330">24–192 frames + depth + cams</text>
 
       <!-- ===== 2.3 LIFT ===== -->
       <path class="edge e-eg" d="M260,418 V468" marker-end="url(#ah-eg)"/>
@@ -377,30 +415,6 @@
       <path class="edge e-eg" d="M124,522 V578" marker-end="url(#ah-eg)"/>
       <text class="elab" x="130" y="554">ungated manifest + lift pool</text>
 
-      <g class="node ndash" data-k="latervote" transform="translate(276,580)">
-        <rect class="nbox" width="232" height="48" rx="8"/>
-        <rect class="b-lane" width="4" height="48" rx="2"/>
-        <text class="ntitle" x="14" y="17">LATER · multiview vote, pano-style</text>
-        <text class="nscript" x="14" y="31">a7 idea, visibility-normalized</text>
-        <text class="nsub" x="14" y="44">corroboration over rig + recenter views</text></g>
-
-      <g class="node ndash" data-k="ahyb" transform="translate(276,470)">
-        <rect class="nbox" width="232" height="48" rx="8"/>
-        <rect class="b-lane" width="4" height="48" rx="2"/>
-        <text class="ntitle" x="14" y="17">experiment · their detect × our lift</text>
-        <text class="nscript" x="14" y="31">analyzer/hybrid_lift.py</text>
-        <text class="nsub" x="14" y="44">verdict: their clustering shreds (8× bed)</text></g>
-      <path class="edge e-t3 e-dash" d="M560,418 V494 H510" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="516" y="452">evidence boxes (interactions.json)</text>
-
-      <!-- side tool spine to bridge -->
-      <path class="edge e-t3 e-dash" d="M660,418 V650" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="666" y="560">interactions.json</text>
-      <g class="node" data-k="a1" transform="translate(544,652)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-t3" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">a-bridge · to our box format</text>
-        <text class="nscript" x="14" y="31">analyzer/bridge_boxes.py</text></g>
 
       <!-- ===== 2.4 PLACE ===== -->
       <g class="node" data-k="env" transform="translate(8,780)">
@@ -408,15 +422,22 @@
         <rect class="b-eg" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">4e · envelope (free space)</text>
         <text class="nscript" x="14" y="31">envelope.py</text></g>
-      <path class="edge e-eg" d="M124,644 V778" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="700">scene_manifest_pano2c_rc.json — CANONICAL</text>
-      <path class="edge e-eg" d="M240,600 H340 V778" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="346" y="700">canonical manifest · GRAPH REWIRE PENDING</text>
+      <path class="edge e-eg" d="M124,644 V654" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="652">scene_manifest_pano2c_rc.json — CANONICAL 108</text>
+      <g class="node" data-k="post" transform="translate(8,656)">
+        <rect class="nbox" width="232" height="64" rx="8"/>
+        <rect class="b-eg" width="4" height="64" rx="2"/>
+        <text class="ntitle" x="14" y="17">P6 · post-process — filter · dedup</text>
+        <text class="nscript" x="14" y="31">manifest_filter.py · manifest_dedup.py</text>
+        <text class="nsub" x="14" y="45">f30 score ≥ .30 ADOPTED · IoU ≥ .6 geometry merge</text>
+        <text class="nsub" x="14" y="58">names provisional · semantics → graph (07-26)</text></g>
+      <path class="edge e-eg" d="M124,720 V778" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="752">…_rc_f30_dd.json (92 · rework pending)</text>
+      <path class="edge e-eg" d="M240,688 H340 V778" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="346" y="708">_f30_dd + deferred_semantic · GRAPH REWIRE PENDING</text>
 
       <!-- envelope bus -->
       <path class="edge e-eg" d="M124,820 V1178" marker-end="url(#ah-eg)"/>
-      <path class="edge e-eg" d="M236,780 V752 H530 V672 H542" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="300" y="748">envelope.npz</text>
       <text class="elab" x="130" y="1150">canonical manifest + envelope + crops</text>
 
       <g class="node" data-k="g1" transform="translate(276,780)">
@@ -454,8 +475,6 @@
       <path class="edge e-eg" d="M240,620 H524 V1066 H510" marker-end="url(#ah-eg)"/>
       <text class="elab" x="528" y="880" text-anchor="middle"
         transform="rotate(-90 528 880)">canonical + Δ layers (pano_track_diffs.py)</text>
-      <path class="edge e-t3" d="M660,692 V1082 H510" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="666" y="760">bridged_boxes.json → boxes layer</text>
       <g class="node sink" data-k="viewer" transform="translate(276,1052)">
         <rect class="nbox" width="232" height="54" rx="8"/>
         <rect class="b-eg" width="4" height="27" rx="2"/>
@@ -650,16 +669,44 @@ prc: {mod:"eg", eyebrow:"P5 · 2.3 LIFT — the filter · recenter", name:"Recen
   review:[{t:"viewer :8321 — PANO TRACK (canonical) + Δ before recenter layers",
            h:"http://localhost:8321/?scene=bedroom_marble"}],
   note:"The design thesis of the whole track: permissive sensing + aggressive evidence-based verification. Nothing is killed by arithmetic anymore — every deletion has a photograph behind it. Delta manifests for the viewer come from pano_track_diffs.py."},
-latervote: {mod:"lane", eyebrow:"LATER — parked by user 07-26", name:"Multiview vote, pano-style",
-  script:"(not built) — the analyzer's a7 corroboration idea, re-homed",
-  how:["The analyzer's one idea worth stealing: an object seen by many views should be corroborated by many views",
-       "Their version: absolute ≥8 votes — punishes rarely-visible objects (killed a real monitor here)",
-       "The planned version: votes normalized by how many views COULD see the object (frustum + occlusion via z-buffer), over the rig + recenter views",
-       "Would complement, not replace, the recenter verifier: vote = cheap continuous corroboration, retake = decisive evidence on demand"],
-  reads:["(planned) lift pool + crop cameras"],
-  writes:["(planned) per-object vote metadata in the canonical manifest"],
-  note:"Parked by user 07-26 ('we will end up taking their idea of multiview vote, but with our pano method — later'). SPEC_3H2_FUSE §7 has the detailed design (visibility-normalized threshold, size-agreement flag, no per-label cap)."},
-ahyb: {mod:"lane", eyebrow:"EXPERIMENT · done 07-26 — evidence, not a lane", name:"Their detect × our lift",
+post: {mod:"eg", eyebrow:"P6 · 2.3 LIFT — post-process · re-scoped 07-26 pm", name:"Post-process — filter + dedup",
+  script:"manifest_filter.py --thr 0.30 · manifest_dedup.py",
+  how:["Hard score filter at 0.30 (ADOPTED): 108 → 102; the 6 drops preserved in filtered_out — caveat: 3 of them were retake-confirmed, the filter overrules the verifier there",
+       "Dedup on physics: two rigid objects can't share a volume, so mutual IoU ≥ 0.6 = ONE object detected twice — merge geometry, keep every label (alt_labels); nesting survives (high containment, LOW IoU)",
+       "RE-SCOPED (user, 07-26 pm, from the R9 lamp/ceiling-light finding): primary-name-by-detector-score REJECTED — detectors score generic labels higher than specific ones. Dedup becomes GEOMETRY-ONLY: names stay provisional, gray-zone pairs (IoU .40–.60 + containment ≥ .90) become a deferred_semantic queue, the LLM call retires",
+       "ALL semantic judgment — canonical naming (VLM with crops + height/size facts) and same-vs-part — moves to the scene graph stage (PLAN_SCENE_GRAPH.md §0)",
+       "Rework NOT yet implemented — paused for the 'what is the scene graph' design discussion"],
+  reads:["scene_manifest_pano2c_rc.json (canonical, 108)"],
+  writes:["scene_manifest_pano2c_rc_f30.json (102 — ADOPTED)","scene_manifest_pano2c_rc_f30_dd.json (92 — R9 deferred, rework pending)","dedup_llm_cache.json (retires with the rework)"],
+  review:[{t:"viewer :8321 — 'pano track · f30' vs 'pano track · f30+dedup' layers",
+           h:"http://localhost:8321/?scene=bedroom_marble"}],
+  note:"The R9 finding that re-scoped it: obj_007+obj_057 (lamp + ceiling light, IoU 0.75, box at ceiling height) merged RIGHT but surfaced named 'lamp' — score 0.622 beat 0.4, and score measures box↔label confidence, not name quality. Naming needs eyes (crops) + context, which live in the graph stage."},
+asp: {mod:"t3", eyebrow:"SIDE TOOL · a2 — reference only", name:"Sample standpoints",
+  script:"splat_analyzer render_cameras.py — WSL tool outside this repo; whole chain runs as ONE run_local.py call",
+  how:["Throw random candidate positions inside the room's robust bounding box",
+       "Keep only 'medium local splat density' (not buried in furniture, not in void); Poisson-disk spread; 3/5/8 standpoints by --quality"],
+  reads:["gen_raw.ply (its own load, no transform)"],
+  writes:["(in-tool) standpoint positions"],
+  review:[{t:"viewer :8321 → tick 'analyzer cams'", h:"http://localhost:8321/?scene=bedroom_marble"},
+          {t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
+  note:"Corresponds to the canonical P1's standpoint choice (theirs: many random; ours: one deliberate). Its multi-standpoint idea returns if/when the pano track adds standpoint #2 for occlusion."},
+asw: {mod:"t3", eyebrow:"SIDE TOOL · a3·a4 — reference only", name:"360° sweep render (RGB + depth)",
+  script:"_build_poses + gsplat_backend.py (depth = camera-Z rendered as SH color)",
+  how:["Every standpoint gets a panoramic grid of perspective views: 360° azimuths × 2–3 elevations, 130° fov, 512²",
+       "Coverage by brute force: 24–192 frames vs the pano track's 20 planned crops"],
+  reads:["(in-tool) standpoints + gaussians"],
+  writes:["analyzer/<job>/frames/*.png + depth_*.npy","analyzer/<job>/transforms.json (G1-verified c2w_opencv)"],
+  review:[{t:"…/analyzer/job_high/frames/", h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/job_high/frames/"}],
+  note:"Corresponds to canonical P1+P2 (pano + crop rig). Its gsplat renderer is the one piece the canonical chain actively borrows (render_targets_wsl.py drives it for cube faces + any direct splat views) — splat-transform failed mechanically for arbitrary interior cameras."},
+adet: {mod:"t3", eyebrow:"SIDE TOOL · a5·a7 — reference only", name:"OWLv2 detect + two-sided vote",
+  script:"pipeline.py — OWLv2 thr 0.12 on every frame · cluster (radius eps) · survive iff ≥8 frames ∧ peak ≥.40",
+  how:["Word-list detection on all frames, permissive threshold, then clustering + voting does the gatekeeping",
+       "The philosophy the canonical track ADOPTED (permissive sensing + downstream verification); the mechanisms it did not: radius clustering (shreds multi-view objects — 8× bed) and absolute votes (kills rarely-seen real objects)"],
+  reads:["(in-tool) frames + vocab.json queries.owlv2 (--prompt at launch)"],
+  writes:["analyzer/<job>/interactions.json — clusters + per-frame evidence boxes"],
+  review:[{t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
+  note:"Corresponds to canonical P3 (batched detect) + the parked multiview-vote idea (decision card, SPEC_3H2_FUSE §7). Kept runnable as an independent second opinion."},
+ahyb: {mod:"t3", eyebrow:"SIDE TOOL · experiment, closed 07-26 — evidence, not a lane", name:"Their detect × our lift",
   script:"analyzer/hybrid_lift.py --merge theirs|ours",
   how:["Kept the analyzer's OWLv2 detections AND its clustering 1:1 (interactions.json evidence boxes), swapped only the geometry for our SAM + z-buffer lift",
        "Result A (their clusters, our lift): floor gap fixed (+0.53 → +0.11) but their clustering exposed — ONE bed shredded into 8 clusters, each lifting to a full-size bed box",
@@ -668,37 +715,15 @@ ahyb: {mod:"lane", eyebrow:"EXPERIMENT · done 07-26 — evidence, not a lane", 
   reads:["analyzer/<job>/interactions.json + frames + transforms.json","gen_raw.ply"],
   writes:["scene_manifest_analyzer_hybrid.json (their clusters)","scene_manifest_analyzer_hybrid_ours.json (our merge)","analyzer/hybrid_pool.json (lifted evidence, reusable)"],
   note:"The experiment that settled the FIND question in the pano track's favor with geometry controlled. Both manifests remain viewer layers for the record."},
-asp: {mod:"t3", eyebrow:"SIDE TOOL · a2 — inside splat_analyzer", name:"Sample standpoints",
-  script:"splat_analyzer render_cameras.py — WSL tool outside this repo; whole chain runs as ONE run_local.py call",
-  how:["Throw random candidate positions inside the room's robust bounding box",
-       "Keep only 'medium local splat density' (not buried in furniture, not in void); Poisson-disk spread; 3/5/8 standpoints by --quality"],
-  reads:["gen_raw.ply (its own load, no transform)"],
-  writes:["(in-tool) standpoint positions"],
-  review:[{t:"viewer :8321 → tick 'analyzer cams'", h:"http://localhost:8321/?scene=bedroom_marble"},
-          {t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
-  note:"SIDE TOOL since 07-26: not part of the canonical chain. Its multi-standpoint idea returns if/when the pano track adds standpoint #2 for occlusion."},
-asw: {mod:"t3", eyebrow:"SIDE TOOL · a3·a4 — inside splat_analyzer", name:"360° sweep render (RGB + depth)",
-  script:"_build_poses + gsplat_backend.py (depth = camera-Z rendered as SH color)",
-  how:["Every standpoint gets a panoramic grid of perspective views: 360° azimuths × 2–3 elevations, 130° fov, 512²",
-       "Coverage by brute force: 24–192 frames vs the pano track's 20 planned crops"],
-  reads:["(in-tool) standpoints + gaussians"],
-  writes:["analyzer/<job>/frames/*.png + depth_*.npy","analyzer/<job>/transforms.json (G1-verified c2w_opencv)"],
-  review:[{t:"…/analyzer/job_high/frames/", h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/job_high/frames/"}],
-  note:"Its gsplat renderer is the one piece the canonical chain actively borrows (render_targets_wsl.py drives it for cube faces + any direct splat views) — splat-transform failed mechanically for arbitrary interior cameras."},
-adet: {mod:"t3", eyebrow:"SIDE TOOL · a5·a7 — inside splat_analyzer", name:"OWLv2 detect + two-sided vote",
-  script:"pipeline.py — OWLv2 thr 0.12 on every frame · cluster (radius eps) · survive iff ≥8 frames ∧ peak ≥.40",
-  how:["Word-list detection on all frames, permissive threshold, then clustering + voting does the gatekeeping",
-       "The philosophy the canonical track ADOPTED (permissive sensing + downstream verification); the mechanisms it did not: radius clustering (shreds multi-view objects — 8× bed) and absolute votes (kills rarely-seen real objects)"],
-  reads:["(in-tool) frames + vocab.json queries.owlv2 (--prompt at launch)"],
-  writes:["analyzer/<job>/interactions.json — clusters + per-frame evidence boxes"],
-  review:[{t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
-  note:"Kept runnable as an independent second opinion; its evidence boxes remain reusable by the hybrid experiment path."},
-a1: {mod:"t3", eyebrow:"SIDE TOOL · bridge", name:"Bridge to our box format",
+a1: {mod:"t3", eyebrow:"SIDE TOOL · bridge — a format adapter, nothing more", name:"Adapter to our box format",
   script:"analyzer/bridge_boxes.py",
-  how:["Convert splat_analyzer's clusters into manifest-style 3D boxes in the RAW frame for the viewer + comparisons"],
-  reads:["analyzer/<job>/interactions.json","scene_manifest (match target)","envelope.npz"],
+  how:["The external splat_analyzer speaks its own language: interactions.json = detection clusters in its internal format",
+       "This adapter translates each cluster into a manifest-style 3D box in the RAW frame (bridged_boxes.json)",
+       "It also pairs every analyzer box with our nearest manifest object (match_report.json) so the two methods can be compared 1:1",
+       "No judgment, no filtering — pure translation; without it the analyzer's output would be invisible to the viewer and every comparison"],
+  reads:["analyzer/<job>/interactions.json","scene_manifest (match target)"],
   writes:["analyzer/bridged_boxes.json","analyzer/match_report.json"],
-  note:"Keeps the side tool speaking the same box language, so it stays one toggle away in the viewer."},
+  note:"Record-only today: nothing in the pipeline consumes its output — the cyan viewer layer and the analyzer-seeded graph v1 (until the rewire) are the last readers. Its envelope.npz input is deliberately NOT drawn as an arrow: that was a report-only frame-mismatch check from the vetting era, never a functional dependency."},
 env: {mod:"eg", eyebrow:"4e · 2.4 PLACE — envelope", name:"Envelope",
   script:"envelope.py (occupancy voxels → floor/clearance)",
   how:["Dice the room into small 3D cells and mark which ones contain splat",
@@ -711,7 +736,7 @@ g1: {mod:"lane", eyebrow:"4g1 · 2.4 PLACE — graph nodes · ACTIVE", name:"Gra
   how:["Every extracted object becomes a node in one graph (plus envelope architecture nodes)"],
   reads:["scene_manifest.json (LEGACY — rewire to scene_manifest_pano2c_rc.json PENDING)","analyzer/bridged_boxes.json + match_report.json","envelope.npz"],
   writes:["scene_graph.json (nodes)"],
-  note:"REWIRE PENDING (07-26): the graph still consumes the legacy yaw manifest; its input moves to the canonical pano-track manifest (108 objects incl. parent/child links — the graph's ON/IN edges get the sub_object hierarchy for free). Governed by docs/PLAN_SCENE_GRAPH.md."},
+  note:"REWIRE PENDING (07-26): the graph still consumes the legacy yaw manifest; its input moves to the post-processed pano-track manifest (_f30_dd + the deferred_semantic queue). SCOPE GREW 07-26 pm: the rebuilt graph inherits ALL semantic judgment from dedup — a naming pass (multi-label nodes: VLM with crops + geometric facts) and a same-vs-part pass over deferred_semantic. Both wait on the 'what is the scene graph' design discussion (record vs judge). Governed by docs/PLAN_SCENE_GRAPH.md §0."},
 g2: {mod:"lane", eyebrow:"4g2 · 2.4 PLACE — graph edges", name:"Geometric edges",
   script:"graph/build_edges.py",
   how:["Geometry supplies typed relations between nodes: on-top-of, next-to, against-wall",
@@ -724,7 +749,7 @@ g3: {mod:"lane", eyebrow:"4g3 · 2.4 PLACE — graph appearance", name:"VLM appe
   how:["Crop each node's best photo","A vision model writes a short appearance description per node"],
   reads:["scene_graph.json","crop source photos (rewire: rig crops once the graph input moves)"],
   writes:["graph/crops/","scene_graph.json (appearance fields)"],
-  note:"The only model-calling step in the graph chain — everything else is geometry."},
+  note:"The only model-calling step in the graph chain — everything else is geometry. Likely home of the planned NAMING pass (07-26 pm decision): it already sees each node's crops and flags label disputes, so picking the canonical name among alt_labels is a natural extension of this call."},
 g4: {mod:"lane", eyebrow:"4g4 · 2.4 PLACE — graph review · USER GATE", name:"Graph review page",
   script:"graph/graph_review.py",
   how:["Interactive page over the finished graph — nodes, edges, appearance, crops",
@@ -740,7 +765,7 @@ viewer: {mod:"eg", eyebrow:"sink — where everything gets judged", name:"Splat 
        "Box layers are METHOD-ORGANIZED (server-side registry): PANO TRACK canonical + its Δ layers (before-recenter, gate-kills) · analyzer (their lift / +our lift) · pano 1.0 · legacy yaw4",
        "Click = smallest box under the cursor; clicking the same spot cycles overlapping boxes",
        "Writes nothing — the arrows that end here end at your eyes"],
-  reads:["gen_raw.ply","scene_manifest_pano2c_rc.json + Δ manifests","analyzer manifests","scene_graph.json","clearance/collision layers"],
+  reads:["gen_raw.ply","scene_manifest_pano2c_rc.json + _f30 / _f30_dd + Δ manifests","analyzer manifests","scene_graph.json","clearance/collision layers"],
   writes:["nothing — look-only"],
   review:[{t:"http://localhost:8321 (start: python entangled_gen/viewer/serve.py --scene bedroom_marble)",
            h:"http://localhost:8321"}],

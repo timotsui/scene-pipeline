@@ -98,7 +98,22 @@ Format per entry:
 - **Why:** gates the dedup method (geometry IoU ≥ 0.6 + LLM-judged gray zone) as a standard post-processing stage for all scenes.
 - **Look for:** (1) the 9 merge groups — each should be one real object now wearing multiple names (`alt_labels`): chair+office chair, rug+mat+yoga mat, side table+desk, lamp+ceiling light (your obj_007/obj_057 example), 3× door+window, 2× bookshelf+shelf. Is any merge WRONG — i.e., two genuinely distinct objects glued together? (2) the door+window merges: are those 3 elements really doors (possibly glazed), or did a real window get eaten by a door box? (3) the kept bookshelf thicket (obj_043/080/093/140 area): right call to keep, or are those actually duplicates too? (4) nesting untouched: books/toys still inside bookshelves as before.
 - **Daytime session — no provisional verdict; user judges directly.**
-- **USER VERDICT (dedup adoption):**
-- **USER VERDICT (any wrong merges):**
+- **USER VERDICT (dedup adoption):** DEFERRED (2026-07-26 pm). The user
+  reviewed and re-scoped the method instead of adopting: dedup is to be
+  reworked GEOMETRY-ONLY (confident IoU ≥ 0.6 merges; gray-zone pairs kept
+  unmerged and emitted as a `deferred_semantic` queue; LLM call retired).
+  ALL semantic judgment — canonical naming of merged/multi-label objects AND
+  the same-vs-part question — moves to the scene graph stage (decision:
+  "all semantics to graph"). Rework itself is PAUSED pending the "what is
+  the scene graph" design discussion. Adoption verdict re-opens against the
+  reworked output (expected ~95 objects — door+window gray merges revert).
+- **USER VERDICT (any wrong merges):** One finding, and it's a NAMING bug,
+  not a merge bug: lamp+ceiling light (obj_007+obj_057, IoU 0.75, box at
+  ceiling height) is one real fixture — merge right — but the merged node
+  surfaced as "lamp" because primary label = highest detector score, and
+  detectors score generic labels higher. User: "i dont think that is a
+  great idea." Root cause + rule confirmed in PLAN_SELF_PANO_RIG.md top
+  UPDATE block. Door+window merges and the bookshelf thicket were not
+  individually ruled on — re-review with the reworked dedup.
 
 _(further entries appended as artifacts land)_

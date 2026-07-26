@@ -1,5 +1,28 @@
 # PLAN — self-rendered pano rig from the splat
 
+**== UPDATE 2026-07-26 (afternoon, R9 pass) — DEDUP SEMANTICS RE-SCOPED,
+REWORK PENDING. User toggled f30+dedup (92) vs f30 (102) in the viewer.
+Finding: the lamp+ceiling-light merge (obj_007+obj_057, IoU 0.75, box at
+~2.7 m = ceiling height) is geometrically RIGHT, but the merged object
+surfaced as "lamp" — primary-name-by-detector-score REJECTED by user
+(score measures box↔label confidence, not name quality; detectors score
+generic labels higher than specific ones). DECISION (user, option "all
+semantics to graph"): ALL semantic judgment moves to the SCENE GRAPH
+stage — (a) canonical naming of multi-label nodes (VLM with the node's
+crops + cheap geometric facts like height-above-floor; score-order = the
+offline fallback), (b) the gray-zone same-vs-part question.
+manifest_dedup.py is to become GEOMETRY-ONLY: confident IoU>=0.6 merges
+only, every label kept (alt_labels), primary label flagged provisional,
+gray-zone pairs (IoU .40-.60 + containment>=.90) emitted as a
+deferred_semantic work queue for the graph; its LLM call +
+dedup_llm_cache.json retire. Expected rerun ~95 objects (the 3 gray-zone
+door+window merges revert; confident merges incl. the lamp stay).
+**NOT YET IMPLEMENTED — user paused the rework pending a "what IS the
+scene graph" design discussion** (passive record of extractions vs the
+stage that COMMITS to object identity/names/relations; its analyzer-seeded
+node set is deprecated by the pano track anyway — see PLAN_SCENE_GRAPH.md).
+R9 adoption verdict deferred to the reworked geometry-only dedup. ==**
+
 **== REVISED (user, 2026-07-26 late): 20% CONFIDENCE FLOOR EVERYWHERE —
 the 0.40 gate dropped ("just makes things more confusing"). Chain rerun as
 suffix 'c': seg_batched --box-thr 0.20 --topk 40 -> pano_lift --min-score

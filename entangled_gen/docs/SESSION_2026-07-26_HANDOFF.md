@@ -1,5 +1,9 @@
 # SESSION 2026-07-26 HANDOFF — pano-track post-processing (filter + dedup)
 
+> **Superseded by `SESSION_2026-07-26B_HANDOFF.md`** (afternoon R9 pass:
+> dedup re-scoped geometry-only, semantics → scene graph, rework paused
+> for the graph-definition discussion). Read that one first.
+
 Read `docs/PLAN_SELF_PANO_RIG.md` first — its top UPDATE blocks carry the
 full state. This session was the daytime review/post-processing session on
 top of the canonical pano track.

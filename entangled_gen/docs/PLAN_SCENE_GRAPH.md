@@ -7,11 +7,38 @@ protocol at bottom, checkpoints are hard stops unless autonomous mode is
 explicitly authorized).
 
 - Created: 2026-07-22
-- Current state: 🔴 WAITING ON USER — Checkpoint G1 graph correctness
-  review (`out\bedroom_marble\graph_review.html` + viewer "graph nodes"
-  layer). Steps 1–4 all DONE; Step 5 (consumer wiring + VLM adjacency)
-  gated on G1.
+- Current state: 🟡 PAUSED FOR REDESIGN (2026-07-26) — before any further
+  build, a user-led **"what IS the scene graph" design discussion**: passive
+  index over extraction outputs vs the stage where the pipeline COMMITS to
+  object identity (names, merges, relations), with everything upstream as
+  evidence. Two forces triggered this: (a) the pano-track rewire deprecates
+  the analyzer-seeded node set (v1 foundation), (b) the 07-26 decision below
+  moves dedup's semantic judgment into this stage. G1 (analyzer-seeded graph
+  review) is likely MOOT — superseded by the coming rebuild; Steps 1–4
+  remain DONE as machinery/lessons.
 - Scene: bedroom_marble first (the fully-instrumented scene)
+
+## 0. NEW DECISION 2026-07-26 (pm) — the graph inherits ALL semantic judgment
+
+From the R9 dedup review (lamp+ceiling-light merged node surfaced as
+"lamp" via highest-detector-score naming — rejected): the user chose
+**"all semantics to graph"**. Concretely, when the graph is rebuilt on the
+pano track it gains two passes:
+
+- **Naming pass** — every node with multiple labels (`alt_labels` from the
+  geometry-only dedup, or an appearance-pass label dispute) gets its
+  canonical name picked by the VLM using the node's crops + cheap
+  scene-agnostic geometric facts (height above floor, size, ON/ATTACHED
+  edges). Batched, cached, degrades to detector-score order offline.
+- **Same-vs-part pass** — consumes the `deferred_semantic` pair queue the
+  reworked geometry-only dedup will emit (IoU .40–.60 + containment ≥ .90),
+  judging with crops + IN/INTERPENETRATES edge evidence; merge nodes or
+  keep as part-of edges.
+
+Upstream contract change this implies: `manifest_dedup.py` goes
+geometry-only (confident IoU ≥ 0.6 merges, labels all kept, primary label
+provisional) — spec in PLAN_SELF_PANO_RIG.md's top UPDATE block. None of
+this is built yet; it waits on the redefinition discussion above.
 
 ## 1. Purpose (plain language)
 
