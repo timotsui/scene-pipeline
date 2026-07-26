@@ -138,6 +138,23 @@
   .b-active { color: var(--eg); }
   .b-user { color: var(--comp); }
 
+  /* ---------- decision board ---------- */
+  .decisions { max-width: 1180px; margin: 0 auto 18px; display: grid;
+               grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 940px) { .decisions { grid-template-columns: 1fr; } }
+  .dcard { border: 1px solid var(--line); border-radius: 10px;
+           background: var(--panel); padding: 12px 14px; }
+  .dcard .dstat { font-size: 10px; letter-spacing: .1em;
+                  text-transform: uppercase; font-weight: 700;
+                  border: 1px solid currentColor; border-radius: 4px;
+                  padding: 1px 6px; }
+  .ds-decided { color: var(--eg); } .ds-open { color: var(--comp); }
+  .ds-prop { color: var(--lane); }
+  .dcard h2 { font-size: 13.5px; font-weight: 650; margin: 8px 0 6px; }
+  .dcard p { font-size: 12px; line-height: 1.5; color: var(--ink-2);
+             margin: 0; }
+  .dcard p b { color: var(--ink); }
+
   /* ---------- detail panel ---------- */
   #panel { position: sticky; top: 16px; max-height: calc(100vh - 32px);
            overflow-y: auto; border: 1px solid var(--line); border-radius: 10px;
@@ -172,24 +189,57 @@
 <body>
 <div class="wrap">
 <header class="top">
-  <div class="kicker">scene-pipeline · CS 8903 · updated 2026-07-23</div>
-  <h1>Architecture map — modules, stages, contracts</h1>
+  <div class="kicker">scene-pipeline · CS 8903 · updated 2026-07-25</div>
+  <h1>Pipeline map — steps, candidates, decisions</h1>
   <p class="rule"><b>The isolation rule:</b> stages communicate only through
   per-scene files — every arrow is a file, labeled with its name. Swapping a
-  method = writing the same files in the same format. <b>No track is
-  privileged:</b> the three discovery tracks compete for the same contract
-  (splat → object boxes); downstream consumes whichever manifest wins. One
-  sanctioned code seam: <span class="mono">comp_paths.py → paths.py</span>.</p>
+  method = writing the same files in the same format. <b>Steps (reframed 07-25):</b> 1 WORLD → 2 ANALYSIS → 3 COMPOSE, with ANALYSIS split into sub-stages 2.1 OBSERVE · 2.2 DETECT · 2.3 LIFT · 2.4 PLACE (horizontal bands, labels on the right margin) — candidate methods compete <i>within</i> a sub-stage; no candidate is privileged. Node ids are stable labels (3h2, 3p2, 4g1 …); every card’s eyebrow states its sub-stage.
+  One sanctioned code seam:
+  <span class="mono">comp_paths.py → paths.py</span>.</p>
   <div class="legend">
-    <span><span class="dot" style="background:var(--eg)"></span>track 1 · yaw views</span>
-    <span><span class="dot" style="background:var(--lane)"></span>track 2 · pano</span>
-    <span><span class="dot" style="background:var(--t3)"></span>track 3 · geometric</span>
-    <span><span class="dot" style="background:var(--comp)"></span>downstream</span>
+    <span><span class="dot" style="background:var(--eg)"></span>hybrid h · analyzer views × our lift</span>
+    <span><span class="dot" style="background:var(--lane)"></span>candidate p · pano</span>
+    <span><span class="dot" style="background:var(--t3)"></span>candidate a · ext analyzer = yaw paradigm × coverage</span>
+    <span><span class="dot" style="background:var(--comp)"></span>step 5 · compose</span>
     <span>split color bar = shared / unifying</span>
     <span>dashed = external or loop-back</span>
+    <span>rows = ANALYSIS sub-stage bands (labels far right)</span>
     <span>· click any box for its contract card</span>
   </div>
 </header>
+
+<div class="decisions">
+  <section class="dcard">
+    <span class="dstat ds-decided">decided 2026-07-24</span>
+    <h2>HANDOFF — what ANALYSIS gives COMPOSE</h2>
+    <p><b>scene_graph.json is the product.</b> The manifest becomes an
+    internal intermediate. Consequence, still pending: rewire C1 and the
+    agent package (4→5) to read the graph.</p>
+  </section>
+  <section class="dcard">
+    <span class="dstat ds-open">reshaped 07-25 — details wait on R1–R7</span>
+    <h2>FIND — hybrid h is the plan; p kept as complement</h2>
+    <p><b>Decided 07-25: no more standalone yaw track.</b> Candidate a is
+    the yaw paradigm with coverage turned up (code read), so the lanes
+    merge into <b>hybrid h</b>: analyzer views + detection volume + vote
+    filter, with OUR mask lift (3h2) replacing its point lift.
+    <b>Candidate p stays</b> (possibly complementary — decide later).
+    R1–R7 verdicts (esp. R3) still calibrate the details.</p>
+  </section>
+  <section class="dcard">
+    <span class="dstat ds-decided">decided 07-25 (direction)</span>
+    <h2>OBSERVE — analyzer-style sweep replaces the 4-yaw set</h2>
+    <p><b>2y (4-yaw render) RETIRED.</b> Splat observation = the analyzer's
+    multi-standpoint 360° az×el sweep (job frames + depth + cams). Open:
+    run the ext tool as-is vs port the sweep in-repo; deliberate standpoints
+    (envelope + generator origin) vs its random-with-guardrails. Legacy
+    consumers of views/*.webp (C7 refs, package, cut view-pack, lift
+    calibration) need re-pointing — rewires pending. <b>Adopted 07-25:</b>
+    the word list is an OBSERVE output — vocab_build.py (prompt-mining ∪
+    fast-VLM look at pano + sweep frames) → vocab.json feeds every
+    detector.</p>
+  </section>
+</div>
 
 <div class="grid">
 <div id="flow">
@@ -197,9 +247,9 @@
   <!-- ================= THE GRAPH ================= -->
   <section class="phase">
     <div class="phase-h"><span class="phase-n">DATAFLOW</span>
-      <span class="phase-t">Three competing discovery tracks · shared modules drawn once · one downstream consumer</span></div>
+      <span class="phase-t">1 WORLD → 2 ANALYSIS (observe · detect · lift · place) → 3 COMPOSE · shared modules drawn once</span></div>
     <div class="phase-body">
-    <svg class="pipe" viewBox="0 0 800 1592" role="img"
+    <svg class="pipe" viewBox="0 0 800 1800" role="img"
          aria-label="scene-pipeline dataflow graph">
       <defs>
         <marker id="ah-eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
@@ -214,259 +264,305 @@
           markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
 
+      <!-- ===== ANALYSIS sub-stage bands (07-25) ===== -->
+      <rect x="0" y="118" width="800" height="218" fill="var(--ink)" opacity="0.035"/>
+      <rect x="0" y="455" width="800" height="268" fill="var(--ink)" opacity="0.035"/>
+      <path d="M8,336 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
+      <path d="M8,455 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
+      <path d="M8,723 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
+      <path d="M8,1136 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
+      <text class="plabel pl-bus" style="font-size:15px" x="8" y="142">2.1 OBSERVE</text>
+      <text class="plabel pl-bus" style="font-size:15px" x="8" y="382">2.2 DETECT</text>
+      <text class="plabel pl-bus" style="font-size:15px" x="8" y="552">2.3 LIFT</text>
+      <text class="plabel pl-bus" style="font-size:15px" x="8" y="772">2.4 PLACE · SCENE MODEL</text>
+
       <!-- ===== generate ===== -->
       <g class="node" data-k="gen" transform="translate(276,24)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-eg" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">1 · generate world</text>
+        <text class="ntitle" x="14" y="17">1 · WORLD · generate</text>
         <text class="nscript" x="14" y="31">Marble bundle · gen/&lt;method&gt;</text></g>
       <path class="edge e-bus" d="M392,64 V92"/>
-      <path class="edge e-bus" d="M124,92 H660"/>
-      <path class="edge e-bus" d="M124,92 V120" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M30,92 H660"/>
+      <path class="edge e-bus" d="M60,92 V482" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M30,92 V778" marker-end="url(#ah-bus)"/>
       <path class="edge e-bus" d="M328,92 V120" marker-end="url(#ah-bus)"/>
-      <path class="edge e-bus" d="M449,92 V120" marker-end="url(#ah-bus)"/>
       <path class="edge e-bus" d="M660,92 V120" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="130" y="104">gen_raw.ply</text>
+      <text class="elab" x="36" y="104">gen_raw.ply</text>
       <text class="elab" x="334" y="104">pano.jpg</text>
-      <text class="elab" x="455" y="104">prompt.txt</text>
       <text class="elab" x="666" y="104">gen_raw.ply</text>
 
-      <!-- ===== the three tracks ===== -->
-      <text class="plabel pl-eg" x="8" y="116">TRACK 1 · YAW VIEWS</text>
-      <text class="plabel pl-lane" x="276" y="116">TRACK 2 · PANO</text>
-      <text class="plabel pl-t3" x="544" y="116">TRACK 3 · GEOMETRIC</text>
+      <!-- ===== the lanes (2y render RETIRED 07-25) ===== -->
+      <text class="plabel pl-eg" x="8" y="116">HYBRID h · ANALYZER VIEWS × OUR LIFT</text>
+      <text class="plabel pl-lane" x="276" y="116">CANDIDATE p · PANO (KEPT)</text>
+      <a href="splat_analyzer_map.html"><text class="plabel pl-t3" x="544" y="116">CANDIDATE a · EXT ANALYZER · SUB-MAP ↗</text></a>
 
-      <g class="node" data-k="render" transform="translate(8,122)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-eg" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">render 4 views</text>
-        <text class="nscript" x="14" y="31">rendertools/shot.py</text></g>
       <g class="node" data-k="p1" transform="translate(276,122)">
         <rect class="nbox" width="104" height="40" rx="8"/>
         <rect class="b-lane" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">p1 · crop</text>
+        <text class="ntitle" x="14" y="17">2p1 · crop</text>
         <text class="nscript" x="14" y="31">crop_pano.py</text></g>
-      <g class="node" data-k="p2" transform="translate(390,122)">
-        <rect class="nbox" width="118" height="40" rx="8"/>
-        <rect class="b-lane" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">p2 · word list</text>
-        <text class="nscript" x="14" y="31">vocab_from_prompt</text></g>
-      <g class="node ndash" data-k="ext" transform="translate(544,122)">
+      <g class="node" data-k="vb" transform="translate(276,268)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-eg" width="4" height="24" rx="2"/>
+        <rect class="b-lane" y="24" width="4" height="24" rx="2"/>
+        <text class="ntitle" x="14" y="17">2v · word list
+          <tspan class="nshare"> · SHARED h+p</tspan></text>
+        <text class="nscript" x="14" y="31">vocab_build.py — prompt ∪ VLM look</text>
+        <text class="nsub" x="14" y="44">claude.exe haiku · pano + 8 sweep frames</text></g>
+      <path class="edge e-bus" d="M468,92 V266" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="474" y="110">prompt.txt</text>
+      <path class="edge e-lane" d="M300,162 V266" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="306" y="230">pano / crops</text>
+      <path class="edge e-t3 e-dash" d="M560,236 V284 H512" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="566" y="264">frames</text>
+      <path class="edge e-eg" d="M340,316 V358" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="346" y="342">vocab.json → gdino query</text>
+      <path class="edge e-eg" d="M508,300 H524 V402 H542" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="528" y="356" text-anchor="middle"
+        transform="rotate(-90 528 356)">vocab.json → owlv2</text>
+      <g class="node ndash" data-k="asp" transform="translate(544,122)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-t3" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">splat_analyzer</text>
-        <text class="nscript" x="14" y="31">WSL tool — outside repo</text></g>
+        <text class="ntitle" x="14" y="17">3a0·a2 · sample standpoints</text>
+        <text class="nscript" x="14" y="31">random + density guardrails</text></g>
+      <g class="node ndash" data-k="asw" transform="translate(544,188)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">3a0·a3·a4 · 360° sweep render</text>
+        <text class="nscript" x="14" y="31">az × el grid · 130° fov · +depth</text></g>
+      <g class="node ndash" data-k="adet" transform="translate(544,378)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">3a0·a5 · detect (OWLv2)
+          <tspan class="nactive"> · HYBRID: KEEP</tspan></text>
+        <text class="nscript" x="14" y="31">word list, every frame</text></g>
+      <g class="node ndash" data-k="alift" transform="translate(544,472)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">3a0·a6 · point lift
+          <tspan class="ngate"> · SUPERSEDED BY 3h2</tspan></text>
+        <text class="nscript" x="14" y="31">1 px + fabricated z-extent</text></g>
+      <g class="node ndash" data-k="avote" transform="translate(544,538)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">3a0·a7 · vote filter
+          <tspan class="nactive"> · HYBRID: KEEP</tspan></text>
+        <text class="nscript" x="14" y="31">≥8 frames ∧ peak ≥.40</text></g>
+      <path class="edge e-t3 e-dash" d="M660,162 V186" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="666" y="178">standpoints ×8, in-scene</text>
+      <path class="edge e-t3 e-dash" d="M660,228 V376" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="666" y="368">24–192 views + splat depth</text>
+      <path class="edge e-t3 e-dash" d="M660,418 V470" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="666" y="434">2D boxes per frame</text>
+      <path class="edge e-t3 e-dash" d="M660,512 V536" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="666" y="528">surface pts · ext (w+h)/2</text>
 
-      <!-- into the shared detect module -->
-      <path class="edge e-eg" d="M124,162 V234" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="200">views/*.webp</text>
-      <path class="edge e-lane" d="M328,162 V234" marker-end="url(#ah-lane)"/>
+      <!-- into the shared detect module: hybrid input = analyzer job frames -->
+      <path class="edge e-eg e-dash" d="M544,196 H260 V358" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="266" y="350">analyzer job frames (+depth+cams) · REWIRE PENDING</text>
+      <path class="edge e-lane" d="M328,162 V358" marker-end="url(#ah-lane)"/>
       <text class="elab" x="334" y="200">pano_crops/</text>
-      <path class="edge e-lane" d="M449,162 V200 H390 V234" marker-end="url(#ah-lane)"/>
-      <text class="elab" x="455" y="190">vocab.txt</text>
 
-      <g class="node" data-k="seg" transform="translate(110,236)">
+      <g class="node" data-k="seg" transform="translate(110,360)">
         <rect class="nbox" width="300" height="48" rx="8"/>
         <rect class="b-eg" width="4" height="24" rx="2"/>
         <rect class="b-lane" y="24" width="4" height="24" rx="2"/>
-        <text class="ntitle" x="14" y="17">detect + segment
-          <tspan class="nshare"> · SHARED — both tracks</tspan></text>
+        <text class="ntitle" x="14" y="17">3h1 = 3p1 · detect + segment
+          <tspan class="nshare"> · SHARED h+p</tspan></text>
         <text class="nscript" x="14" y="31">seg_views.py — GroundingDINO + SAM</text></g>
 
-      <path class="edge e-eg" d="M124,284 V330" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="314">seg/detections.json</text>
-      <path class="edge e-lane" d="M392,284 V330" marker-end="url(#ah-lane)"/>
-      <text class="elab" x="398" y="314">seg_pano/detections.json</text>
+      <path class="edge e-eg" d="M124,408 V482" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="438">seg/detections.json</text>
+      <path class="edge e-lane" d="M392,408 V482" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="398" y="438">seg_pano/detections.json</text>
 
-      <g class="node" data-k="lift" transform="translate(8,332)">
+      <g class="node" data-k="lift" transform="translate(8,484)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-eg" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">depth-lift</text>
-        <text class="nscript" x="14" y="31">lift_views.py (+ 4.5 amodal)</text></g>
-      <g class="node" data-k="p5" transform="translate(276,332)">
+        <text class="ntitle" x="14" y="17">3h2 · mask lift (ours)</text>
+        <text class="nscript" x="14" y="31">lift_views.py + a7-style vote merge</text></g>
+      <g class="node" data-k="p5" transform="translate(276,484)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-lane" width="4" height="52" rx="2"/>
-        <text class="ntitle" x="14" y="17">p5 · depth-lift (pano)</text>
+        <text class="ntitle" x="14" y="17">3p2 · depth-lift (pano)</text>
         <text class="nscript" x="14" y="31">lift_pano.py</text>
         <text class="nsub" x="14" y="45">after p4 overlay gate<tspan class="ngate"> · USER GATE</tspan></text></g>
 
       <!-- track 1 manifest + its taps -->
-      <path class="edge e-eg" d="M124,372 V434" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="404">scene_manifest.json</text>
-      <path class="edge e-eg" d="M240,342 H254 V424 H560 V498" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="430" y="420">manifest</text>
-      <path class="edge e-eg" d="M240,352 H262 V620 H274" marker-end="url(#ah-eg)"/>
-      <path class="edge e-eg" d="M240,362 H270 V1080 H542" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="300" y="1076">one object's manifest box</text>
+      <path class="edge e-eg" d="M124,524 V778" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="672">scene_manifest.json</text>
+      <path class="edge e-eg" d="M240,494 H254 V576 H560 V650" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="430" y="572">manifest</text>
+      <path class="edge e-eg" d="M240,504 H262 V800 H274" marker-end="url(#ah-eg)"/>
+      <path class="edge e-eg" d="M240,514 H270 V1288 H542" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="300" y="1284">one object's manifest box</text>
 
-      <g class="node" data-k="env" transform="translate(8,436)">
+      <g class="node" data-k="env" transform="translate(8,780)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-eg" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">envelope — free-space util</text>
+        <text class="ntitle" x="14" y="17">4e · envelope (free space)</text>
         <text class="nscript" x="14" y="31">envelope.py</text></g>
-      <g class="node" data-k="p6" transform="translate(276,436)">
+      <g class="node" data-k="p6" transform="translate(276,564)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-lane" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">p6 · convert to RAW</text>
+        <text class="ntitle" x="14" y="17">3p3 · convert to RAW</text>
         <text class="nscript" x="14" y="31">manifest_pano_to_raw.py</text></g>
-      <path class="edge e-lane" d="M392,384 V434" marker-end="url(#ah-lane)"/>
-      <text class="elab" x="398" y="412">scene_manifest_pano.json</text>
+      <path class="edge e-lane" d="M392,536 V562" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="398" y="554">scene_manifest_pano.json</text>
 
       <!-- track 3 spine -->
-      <path class="edge e-t3 e-dash" d="M660,162 V498" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="664" y="290" text-anchor="middle"
-        transform="rotate(-90 664 290)">interactions.json</text>
-      <g class="node" data-k="a1" transform="translate(544,500)">
+      <path class="edge e-t3 e-dash" d="M660,578 V650" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="666" y="618">interactions.json</text>
+      <g class="node" data-k="a1" transform="translate(544,652)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-t3" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">a1 · bridge to our boxes</text>
+        <text class="ntitle" x="14" y="17">3a1 · bridge to our boxes</text>
         <text class="nscript" x="14" y="31">bridge_boxes.py</text></g>
 
       <!-- envelope bus -->
-      <path class="edge e-eg" d="M124,476 V970" marker-end="url(#ah-eg)"/>
-      <path class="edge e-eg" d="M124,520 H542" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="300" y="516">envelope.npz</text>
-      <path class="edge e-eg" d="M124,632 H274" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="150" y="628">envelope.npz</text>
-      <text class="elab" x="130" y="942">manifest + envelope + views</text>
+      <path class="edge e-eg" d="M124,820 V1178" marker-end="url(#ah-eg)"/>
+      <path class="edge e-eg" d="M236,780 V752 H530 V672 H542" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="300" y="748">envelope.npz</text>
+      <path class="edge e-eg" d="M240,812 H274" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="1150">manifest + envelope + views</text>
 
       <!-- ===== converge and judge ===== -->
-      <text class="plabel pl-bus" x="276" y="592">CONVERGE &amp; JUDGE</text>
-      <path class="edge e-t3" d="M660,540 V598" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="666" y="572">bridged_boxes.json</text>
-      <path class="edge e-t3" d="M660,540 V560 H460 V598" marker-end="url(#ah-t3)"/>
-      <g class="node" data-k="g1" transform="translate(276,600)">
+      <path class="edge e-t3" d="M660,692 V778" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="666" y="752">bridged_boxes.json</text>
+      <path class="edge e-t3" d="M660,692 V740 H460 V778" marker-end="url(#ah-t3)"/>
+      <g class="node" data-k="g1" transform="translate(276,780)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-eg" width="4" height="13" rx="2"/>
         <rect class="b-lane" y="13" width="4" height="13" rx="2"/>
         <rect class="b-t3" y="26" width="4" height="14" rx="2"/>
-        <text class="ntitle" x="14" y="17">g1 · nodes (all streams)
+        <text class="ntitle" x="14" y="17">4g1 · nodes (all streams)
           <tspan class="nactive"> · ACTIVE</tspan></text>
         <text class="nscript" x="14" y="31">graph/build_graph.py</text></g>
-      <path class="edge e-bus" d="M392,640 V664" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="398" y="656">scene_graph.json — nodes</text>
-      <g class="node" data-k="g2" transform="translate(276,666)">
+      <path class="edge e-bus" d="M392,820 V844" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="836">scene_graph.json — nodes</text>
+      <g class="node" data-k="g2" transform="translate(276,846)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-tool" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">g2 · geometric edges</text>
+        <text class="ntitle" x="14" y="17">4g2 · geometric edges</text>
         <text class="nscript" x="14" y="31">graph/build_edges.py</text></g>
-      <path class="edge e-bus" d="M392,706 V730" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="398" y="722">+ typed edges</text>
-      <g class="node" data-k="g3" transform="translate(276,732)">
+      <path class="edge e-bus" d="M392,886 V910" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="902">+ typed edges</text>
+      <g class="node" data-k="g3" transform="translate(276,912)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-tool" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">g3 · VLM appearance</text>
+        <text class="ntitle" x="14" y="17">4g3 · VLM appearance</text>
         <text class="nscript" x="14" y="31">graph/describe_nodes.py</text></g>
-      <path class="edge e-bus" d="M392,772 V796" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="398" y="788">+ appearance · crops/</text>
-      <g class="node" data-k="g4" transform="translate(276,798)">
+      <path class="edge e-bus" d="M392,952 V976" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="968">+ appearance · crops/</text>
+      <g class="node" data-k="g4" transform="translate(276,978)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-tool" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">g4 · review page
+        <text class="ntitle" x="14" y="17">4g4 · review page
           <tspan class="ngate"> · USER GATE</tspan></text>
         <text class="nscript" x="14" y="31">graph/graph_review.py</text></g>
-      <g class="node" data-k="a2" transform="translate(544,600)">
+      <g class="node" data-k="a2" transform="translate(544,780)">
         <rect class="nbox" width="232" height="44" rx="8"/>
         <rect class="b-t3" width="4" height="44" rx="2"/>
-        <text class="ntitle" x="14" y="17">a2 · compare tracks 1 vs 3
+        <text class="ntitle" x="14" y="17">3a2 · FIND bake-off
           <tspan class="ngate"> · USER GATE</tspan></text>
         <text class="nscript" x="14" y="31">build_comparison.py</text></g>
-      <path class="edge e-t3 e-dash" d="M660,470 H532 V752 H510" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="536" y="690" text-anchor="middle"
-        transform="rotate(-90 536 690)">job frames</text>
+      <path class="edge e-t3 e-dash" d="M544,214 H532 V932 H510" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="536" y="870" text-anchor="middle"
+        transform="rotate(-90 536 870)">job frames</text>
 
-      <path class="edge e-bus" d="M392,838 V870" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="398" y="860">scene_graph.json — full</text>
-      <path class="edge e-lane" d="M392,476 V566 H524 V886 H510" marker-end="url(#ah-lane)"/>
-      <text class="elab" x="528" y="660" text-anchor="middle"
-        transform="rotate(-90 528 660)">panoraw variants</text>
-      <path class="edge e-t3" d="M660,644 V902 H510" marker-end="url(#ah-t3)"/>
-      <text class="elab" x="556" y="896">boxes layer</text>
-      <g class="node sink" data-k="viewer" transform="translate(276,872)">
+      <path class="edge e-bus" d="M392,1018 V1050" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="1040">scene_graph.json — full</text>
+      <path class="edge e-lane" d="M392,604 V746 H524 V1066 H510" marker-end="url(#ah-lane)"/>
+      <text class="elab" x="528" y="840" text-anchor="middle"
+        transform="rotate(-90 528 840)">panoraw variants</text>
+      <path class="edge e-t3" d="M660,824 V1082 H510" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="556" y="1076">boxes layer</text>
+      <g class="node sink" data-k="viewer" transform="translate(276,1052)">
         <rect class="nbox" width="232" height="54" rx="8"/>
         <rect class="b-eg" width="4" height="18" rx="2"/>
         <rect class="b-lane" y="18" width="4" height="18" rx="2"/>
         <rect class="b-t3" y="36" width="4" height="18" rx="2"/>
         <text class="ntitle" x="14" y="17">splat viewer — judging bench</text>
         <text class="nscript" x="14" y="31">viewer/serve.py :8321</text>
-        <text class="nsub" x="14" y="45">look-only · every track lands here</text></g>
+        <text class="nsub" x="14" y="45">look-only · every candidate lands here</text></g>
 
       <!-- ===== downstream ===== -->
-      <text class="plabel pl-comp" x="8" y="958">DOWNSTREAM — CONSUMES THE WINNING MANIFEST (TODAY: TRACK 1'S)</text>
-      <g class="node" data-k="pkg" transform="translate(8,972)">
+      <text class="plabel pl-comp" x="8" y="1166">STEP 3 · COMPOSE — CONSUMES THE HANDOFF (DECIDED: THE GRAPH · WIRING PENDING)</text>
+      <g class="node" data-k="pkg" transform="translate(8,1180)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-eg" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">agent package</text>
+        <text class="ntitle" x="14" y="17">2→3 · agent package</text>
         <text class="nscript" x="14" y="31">agent_package.py</text></g>
-      <path class="edge e-comp" d="M124,1012 V1060" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1040">package/ — sole handoff</text>
-      <g class="node" data-k="c1" transform="translate(8,1062)">
+      <path class="edge e-comp" d="M124,1220 V1268" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1248">package/ — sole handoff</text>
+      <g class="node" data-k="c1" transform="translate(8,1270)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C1 · shortlist</text>
         <text class="nscript" x="14" y="31">retrieve2.py</text></g>
-      <path class="edge e-comp" d="M124,1102 V1150" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1130">shortlists2.json</text>
-      <g class="node" data-k="c2" transform="translate(8,1152)">
+      <path class="edge e-comp" d="M124,1310 V1358" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1338">shortlists2.json</text>
+      <g class="node" data-k="c2" transform="translate(8,1360)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C2+ · thumbs · measure · CLIP</text>
         <text class="nscript" x="14" y="31">thumbs / measure / relevance</text></g>
-      <path class="edge e-comp" d="M124,1192 V1240" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1220">+ true sizes · + CLIP scores</text>
-      <g class="node" data-k="c4" transform="translate(8,1242)">
+      <path class="edge e-comp" d="M124,1400 V1448" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1428">+ true sizes · + CLIP scores</text>
+      <g class="node" data-k="c4" transform="translate(8,1450)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C4 · review viewer
           <tspan class="ngate"> · USER GATE</tspan></text>
         <text class="nscript" x="14" y="31">review_server.py :8322</text></g>
-      <path class="edge e-comp" d="M124,1282 V1330" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1310">(judged, unchanged)</text>
-      <g class="node" data-k="c5" transform="translate(8,1332)">
+      <path class="edge e-comp" d="M124,1490 V1538" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1518">(judged, unchanged)</text>
+      <g class="node" data-k="c5" transform="translate(8,1540)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C5 · pick</text>
         <text class="nscript" x="14" y="31">pick.py</text></g>
-      <path class="edge e-comp" d="M124,1372 V1420" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1400">picks2.json</text>
-      <g class="node" data-k="c6" transform="translate(8,1422)">
+      <path class="edge e-comp" d="M124,1580 V1628" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1608">picks2.json</text>
+      <g class="node" data-k="c6" transform="translate(8,1630)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C6 · place</text>
         <text class="nscript" x="14" y="31">place2.py — bg resolver</text></g>
-      <path class="edge e-comp" d="M124,1462 V1510" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1490">composed_state2.json</text>
-      <g class="node" data-k="c7" transform="translate(8,1512)">
+      <path class="edge e-comp" d="M124,1670 V1718" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1698">composed_state2.json</text>
+      <g class="node" data-k="c7" transform="translate(8,1720)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C7 · VLM loop {add, nudge}</text>
         <text class="nscript" x="14" y="31">loop.py + collide.py</text></g>
-      <path class="edge e-comp" d="M124,1552 V1566" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="140" y="1578">edits.jsonl — the journaled trace</text>
+      <path class="edge e-comp" d="M124,1760 V1774" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="140" y="1786">edits.jsonl — the journaled trace</text>
 
       <!-- loop-backs -->
-      <path class="edge e-comp e-dash" d="M8,1172 H2 V1102 H6" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="20" y="1124">measure re-runs C1</text>
-      <path class="edge e-comp e-dash" d="M240,1532 H250 V1082 H242" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="254" y="1310" text-anchor="middle"
-        transform="rotate(-90 254 1310)">C7 add op re-enters C1</text>
+      <path class="edge e-comp e-dash" d="M8,1380 H2 V1310 H6" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="20" y="1332">measure re-runs C1</text>
+      <path class="edge e-comp e-dash" d="M240,1740 H250 V1290 H242" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="254" y="1518" text-anchor="middle"
+        transform="rotate(-90 254 1518)">C7 add op re-enters C1</text>
 
       <!-- the cut tool -->
-      <path class="edge e-bus" d="M508,44 H792 V1102 H778" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="789" y="560" text-anchor="middle"
-        transform="rotate(-90 789 560)">gen_raw.ply</text>
-      <g class="node" data-k="cut" transform="translate(544,1062)">
+      <path class="edge e-bus" d="M508,44 H792 V1310 H778" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="789" y="740" text-anchor="middle"
+        transform="rotate(-90 789 740)">gen_raw.ply</text>
+      <g class="node" data-k="cut" transform="translate(544,1270)">
         <rect class="nbox" width="232" height="96" rx="8"/>
         <rect class="b-tool" width="4" height="96" rx="2"/>
         <text class="ntitle" x="14" y="17">object cut-out — tool</text>
         <text class="nscript" x="14" y="31">cut/ — GaussianCut</text>
-        <text class="nsub" x="14" y="46"><tspan class="nscript">c1</tspan> pack views + cameras</text>
-        <text class="nsub" x="14" y="59"><tspan class="nscript">c2</tspan> object masks (SAM)</text>
-        <text class="nsub" x="14" y="72"><tspan class="nscript">c3</tspan> graph cut (WSL)</text>
-        <text class="nsub" x="14" y="85"><tspan class="nscript">c4</tspan> before/after page<tspan class="ngate"> · USER GATE</tspan></text></g>
-      <path class="edge e-bus" d="M660,1158 V1442 H242" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="664" y="1290" text-anchor="middle"
-        transform="rotate(-90 664 1290)">background.ply</text>
+        <text class="nsub" x="14" y="46"><tspan class="nscript">cut1</tspan> pack views + cameras</text>
+        <text class="nsub" x="14" y="59"><tspan class="nscript">cut2</tspan> object masks (SAM)</text>
+        <text class="nsub" x="14" y="72"><tspan class="nscript">cut3</tspan> graph cut (WSL)</text>
+        <text class="nsub" x="14" y="85"><tspan class="nscript">cut4</tspan> before/after page<tspan class="ngate"> · USER GATE</tspan></text></g>
+      <path class="edge e-bus" d="M660,1366 V1650 H242" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="664" y="1498" text-anchor="middle"
+        transform="rotate(-90 664 1498)">background.ply</text>
     </svg>
     </div>
   </section>
@@ -505,7 +601,7 @@
 
 <script>
 const S = {
-gen: {mod:"eg", eyebrow:"entangled_gen / stage 1", name:"World generation",
+gen: {mod:"eg", eyebrow:"STEP 1 · WORLD", name:"World generation",
   script:"Marble harvest bundle (week8/marble-harvest downloader); candidate local backends: gen/hunyuanworld · matrix3d · spag4d · worldmirror",
   how:["You type a text prompt; Marble (a text→3D-world service) generates the room",
        "We download its bundle: a panorama photo, the 3D splat (millions of colored blobs = the scene), a collision mesh, and the prompt itself",
@@ -513,72 +609,69 @@ gen: {mod:"eg", eyebrow:"entangled_gen / stage 1", name:"World generation",
   reads:["text prompt"],
   writes:["gen_raw.ply (3DGS, 62-float layout)","bundle_path.txt → prompt.txt","generator_pano.jpg (opt)"],
   note:"Swap point: a new generator = a new gen/<method>/ folder that deposits gen_raw.ply into a fresh scene folder. First scene from a new source: run the cube frame-verification (debug_cube_ply.py)."},
-render: {mod:"eg", eyebrow:"track 1 · yaw views", name:"Render views",
-  script:"rendertools/shot.py (splat-transform GPU; frozen week5 copy)",
-  how:["Put a virtual camera at eye height (1.6 m) inside the splat",
-       "Take 4 photos, turning 90° between shots — like standing in the room looking around",
-       "Save each photo with its exact camera pose, so any pixel can be traced back into 3D later"],
-  reads:["gen_raw.ply"],
-  writes:["views/gpu_yaw{000,090,180,270}.webp","same-stem .json sidecars (cam, look, up, fov, res)"],
-  note:"Sidecar cameras are in the RENDER (upright) frame — part of the contract. Known hole: fov 75 × 4 views = 300° of 360°; four 15° wedges are never rendered."},
-seg: {mod:"eg", eyebrow:"SHARED MODULE — tracks 1 + 2", name:"Detect + segment",
-  script:"seg_views.py — one script, both tracks: track 1 passes the yaw webps, track 2 passes pano crops (--views-dir pano_crops --prompt <vocab>)",
+seg: {mod:"eg", eyebrow:"3h1 = 3p1 · 2.2 DETECT — shared h+p (2y retired 07-25)", name:"Detect + segment",
+  script:"seg_views.py — one script, both lanes: h will pass analyzer job frames (REWIRE PENDING), p passes pano crops (--views-dir pano_crops --prompt <vocab>)",
   how:["Start from a word list of things to look for (hand-picked per room type; the pano path builds it from the prompt's nouns instead)",
        "GroundingDINO reads that list and draws a box around every word it can find in each photo",
        "SAM turns each box into an exact pixel outline (a mask)"],
-  reads:["views/*.webp","detection vocab (per-room list, or vocab_from_prompt on the pano path)"],
+  reads:["analyzer job frames (hybrid, pending) or pano_crops/ (p)","vocab.json queries.gdino (vocab_build.py; legacy room dict = fallback)"],
   writes:["seg/detections.json {view: [{label, score, box}]}","seg/<view>_masks.npy (bool n×H×W, same order)"],
-  note:"Detection is effectively single-view on bedroom_marble: 15/20 detections in one view, exactly one cross-view merge. The C7 loop's add op is the designed answer."},
-lift: {mod:"eg", eyebrow:"track 1 · yaw views (+4.5 amodal)", name:"Depth-lift",
-  script:"lift_views.py (z-buffer depth + unproject + merge) · amodal_apply.py (stage 4.5)",
+  note:"2y (the 4-yaw webps) RETIRED as this stage's input 07-25 — the starved-coverage problem (15/20 detections in one view, one cross-view merge) is solved upstream by the analyzer sweep's 24–192 frames, not by detector tweaks. Rewire: point --views-dir at the job frames + an adapter from transforms.json to per-view sidecars. Alternative shortcut: seed SAM straight from the analyzer's own per-frame boxes (interactions.json frames[]) and skip GroundingDINO."},
+lift: {mod:"eg", eyebrow:"3h2 · 2.3 LIFT — hybrid, ours (+ stage 4.5 amodal)", name:"Mask lift (ours) + vote merge",
+  script:"lift_views.py (z-buffer depth + unproject + merge) · vote merge = a7 port (PLANNED) · amodal_apply.py (stage 4.5)",
   how:["For each mask, ask the splat how far away those pixels are (depth)",
-       "Push the pixels out into 3D and shrink-wrap a box around them",
-       "Merge repeats seen from several photos → one list of objects with 3D boxes: the scene manifest"],
-  reads:["masks + sidecars + gen_raw.ply"],
+       "Push the pixels out into 3D and shrink-wrap a box around them — measured extents, nothing fabricated",
+       "Merge repeats across the sweep's many frames with the analyzer's two-sided vote (≥k frames ∧ one confident hit) → the scene manifest"],
+  reads:["masks + frame cameras (transforms.json adapter, pending) + gen_raw.ply (or job depth_*.npy)"],
   writes:["scene_manifest.json (frame block, RAW coords)","seg/manifest_overlay_*.png (user artifact)","scene_manifest_modal.json (4.5 snapshot)"],
-  note:"THE central handoff. Self-calibrates the frame per scene (4 sign hypotheses vs the webps). Stage 4.5 rewrites boxes with one amodal method; composition must then re-run from C1."},
-env: {mod:"eg", eyebrow:"entangled_gen / stage 5", name:"Envelope",
+  note:"The hybrid's core swap: our per-pixel mask lift replaces the analyzer's 1-px point lift, and its vote filter replaces our ad-hoc merge — per-detection precision AND corroboration. Today's manifest (19 boxes) is still the legacy 4-yaw run until the rewire lands. Depth choice open: fresh z-buffer vs the job's depth_*.npy (same splat source, npys are free). Decided 07-24: scene_graph.json is the product; this manifest is internal."},
+env: {mod:"eg", eyebrow:"4e · 2.4 PLACE — envelope", name:"Envelope",
   script:"envelope.py (occupancy voxels → floor/clearance)",
   how:["Dice the room into small 3D cells and mark which ones contain splat",
        "That yields the floor height and a map of free space for placing new things"],
   reads:["gen_raw.ply","scene_manifest.json"],
   writes:["envelope.npz","envelope_heatmap.png","viewer clearance layer"],
   note:"Free-space map consumed by placement validation and the graph lane."},
-pkg: {mod:"eg", eyebrow:"entangled_gen / stage 6", name:"Agent package",
+pkg: {mod:"eg", eyebrow:"2→3 · ANALYSIS→COMPOSE boundary", name:"Agent package",
   script:"agent_package.py (orchestrated by scene_ready.py, mtime-driven)",
   how:["Bundle the manifest, photos, and overlays with a guide into one folder",
        "That folder is the ONLY thing the recreation module gets to see"],
   reads:["manifest + overlays + views"],
   writes:["package/GUIDE.md","copied views/overlays/manifest"],
-  note:"The bundle handed across the module boundary to composition."},
-p1: {mod:"lane", eyebrow:"track 2 · pano", name:"Crop pano into flat views",
-  script:"crop_pano.py (orchestrated with the rest of the track by run_scene.py)",
-  how:["Cut the generator's panorama into normal perspective views — same standpoint as track 1's renders, sharper pixels"],
+  note:"The bundle handed across the module boundary to composition. TWO rewires pending: (a) per the 07-24 handoff decision this must carry scene_graph.json, not the manifest; (b) per the 07-25 2y retirement its photos must come from the analyzer job frames instead of views/gpu_yaw*."},
+p1: {mod:"lane", eyebrow:"2p1 · 2.1 OBSERVE — candidate p", name:"Crop pano into flat views",
+  script:"crop_pano.py (orchestrated with the rest of the candidate-p chain by run_scene.py)",
+  how:["Cut the generator's panorama into normal perspective views — same standpoint idea as the retired 4-yaw renders, sharper pixels"],
   reads:["bundle equirect pano"],
   writes:["pano_crops/*.webp + same-stem .json sidecars"],
-  note:"Track 2's replacement for track 1's render step: instead of photographing the splat, reuse the generator's own panorama."},
-p2: {mod:"lane", eyebrow:"track 2 · pano", name:"Word list from the prompt",
-  script:"vocab_from_prompt.py (spaCy — nouns + synonyms)",
-  how:["Pull the nouns out of the generation prompt to build the detection word list automatically"],
-  reads:["bundle prompt.txt"],
-  writes:["seg_pano/vocab.txt"],
-  note:"Track 2's replacement for track 1's hand-picked per-room vocab. Both feed the SAME shared detect module."},
-p5: {mod:"lane", eyebrow:"track 2 · pano", name:"Depth-lift (pano)",
+  note:"Candidate p's replacement for the splat-render step: instead of photographing the splat, reuse the generator's own panorama. In the 07-24 OBSERVE proposal this becomes the primary backend whenever a pano exists."},
+vb: {mod:"eg", eyebrow:"2v · 2.1 OBSERVE — word list · SHARED h+p · ADOPTED 07-25", name:"Word list — intent ∪ observation",
+  script:"vocab_build.py — vocab_from_prompt machinery + claude.exe (haiku) look-pass",
+  how:["Mine the generation prompt: spaCy noun-chunks → stoplist → normalize → staples (INTENT — what was asked for)",
+       "A fast VLM lists every object type it sees in the bundle pano + 8 level sweep frames, one per standpoint, 3 calls total (OBSERVATION — what actually got generated)",
+       "Canonical union with per-term provenance; the diffs are free diagnostics: prompt-only = asked-for-but-verify-generated, image-only = generator improvisation",
+       "Emit ready-made query strings for both detectors (period-separated + EXPAND synonyms for GroundingDINO; comma-separated for OWLv2)"],
+  reads:["bundle prompt.txt + pano","analyzer job frames (8, level row)","NORMALIZE / STOP / EXPAND tables"],
+  writes:["vocab.json — canonical terms + provenance + queries.gdino / queries.owlv2"],
+  review:[{t:"…/out/bedroom_marble/vocab.json (27 terms: 22 prompt · 13 pano · 9 frames)",
+           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/vocab.json"}],
+  note:"THE word list (decided 07-25): exactly two sources — prompt-mining and image-mining; the per-room dict survives only as seg_views' no-vocab.json fallback. seg_views.py already prefers vocab.json. Known gaps: containment near-dupes (chair/office chair, mat/yoga mat) await a reverse-containment merge; haiku is unstable on 4-image batches (frames list varies between runs); an open-source tagger (RAM / Florence-2) is the someday swap for scale. Map draws the pano input via 2p1 per the 07-25 layout decision; the code currently mines the raw equirect directly — feeding it the crops instead is an equivalent pending swap."},
+p5: {mod:"lane", eyebrow:"3p2 · 2.3 LIFT — candidate p (p4 overlay gate precedes)", name:"Depth-lift (pano)",
   script:"lift_pano.py — preceded by the p4 overlay gate (seg_pano_overlay.py, user checkpoint)",
-  how:["Same lift idea as track 1, adapted to the pano crops: depth per mask, unproject, box",
+  how:["Same lift idea as the hybrid's 3h2, adapted to the pano crops: depth per mask, unproject, box",
        "Before lifting, p4 renders the detection overlay for your yes/no"],
   reads:["pano_crops + seg_pano + bundle collider"],
   writes:["scene_manifest_pano.json"],
   review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/seg_pano/pano_overlay.png",
            h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/seg_pano/pano_overlay.png"}],
-  note:"Different script from track 1's lift_views.py — same concept, pano-specific geometry."},
-p6: {mod:"lane", eyebrow:"track 2 · pano", name:"Convert to RAW frame",
+  note:"Different method from the hybrid's lift_views.py, not just different code: depth comes from ray-casting the bundle's collider mesh, not from the splat z-buffer — and it lands in the pano frame, so 3p3 must convert. 07-25: user confirmed the ICP-registered collider mesh is generally good in the viewer (mesh geometry trustworthy); the remaining risk is the transform 3p3 uses, see there."},
+p6: {mod:"lane", eyebrow:"3p3 · 2.3 LIFT — candidate p, frame convert", name:"Convert to RAW frame",
   script:"manifest_pano_to_raw.py",
-  how:["Re-express the pano manifest in the RAW splat frame so it's directly comparable with track 1's"],
+  how:["Re-express the pano manifest in the RAW splat frame so it's directly comparable with the hybrid manifest"],
   reads:["scene_manifest_pano.json"],
   writes:["scene_manifest_panoraw_*.json (viewer variants via ?man=)"],
-  note:"Track 2's terminus today: judged in the viewer against track 1 (98 boxes vs 19 on bedroom_marble — more detail, NOT more coverage). Same file format as THE manifest, so promoting it downstream is a wiring change, not a rewrite."},
-cut: {mod:"lane", eyebrow:"tool — track-agnostic (splat + one box in)", name:"Object cut-out (GaussianCut)",
+  note:"Candidate p's terminus today (98 boxes vs 19 legacy-yaw on bedroom_marble). Uses the CONVENTION transform (panoraw_c: mirror-y + height shift, scale 1) — but collider_registration.json's ICP fit measured scale 0.95008 (collider ~5% larger than the splat world; ~12 cm error at the walls if real). Candidate fix: use the ICP matrix here instead. DEFERRED 07-25 by user until after the front-end cleanup; p kept as a possibly-complementary lane."},
+cut: {mod:"lane", eyebrow:"TOOL — step-agnostic, splat + one box in (cut1–cut4)", name:"Object cut-out (GaussianCut)",
   script:"cut/prep_views → make_masks → run_cut (WSL) → render_cut_review",
   how:["Pick one object (say, the lamp) and gather photos + masks of it from many angles",
        "A graph cut sorts every Gaussian blob: part of the lamp, or part of the room",
@@ -588,42 +681,42 @@ cut: {mod:"lane", eyebrow:"tool — track-agnostic (splat + one box in)", name:"
   review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/cut/obj_004_v2/cut_review.html (newest variant)",
            h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/cut/obj_004_v2/cut_review.html"}],
   note:"Removes one object's Gaussians — the entanglement/ghost fix. background.ply feeds composition via place2 --background auto (file contract). Re-cuts write new variant folders, never overwrite."},
-a1: {mod:"lane", eyebrow:"track 3 · geometric", name:"Bridge to our box format",
+a1: {mod:"lane", eyebrow:"3a1 · 2.3 LIFT — bridge ext→ours", name:"Bridge to our box format",
   script:"analyzer/bridge_boxes.py",
   how:["Convert splat_analyzer's clusters into manifest-style 3D boxes in the RAW frame",
-       "Match them against track 1's manifest — who found what"],
+       "Match them against the (legacy-yaw, soon hybrid) manifest — who found what"],
   reads:["analyzer/<job>/interactions.json (external run)","scene_manifest.json","envelope.npz"],
   writes:["analyzer/bridged_boxes.json (RAW-frame boxes)","analyzer/match_report.json"],
-  note:"Makes track 3 speak the same box language as tracks 1 and 2, so the graph and the comparison can consume it."},
-a2: {mod:"lane", eyebrow:"track 3 · geometric — user gate", name:"Comparison page",
+  note:"Makes candidate a speak the same box language as y and p, so the graph and the comparison can consume it."},
+a2: {mod:"lane", eyebrow:"3a2 · 2.3 LIFT — decision evidence · USER GATE", name:"Comparison page — the FIND bake-off",
   script:"analyzer/build_comparison.py",
-  how:["A side-by-side page: what track 3 caught that track 1 missed, and vice versa"],
+  how:["A side-by-side page: what the analyzer caught that the legacy yaw manifest missed, and vice versa"],
   reads:["bridged_boxes.json + match_report.json + interactions.json"],
   writes:["analyzer/comparison.html (checkpoint page)","viewer layer via /analyzer_boxes.json"],
   review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/comparison.html",
            h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/comparison.html"}],
-  note:"This is where the track bake-off gets judged head-to-head. Your verdicts here decide which discovery method wins."},
-g1: {mod:"lane", eyebrow:"converge — unifies all three tracks (ACTIVE)", name:"Graph nodes from all streams",
+  note:"Primary evidence for the OPEN FIND decision — part of the R1–R7 mega review. Your verdicts here (plus 4g4's) decide the FIND details. CAVEATS for reading '103 vs 19' (found 07-25): the analyzer's high run used a ~25-term prompt-mined vocab vs the yaw run's 13 hand-picked terms; its synonym queries are never canonicalized (picture+painting+picture frame+poster = 22 overlapping boxes); and 5 labels saturated the patched 8-per-label cap (8× 'bed' in a one-bed room). Its one clean advantage is coverage — the rest of the gap is vocab + duplication."},
+g1: {mod:"lane", eyebrow:"4g1 · 2.4 PLACE — graph nodes · ACTIVE", name:"Graph nodes from all streams",
   script:"graph/build_graph.py",
-  how:["Every extracted object — track 1 boxes matched with track 3 clusters — becomes a node in one graph"],
+  how:["Every extracted object — manifest boxes (legacy yaw today, hybrid after the rewire) matched with analyzer clusters — becomes a node in one graph"],
   reads:["analyzer/bridged_boxes.json + match_report.json","scene_manifest.json","envelope.npz"],
   writes:["scene_graph.json (nodes)"],
   note:"Ordering: needs a1 and the envelope first. Governed by docs/PLAN_SCENE_GRAPH.md. The four g-modules pipeline over ONE accumulating file: scene_graph.json gains nodes → edges → appearance."},
-g2: {mod:"lane", eyebrow:"converge — scene graph", name:"Geometric edges",
+g2: {mod:"lane", eyebrow:"4g2 · 2.4 PLACE — graph edges", name:"Geometric edges",
   script:"graph/build_edges.py",
   how:["Geometry supplies typed relations between nodes: on-top-of, next-to, against-wall",
        "Runs a self-check and exits nonzero on a violated invariant"],
   reads:["scene_graph.json"],
   writes:["scene_graph.json (typed edges filled in)"],
   note:"Pure geometry — no model calls. Same file in, same file enriched out."},
-g3: {mod:"lane", eyebrow:"converge — scene graph", name:"VLM appearance",
+g3: {mod:"lane", eyebrow:"4g3 · 2.4 PLACE — graph appearance", name:"VLM appearance",
   script:"graph/describe_nodes.py (VLM via claude.exe)",
   how:["Crop each node's best photo from the analyzer job frames",
        "A vision model writes a short appearance description per node"],
   reads:["scene_graph.json","analyzer job frames (crops source)"],
   writes:["graph/crops/","scene_graph.json (appearance fields)"],
   note:"The only model-calling step in the graph chain — everything else is geometry."},
-g4: {mod:"lane", eyebrow:"converge — scene graph · user gate", name:"Graph review page",
+g4: {mod:"lane", eyebrow:"4g4 · 2.4 PLACE — graph review · USER GATE", name:"Graph review page",
   script:"graph/graph_review.py",
   how:["Interactive page over the finished graph — nodes, edges, appearance, crops",
        "Also serves the graph as a viewer layer (/scene_graph.json)"],
@@ -631,16 +724,16 @@ g4: {mod:"lane", eyebrow:"converge — scene graph · user gate", name:"Graph re
   writes:["graph_review.html","viewer layer via /scene_graph.json"],
   review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/graph_review.html",
            h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/graph_review.html"}],
-  note:"Your verdicts here are pending — the graph currently has no downstream consumer until they land."},
-c1: {mod:"comp", eyebrow:"composition / C1", name:"Shortlist",
+  note:"Checkpoint G1 = REVIEW_LOG R7, pending. Decided 07-24: scene_graph.json IS the front-end handoff — consumer wiring (C1 + the 4→5 package) starts once your verdicts land."},
+c1: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C1", name:"Shortlist",
   script:"retrieve2.py — category tiers (exact > token subset > overlap), orientation-aware fit over 6 perms, tiling k=1..3",
   how:["For each 3D box, search the asset catalog by category words only (descriptions don't get a vote)",
        "Rank candidates by how well their shape fills the box — trying all 6 orientations, allowing tiling (e.g. two rugs side by side)",
        "Labels with no category match go through one batch LLM call for a functional stand-in (rug → doormat)"],
   reads:["scene_manifest.json","objathor annotations.json.gz"],
   writes:["package/shortlists2.json"],
-  note:"Category-only gating (descriptions never vote — kills the v0 rug hijack). Labels with no lexical match go through one batch agent call."},
-c2: {mod:"comp", eyebrow:"composition / C2 · C2.5 · C3", name:"Thumbs · measure · CLIP",
+  note:"Category-only gating (descriptions never vote — kills the v0 rug hijack). Labels with no lexical match go through one batch agent call. Rewire pending: per the 07-24 handoff decision, C1's input moves from the manifest to scene_graph.json."},
+c2: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C2 · C2.5 · C3", name:"Thumbs · measure · CLIP",
   script:"thumbs.py · measure.py · relevance.py (CLIP ViT-B/16)",
   how:["Render a thumbnail of every candidate asset",
        "Measure the actual meshes — this fixes the ~34% of catalog assets authored rotated — then redo the shortlist with the true sizes",
@@ -648,7 +741,7 @@ c2: {mod:"comp", eyebrow:"composition / C2 · C2.5 · C3", name:"Thumbs · measu
   reads:["shortlists2.json","objathor meshes","review_crops/<id>_clean.png"],
   writes:["_thumbs/<uid>.png (dataset cache)","_mesh_sizes.json + _mesh_yaw.json (canonical-yaw fix)","additive clip / clip_txt fields in shortlists2.json"],
   note:"measure fixes the ~34% mis-rotated meshes (yaw fix) and TRUE sizes shift the shortlists → re-run C1. CLIP re-orders, never filters."},
-c4: {mod:"comp", eyebrow:"composition / C4 — USER CHECKPOINT", name:"Review viewer",
+c4: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C4 — USER CHECKPOINT", name:"Review viewer",
   script:"review_server.py :8322 (look-only) · asset_viewer.py :8323",
   how:["A local web page: each object's photo crop next to its candidate assets, in best-fit order and best-style order",
        "You look and judge the stages' quality here — nothing gets picked in this step"],
@@ -659,14 +752,14 @@ c4: {mod:"comp", eyebrow:"composition / C4 — USER CHECKPOINT", name:"Review vi
           {t:"http://localhost:8323 — asset viewer (asset_viewer.py)",
            h:"http://localhost:8323"}],
   note:"Two candidate strips per box (dimension-fit order, CLIP order); glowing frame = fits inside natively. Judging the stages, not driving them — selection is C5's job."},
-c5: {mod:"comp", eyebrow:"composition / C5", name:"Pick",
+c5: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C5", name:"Pick",
   script:"pick.py — fit tolerance band (score ≤ 0.8, ×0.5–1.6 of scene-median scale), argmax clip inside it",
   how:["Keep only candidates that fit well enough AND match the room's overall scale (a tolerance band, never a single best-fit)",
        "Among those, take the most style-similar one (highest CLIP score)"],
   reads:["shortlists2.json"],
   writes:["package/picks2.json (+ top-3 alternates)"],
   note:"Fit is a band, never an argmax. Empty band → top-5 by fit, flagged gate_relaxed. Warns if relevance.py hasn't run."},
-c6: {mod:"comp", eyebrow:"composition / C6", name:"Place",
+c6: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C6", name:"Place",
   script:"place2.py — perm rotation + uniform fit scale + tiling; --clean (tinted floor) · --background auto|cut|tinted|original",
   how:["Rotate, scale, and drop each picked asset into its 3D box (tiling copies along an axis when the fit said so)",
        "Render the assembled scene over a backdrop — newest cut background if one exists, else the tinted-floor stand-in",
@@ -674,7 +767,7 @@ c6: {mod:"comp", eyebrow:"composition / C6", name:"Place",
   reads:["picks2.json + shortlists2.json + manifest (+ cut background.ply)"],
   writes:["package/composed_state2.json","composed2_view_*.png","composed_scene2.glb"],
   note:"Facing (0/180) initialization still open. Background resolver prefers the newest cut background, falls back to tinted floor."},
-c7: {mod:"comp", eyebrow:"composition / C7 — refine loop", name:"VLM propose → verify",
+c7: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C7 — refine loop", name:"VLM propose → verify",
   script:"loop.py — critique (one VLM call) → validate (caps, room shell, collide.py voxel collision) → apply ONE edit → verify better|worse|neutral → journal",
   how:["A vision model compares our renders to the original photos and proposes small edits: add a missed object, or nudge one",
        "Every proposal is checked with geometry first — inside the room? collides with anything? — free, no model call",
@@ -682,15 +775,15 @@ c7: {mod:"comp", eyebrow:"composition / C7 — refine loop", name:"VLM propose �
        "Every attempt goes in a journal; rejected edits are shown back to the model so they're never re-proposed"],
   reads:["composed_state2.json + views + shortlists2 + manifest + edits.jsonl (Reflexion memory)"],
   writes:["package/edits.jsonl (append-only trace)","updated composed_state2.json","per-edit renders under package/loop/"],
-  note:"Ops scoped to {add, nudge}; add re-enters the chain at C1 for that box only — 'pick object after layout' inside the loop. Accept only 'better'; neutral/worse revert. Stops when an iteration yields nothing new."},
-realscan: {mod:"frozen", eyebrow:"real_scan/ — FROZEN side module", name:"Real-scan leg",
+  note:"Ops scoped to {add, nudge}; add re-enters the chain at C1 for that box only — 'pick object after layout' inside the loop. Accept only 'better'; neutral/worse revert. Stops when an iteration yields nothing new. Rewire pending (07-25): its reference photos are the retired 4-yaw webps — must move to analyzer job frames (or pano crops) once the hybrid lands."},
+realscan: {mod:"frozen", eyebrow:"STEP 1 · WORLD — alternative source (frozen)", name:"Real-scan leg",
   script:"01_inspect → 02_clean → 03/04 render/orbit → 05_planview · decode_sog · decompress_interiorgs · find_bedroom",
   how:["Start from a scanned real room (a capture dataset) instead of a generated one",
        "Decode the compressed scan formats, clean and recenter the splat",
        "End at the same splat + photos the rest of the chain expects"],
   reads:["InteriorGS / SuperSplat captures (SOG, compressed ply)"],
   writes:["cleaned room PLY","views + plan renders","agent starter pack (package/)"],
-  note:"Gets a scene by scanning reality instead of generating it; ends at the same splat-PLY + renders the chain consumes. Zero cross-module imports. Not needed for the main chain — kept for a generality experiment."},
+  note:"Gets a scene by scanning reality instead of generating it; ends at the same splat-PLY + renders the chain consumes. Zero cross-module imports. Kept for a generality experiment — and it matters to the OBSERVE decision: real scans have no generator pano, so the splat-render backend must stay available."},
 proposer: {mod:"frozen", eyebrow:"proposer/ — seed (docs only)", name:"Scene proposer",
   script:"PROPOSER.md protocol — no code yet",
   how:["A written protocol: look at a scene's photos and describe it as a proposal a layout solver can consume",
@@ -698,14 +791,52 @@ proposer: {mod:"frozen", eyebrow:"proposer/ — seed (docs only)", name:"Scene p
   reads:["a scene's starter pack (views + manifest)"],
   writes:["proposal JSON: anchors with geometry, non-anchors as constraints"],
   note:"Describe-the-real-scene → composer-ready input for a Holodeck/GLTS-style solver. Works equally on generated scenes."},
-ext: {mod:"frozen", eyebrow:"track 3 · geometric — external producer", name:"splat_analyzer",
-  script:"WSL tool outside this repo — the one contract with no in-repo producer",
-  how:["Track 3's discovery engine: clusters the raw splat into candidate objects on its own — pure geometry + appearance, no word list",
-       "Its job folder (interactions.json + transforms) is dropped into the scene folder by hand"],
-  reads:["gen_raw.ply (its own run over the scene)"],
-  writes:["analyzer/<job>/interactions.json"],
-  note:"A fundamentally different discovery paradigm from tracks 1 and 2: bottom-up geometric clustering instead of top-down word-list detection. Bridged into our box format by a1."},
-viewer: {mod:"lane", eyebrow:"sink — where the tracks get judged", name:"Splat viewer",
+asp: {mod:"t3", eyebrow:"3a0·a2 · 2.1 OBSERVE — inside the ext tool", name:"Sample standpoints",
+  script:"splat_analyzer render_cameras.py:290-411 — WSL tool outside this repo; whole 3a0 chain runs as ONE run_local.py call",
+  how:["Throw random candidate positions inside the room's robust bounding box (1st–99th percentile — floaters rejected)",
+       "Keep only 'medium local splat density' — not buried inside furniture, not floating in void (the guardrails; no visibility reasoning, no aiming, no eye-height prior)",
+       "Spread survivors apart (Poisson-disk, 12% of room diagonal) · deterministic seed · 3/5/8 standpoints by --quality"],
+  reads:["gen_raw.ply (its own load, no transform)"],
+  writes:["(in-tool) standpoint positions"],
+  review:[{t:"viewer :8321 → tick 'analyzer cams' — standpoints + all 192 view rays in 3D", h:"http://localhost:8321/?scene=bedroom_marble"},
+          {t:"…/out/bedroom_marble/analyzer/standpoints_view.html — plan map + every frame", h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/standpoints_view.html"},
+          {t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
+  note:"Random-with-guardrails, not intelligent placement — coverage comes from volume, not smarts. A deliberate version for our OBSERVE could use the envelope's free-space map + the known generator standpoint instead of dice."},
+asw: {mod:"t3", eyebrow:"3a0·a3·a4 · 2.1 OBSERVE — inside the ext tool", name:"360° sweep render (RGB + depth)",
+  script:"_build_poses :414-440 · gsplat_backend.py:50-77 (depth = camera-Z rendered as SH color)",
+  how:["Every standpoint gets a full panoramic grid of perspective views: 360° of azimuths × 2–3 elevations, 130° fov, 512² — no angular gaps by construction",
+       "Depth comes from the splat itself via the depth-as-color rasterization trick — no depth network"],
+  reads:["(in-tool) standpoints + gaussians"],
+  writes:["analyzer/<job>/frames/frame_*.png + depth_*.npy","analyzer/<job>/transforms.json (all poses + K)"],
+  review:[{t:"…/analyzer/job_high/frames/ — the 192 images OWLv2 saw", h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/job_high/frames/"},
+          {t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
+  note:"The systematic fix-shape for our 300°-of-360° hole (4 views, fov 75, one standpoint). NOT a panorama image: discrete perspective frames arranged panoramically — detector-friendly format with pano-like coverage."},
+adet: {mod:"t3", eyebrow:"3a0·a5 · 2.2 DETECT — inside the ext tool · HYBRID: KEEP", name:"Detect on every frame",
+  script:"OWLv2 (open-vocab) · pipeline.py:146-196 · labels wrapped 'a photo of a {label}' · thr 0.12",
+  how:["Word-list detection, same paradigm as our GroundingDINO — it only finds what you name",
+       "The difference is volume: one detector pass on EVERY frame (24–192), where we run on 4"],
+  reads:["(in-tool) frames + vocab.json queries.owlv2 (--prompt at launch)"],
+  writes:["(in-tool) per-frame 2D boxes + scores"],
+  review:[{t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
+  note:"The half of 'their detection' the hybrid intent keeps is the VOLUME, not the brand — GroundingDINO over the same dense views would serve; detector choice is a bake-off detail. Permissive threshold on purpose: the vote filter downstream does the gatekeeping."},
+alift: {mod:"t3", eyebrow:"3a0·a6 · 2.3 LIFT — inside the ext tool · SUPERSEDED BY 3h2", name:"Point lift (the crude stage)",
+  script:"pipeline.py:51-73, 206-223 — no SAM, no masks",
+  how:["One depth sample (5×5 median patch at the 2D box center) → unproject ONE pixel → a single point on the object's visible front surface",
+       "Width/height from the box's pixel size × depth/focal · depth-extent FABRICATED as (w+h)/2 · always axis-aligned"],
+  reads:["(in-tool) 2D boxes + depth maps"],
+  writes:["(in-tool) 3D surface points + approximate extents"],
+  review:[{t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
+  note:"Decided 07-25: the hybrid (3h1/3h2) replaces this stage — their 2D boxes → SAM masks → our z-buffer mask lift shrink-wraps measured boxes instead. This stage keeps running inside the ext tool (its interactions.json stays the bake-off baseline via 3a1/3a2), but nothing downstream builds on its boxes anymore once the rewire lands."},
+avote: {mod:"t3", eyebrow:"3a0·a7 · 2.3 LIFT — inside the ext tool · HYBRID: PORT INTO 3h2", name:"Cluster + two-sided vote",
+  script:"_cluster_detections pipeline.py:76-130 · eps = 0.20 × scene_radius · cap 3/label",
+  how:["Per label: best-scoring detection anchors a cluster (anchor never moves — stops two neighbors bleeding together); everything within eps joins",
+       "A cluster SURVIVES only with votes from ≥8 frames AND one confident hit (≥0.40) — false positives get voted out",
+       "Position = score-weighted mean · scale = per-axis median · at most 3 objects per label (hard-coded)"],
+  reads:["(in-tool) all lifted points + scene_radius"],
+  writes:["analyzer/<job>/interactions.json — job dir hand-copied into the scene folder"],
+  review:[{t:"splat_analyzer_map.html — full sub-map", h:"splat_analyzer_map.html"}],
+  note:"Only works WITH dense coverage (needs many chances to see each object) — the corroboration our 4-view lift has never had; the natural companion to the hybrid. Watch the 3-per-label cap on multi-instance scenes."},
+viewer: {mod:"lane", eyebrow:"sink — where the candidates get judged", name:"Splat viewer",
   script:"viewer/serve.py --port 8321 (route-table server, vendored libs, offline)",
   how:["One local page that overlays every extraction on the actual splat",
        "Layers: THE manifest boxes · pano manifest variants (?man=) · analyzer boxes · scene graph · clearance · collision",
@@ -714,9 +845,9 @@ viewer: {mod:"lane", eyebrow:"sink — where the tracks get judged", name:"Splat
   writes:["nothing — look-only"],
   review:[{t:"http://localhost:8321 (start: python entangled_gen/viewer/serve.py)",
            h:"http://localhost:8321"}],
-  note:"Several arrows end here on purpose: the pano RAW variants and the scene graph are awaiting your verdicts, so today their consumer is you. If a pano manifest is ever promoted to THE manifest, its arrow would re-route into stage 5."}
+  note:"Several arrows end here on purpose: the pano RAW variants and the scene graph are awaiting your verdicts, so today their consumer is you. If candidate p wins FIND, its manifest arrow re-routes into step 4 (envelope + graph nodes)."}
 };
-const MODC = {eg:"var(--eg)", comp:"var(--comp)", lane:"var(--lane)", frozen:"var(--frozen)"};
+const MODC = {eg:"var(--eg)", comp:"var(--comp)", lane:"var(--lane)", frozen:"var(--frozen)", t3:"var(--t3)"};
 const panel = document.getElementById("panel");
 let selBtn = null;
 function esc(t){const d=document.createElement("span");d.textContent=t;return d.innerHTML;}

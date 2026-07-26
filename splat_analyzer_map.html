@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>splat_analyzer — sub-map (3a0 internals)</title>
+<style>
+  :root {
+    --paper: #F3F5F7; --panel: #FFFFFF; --ink: #1C2530; --ink-2: #5A6B7E;
+    --line: #D5DCE3; --pill-bg: #E9EDF1; --pill-ink: #3D4C5C;
+    --eg: #0E8A83; --eg-soft: #E1F0EF; --comp: #C0741D; --comp-soft: #F6ECDF;
+    --lane: #7A5EA8; --lane-soft: #EDE8F5; --frozen: #8B97A3; --t3: #2F6DB3;
+    --sel: #1C2530;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --paper: #141A21; --panel: #1C242E; --ink: #DCE3EA; --ink-2: #93A2B1;
+    --line: #2C3742; --pill-bg: #232E3A; --pill-ink: #AFBECB;
+    --eg: #3FC1B7; --eg-soft: #17332F; --comp: #E8A04C; --comp-soft: #33270F;
+    --lane: #A98FD6; --lane-soft: #291F3A; --frozen: #6B7885; --t3: #6FA3E0;
+    --sel: #DCE3EA;
+  } }
+  :root[data-theme="dark"] {
+    --paper: #141A21; --panel: #1C242E; --ink: #DCE3EA; --ink-2: #93A2B1;
+    --line: #2C3742; --pill-bg: #232E3A; --pill-ink: #AFBECB;
+    --eg: #3FC1B7; --eg-soft: #17332F; --comp: #E8A04C; --comp-soft: #33270F;
+    --lane: #A98FD6; --lane-soft: #291F3A; --frozen: #6B7885; --t3: #6FA3E0;
+    --sel: #DCE3EA;
+  }
+  :root[data-theme="light"] {
+    --paper: #F3F5F7; --panel: #FFFFFF; --ink: #1C2530; --ink-2: #5A6B7E;
+    --line: #D5DCE3; --pill-bg: #E9EDF1; --pill-ink: #3D4C5C;
+    --eg: #0E8A83; --eg-soft: #E1F0EF; --comp: #C0741D; --comp-soft: #F6ECDF;
+    --lane: #7A5EA8; --lane-soft: #EDE8F5; --frozen: #8B97A3; --t3: #2F6DB3;
+    --sel: #1C2530;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body { margin: 0; }
+  .wrap {
+    font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink);
+    background: var(--paper); min-height: 100vh; padding: 28px 20px 80px;
+  }
+  .mono { font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace; }
+
+  header.top { max-width: 1180px; margin: 0 auto 26px; }
+  .kicker { font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--ink-2); margin-bottom: 6px; }
+  h1 { font-size: 26px; font-weight: 650; margin: 0 0 8px; letter-spacing: -.01em;
+       text-wrap: balance; }
+  .rule { max-width: 62ch; color: var(--ink-2); font-size: 13.5px; line-height: 1.55;
+          margin: 0 0 14px; }
+  .rule b { color: var(--ink); }
+  .rule a { color: var(--t3); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px;
+            color: var(--ink-2); align-items: center; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+         margin-right: 5px; vertical-align: -1px; }
+
+  .grid { max-width: 1180px; margin: 0 auto; display: grid;
+          grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
+  @media (max-width: 940px) { .grid { grid-template-columns: 1fr; }
+    #panel { position: static !important; max-height: none !important; } }
+
+  .phase { border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+           margin-bottom: 18px; overflow: hidden; }
+  .phase-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+             padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .phase-n { font-size: 12px; color: var(--ink-2); }
+  .phase-t { font-size: 16px; font-weight: 650; letter-spacing: -.005em; }
+  .phase-body { padding: 14px 16px 16px; }
+
+  svg.pipe { display: block; width: 100%; height: auto; }
+  .node { cursor: pointer; }
+  .node .nbox { fill: var(--panel); stroke: var(--line); }
+  .node:hover .nbox { stroke: var(--ink-2); }
+  .node.sel .nbox { stroke: var(--sel); stroke-width: 1.6; }
+  .node.ndash .nbox { stroke-dasharray: 5 4; }
+  .node.sink .nbox { fill: var(--pill-bg); stroke: var(--ink-2);
+                     stroke-dasharray: 5 4; }
+  .b-t3 { fill: var(--t3); } .b-frozen { fill: var(--frozen); }
+  .b-tool { fill: var(--ink-2); }
+  .ntitle { font-size: 13px; font-weight: 600; fill: var(--ink); }
+  .nscript { font-size: 10.5px; fill: var(--ink-2);
+             font-family: "Cascadia Code", Consolas, monospace; }
+  .nsub { font-size: 10.5px; fill: var(--ink); }
+  .ncave { fill: var(--comp); font-size: 9.5px; font-weight: 600; }
+  .nsteal { fill: var(--eg); font-size: 9.5px; font-weight: 700; }
+  .plabel { font-size: 11px; font-weight: 600; letter-spacing: .12em; }
+  .pl-t3 { fill: var(--t3); } .pl-frozen { fill: var(--frozen); }
+  .pl-bus { fill: var(--ink-2); }
+  .edge { fill: none; stroke-width: 1.5; }
+  .e-t3 { stroke: var(--t3); } .e-frozen { stroke: var(--frozen); }
+  .e-bus { stroke: var(--ink-2); opacity: .8; }
+  .e-dash { stroke-dasharray: 5 4; }
+  .elab { font-size: 10px; font-family: "Cascadia Code", Consolas, monospace;
+          fill: var(--ink-2); paint-order: stroke; stroke: var(--panel);
+          stroke-width: 3px; stroke-linejoin: round; }
+  #ah-t3 path { fill: var(--t3); } #ah-frozen path { fill: var(--frozen); }
+  #ah-bus path { fill: var(--ink-2); }
+
+  .decisions { max-width: 1180px; margin: 0 auto 18px; display: grid;
+               grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 940px) { .decisions { grid-template-columns: 1fr; } }
+  .dcard { border: 1px solid var(--line); border-radius: 10px;
+           background: var(--panel); padding: 12px 14px; }
+  .dcard .dstat { font-size: 10px; letter-spacing: .1em;
+                  text-transform: uppercase; font-weight: 700;
+                  border: 1px solid currentColor; border-radius: 4px;
+                  padding: 1px 6px; }
+  .ds-trade { color: var(--t3); } .ds-cave { color: var(--comp); }
+  .ds-steal { color: var(--eg); }
+  .dcard h2 { font-size: 13.5px; font-weight: 650; margin: 8px 0 6px; }
+  .dcard p { font-size: 12px; line-height: 1.5; color: var(--ink-2); margin: 0; }
+  .dcard p b { color: var(--ink); }
+
+  #panel { position: sticky; top: 16px; max-height: calc(100vh - 32px);
+           overflow-y: auto; border: 1px solid var(--line); border-radius: 10px;
+           background: var(--panel); padding: 16px 18px; }
+  #panel .eyebrow { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+                    font-weight: 600; margin-bottom: 6px; }
+  #panel h2 { font-size: 17px; margin: 0 0 4px; font-weight: 650; }
+  #panel .script { font-size: 12.5px; color: var(--ink-2); margin-bottom: 12px;
+                   overflow-wrap: anywhere; }
+  #panel h3 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+              color: var(--ink-2); margin: 14px 0 6px; font-weight: 600; }
+  #panel ul { list-style: none; margin: 0; padding: 0; display: flex;
+              flex-wrap: wrap; gap: 5px; }
+  #panel li { font-size: 11.5px; background: var(--pill-bg); color: var(--pill-ink);
+              border-radius: 5px; padding: 3px 8px; overflow-wrap: anywhere; }
+  #panel li.w { box-shadow: 0 0 0 1px var(--line) inset; font-weight: 600; }
+  #panel ul.how { display: block; }
+  #panel ul.how li { display: list-item; list-style: disc; background: none;
+              border-radius: 0; padding: 1px 0; margin: 0 0 3px 18px;
+              font-size: 12.5px; line-height: 1.5; color: var(--ink);
+              max-width: 58ch; }
+  #panel .rev { font-size: 11.5px; font-family: "Cascadia Code", Consolas,
+                monospace; overflow-wrap: anywhere; margin: 2px 0; }
+  #panel .rev a { color: var(--t3); }
+  #panel .note { font-size: 12.5px; line-height: 1.55; color: var(--ink-2);
+                 margin: 12px 0 0; max-width: 60ch; }
+  #panel .note b { color: var(--ink); }
+  .hint { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="kicker">scene-pipeline · sub-map of node 3a0 · basis: analyzer/FEASIBILITY_SPLAT_ANALYZER.md (code read at HEAD a3cd884) · 2026-07-25</div>
+  <h1>splat_analyzer — inside candidate a's detector</h1>
+  <p class="rule">The <a href="pipeline_map.html">main map</a> draws this whole
+  tool as one box (<b>3a0</b>). This page expands that box into its real
+  internals: one <span class="mono">run_local.py</span> call, seven stages,
+  everything below the input node happens inside the tool. Same reading rule
+  as the main map: <b>every arrow is data, labeled</b> — solid-boxed arrows
+  are in-memory tensors inside the one process; dashed sink boxes are what
+  actually lands in <span class="mono">--job_dir</span> on disk. External MIT
+  tool (github.com/nigelhartman/splat_analyzer), runs in its own WSL env;
+  none of this is our code.</p>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--t3)"></span>analyzer internal stage</span>
+    <span><span class="dot" style="background:var(--frozen)"></span>our inputs (dashed = crosses the tool boundary)</span>
+    <span><span class="dot" style="background:var(--pill-bg);box-shadow:0 0 0 1px var(--ink-2)"></span>job_dir artifact on disk</span>
+    <span>· click any box for its contract card</span>
+  </div>
+</header>
+
+<div class="decisions">
+  <section class="dcard">
+    <span class="dstat ds-trade">the design trade</span>
+    <h2>Coverage + votes, not careful geometry</h2>
+    <p>24 / 90 / 192 wide-angle views from 3–8 standpoints <b>inside</b> the
+    scene, then statistical fusion: an object exists only if enough frames
+    voted for it. Per-detection geometry is crude — one surface point and a
+    fabricated depth extent. The exact <b>opposite</b> trade to our path
+    (4 views, careful mask lift).</p>
+  </section>
+  <section class="dcard">
+    <span class="dstat ds-cave">silent caveats</span>
+    <h2>What its numbers don't tell you</h2>
+    <p><b>Assumes y-down file frame</b> — a y-up splat renders every frame
+    upside-down with no error (our RAW frame matches; verified in R2).
+    <b>position</b> = front-surface centroid, not volume center;
+    <b>z-extent fabricated</b> as (w+h)/2; rotation always identity;
+    hard cap <b>3 objects per label</b>.</p>
+  </section>
+  <section class="dcard">
+    <span class="dstat ds-steal">worth borrowing · OBSERVE evidence</span>
+    <h2>Three portable pieces</h2>
+    <p>The <b>standpoint sampler</b> (a2 — CPU-only, renderer-independent),
+    the <b>360° az×el grid</b> (a3), and the <b>two-sided vote filter</b>
+    (a7) all work without OWLv2. Direct answers to our 300°/360° hole and
+    "one cross-view merge" weakness — evidence for the open OBSERVE and
+    FIND decisions.</p>
+  </section>
+</div>
+
+<div class="grid">
+<div id="flow">
+
+  <section class="phase">
+    <div class="phase-h"><span class="phase-n">DATAFLOW</span>
+      <span class="phase-t">One run_local.py call · splat in, voted 3D boxes out</span></div>
+    <div class="phase-body">
+    <svg class="pipe" viewBox="0 0 800 812" role="img"
+         aria-label="splat_analyzer internal dataflow graph">
+      <defs>
+        <marker id="ah-t3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
+          markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ah-frozen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
+          markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ah-bus" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
+          markerHeight="6.5" orient="auto"><path d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <text class="plabel pl-frozen" x="8" y="16">OUR INPUTS</text>
+      <text class="plabel pl-t3" x="276" y="16">ANALYZER — ONE PROCESS</text>
+      <text class="plabel pl-bus" x="544" y="16">JOB_DIR — ON DISK</text>
+
+      <!-- input splat -->
+      <g class="node ndash" data-k="inply" transform="translate(276,24)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-frozen" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">gen_raw.ply — our scene splat</text>
+        <text class="nscript" x="14" y="31">RAW frame · up = file −Y ✓</text></g>
+      <path class="edge e-frozen e-dash" d="M392,64 V106" marker-end="url(#ah-frozen)"/>
+      <text class="elab" x="398" y="90">62-float 3DGS ply (.spz auto-converts)</text>
+
+      <!-- a1 load -->
+      <g class="node" data-k="load" transform="translate(276,108)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">a1 · load splat — no transform</text>
+        <text class="nscript" x="14" y="31">run_local.py → pipeline.run_pipeline()</text></g>
+      <path class="edge e-t3" d="M392,148 V186" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="398" y="172">means (≤300k subsample) → KD-tree</text>
+      <!-- gaussians bus to a4 (left, short) -->
+      <path class="edge e-t3" d="M276,128 H266 V386 H274" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="262" y="300" text-anchor="middle"
+        transform="rotate(-90 262 300)">gaussians (means·scales·quats·SH)</text>
+      <!-- scene stats bus to a7 (left, long) -->
+      <path class="edge e-t3" d="M276,138 H252 V656 H274" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="248" y="510" text-anchor="middle"
+        transform="rotate(-90 248 510)">scene_center · scene_radius</text>
+
+      <!-- quality preset -->
+      <g class="node ndash" data-k="qual" transform="translate(8,188)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-frozen" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">--quality low | medium | high</text>
+        <text class="nscript" x="14" y="31">config.py:17-22</text>
+        <text class="nsub" x="14" y="44">24 / 90 / 192 frames total</text></g>
+      <path class="edge e-frozen e-dash" d="M240,204 H274" marker-end="url(#ah-frozen)"/>
+      <text class="elab" x="140" y="200">3 / 5 / 8 standpoints</text>
+      <path class="edge e-frozen e-dash" d="M240,228 H246 V300 H274" marker-end="url(#ah-frozen)"/>
+      <text class="elab" x="150" y="252">az × el grid size</text>
+
+      <!-- a2 standpoints -->
+      <g class="node" data-k="sp" transform="translate(276,188)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-t3" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">a2 · sample standpoints
+          <tspan class="nsteal"> · STEAL?</tspan></text>
+        <text class="nscript" x="14" y="31">render_cameras.py:290-411</text>
+        <text class="nsub" x="14" y="44">density band-pass · Poisson-disk · seed 42</text></g>
+      <path class="edge e-t3" d="M392,236 V274" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="398" y="260">standpoint positions (inside the scene)</text>
+
+      <!-- a3 camera grid -->
+      <g class="node" data-k="grid" transform="translate(276,276)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-t3" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">a3 · panoramic camera grid
+          <tspan class="nsteal"> · STEAL?</tspan></text>
+        <text class="nscript" x="14" y="31">_build_poses :414-440</text>
+        <text class="nsub" x="14" y="44">360° az × el −55°…+40° · 130° fov · 512²</text></g>
+      <path class="edge e-t3" d="M392,324 V360" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="398" y="346">camera poses (OpenCV c2w) + K</text>
+      <path class="edge e-bus" d="M508,300 H542" marker-end="url(#ah-bus)"/>
+
+      <g class="node sink" data-k="tj" transform="translate(544,280)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">transforms.json</text>
+        <text class="nscript" x="14" y="31">poses · K · scene stats</text></g>
+
+      <!-- a4 render -->
+      <g class="node" data-k="rend" transform="translate(276,362)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-t3" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">a4 · render RGB + depth</text>
+        <text class="nscript" x="14" y="31">renderers/gsplat_backend.py:50-77</text>
+        <text class="nsub" x="14" y="44">depth trick: camera-Z fed in as SH color</text></g>
+      <path class="edge e-t3" d="M392,410 V450" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="398" y="436">512² RGB frames (batch 32)</text>
+      <path class="edge e-bus" d="M508,386 H542" marker-end="url(#ah-bus)"/>
+      <!-- depth bypass to a6 (right) -->
+      <path class="edge e-t3" d="M508,404 H524 V566 H512" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="530" y="490" text-anchor="middle"
+        transform="rotate(-90 530 490)">depth maps (m · 0 = no hit)</text>
+
+      <g class="node sink" data-k="fr" transform="translate(544,362)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">frames/</text>
+        <text class="nscript" x="14" y="31">frame_*.png · depth_*.npy/.png</text></g>
+
+      <!-- prompt -->
+      <g class="node ndash" data-k="prompt" transform="translate(8,452)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-frozen" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">word list (--prompt)</text>
+        <text class="nscript" x="14" y="31">"bed, nightstand, lamp, …"</text>
+        <text class="nsub" x="14" y="44">top-down: it only finds what we name</text></g>
+      <path class="edge e-frozen e-dash" d="M240,476 H274" marker-end="url(#ah-frozen)"/>
+      <text class="elab" x="130" y="470">"a photo of a {label}"</text>
+
+      <!-- a5 detect -->
+      <g class="node" data-k="det" transform="translate(276,452)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-t3" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">a5 · detect, every frame</text>
+        <text class="nscript" x="14" y="31">OWLv2 · pipeline.py:146-196</text>
+        <text class="nsub" x="14" y="44">open-vocab 2D boxes · thr 0.12 · unbatched</text></g>
+      <path class="edge e-t3" d="M392,500 V540" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="398" y="526">2D boxes + scores, per frame</text>
+
+      <!-- a6 lift -->
+      <g class="node" data-k="lift" transform="translate(276,542)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-t3" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">a6 · lift box → surface point
+          <tspan class="ncave"> · CRUDE</tspan></text>
+        <text class="nscript" x="14" y="31">pipeline.py:51-73 · 206-223</text>
+        <text class="nsub" x="14" y="44">5×5 median patch depth · z-extent = (w+h)/2</text></g>
+      <path class="edge e-t3" d="M392,590 V628" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="398" y="614">one 3D point + extents per detection</text>
+
+      <!-- a7 cluster -->
+      <g class="node" data-k="clu" transform="translate(276,630)">
+        <rect class="nbox" width="232" height="52" rx="8"/>
+        <rect class="b-t3" width="4" height="52" rx="2"/>
+        <text class="ntitle" x="14" y="17">a7 · cluster + vote
+          <tspan class="nsteal"> · STEAL?</tspan></text>
+        <text class="nscript" x="14" y="31">_cluster_detections :76-130</text>
+        <text class="nsub" x="14" y="45">eps 0.20·r · ≥8 votes ∧ peak ≥0.40 · ≤3/label</text></g>
+      <path class="edge e-t3" d="M392,682 V726" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="398" y="708">surviving clusters only</text>
+
+      <!-- outputs -->
+      <g class="node sink" data-k="ij" transform="translate(276,728)">
+        <rect class="nbox" width="232" height="40" rx="8"/>
+        <rect class="b-t3" width="4" height="40" rx="2"/>
+        <text class="ntitle" x="14" y="17">interactions.json</text>
+        <text class="nscript" x="14" y="31">objects[] + frame_annotations</text></g>
+      <path class="edge e-t3 e-dash" d="M508,748 H542" marker-end="url(#ah-t3)"/>
+      <text class="elab" x="514" y="742">job dir, hand-copied</text>
+
+      <g class="node ndash" data-k="br" transform="translate(544,720)">
+        <rect class="nbox" width="232" height="56" rx="8"/>
+        <rect class="b-t3" width="4" height="56" rx="2"/>
+        <text class="ntitle" x="14" y="17">3a1 · bridge to our boxes</text>
+        <text class="nscript" x="14" y="31">analyzer/bridge_boxes.py</text>
+        <text class="nsub" x="14" y="45">← back on the main map</text></g>
+    </svg>
+    </div>
+  </section>
+
+</div>
+
+<aside id="panel">
+  <p class="hint">Click any box for its contract card — what it reads, what it
+  writes, how it works, and the exact file:line in the analyzer repo.
+  <br><br>The three <b style="color:var(--eg)">STEAL?</b> tags mark the pieces
+  portable into our OBSERVE / FIND stages without taking the tool itself; the
+  <b style="color:var(--comp)">CRUDE</b> tag marks the stage where our own
+  method is clearly stronger.</p>
+</aside>
+</div>
+</div>
+
+<script>
+const S = {
+inply: {mod:"frozen", eyebrow:"INPUT — crosses the tool boundary", name:"Our scene splat",
+  script:"OUT/<scene>/gen_raw.ply — produced by step 1 WORLD; the analyzer runs on it unmodified",
+  how:["The tool applies NO transform: no recentering, no rotation, no rescaling — its output frame IS the input frame",
+       "But its cameras are built assuming the file is y-down (physical up = file −Y, the standard 3DGS convention)",
+       "Our RAW frame matches that assumption; a y-up copy would render every frame upside-down with no error (silent failure)"],
+  reads:["(external) gen_raw.ply — 62-float 3DGS layout","or .spz (auto-converted, writes the .ply NEXT TO the input)"],
+  writes:["nothing — this is the analyzer's input"],
+  note:"Orientation was verified the cheap way: one --quality low run, user looked at the frames (REVIEW_LOG R2). Output boxes come back in this same frame and units, which is why 3a1's bridge needs no rotation."},
+qual: {mod:"frozen", eyebrow:"INPUT — CLI flag", name:"Quality preset",
+  script:"--quality low|medium|high · config.py:17-22 (granular counts only on PipelineConfig, not the CLI)",
+  how:["low = 3 standpoints × 4 azimuths × 2 elevations = 24 frames",
+       "medium = 5 × 6 × 3 = 90 frames · high = 8 × 8 × 3 = 192 frames",
+       "This is the main runtime lever: one OWLv2 pass and one depth rasterization per frame"],
+  reads:["CLI flag"],
+  writes:["standpoint count → a2","grid size → a3"],
+  note:"Interplay trap: min_votes=8 against low's 24 frames is aggressive — a small object seen from one standpoint may not survive. Judge detection quality only on medium/high; low is for orientation checks. A high run ≈ 3–5 min on an L40S, peak VRAM ≈ 7 GB (OWLv2-dominated) — fine on the RTX 4080."},
+prompt: {mod:"frozen", eyebrow:"INPUT — CLI flag", name:"Word list",
+  script:"--prompt \"bed, nightstand, lamp, …\" — each label wrapped as \"a photo of a {label}\" (pipeline.py:160)",
+  how:["Comma-separated labels; OWLv2 is open-vocabulary, so any words work",
+       "Top-down consequence: the tool only finds what we name — same limitation as our GroundingDINO path, unlike what the main map's 3a0 summary suggests"],
+  reads:["CLI flag"],
+  writes:["text queries → a5"],
+  note:"IMPORTANT correction to our earlier mental model: the main map's 3a0 card says 'no word list · bottom-up geometric clustering' — the code read shows that is WRONG. Detection is word-list-driven OWLv2; only the FUSION (a7) is geometric. Worth fixing on the main map when it gets its post-decision renumber."},
+load: {mod:"t3", eyebrow:"a1 · load", name:"Load splat — no transform",
+  script:"run_local.py:24-58 → pipeline.run_pipeline() · ply reader render_cameras.py:175-226",
+  how:["Thin CLI wrapper — imports only torch, pipeline, config; the FastAPI/server code never loads",
+       "Reads the standard 3DGS ply layout raw: x/y/z, opacity logit, log scales, wxyz quaternion, SH colors",
+       "Subsamples ≤300k splat centers to build the KD-tree used for standpoint sampling",
+       "Computes scene_center (mean of means) and scene_radius (80th-percentile distance) — the only 'calibration' the tool does"],
+  reads:["gen_raw.ply (or .spz)"],
+  writes:["(in-memory) gaussians → a4","(in-memory) subsampled means → a2","(in-memory) scene_center + radius → a7"],
+  note:"scene_radius matters downstream: the clustering epsilon is 0.20 × radius, so a floater-inflated radius would loosen the merge distance. The percentile-based radius is the guard."},
+sp: {mod:"t3", eyebrow:"a2 · standpoints · WORTH STEALING", name:"Density band-pass standpoint sampler",
+  script:"render_cameras.py:290-411 — _generate_camera_positions · params config.py:37-42",
+  how:["Sample candidate camera positions inside a robust bbox of the point cloud (1st–99th percentile per axis — floaters rejected)",
+       "Score each candidate by local splat density (KD-tree); accept via a Gaussian band-pass — not buried inside furniture, not floating in void: the 'content-adjacent shell'",
+       "Enforce Poisson-disk minimum separation (0.12 × bbox diagonal) so standpoints spread out",
+       "Fallbacks: 3 relaxation rounds → farthest-point fill → legacy circle. Deterministic, seed 42"],
+  reads:["(in-memory) ≤300k subsampled means","quality preset (3/5/8 standpoints)"],
+  writes:["(in-memory) standpoint positions → a3"],
+  note:"The multi-standpoint idea we shelved as OBSERVE v2 — already implemented, CPU-only (numpy + scipy cKDTree), independent of the renderer and of OWLv2. Trivially portable into our render stage. This is borrowable piece #1."},
+grid: {mod:"t3", eyebrow:"a3 · camera grid · WORTH STEALING", name:"Panoramic az × el grid per standpoint",
+  script:"render_cameras.py:414-440 — _build_poses · intrinsics :507-511",
+  how:["Every standpoint gets a full panoramic sweep: azimuths evenly covering 0–360°, elevations linspace(−55°, +40°)",
+       "130° horizontal FOV at 512×512 — very wide angle, so even 4 azimuths overlap heavily",
+       "Camera-to-world built in OpenCV convention with world up = +Y — this is where the y-down file assumption is baked in",
+       "look_targets (nearest-content centroids) are computed and stored but NOT used — poses are pure sweeps"],
+  reads:["(in-memory) standpoint positions","quality preset (az × el counts)"],
+  writes:["transforms.json (all poses + K + scene stats)","(in-memory) poses → a4"],
+  note:"No angular gaps by construction — the systematic version of our ad-hoc 7-view judge rig, and the direct fix shape for our 300°-of-360° hole. Borrowable piece #2. The 6×60° vs 8×45° question we were debating is exactly 'pick n_azimuth'."},
+rend: {mod:"t3", eyebrow:"a4 · render", name:"gsplat RGB + depth-as-color depth",
+  script:"renderers/gsplat_backend.py:23-77 · RENDER_BATCH=32 render_cameras.py:33-35",
+  how:["RGB: vanilla gsplat rasterization, batched 32 views per GPU call",
+       "Depth: each Gaussian's camera-space Z is fed to the SAME rasterizer as a degree-0 SH 'color', then decoded — per-pixel depth in world units, 0 where nothing was hit",
+       "Depth pass runs one view at a time (the loop), so depth is the slower half of rendering",
+       "CUDA required — there is no CPU rasterizer path"],
+  reads:["(in-memory) gaussians","(in-memory) poses + K"],
+  writes:["frames/frame_XXXX.png (512²)","frames/depth_XXXX.npy (float32 m)","frames/depth_XXXX.png (viz)","(in-memory) RGB → a5 · depth → a6"],
+  note:"A splat-native depth source with no monocular depth network — borrowable trick if we ever want depth for views our z-buffer path can't serve. Same role as our lift's z-buffer, different mechanism."},
+det: {mod:"t3", eyebrow:"a5 · detect", name:"OWLv2 on every frame",
+  script:"pipeline.py:146-196 · google/owlv2-base-patch16-ensemble (~2 GB HF download on first run)",
+  how:["One OWLv2 forward pass per frame, unbatched, all labels queried at once",
+       "Keeps every box with score ≥ 0.12 (--score_threshold) — deliberately permissive; the vote filter downstream does the real gatekeeping",
+       "WMD_DEVICE=cuda|cpu can move just this model off the GPU"],
+  reads:["(in-memory) 512² RGB frames","word list (wrapped queries)"],
+  writes:["(in-memory) per-frame 2D boxes + scores → a6"],
+  note:"Open-vocabulary but still top-down: no word, no detection. Detection quality per frame is mediocre (wide FOV, 512², splat blur) — the design leans on volume: 24–192 chances to see each object."},
+lift: {mod:"t3", eyebrow:"a6 · lift · THE CRUDE STAGE", name:"Box center → one surface point",
+  script:"pipeline.py:51-73 (unproject) · :206-223 (depth sample + extents)",
+  how:["Box depth = median of a 5×5 pixel patch at the 2D box CENTER (valid pixels only; fallback: distance to scene center)",
+       "Unproject the center pixel through K⁻¹, place at that depth → ONE 3D point, on the object's visible front surface",
+       "World width/height = pixel size × depth / focal length; world depth-extent FABRICATED as (width+height)/2",
+       "No mask, no per-pixel back-projection — nothing like our shrink-wrapped boxes"],
+  reads:["(in-memory) 2D boxes + scores","(in-memory) depth maps + poses"],
+  writes:["(in-memory) 3D surface points + approx extents → a7"],
+  note:"This is where our method is clearly stronger: lift_views.py back-projects the FULL mask through the z-buffer and shrink-wraps a real box. Their positions carry a systematic toward-the-camera bias and their z-extents are fiction — the bridge (3a1) and any fair comparison must remember both."},
+clu: {mod:"t3", eyebrow:"a7 · fuse · WORTH STEALING", name:"Fixed-anchor clustering + two-sided vote",
+  script:"pipeline.py:76-130 — _cluster_detections · eps :279 · cap :280",
+  how:["Per label, sort detections by score; the best unused one becomes a FIXED anchor (never updated — prevents centroid drift bleeding two nearby same-label objects into one)",
+       "Every detection within eps = 0.20 × scene_radius of the anchor joins its cluster",
+       "A cluster SURVIVES only if: members from ≥ min_votes (8) frames AND best single-frame score ≥ min_peak_score (0.40)",
+       "Final position = score-weighted mean; scale = per-axis median (floored at 0.1); at most 3 objects per label (hard-coded)"],
+  reads:["(in-memory) all 3D points + extents","(in-memory) scene_radius (eps)"],
+  writes:["(in-memory) surviving clusters → interactions.json"],
+  note:"The two-sided vote filter is borrowable piece #3 — simple, tunable false-positive suppression that only works WITH dense coverage; it's the natural companion to fixing our one-cross-view-merge weakness. Watch the ≤3-per-label cap on 'picture frame'-type scenes (source edit to lift)."},
+tj: {mod:"t3", eyebrow:"job_dir artifact", name:"transforms.json",
+  script:"render_cameras.py:528-536, 559-564",
+  how:["Full camera record: fl_x/fl_y/cx/cy/w/h, per-frame 4×4 camera-to-world (OpenCV), file_path, depth_path, position_idx",
+       "Plus scene_center, scene_radius, camera_positions, look_targets"],
+  reads:["a3's poses + a1's scene stats"],
+  writes:["<job_dir>/transforms.json"],
+  note:"Everything needed to re-trace any detection back through its frame — our bridge and the graph's crop step (4g3) both read frames via this file."},
+fr: {mod:"t3", eyebrow:"job_dir artifact", name:"frames/ — RGB + depth",
+  script:"render_cameras.py:447-464",
+  how:["frame_XXXX.png (512² RGB), depth_XXXX.npy (raw float32, camera-space Z in world units, 0 = no hit), depth_XXXX.png (near = bright viz)"],
+  reads:["a4's renders"],
+  writes:["<job_dir>/frames/*"],
+  review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/job_high/frames/",
+           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/job_high/frames/"}],
+  note:"A high run writes 192 × (RGB + depth npy + depth png) ≈ a few hundred MB per job. These frames double as the crop source for our graph's VLM appearance step (4g3)."},
+ij: {mod:"t3", eyebrow:"job_dir artifact — THE tool's product", name:"interactions.json",
+  script:"pipeline.py:294-320",
+  how:["objects[]: label · position (score-weighted SURFACE-biased centroid) · rotation (always identity) · scale (full extents; z fabricated) · frames[] (supporting 2D boxes, best first)",
+       "frame_annotations: reverse index frame → drawn boxes",
+       "Coordinates: the input ply's frame and units, untouched — the π-about-X flip exists only in their browser viewer, never in this file"],
+  reads:["a7's surviving clusters"],
+  writes:["<job_dir>/interactions.json"],
+  review:[{t:"…/out/bedroom_marble/analyzer/job_high/interactions.json (103 objects on bedroom_marble)",
+           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/job_high/interactions.json"}],
+  note:"The one contract with no in-repo producer: we copy the job dir into OUT/<scene>/analyzer/<job>/ by hand and 3a1 takes over from there."},
+br: {mod:"t3", eyebrow:"HAND-OFF — back to the main map", name:"3a1 · bridge to our boxes",
+  script:"analyzer/bridge_boxes.py — our code, drawn here only as the exit door",
+  how:["Converts the clusters into manifest-style RAW-frame 3D boxes and matches them against candidate y's manifest",
+       "From here the main map continues: 3a1 → 3a2 (FIND bake-off page, USER GATE) → 4g1 (graph nodes)"],
+  reads:["analyzer/<job>/interactions.json","scene_manifest.json","envelope.npz"],
+  writes:["analyzer/bridged_boxes.json","analyzer/match_report.json"],
+  review:[{t:"pipeline_map.html — the main map (3a1, 3a2)", h:"pipeline_map.html"},
+          {t:"…/out/bedroom_marble/analyzer/comparison.html — the bake-off page (R3)",
+           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/analyzer/comparison.html"}],
+  note:"Bridging must respect the two semantic gaps documented at a6: surface-biased centers and fabricated z-extents. The FIND verdict (R3) decides whether any of this becomes load-bearing or stays evidence."}
+};
+const MODC = {t3:"var(--t3)", frozen:"var(--frozen)"};
+const panel = document.getElementById("panel");
+let selBtn = null;
+function esc(t){const d=document.createElement("span");d.textContent=t;return d.innerHTML;}
+function show(k, btn){
+  const s = S[k]; if (!s) return;
+  if (selBtn) selBtn.classList.remove("sel");
+  selBtn = btn; btn.classList.add("sel");
+  panel.innerHTML =
+    `<div class="eyebrow" style="color:${MODC[s.mod]}">${esc(s.eyebrow)}</div>` +
+    `<h2>${esc(s.name)}</h2>` +
+    `<div class="script mono">${esc(s.script)}</div>` +
+    (s.how ? `<h3>How it works</h3><ul class="how">${s.how.map(h=>`<li>${esc(h)}</li>`).join("")}</ul>` : "") +
+    `<h3>Reads</h3><ul>${s.reads.map(r=>`<li class="mono">${esc(r)}</li>`).join("")}</ul>` +
+    `<h3>Writes — the contract</h3><ul>${s.writes.map(w=>`<li class="mono w">${esc(w)}</li>`).join("")}</ul>` +
+    (s.review ? `<h3>Review — full path</h3>` + s.review.map(r =>
+      `<div class="rev">${r.h ? `<a href="${r.h}" target="_blank" rel="noopener">${esc(r.t)}</a>` : esc(r.t)}</div>`).join("") : "") +
+    `<p class="note">${esc(s.note)}</p>`;
+  if (window.matchMedia("(max-width: 940px)").matches &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    panel.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+document.querySelectorAll(".node").forEach(b =>
+  b.addEventListener("click", () => show(b.dataset.k, b)));
+</script>
+</body>
+</html>
