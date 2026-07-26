@@ -13,6 +13,37 @@ floor-ish median +0.107. Viewer delta layers: Δ recenter 35, Δ gate kills
 0. Suffix-'b' (0.35/0.40) manifests kept on disk. Minor artifact noted:
 one 'conditioner' label (canonicalization split of 'air conditioner'). ==**
 
+**== UPDATE 2026-07-26 (daytime session) — post-processing begins: hard
+score filter (user: "just a hard filter from the boxes we already have, no
+reruns"). manifest_filter.py (NEW, generic --thr) on the canonical
+manifest at 0.30 → scene_manifest_pano2c_rc_f30.json: 102 objects, drops 6
+(obj_113/121/122 toy, obj_119/147 book, obj_149 conditioner — the label
+-split artifact dies for free). CAVEAT logged: 3 of the 6 are
+retake_confirmed (close-up verified, scores .27-.28) — the hard filter
+overrules the retake verifier on them; drops preserved in the file's
+filtered_out. Viewer layer "pano track · f30 (score ≥ 0.30)" for A/B vs
+canonical. **f30 ADOPTED (user: "i think this works")** — post-processing
+base going forward.
+
+Post-processing step 2 — DEDUP (manifest_dedup.py, NEW, same session).
+Design settled with user: high mutual 3D overlap = one physical object
+(two rigid objects can't share a volume), so merge GEOMETRY and keep every
+LABEL (primary = highest-scoring member, rest -> alt_labels — resolves the
+"lamp ceiling fan" dual-name worry without guessing); box-in-box nesting
+survives automatically (high containment but LOW IoU). Confident zone
+IoU>=0.6: pure geometry, no model. Gray zone (IoU 0.4-0.6 +
+containment>=0.9): ONE batched claude.exe haiku call judges the label pair
+same-vs-part-of (cached in dedup_llm_cache.json; degrade = keep both).
+**USER RULE recorded this session: NO hard-coded synonym/label lists —
+pipeline must run on all scenes unmodified; local LLM = the swap for
+online-averse users.** Result: 102 -> 92 objects (9 merge groups: chair+
+office chair, rug+mat+yoga mat, side table+desk, lamp+ceiling light, 3x
+door+window incl. 1 LLM-ruled, 2x bookshelf+shelf; LLM ruled
+bookshelf|shelf + book|shelf = part-of -> kept). 8 kept-but-overlapping
+pairs (the bookshelf granularity thicket) in the file's overlap_report.
+scene_manifest_pano2c_rc_f30_dd.json; viewer "pano track · f30+dedup".
+AWAITING USER VERDICT (R9). ==**
+
 **== CANONICAL (user, 2026-07-26): this IS the pano track — drop the "2.0"
 framing. Final chain = self-rendered pano (0,0)+1.6m -> 20-crop rig ->
 batched-vocab detect (seg_batched.py) -> z-buffer lift (pano_lift.py

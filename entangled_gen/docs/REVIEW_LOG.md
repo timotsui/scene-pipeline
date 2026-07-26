@@ -85,4 +85,20 @@ Format per entry:
 - **USER VERDICT (graph structure):**
 - **USER VERDICT (nodes to prune):**
 
+## R8 — Canonical pano track + f30 score filter (daytime review session 2026-07-26)
+- **What / paths:** viewer at `http://localhost:8321/?scene=bedroom_marble` (start via `D:\T\Documents\GeorgiaTech\Summer2026\scene-pipeline\launch_viewer.bat` if down). Layers: **"PANO TRACK (canonical · thr 0.2)"** (108 objects, `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\scene_manifest_pano2c_rc.json`) vs **"pano track · f30 (score ≥ 0.30)"** (102 objects, `...\scene_manifest_pano2c_rc_f30.json`), plus **"Δ before recenter"** (35 pre-change boxes + refuted phantoms).
+- **Why:** (a) THE verdict on the canonical pano-track manifest — the box set every downstream rewire (scene graph, envelope, retrieval, agent package) will consume; (b) whether the hard 0.30 filter is a keeper as the first post-processing step.
+- **Look for:** (1) canonical layer: do boxes hug real objects; is junk concentrated in the high-count labels (book 33, picture 15, toy 11, basket 7)? (2) toggle f30 vs canonical: the 6 dropped boxes (3 toy, 2 book, 1 conditioner) — junk or real? NOTE 3 of the 6 were retake-CONFIRMED by their own close-ups (scores .27–.28); the filter overrules the verifier there — if any of those 3 is a real object, the filter needs a confirmed-exemption. (3) Δ layer: spot-check a few refinements (old vs new bounds) and refuted phantoms.
+- **Daytime session — no provisional verdict; user judges directly.**
+- **USER VERDICT (canonical layer):** _(no explicit verdict yet — user moved to post-processing on top of it)_
+- **USER VERDICT (f30 filter adoption):** ADOPTED (user 2026-07-26: "i think this works. lets do this"). f30 manifest is the post-processing base going forward. User's next ask: dedup — box-in-box allowed (genuine nesting), target = highly-overlapping boxes (example given: obj_007 lamp vs obj_057 ceiling light), with the caveat that near-exact cross-label overlap may be ONE object with two valid labels ("lamp ceiling fan" case).
+
+## R9 — Dedup merge (post-processing step 2, 2026-07-26)
+- **What / paths:** viewer layer **"pano track · f30+dedup"** (92 objects, `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\scene_manifest_pano2c_rc_f30_dd.json`) toggled against **"pano track · f30"** (102). The 10 absorbed boxes are in the file's `dedup_removed`; unmerged overlaps in `overlap_report`.
+- **Why:** gates the dedup method (geometry IoU ≥ 0.6 + LLM-judged gray zone) as a standard post-processing stage for all scenes.
+- **Look for:** (1) the 9 merge groups — each should be one real object now wearing multiple names (`alt_labels`): chair+office chair, rug+mat+yoga mat, side table+desk, lamp+ceiling light (your obj_007/obj_057 example), 3× door+window, 2× bookshelf+shelf. Is any merge WRONG — i.e., two genuinely distinct objects glued together? (2) the door+window merges: are those 3 elements really doors (possibly glazed), or did a real window get eaten by a door box? (3) the kept bookshelf thicket (obj_043/080/093/140 area): right call to keep, or are those actually duplicates too? (4) nesting untouched: books/toys still inside bookshelves as before.
+- **Daytime session — no provisional verdict; user judges directly.**
+- **USER VERDICT (dedup adoption):**
+- **USER VERDICT (any wrong merges):**
+
 _(further entries appended as artifacts land)_

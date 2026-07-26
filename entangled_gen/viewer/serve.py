@@ -41,6 +41,24 @@ def box_sources(sc):
          "z-buffer lift -> robust merge q.05 -> RECENTER round as the "
          "real filter (20 refined, 15 marginal singletons refuted by "
          "close-up, 8 confirmed). 135 objects; floor-gap min +0.012"),
+        ("pano_track_f30", "pano track · f30 (score ≥ 0.30)",
+         sd / "scene_manifest_pano2c_rc_f30.json", "#7fd4ff",
+         "canonical manifest after the hard 0.30 score filter "
+         "(manifest_filter.py, user 2026-07-26: no reruns, pure "
+         "post-processing). 102 objects — drops 6 (3 toy, 2 book, 1 "
+         "conditioner); NOTE 3 of the 6 were retake-confirmed by their "
+         "close-ups (scores .27-.28) — the filter overrules the verifier "
+         "there. Dropped objects preserved in the file's filtered_out"),
+        ("pano_track_f30_dd", "pano track · f30+dedup",
+         sd / "scene_manifest_pano2c_rc_f30_dd.json", "#4dc3ff",
+         "post-processing step 2 (manifest_dedup.py): duplicate-box merge "
+         "on the f30 set, 102 -> 92. Confident zone IoU>=0.6 merges on "
+         "geometry alone (same volume = same object); gray zone "
+         "(IoU 0.4-0.6, containment>=0.9) judged by ONE batched haiku "
+         "call on the label pair (cached; door|window=same -> merged, "
+         "bookshelf|shelf + book|shelf=part-of -> kept). Merged objects "
+         "keep every name (alt_labels); absorbed boxes preserved in "
+         "dedup_removed; 8 kept-but-overlapping pairs in overlap_report"),
         ("pano_track_rcdelta", "pano track · Δ before recenter (thr 0.2)",
          sd / "scene_manifest_pano_rcdelta.json", "#ff5a5a",
          "the BEFORE-state of everything the recenter round changed: the "
