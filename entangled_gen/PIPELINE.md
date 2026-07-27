@@ -214,3 +214,35 @@ numeric screen.
 
 Keep methods side-by-side (folder per method), never edit a working method in
 place to become another.
+
+## Scene-graph stages — record, then judge (formalized 2026-07-26)
+
+All graph stages read and write ONE file, `OUT/<scene>/scene_graph.json`
+(two canonical files would drift). Layering rule: the RECORD layer (nodes,
+evidence, geometric edges, open questions) is deterministic and NEVER
+edited after it is built; every judge writes VERDICTS as additive fields,
+and `graph["judged"]` is a derived view reproducible at any time from
+record + cached verdicts. All judge prompts are FIXED VERSIONED TEMPLATES
+filled by deterministic code (`PROMPT_VERSION` is salted into each cache
+hash, so template edits automatically re-judge). Bridge: claude.exe
+subscription (API-key env vars stripped). Degradation: LLM unavailable ⇒
+names stay provisional, pairs/floaters stay unresolved, nothing gets
+disputed — never a guess. Gates seen in the docs were DEV-TIME scaffolding
+only; production runs this chain unattended.
+
+| # | stage | script | reads | writes (THE CONTRACT) |
+|---|-------|--------|-------|----------------------|
+| G1 | record — nodes | `graph/build_graph.py` | f30 manifest + room_shell + rig crops + prompt.txt | `scene_graph.json` nodes (f30 VERBATIM, no pre-merges, full label multisets, evidence pointers) + `graph/crops/` |
+| G2 | record — edges | `graph/build_edges.py` | scene_graph.json nodes | edges: ON·IN·IN_WALL·ATTACHED·INTERPENETRATES + SAME_CANDIDATE queue + NEAR fallbacks (no-floater invariant, truncation facts); self-check exits 1 on frame/invariant violation |
+| J1 | pair judge | `graph/judge_pairs.py` | SAME_CANDIDATE edges + crops | `verdict` blocks (SAME / PART_OF / DISTINCT) on those edges + `graph/judge_pairs_cache.json` |
+| J5 | floater judge | `graph/judge_near.py` | NEAR edges + crops (deterministic menu: code classifies candidates, model reads pixels; `--selftest` = zero-LLM regression) | `verdict` blocks on NEAR edges + `graph/judge_near_cache.json` |
+| J2 | merge view (zero LLM) | `graph/build_judged.py` | record + J1/J5 verdicts | `graph["judged"]`: clusters (union-find over SAME), remapped/re-derived edges, naming queue, support conflicts; self-checks (partition, no-floater) |
+| J3 | naming judge | `graph/judge_names.py` | judged naming queue + crops | canonical `name` + provenance on judged clusters + `graph/judge_names_cache.json` |
+| J4 | coherence judge (text-only; runs ONCE — its flags are a queue, never a re-scan trigger) | `graph/judge_coherence.py` | the judged view (post-merge, post-naming — order matters) | `coherence_flags` (relation / existence / label_geometry) + `existence: "disputed"` on judged clusters + `graph/judge_coherence_cache.json`; `--digest-only` prints the room digest |
+| J6 | appearance + J4-flag resolution — the single TERMINAL pass | `graph/describe_nodes.py` (absorbing judge_cases.py's queue machinery — PLAN_SCENE_GRAPH.md §0a.8) | judged clusters + crops + J4's flag queues | `appearance` blocks + existence/rename/edge adjudications + caches. Runs ONCE; what it doesn't settle SHIPS |
+
+Downstream contract: consumers (agent package, composition C1) read
+`graph["judged"]` and SKIP existence-rejected/disputed clusters. Flags J6
+leaves unsettled travel WITH the graph as PLACEMENT-stage work orders
+(suspect boxes etc.). There is NO iteration loop at the graph stage —
+user ruling 2026-07-26: J1–J5 fixed, J4 once, J6 once, ship.

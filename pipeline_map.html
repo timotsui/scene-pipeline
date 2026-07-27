@@ -244,9 +244,22 @@
     suspect pairs are <b>SAME_CANDIDATE</b> edges (zone confident ≥.6 /
     gray) with every candidate label kept and evidence pointers — open
     questions stay open. User reviews the record BEFORE any VLM spend.
-    Pass 2 JUDGES (VLM, cached): same-vs-part on every candidate edge →
-    merges (as verdicts, reversible) → naming → appearance; verdicts
-    reference the record, never overwrite it. The judged graph
+    Pass 2 JUDGES (fixed versioned prompt templates, deterministic
+    fillers, cached — <b>code interprets the numbers, the model
+    interprets the pixels</b>), six sub-passes, five RUN 2026-07-26:
+    pair judge (14/14: 11 same · 3 part-of) ∥ floater judge (3/3 vs the
+    user's ground truth, after the v1 prompt-gloss bug forced the
+    deterministic-menu rework) → merge view (zero LLM: 102 → 92
+    clusters) → naming (9/9, "ceiling light" fixed) → <b>coherence</b>
+    ("does it make sense" — ONE text call over the whole room; 15 flags,
+    6 existence-disputed incl. the motivating pictures-inside-doors
+    pair) → appearance (pending rework); verdicts
+    reference the record, never overwrite it.
+    DECIDED 07-26 late: the coherence <b>escalation queue</b> (7
+    re-examine flags) feeds the PLACEMENT stage — resolving flags and
+    letting the LLM affect boxes/placements is one job there, not a
+    graph-stage v2; a text-only experiment already resolved the one
+    user-verified case from coordinates alone. The judged graph
     <b>replaces the manifest</b> as the downstream contract;
     picks/placement state move OUT. Offline ⇒ unresolved stays
     unresolved — never a guessed merge. Same-day additions: the
@@ -275,7 +288,7 @@
     <div class="phase-h"><span class="phase-n">DATAFLOW</span>
       <span class="phase-t">1 WORLD → 2 ANALYSIS (observe · detect · lift · place) → 3 COMPOSE · one canonical lane + a side tool</span></div>
     <div class="phase-body">
-    <svg class="pipe" viewBox="0 0 800 1800" role="img"
+    <svg class="pipe" viewBox="0 0 800 2180" role="img"
          aria-label="scene-pipeline dataflow graph">
       <defs>
         <marker id="ah-eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
@@ -292,15 +305,15 @@
 
       <!-- ===== ANALYSIS sub-stage bands ===== -->
       <rect x="0" y="118" width="800" height="218" fill="var(--ink)" opacity="0.035"/>
-      <rect x="0" y="455" width="800" height="268" fill="var(--ink)" opacity="0.035"/>
+      <rect x="0" y="455" width="800" height="368" fill="var(--ink)" opacity="0.035"/>
       <path d="M8,336 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
       <path d="M8,455 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
-      <path d="M8,723 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
-      <path d="M8,1136 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
+      <path d="M8,823 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
+      <path d="M8,1516 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
       <text class="plabel pl-bus" style="font-size:15px" x="8" y="142">2.1 OBSERVE</text>
       <text class="plabel pl-bus" style="font-size:15px" x="8" y="382">2.2 DETECT</text>
       <text class="plabel pl-bus" style="font-size:15px" x="8" y="552">2.3 LIFT</text>
-      <text class="plabel pl-bus" style="font-size:15px" x="8" y="772">2.4 PLACE · SCENE MODEL</text>
+      <text class="plabel pl-bus" style="font-size:15px" x="8" y="872">2.4 PLACE · SCENE MODEL</text>
 
       <!-- ===== generate ===== -->
       <g class="node" data-k="gen" transform="translate(276,24)">
@@ -311,7 +324,7 @@
       <path class="edge e-bus" d="M392,64 V92"/>
       <path class="edge e-bus" d="M30,92 H660"/>
       <path class="edge e-bus" d="M60,92 V126" marker-end="url(#ah-bus)"/>
-      <path class="edge e-bus" d="M30,92 V778" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M30,92 V878" marker-end="url(#ah-bus)"/>
       <path class="edge e-bus" d="M468,92 V240" marker-end="url(#ah-bus)"/>
       <path class="edge e-bus" d="M660,92 V126" marker-end="url(#ah-bus)"/>
       <text class="elab" x="36" y="104">gen_raw.ply · collider (opt)</text>
@@ -378,18 +391,14 @@
         <text class="nsub" x="14" y="44">verdict: their clustering shreds (8× bed)</text></g>
       <path class="edge e-t3 e-dash e-ref" d="M600,418 V468" marker-end="url(#ah-t3)"/>
       <text class="elab lab-ref" x="606" y="448">evidence boxes</text>
-      <path class="edge e-t3 e-dash e-ref" d="M700,418 V450 H784 V672 H778" marker-end="url(#ah-t3)"/>
-      <text class="elab lab-ref" x="780" y="560" text-anchor="middle"
-        transform="rotate(-90 780 560)">interactions.json</text>
-      <g class="node ndash nref" data-k="a1" transform="translate(544,652)">
+      <path class="edge e-t3 e-dash e-ref" d="M700,418 V450 H784 V712 H778" marker-end="url(#ah-t3)"/>
+      <text class="elab lab-ref" x="706" y="444">interactions.json</text>
+      <g class="node ndash nref" data-k="a1" transform="translate(544,692)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-t3" width="4" height="52" rx="2"/>
         <text class="ntitle" x="14" y="17">a-bridge · adapter to our box format</text>
         <text class="nscript" x="14" y="31">analyzer/bridge_boxes.py</text>
         <text class="nsub" x="14" y="45">interactions.json → bridged_boxes.json + match_report</text></g>
-      <path class="edge e-t3 e-dash e-ref" d="M660,704 V1082 H510" marker-end="url(#ah-t3)"/>
-      <text class="elab lab-ref" x="666" y="880" text-anchor="middle"
-        transform="rotate(-90 666 880)">bridged_boxes.json · record-only layer</text>
 
       <!-- ===== 2.2 DETECT ===== -->
       <path class="edge e-eg" d="M124,284 V368" marker-end="url(#ah-eg)"/>
@@ -403,9 +412,8 @@
         <text class="ntitle" x="14" y="17">P3 · batched detect + segment</text>
         <text class="nscript" x="14" y="31">seg_batched.py — GroundingDINO + SAM</text>
         <text class="nsub" x="14" y="44">6 prompts × ~5 terms · thr 0.20 · cross-batch NMS</text></g>
-      <path class="edge e-eg" d="M410,400 H455 V778" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="461" y="600" text-anchor="middle"
-        transform="rotate(-90 461 600)">detections + masks — evidence pointers</text>
+      <path class="edge e-eg" d="M410,400 H455 V878" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="461" y="430">detections + masks — evidence pointers</text>
 
       <!-- ===== 2.3 LIFT ===== -->
       <path class="edge e-eg" d="M260,418 V468" marker-end="url(#ah-eg)"/>
@@ -429,155 +437,171 @@
 
 
       <!-- ===== 2.4 PLACE ===== -->
-      <g class="node" data-k="shell" transform="translate(8,780)">
+      <g class="node" data-k="shell" transform="translate(8,880)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-eg" width="4" height="52" rx="2"/>
         <text class="ntitle" x="14" y="17">4w · room shell — measured</text>
         <text class="nscript" x="14" y="31">room_shell.py (+ --audit)</text>
         <text class="nsub" x="14" y="45">N wall segments · collider cross-check</text></g>
-      <path class="edge e-eg" d="M240,800 H274" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="243" y="794">room_shell.json</text>
-      <path class="edge e-eg" d="M124,832 V844" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="842">room_shell.json — measured bounds</text>
-      <g class="node" data-k="env" transform="translate(8,846)">
+      <path class="edge e-eg" d="M240,900 H274" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="243" y="894">room_shell.json</text>
+      <path class="edge e-eg" d="M124,932 V968" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="956">room_shell.json — measured bounds</text>
+      <g class="node" data-k="env" transform="translate(8,970)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-eg" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">4e · envelope (free space)</text>
         <text class="nscript" x="14" y="31">envelope.py — rewired 07-26</text></g>
-      <path class="edge e-eg" d="M124,644 V654" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="652">scene_manifest_pano2c_rc.json — CANONICAL 108</text>
-      <g class="node" data-k="post" transform="translate(8,656)">
+      <path class="edge e-eg" d="M124,644 V694" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="692">scene_manifest_pano2c_rc.json — CANONICAL 108</text>
+      <g class="node" data-k="post" transform="translate(8,696)">
         <rect class="nbox" width="232" height="64" rx="8"/>
         <rect class="b-eg" width="4" height="64" rx="2"/>
         <text class="ntitle" x="14" y="17">P6 · post-process — score filter</text>
         <text class="nscript" x="14" y="31">manifest_filter.py --thr 0.30</text>
         <text class="nsub" x="14" y="45">f30 ADOPTED (108 → 102) · dedup RETIRED 07-26</text>
         <text class="nsub" x="14" y="58">duplicates stay — merging = a judge verdict</text></g>
-      <path class="edge e-eg" d="M124,720 V778" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="752">…_rc_f30.json (102)</text>
-      <path class="edge e-eg" d="M240,688 H340 V778" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="346" y="708">f30 manifest → record (verbatim)</text>
+      <path class="edge e-eg" d="M124,760 V878" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="852">…_rc_f30.json (102)</text>
+      <path class="edge e-eg" d="M240,728 H340 V878" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="346" y="748">f30 manifest → record (verbatim)</text>
 
       <!-- envelope bus -->
-      <path class="edge e-eg" d="M124,886 V1178" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="1150">canonical manifest + envelope + crops</text>
+      <path class="edge e-eg" d="M124,1010 V1558" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="1530">canonical manifest + envelope + crops</text>
 
-      <g class="node" data-k="g1" transform="translate(276,780)">
+      <g class="node" data-k="g1" transform="translate(276,880)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-eg" width="4" height="52" rx="2"/>
         <text class="ntitle" x="14" y="17">4g1 · RECORD — nodes
           <tspan class="nactive"> · BUILT 07-26</tspan></text>
         <text class="nscript" x="14" y="31">graph/build_graph.py — rework</text>
         <text class="nsub" x="14" y="45">all labels · evidence ptrs · no judgment</text></g>
-      <path class="edge e-bus" d="M392,832 V844" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="398" y="840">record: nodes + evidence</text>
-      <g class="node" data-k="g2" transform="translate(276,846)">
+      <path class="edge e-bus" d="M392,932 V970" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="956">record: nodes + evidence</text>
+      <g class="node" data-k="g2" transform="translate(276,972)">
         <rect class="nbox" width="232" height="68" rx="8"/>
         <rect class="b-eg" width="4" height="68" rx="2"/>
         <text class="ntitle" x="14" y="17">4g2 · RECORD — geometric edges</text>
         <text class="nscript" x="14" y="31">graph/build_edges.py</text>
         <text class="nsub" x="14" y="45">ON·IN·ATTACHED + SAME_CANDIDATE queue</text>
-        <text class="nsub" x="14" y="58">record review<tspan class="ngate"> · USER GATE</tspan> · before VLM</text></g>
-      <path class="edge e-bus" d="M392,914 V926" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="398" y="922">the reviewed RECORD</text>
-      <g class="node" data-k="g3" transform="translate(276,928)">
+        <text class="nsub" x="14" y="58">no judgment · self-check exits 1</text></g>
+      <!-- ===== PASS 2 · THE JUDGES (right lane · fed by the record ·
+           every arrow flows right or down, ending in 4g3) ===== -->
+      <text class="plabel pl-lane" x="544" y="960">PASS 2 · THE JUDGES · fixed templates · deterministic fill · cached</text>
+      <path class="edge e-bus" d="M508,994 H542" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M508,1028 H526 V1066 H542" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j1" transform="translate(544,972)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-lane" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">J1 · pair judge — same vs part</text>
+        <text class="nscript" x="14" y="31">graph/judge_pairs.py · 14 pairs · crops</text></g>
+      <g class="node" data-k="j5" transform="translate(544,1044)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-lane" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">J5 · floater judge — what holds it</text>
+        <text class="nscript" x="14" y="31">graph/judge_near.py · crops · GT 3/3</text></g>
+      <path class="edge e-bus" d="M776,994 H784 V1102 H730 V1114" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M660,1088 V1114" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j2" transform="translate(544,1116)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-eg" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">J2 · merge view — zero LLM</text>
+        <text class="nscript" x="14" y="31">graph/build_judged.py · union-find + rederive</text></g>
+      <path class="edge e-bus" d="M660,1160 V1186" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j3" transform="translate(544,1188)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-lane" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">J3 · naming judge — canonical names</text>
+        <text class="nscript" x="14" y="31">graph/judge_names.py · crops + facts · 9/9</text></g>
+      <path class="edge e-bus" d="M660,1232 V1258" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j4" transform="translate(544,1260)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-lane" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">J4 · coherence judge — text-only</text>
+        <text class="nscript" x="14" y="31">graph/judge_coherence.py · whole room · 1 call</text></g>
+      <path class="edge e-bus" d="M660,1304 V1330" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j6" transform="translate(544,1332)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-lane" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">J6 · appearance + resolve J4 flags</text>
+        <text class="nscript" x="14" y="31">describe_nodes.py · TERMINAL · once, then ship</text></g>
+      <path class="edge e-bus" d="M544,1354 H510" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M392,1040 V1330" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="1200">the record (same file, never edited)</text>
+      <g class="node" data-k="g3" transform="translate(276,1332)">
         <rect class="nbox" width="232" height="80" rx="8"/>
         <rect class="b-lane" width="4" height="80" rx="2"/>
-        <text class="ntitle" x="14" y="17">4g3 · JUDGE — semantic passes</text>
-        <text class="nscript" x="14" y="31">claude.exe VLM · batched · cached</text>
-        <text class="nsub" x="14" y="45">1 same-vs-part on the candidate queue</text>
-        <text class="nsub" x="14" y="58">2 naming — multiset + crops + facts</text>
-        <text class="nsub" x="14" y="71">3 appearance (kept from v1)</text></g>
-      <path class="edge e-bus" d="M392,1008 V1020" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="398" y="1016">+ verdicts, referencing the record</text>
-      <g class="node" data-k="g4" transform="translate(276,1022)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-tool" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">4g4 · review page
-          <tspan class="ngate"> · USER GATE</tspan></text>
-        <text class="nscript" x="14" y="31">graph/graph_review.py</text></g>
-
-      <path class="edge e-bus" d="M392,1062 V1074" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="398" y="1070">scene_graph.json — record + verdicts</text>
-      <path class="edge e-eg" d="M240,620 H524 V1090 H510" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="528" y="880" text-anchor="middle"
-        transform="rotate(-90 528 880)">canonical + Δ layers (pano_track_diffs.py)</text>
-      <g class="node sink" data-k="viewer" transform="translate(276,1076)">
-        <rect class="nbox" width="232" height="54" rx="8"/>
-        <rect class="b-eg" width="4" height="27" rx="2"/>
-        <rect class="b-t3" y="27" width="4" height="27" rx="2"/>
-        <text class="ntitle" x="14" y="17">splat viewer — judging bench</text>
-        <text class="nscript" x="14" y="31">viewer/serve.py :8321</text>
-        <text class="nsub" x="14" y="45">look-only · method-organized box sources</text></g>
-
+        <text class="ntitle" x="14" y="17">4g3 · JUDGED GRAPH<tspan class="nactive"> · SHIPPED 07-27</tspan></text>
+        <text class="nscript" x="14" y="31">graph["judged"] in scene_graph.json</text>
+        <text class="nsub" x="14" y="45">102 → 92 clusters · 9 named · ✗2 · ✓2 real</text>
+        <text class="nsub" x="14" y="58">5 edges reinterpreted · 90 described</text>
+        <text class="nsub" x="14" y="71">3 flags ship open → placement work orders</text></g>
       <!-- ===== downstream ===== -->
-      <path class="edge e-eg e-dash" d="M276,1042 H260 V1200 H242" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="266" y="1120" text-anchor="middle"
-        transform="rotate(-90 266 1120)">judged graph = the handoff · wiring pending</text>
-      <text class="plabel pl-comp" x="8" y="1166">STEP 3 · COMPOSE — CONSUMES THE HANDOFF (DECIDED: THE GRAPH · WIRING PENDING)</text>
-      <g class="node" data-k="pkg" transform="translate(8,1180)">
+      <path class="edge e-eg e-dash" d="M276,1372 H260 V1580 H242" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="276" y="1440">judged graph = the handoff (skip disputed) · wiring pending</text>
+      <text class="plabel pl-comp" x="8" y="1546">STEP 3 · COMPOSE — CONSUMES THE HANDOFF (DECIDED: THE GRAPH · WIRING PENDING)</text>
+      <g class="node" data-k="pkg" transform="translate(8,1560)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-eg" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">2→3 · agent package</text>
         <text class="nscript" x="14" y="31">agent_package.py</text></g>
-      <path class="edge e-comp" d="M124,1220 V1268" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1248">package/ — sole handoff</text>
-      <g class="node" data-k="c1" transform="translate(8,1270)">
+      <path class="edge e-comp" d="M124,1600 V1648" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1628">package/ — sole handoff</text>
+      <g class="node" data-k="c1" transform="translate(8,1650)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C1 · shortlist</text>
         <text class="nscript" x="14" y="31">retrieve2.py</text></g>
-      <path class="edge e-comp" d="M124,1310 V1358" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1338">shortlists2.json</text>
-      <g class="node" data-k="c2" transform="translate(8,1360)">
+      <path class="edge e-comp" d="M124,1690 V1738" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1718">shortlists2.json</text>
+      <g class="node" data-k="c2" transform="translate(8,1740)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C2+ · thumbs · measure · CLIP</text>
         <text class="nscript" x="14" y="31">thumbs / measure / relevance</text></g>
-      <path class="edge e-comp" d="M124,1400 V1448" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1428">+ true sizes · + CLIP scores</text>
-      <g class="node" data-k="c4" transform="translate(8,1450)">
+      <path class="edge e-comp" d="M124,1780 V1828" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1808">+ true sizes · + CLIP scores</text>
+      <g class="node" data-k="c4" transform="translate(8,1830)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C4 · review viewer
-          <tspan class="ngate"> · USER GATE</tspan></text>
+          <tspan class="ngate"> · DEV BENCH</tspan></text>
         <text class="nscript" x="14" y="31">review_server.py :8322</text></g>
-      <path class="edge e-comp" d="M124,1490 V1538" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1518">(judged, unchanged)</text>
-      <g class="node" data-k="c5" transform="translate(8,1540)">
+      <path class="edge e-comp" d="M124,1870 V1918" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1898">(judged, unchanged)</text>
+      <g class="node" data-k="c5" transform="translate(8,1920)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C5 · pick</text>
         <text class="nscript" x="14" y="31">pick.py</text></g>
-      <path class="edge e-comp" d="M124,1580 V1628" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1608">picks2.json</text>
-      <g class="node" data-k="c6" transform="translate(8,1630)">
+      <path class="edge e-comp" d="M124,1960 V2008" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="1988">picks2.json</text>
+      <g class="node" data-k="c6" transform="translate(8,2010)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C6 · place</text>
         <text class="nscript" x="14" y="31">place2.py — bg resolver</text></g>
-      <path class="edge e-comp" d="M124,1670 V1718" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="130" y="1698">composed_state2.json</text>
-      <g class="node" data-k="c7" transform="translate(8,1720)">
+      <path class="edge e-comp" d="M124,2050 V2098" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="130" y="2078">composed_state2.json</text>
+      <g class="node" data-k="c7" transform="translate(8,2100)">
         <rect class="nbox" width="232" height="40" rx="8"/>
         <rect class="b-comp" width="4" height="40" rx="2"/>
         <text class="ntitle" x="14" y="17">C7 · VLM loop {add, nudge}</text>
         <text class="nscript" x="14" y="31">loop.py + collide.py</text></g>
-      <path class="edge e-comp" d="M124,1760 V1774" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="140" y="1786">edits.jsonl — the journaled trace</text>
+      <path class="edge e-comp" d="M124,2140 V2154" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="140" y="2166">edits.jsonl — the journaled trace</text>
 
       <!-- loop-backs -->
-      <path class="edge e-comp e-dash" d="M8,1380 H2 V1310 H6" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="20" y="1332">measure re-runs C1</text>
-      <path class="edge e-comp e-dash" d="M240,1740 H250 V1290 H242" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="254" y="1518" text-anchor="middle"
-        transform="rotate(-90 254 1518)">C7 add op re-enters C1</text>
+      <path class="edge e-comp e-dash" d="M8,1760 H2 V1690 H6" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="20" y="1712">measure re-runs C1</text>
+      <path class="edge e-comp e-dash" d="M240,2120 H250 V1670 H242" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="256" y="1674">C7 add op re-enters C1</text>
 
       <!-- the cut tool (parked) -->
-      <path class="edge e-bus e-dash" d="M508,44 H792 V1310 H778" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="789" y="740" text-anchor="middle"
-        transform="rotate(-90 789 740)">gen_raw.ply</text>
-      <g class="node ndash" data-k="cut" transform="translate(544,1270)">
+      <path class="edge e-bus e-dash" d="M508,44 H792 V1690 H778" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="700" y="38">gen_raw.ply</text>
+      <g class="node ndash" data-k="cut" transform="translate(544,1650)">
         <rect class="nbox" width="232" height="96" rx="8"/>
         <rect class="b-tool" width="4" height="96" rx="2"/>
         <text class="ntitle" x="14" y="17">object cut-out — tool
@@ -586,10 +610,9 @@
         <text class="nsub" x="14" y="46"><tspan class="nscript">cut1</tspan> pack views + cameras</text>
         <text class="nsub" x="14" y="59"><tspan class="nscript">cut2</tspan> object masks (SAM)</text>
         <text class="nsub" x="14" y="72"><tspan class="nscript">cut3</tspan> graph cut (WSL)</text>
-        <text class="nsub" x="14" y="85"><tspan class="nscript">cut4</tspan> before/after page<tspan class="ngate"> · USER GATE</tspan></text></g>
-      <path class="edge e-bus e-dash" d="M660,1366 V1650 H242" marker-end="url(#ah-bus)"/>
-      <text class="elab" x="664" y="1498" text-anchor="middle"
-        transform="rotate(-90 664 1498)">background.ply</text>
+        <text class="nsub" x="14" y="85"><tspan class="nscript">cut4</tspan> before/after page<tspan class="ngate"> · DEV CHECK</tspan></text></g>
+      <path class="edge e-bus e-dash" d="M660,1746 V2030 H242" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="668" y="1764">background.ply</text>
     </svg>
     </div>
   </section>
@@ -752,7 +775,7 @@ a1: {mod:"t3", eyebrow:"SIDE TOOL · bridge — a format adapter, nothing more",
        "No judgment, no filtering — pure translation; without it the analyzer's output would be invisible to the viewer and every comparison"],
   reads:["analyzer/<job>/interactions.json","scene_manifest (match target)"],
   writes:["analyzer/bridged_boxes.json","analyzer/match_report.json"],
-  note:"Record-only today: nothing in the pipeline consumes its output — the cyan viewer layer is the last reader (graph v1's analyzer seeding is deprecated by the record-then-judge rebuild). Its envelope.npz input is deliberately NOT drawn as an arrow: that was a report-only frame-mismatch check from the vetting era, never a functional dependency."},
+  note:"Record-only today: NOTHING in the pipeline consumes its output (graph v1's analyzer seeding is deprecated by the record-then-judge rebuild) — its only reader is the dev splat viewer, which is a bench tool and no longer drawn on this map, so this node has no outgoing arrow. Its envelope.npz input is deliberately NOT drawn either: that was a report-only frame-mismatch check from the vetting era, never a functional dependency."},
 shell: {mod:"eg", eyebrow:"4w · 2.4 PLACE — room shell · BUILT 07-26 (R11 gate open)", name:"Room shell — measured walls · ceiling · floor",
   script:"room_shell.py (W1 fit; --audit = the W0 three-way report) — PLAN_ROOM_SHELL.md",
   how:["The record's architecture was PLACEHOLDERS (walls = splat p1/p99 extent) — the W0 audit measured them off by up to 0.4 m",
@@ -786,48 +809,84 @@ g1: {mod:"eg", eyebrow:"4g1 · PASS 1 — RECORD · rebuild NEXT", name:"Record 
   reads:["scene_manifest_pano2c_rc_f30.json (verbatim — no dedup stage)","room_shell.json (measured architecture nodes; envelope grid bounds = fallback)","rig_sp0/lift_poolc.json (member evidence)","rig_sp0/ pano + crop sidecars (crop cutting)","prompt.txt"],
   writes:["scene_graph.json — record layer: nodes + evidence + open questions","graph/crops/ (per-node, deterministic)"],
   note:"Downstream state (retrieval picks, placement, cut status) moves OUT of the graph — v1 attached it; under record-then-judge those are consumers, not evidence. The record alone is deliberately NOT consumable as 'the scene': it refuses to commit names and merges — the downstream contract is record + verdicts. Governed by docs/PLAN_SCENE_GRAPH.md §0a."},
-g2: {mod:"eg", eyebrow:"4g2 · PASS 1 — RECORD · edges · USER GATE", name:"Geometric edges + the candidate queue",
+g2: {mod:"eg", eyebrow:"4g2 · PASS 1 — RECORD · edges", name:"Geometric edges + the candidate queue",
   script:"graph/build_edges.py",
   how:["Threshold arithmetic on boxes — ON (support), IN (containment), ATTACHED/IN_WALL (architecture), INTERPENETRATES — every edge carries its numbers (contact gap, overlap fraction)",
        "SAME_CANDIDATE edges computed HERE from box geometry (no dedup stage): IoU ≥ .40 AND (IoU ≥ .60 = zone confident, or containment ≥ .90 = zone gray) — the open 'same object or part?' questions drawn as graph structure, both nodes present",
        "NO-FLOATER INVARIANT (user rule 07-26): every detection node must hold ≥1 structural edge (ON/IN/IN_WALL/ATTACHED); isolated nodes get ONE caveated NEAR fallback edge (nearest supporter/floor/wall — incl. the shell's parallel surfaces — with deduped runner-up alternatives recorded); enforced in the self-check",
        "Still record: reproducible, no model calls; self-check exits nonzero on a violated invariant (frame sign + no-floater)",
-       "RECORD REVIEW (user gate): eyeball nodes, edges, and the candidate queue BEFORE any VLM spend — same discipline as the rest of the pipeline"],
+       "In production nothing stops here: the self-check is the gate (exit 1 on a violated invariant). The R1 record review was DEV-TIME validation while the machinery was being built (passed 07-26) — not a pipeline stage"],
   reads:["scene_graph.json (record: nodes incl. shell architecture)"],
   writes:["scene_graph.json (+ geometric edges + SAME_CANDIDATE queue + NEAR fallbacks)"],
   note:"The edges recorded here double as the judge's cheap facts: 'both boxes ATTACHED to the ceiling at 2.7 m, one inside the other' nearly decides lamp-vs-ceiling-light before the VLM sees a pixel."},
-g3: {mod:"lane", eyebrow:"4g3 · PASS 2 — JUDGE · VLM · gated on record review", name:"Judge — same-vs-part → naming → appearance",
-  script:"graph/ judge passes — claude.exe VLM (batched, cached); appearance keeps the describe_nodes.py machinery",
-  how:["The judge does NOT wander the graph — it visits explicit queues: the SAME_CANDIDATE edges, the naming disputes, and the NEAR fallbacks (each = one cached call given crops + label multisets + the edge's geometric facts)",
-       "Three verdicts: SAME OBJECT → merge the nodes (both originals' evidence retained, affected geometric edges re-derived) · PART OF → edge converts to PART_OF · DISTINCT → edge dropped",
-       "Order matters: merges first, THEN naming — a merged node is named once, over the union of both multisets",
-       "Naming pass: every node with a disputed multiset gets its canonical name from crops + facts (height, size, ATTACHED edges) — the fix for score-picked 'lamp' on a ceiling fixture",
-       "Appearance pass: colors / material / style per node (v1 machinery + cache carried over, incl. the §3a batching fixes)",
-       "Verdicts are NEW fields referencing the record, never overwriting it — a bad verdict = rerun one cached pass, not re-extraction",
-       "LLM unavailable ⇒ conservative degradation: provisional names stand, SAME_CANDIDATE stays unresolved — never a guessed merge"],
-  reads:["scene_graph.json (the reviewed record)","graph/crops/"],
-  writes:["scene_graph.json (+ verdict layer: merges, canonical names, appearance)","judge caches (idempotent reruns)"],
-  note:"This stage replaces the dedup LLM entirely — 'semantic dedup' is now judgment on SAME_CANDIDATE edges, living where the crops and the context are. The retired 4g3 'VLM appearance' card predicted this: naming is a natural extension of the call that already sees every node's crops."},
-g4: {mod:"lane", eyebrow:"4g4 · 2.4 PLACE — graph review · USER GATE", name:"Graph review page",
-  script:"graph/graph_review.py",
-  how:["Interactive page over the finished graph — record AND verdicts: nodes, edges, verdict provenance, appearance, crops",
-       "Also serves the graph as a viewer layer (/scene_graph.json)"],
-  reads:["scene_graph.json (record + verdicts)"],
-  writes:["graph_review.html","viewer layer via /scene_graph.json"],
-  review:[{t:"D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/graph_review.html",
-           h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/graph_review.html"}],
-  note:"After this gate the judged graph REPLACES the manifest as the downstream contract (decided 07-24 + 07-26): the 2→3 package and C1 read scene_graph.json; the manifest becomes one more evidence input behind it."},
-viewer: {mod:"eg", eyebrow:"sink — where everything gets judged", name:"Splat viewer",
-  script:"viewer/serve.py --port 8321 (route-table server, vendored libs, offline)",
-  how:["One local page that overlays every extraction on the actual splat",
-       "Box layers are METHOD-ORGANIZED and GROUPED (07-26 cleanup): CURRENT row = pano track canonical + f30 + Δ before-recenter; collapsed ARCHIVE/REFERENCE section = LLM-dedup output (superseded by the graph judge), gate-kills (gate dropped), pano 1.0, the analyzer pair, legacy yaw4 — plus the analyzer-cams and deprecated graph-v1 toggles; nothing deleted from disk",
-       "Click = smallest box under the cursor; clicking the same spot cycles overlapping boxes",
-       "Writes nothing — the arrows that end here end at your eyes"],
-  reads:["gen_raw.ply","scene_manifest_pano2c_rc.json + _f30","analyzer manifests (archive)","scene_graph.json (record)","clearance/collision layers"],
-  writes:["nothing — look-only"],
-  review:[{t:"http://localhost:8321 (start: python entangled_gen/viewer/serve.py --scene bedroom_marble)",
-           h:"http://localhost:8321"}],
-  note:"The funnel reads left-to-right in the layer row: ungated → recenter = the whole quality story, with every stage's delta auditable."},
+g3: {mod:"lane", eyebrow:"4g3 · THE JUDGED GRAPH · RUN 2026-07-26", name:"Judged graph — record + verdicts, the downstream contract",
+  script:"graph[\"judged\"] inside out/<scene>/scene_graph.json — one file (two canonical files would drift)",
+  how:["The judges (right lane) write VERDICTS into this block; the record layer beneath is never edited — delete graph['judged'] and build_judged.py reproduces it from record + cached verdicts (PROVEN: the clean-method rerun did exactly this, 5 calls total)",
+       "bedroom_marble SHIPPED 07-27 (clean-method run, R14): 102 → 92 clusters (9 merges incl. the mat 3-clique · 3 PART_OF) · 9 named · floaters resolved (plant ON floor, monitor ON desk, picture IN_WALL — 3/3 vs user ground truth) · J4 once: 12 flags · J6 once: obj_138/139 REAL picture frames, obj_059/091 NOT_REAL (artwork inside pictures), 5/5 edges REINTERPRET w/ suspect boxes, appearance 90/90 · ships open: obj_035/obj_096 deep-box flags + obj_083 → placement",
+       "Every verdict carries provenance: model, date, prompt_version, evidence hash, one-sentence reason — a bad verdict is one cached re-run, not archaeology",
+       "Downstream consumers read the judged view and SKIP existence-disputed nodes; the record keeps everything",
+       "LLM unavailable ⇒ conservative degradation: provisional names stand, pairs/NEAR stay unresolved, nothing disputed — never a guess",
+       "Dev stops (R12, R13) were SCAFFOLDING — production runs the whole chain gate-free (user ruling 07-26)"],
+  reads:["the record layer (same file)","the judges' verdict writes"],
+  writes:["scene_graph.json — graph['judged']: clusters, canonical names, resolved edges, coherence flags, disputed set"],
+  note:"DECIDED 07-26 late: the coherence ESCALATION queue (7 reexamine_with_crops flags) is NOT a graph-stage v2 — box-affecting resolution moves INTO the placement stage, where the LLM will resolve flags and adjust boxes/placements together. A text-only resolution experiment already nailed the one user-verified case (basket under the chair) from coordinates alone — see PLAN_SCENE_GRAPH.md §0a.7."},
+j1: {mod:"lane", eyebrow:"J1 · PAIR JUDGE · 14/14 RUN 07-26", name:"Pair judge — same object, part, or distinct",
+  script:"graph/judge_pairs.py — claude.exe sonnet, 3-way concurrent, cache judge_pairs_cache.json",
+  how:["One cached call per SAME_CANDIDATE edge: both nodes' crops + label lists + the edge's numbers (IoU, containment, zone, height gap)",
+       "SAME → merge exists as a VERDICT (materialized by J2) · PART_OF (names the part) · DISTINCT → edge dropped",
+       "Results: 11 SAME (all 3 door↔window pairs = one door detected twice; the mat triple transitively consistent) · 3 PART_OF (books-in-shelf, shelf sections) · 0 DISTINCT",
+       "PROMPT_VERSION salted into the cache hash — template edits automatically re-judge (the J5-v1 lesson)"],
+  reads:["scene_graph.json (record: SAME_CANDIDATE queue)","graph/crops/"],
+  writes:["verdict blocks on the SAME_CANDIDATE edges","judge_pairs_cache.json"],
+  note:"Replaces the retired dedup LLM entirely: 'semantic dedup' = judgment on SAME_CANDIDATE edges, living where the crops are."},
+j5: {mod:"lane", eyebrow:"J5 · FLOATER JUDGE · 3/3 GROUND TRUTH · v2 prompt", name:"Floater judge — what holds this up",
+  script:"graph/judge_near.py — deterministic menu builder + fixed versioned template + --selftest",
+  how:["For each NEAR fallback edge: crops + a DETERMINISTIC menu — code classifies every recorded candidate (plausible contact ≤0.25 m · floating · RULED OUT ≥0.25 m below a top) and dedupes candidates J1 judged the same object; the model only answers what pixels can settle",
+       "v1 MISS (plant → shelf) traced to a prose gloss mis-explaining negative gaps → USER RULING: code interprets the numbers, the model interprets the pixels; --selftest keeps the plant menu as a zero-LLM regression test",
+       "v2 run: plant → ON floor (occluded pot base, underreach) · monitor → ON desk (undetected arm) · picture → IN_WALL — 3/3 match the user's R10 ground truth"],
+  reads:["scene_graph.json (record: NEAR edges + truncation facts)","graph/crops/"],
+  writes:["verdict blocks on the NEAR edges","judge_near_cache.json"],
+  note:"The truncation facts (J0: 'n of m detections cut off at a view edge') are record-side EVIDENCE that a box under-reaches — copied onto the edge deterministically, never a conclusion."},
+j2: {mod:"eg", eyebrow:"J2 · MERGE VIEW · DETERMINISTIC · zero LLM", name:"Merge view — materialize the verdicts",
+  script:"graph/build_judged.py",
+  how:["Union-find over SAME verdicts → transitive merge clusters (mat 3-clique → one node); merged geometry = union AABB, label multisets united, evidence pointers concatenated",
+       "Record edges remapped to cluster ids; intra-cluster edges vanish; duplicates collapse (ON keeps the tightest gap); PART_OF verdicts become edges; NEAR verdicts materialize as real ON/IN_WALL/ATTACHED edges",
+       "EDGE CASE found on first run: the mat triple's ON edges all pointed at duplicate twins → vanished as internal → post-merge support RE-DERIVATION with the record's own thresholds (merged mat → ON floor, gap −0.017 m)",
+       "Self-checks, exit 1 on failure: membership is a partition · the no-floater invariant survives the merge",
+       "Emits the NAMING QUEUE (clusters whose members disagree) for J3"],
+  reads:["scene_graph.json (record + J1/J5 verdicts)"],
+  writes:["graph['judged']: clusters, remapped edges, naming queue, support conflicts"],
+  note:"Derivable at any time from record + verdicts — it holds no judgment of its own, which is why it needs no cache and no model."},
+j3: {mod:"lane", eyebrow:"J3 · NAMING JUDGE · 9/9 RUN 07-26", name:"Naming judge — canonical names for disputed clusters",
+  script:"graph/judge_names.py — batched (5/call), fixed versioned template, cache judge_names_cache.json",
+  how:["Every merged cluster whose members disagree gets its name from crops + deterministic facts (size, height span, wall/ceiling attachment, rests-on, contains-count)",
+       "Prefers a candidate label; a different short name is accepted but flagged chosen_from_candidates: false (coherence food)",
+       "Results 9/9, all from candidates: office chair · door ×3 (hinges/handles cited — every door/window dispute was a door) · CEILING LIGHT (the R9 lamp fix) · bookshelf ×2 · side table · yoga mat",
+       "Failure ⇒ the provisional (peak-score) name stands with name_provisional: true — never a guessed rename"],
+  reads:["graph['judged'] naming queue","graph/crops/"],
+  writes:["canonical name + naming provenance on the judged clusters","judge_names_cache.json"],
+  note:"Runs AFTER merges by design: a merged node is named once, over the union of its members' labels."},
+j4: {mod:"lane", eyebrow:"J4 · COHERENCE JUDGE · TEXT-ONLY · 1 call · 15 flags", name:"Coherence judge — does this room make sense",
+  script:"graph/judge_coherence.py — 259-line room digest → ONE sonnet call, cache keyed by digest hash",
+  how:["A deterministic digest flattens the judged room to text: one line per object (name, size, span, views, score), one per relationship (with numbers) — whole-room reasoning at flat cost, no images",
+       "Flags three kinds of nonsense: implausible RELATIONS (picture inside a door) · dubious EXISTENCE (implausible relation + feeble evidence) · LABEL-vs-GEOMETRY clashes (child-bed-sized 'bed')",
+       "First run: 15 flags — caught the user's motivating case obj_138 AND its unnoticed twin obj_139 (pictures 100% inside doors) → existence: disputed; also a 5 cm 'lamp' inside a picture, a 'toy' inside a picture, a ghost office chair, a floating plant (6 disputed total, all ≤2 views — the conservative bias held)",
+       "7 reexamine_with_crops flags = the recorded ESCALATION QUEUE; 2 rename candidates",
+       "Flags never delete: disputed nodes stay in the record, downstream skips them; edge-targeted existence flags dispute the edge's SUBJECT node",
+       "EXPERIMENT 07-26: text-with-full-coordinates resolved the escalations' one user-verifiable case exactly (basket under the chair, correct mechanism) → escalation likely text-first, vision last"],
+  reads:["graph['judged'] (post-merge, post-naming — order matters: it read 'picture IN door', not 'IN window')"],
+  writes:["coherence_flags + existence: disputed on judged clusters","judge_coherence_cache.json"],
+  note:"RUNS ONCE (user ruling 07-26 late): its flags are a QUEUE consumed by J6's single terminal pass, never a trigger for re-scans — an iterative coherence↔fix loop was built, run on bedroom_marble, and REVOKED ('the loop is not the right place'; effort went to label polish while dedup-grade problems deserve it — memory judge-loop-effort-allocation). Whatever J6 doesn't settle ships to placement as work orders."},
+j6: {mod:"lane", eyebrow:"J6 · APPEARANCE + J4-FLAG RESOLUTION · the single TERMINAL pass", name:"Appearance + case resolution — once, then ship",
+  script:"graph/describe_nodes.py v2 (contact sheets, §3a landed) — ABSORBING graph/judge_cases.py's queue machinery (PLAN_SCENE_GRAPH.md §0a.8, merge pending)",
+  how:["USER RULING 07-26 late: J1–J5 stay as they are, J4 runs once, and THIS pass is where J4's flags get resolved — it already opens every object's crops for appearance, so adjudication rides along in the same single pass; whatever it doesn't settle SHIPS to placement as work orders. No loop, no re-scans.",
+       "Appearance half: describes every viable judged cluster under its canonical name — colors, material, style, one-sentence description, is_label agreement (the fields retrieval shops with); contact sheets = one numbered grid PNG per batch of 8 → ONE image read per call, ×3 concurrent",
+       "Resolution half (donor code = judge_cases.py, proven on bedroom_marble): existence flags → REAL/NOT_REAL/UNCLEAR from crops · rename flags → short name from crops · edge re-examines → CONFIRM/REJECT/REINTERPRET + suspect_box",
+       "REVIEW-FIRST: --sheets-only builds sheets + manifest + verbatim prompts with zero model calls",
+       "bedroom_marble history (ran as separate passes before the design settled): appearance 86/86 in 11 calls; the closure loop's adjudications — 6 rejected ghosts/dupes, obj_138/139 pictures + obj_083 box confirmed REAL, ~17 renames, 11 edge verdicts — all STAND; obj_023 + 4 low-confidence box flags shipped open"],
+  reads:["graph['judged'] (clusters, canonical names, J4 flag queues)","graph/crops/ (record member crops)"],
+  writes:["appearance blocks + existence/rename/edge adjudications + meta","graph/appearance_sheets/ + case sheets (review artifacts)","caches (per-cluster hash)"],
+  note:"An iterative coherence↔case-closing loop was tried here and REVOKED (user: 'the loop is not the right place'; ~20 calls, mostly label polish — memory judge-loop-effort-allocation). The straight-line lane you see IS the design: flags flow down into J6 exactly once."},
 pkg: {mod:"eg", eyebrow:"2→3 · ANALYSIS→COMPOSE boundary", name:"Agent package",
   script:"agent_package.py (orchestrated by scene_ready.py, mtime-driven)",
   how:["Bundle the scene model, photos, and overlays with a guide into one folder",
@@ -851,7 +910,7 @@ c2: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C2 · C2.5 · C3", name:"Thumbs ·
   reads:["shortlists2.json","objathor meshes","review_crops/<id>_clean.png"],
   writes:["_thumbs/<uid>.png (dataset cache)","_mesh_sizes.json + _mesh_yaw.json (canonical-yaw fix)","additive clip / clip_txt fields in shortlists2.json"],
   note:"measure fixes the ~34% mis-rotated meshes (yaw fix) and TRUE sizes shift the shortlists → re-run C1. CLIP re-orders, never filters."},
-c4: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C4 — USER CHECKPOINT", name:"Review viewer",
+c4: {mod:"comp", eyebrow:"STEP 3 · COMPOSE / C4 — DEV BENCH (not a pipeline stage)", name:"Review viewer",
   script:"review_server.py :8322 (look-only) · asset_viewer.py :8323",
   how:["A local web page: each object's photo crop next to its candidate assets, in best-fit order and best-style order",
        "You look and judge the stages' quality here — nothing gets picked in this step"],

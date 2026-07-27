@@ -145,8 +145,29 @@ Format per entry:
   pictures + plants-on-furniture + ceiling lamp obj_062 (obj_007 is
   ATTACHED to ceiling); (5) the books-in-shelves IN clusters look right.
 - **Evening session — no provisional verdict; user judges directly.**
-- **USER VERDICT (record correctness / R1 gate):**
+- **USER VERDICT (record correctness / R1 gate):** **PASSED** (2026-07-26,
+  follow-up session): "all the graph nodes seems good" — R1 gate closed,
+  judge passes unblocked.
 - **USER VERDICT (SAME_CANDIDATE pair quality — any pink pair that is really two objects):**
+  No per-pair findings raised at review; the 14 pairs go to the judge's
+  same-vs-part pass, whose first-run verdicts get their own (dev-time)
+  review before the merge view builds on them.
+- **USER FINDINGS (the 3 NEAR floaters — recorded as GROUND TRUTH for the
+  NEAR-resolution pass acceptance test):**
+  - `obj_001` plant → **ON floor**; the box bottom (19 cm up) under-reaches
+    because the base is occluded ("the plant is on the floor, although the
+    box isn't really doing this"). 2 of 4 member detections carry
+    `truncated: true` — evidence to be surfaced onto the NEAR edge.
+  - `obj_005` monitor → **supported by the desk** via a mounting arm the
+    box doesn't include ("the monitor has an arm that is on the table").
+  - `obj_096` picture → **belongs to a wall** (user could not locate it in
+    the viewer but ruled it wall-attached; geometry says it touches the
+    curtain parallel plane 0.4 m inside arch_wall_x_high).
+  - Method ruling that followed: these cases are resolved at the SEMANTIC
+    stage (judge), NOT by record-stage snap heuristics — heuristics would
+    be category knowledge in disguise (automated-pipeline rule). The only
+    record-side change allowed: copy truncation facts onto NEAR edges
+    (evidence, not conclusions).
 
 ## R11 — Room shell: measured walls / ceiling / floor (W3 gate, 2026-07-26 late)
 - **What / paths:** viewer :8321 → "graph record (stage 3)" → the new gray
@@ -171,6 +192,152 @@ Format per entry:
 - **Assumptions on record:** vertical-prism walls (floor→ceiling), one
   outer segment per side in v1 (schema already takes N segments),
   parallel candidates recorded not judged.
-- **USER VERDICT (shell correctness / W3 gate):**
+- **USER VERDICT (shell correctness / W3 gate):** **PASSED** (2026-07-26,
+  follow-up session, under the blanket record approval "all the graph
+  nodes seems good" — no shell-specific findings raised). W3 closed.
+
+## R12 — Judge first-run verdicts: J1 pairs (14) + J5 floaters (3) — DEV STOP (2026-07-26)
+- **What / paths:** the `verdict` blocks now on every SAME_CANDIDATE and
+  NEAR edge in
+  `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\scene_graph.json`
+  (additive; record untouched; caches `graph\judge_pairs_cache.json` /
+  `graph\judge_near_cache.json`). Modules:
+  `D:\T\Documents\GeorgiaTech\Summer2026\scene-pipeline\entangled_gen\graph\judge_pairs.py`
+  / `judge_near.py` (sonnet via claude.exe, 3-way concurrent, one firmer
+  retry, failures stay unresolved).
+- **Why:** first-ever judge output — J2 (merge view) builds on the SAME
+  verdicts and J3 naming on the merged multisets, so a wrong merge here
+  cascades. This is a DEV stop (design validation), not a pipeline stage.
+- **Results, J1 (14/14, 0 unresolved): 11 SAME / 3 PART_OF / 0 DISTINCT.**
+  All three door↔window pairs judged one DOOR detected twice; the
+  rug/mat/yoga-mat triple is transitively consistent (SAME×3 → one
+  3-node merge cluster); PART_OF: books-cluster obj_068 part of shelf
+  obj_023 · obj_080 = upper section of bookshelf obj_043 · obj_047 =
+  shelf segment of bookshelf obj_088.
+- **Results, J5 (3/3 resolved): 2/3 match the R10 ground truth.**
+  ✔ obj_005 monitor → ON obj_039 desk (box_underreach: stand too thin to
+  detect) · ✔ obj_096 picture → IN_WALL arch_wall_x_high ·
+  **✘ obj_001 plant → ON obj_032 shelf, ground truth says ON floor** —
+  the verdict's reason misreads gap −1.32 m as "overlaps the shelf's top
+  surface" (a large NEGATIVE gap means the plant sits far BELOW that
+  top). Implementation finding: the caches key on crops+evidence only, so
+  a prompt fix does NOT bust them — needs a prompt-version salt.
+- **Look for:** (1) any SAME verdict that is really two objects (these
+  become merges in J2); (2) the three PART_OF directions — is the named
+  "part" really the component?; (3) 0 DISTINCT — plausible (every pair
+  WAS geometry-flagged) or suspicious agreeableness?; (4) the plant miss:
+  accept fix (a) prompt gap-semantics + re-judge, or overrule manually.
+- **Provisional verdict (Claude, numbers only — user judges):** J1 SAME
+  verdicts align with the R9-era readings (chair, lamp/ceiling-light,
+  door×3, mats) and PART_OF directions match the height spans on paper;
+  the J5 plant miss is a real prompt defect with a mechanical fix.
+- **UPDATE (same session) — plant fix APPLIED + v2 rerun: 3/3 match
+  ground truth.** User ruling: "code interprets the numbers, the model
+  interprets the pixels" — prompts are fixed versioned templates a
+  deterministic script fills; nothing is authored per case (the pipeline
+  runs unattended over hundreds of scenes). judge_near.py v2:
+  deterministic menu builder (candidates classified plausible / floating
+  / RULED OUT from fixed thresholds; SAME-judged duplicates collapse to
+  one menu slot), PROMPT_VERSION salted into both judges' cache hashes,
+  `--selftest` zero-LLM regression on the plant's recorded menu (PASS).
+  Rerun verdicts: plant → ON floor, underreach ("pot base visible
+  resting on the floor" — the crops DID show it) · monitor → ON desk,
+  underreach · picture → IN_WALL x_high. NOTE: judge_pairs' salt
+  invalidates its 14 cache entries — the NEXT judge_pairs run re-judges
+  all pairs (~6 min); the verdicts standing in scene_graph.json are the
+  reviewed v1 ones.
+- **USER VERDICT (J1 pair verdicts — approve for J2 merge view):**
+  **APPROVED, all 14** (2026-07-26, follow-up session — "approve all").
+- **USER VERDICT (J5 v2 floater verdicts — matches user's own answers; approve):**
+  **APPROVED** (same). R12 CLOSED — J2 merge view unblocked.
+
+## R13 — Judge chain J2→J3→J4: merge view + names + coherence flags (2026-07-26, post-R12)
+- **What / paths:** `graph["judged"]` inside
+  `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\scene_graph.json`
+  — 92 clusters (from 102), canonical names on the 9 disputed clusters,
+  15 coherence flags, 6 nodes existence-disputed. Modules:
+  `graph/build_judged.py` (deterministic) · `graph/judge_names.py`
+  (2 calls) · `graph/judge_coherence.py` (1 text-only call over a
+  259-line room digest). Caches in `out\bedroom_marble\graph\`.
+- **Why:** this IS the judged graph the downstream contract will read
+  (G2 gates adoption). Names feed retrieval; disputed nodes get skipped;
+  the reexamine queue is the v2 vision-escalation input.
+- **Names picked (9/9, all from candidates):** office chair · door ×3 ·
+  ceiling light (the R9 lamp fix) · bookshelf ×2 · side table · yoga mat.
+- **Existence disputed (6):** obj_138 + obj_139 (pictures 100% inside
+  doors — the user's motivating case), obj_059 (5 cm "lamp" inside a
+  picture, 1 view), obj_091 ("toy" inside a picture), obj_109 (ghost
+  office chair, 2 views @ .30, a basket "inside" it), obj_083 (floating
+  plant, 2 weak views).
+- **Also flagged, no action yet:** 7 reexamine_with_crops (oversized
+  "book" obj_066 swallowing two pictures; side-table↔bookshelf 40%
+  interpenetration; picture-ON-picture; toy-in-book; lamp-in-curtain) —
+  the recorded v2 escalation queue. 2 rename candidates (obj_062 1 m-wide
+  ceiling "lamp"; obj_008 1.06×1.71 m "bed" — child-bed sized).
+- **Look for (viewer or judged block):** (1) the 9 merges — any that are
+  really two objects?; (2) the 9 names vs crops; (3) the 6 disputed —
+  each REAL in the splat? A disputed node that IS real is the finding
+  that matters (downstream would silently skip it); (4) does the small
+  "bed" size match the scene (the digest can't see pixels)?
+- **Provisional verdict (Claude, from numbers only — user judges):** the
+  6 disputed all have ≤2 views and peak ≤0.42 except the two pictures
+  (1 view each); nothing high-evidence was disputed — the conservative
+  bias held.
+- **UPDATE (same session) — escalation TEXT experiment:** before building
+  any vision escalation, one text-only call got the 7 reexamine flags
+  with FULL coordinates (not the digest summaries). On the one
+  user-verifiable case it matched ground truth exactly (obj_054 basket
+  "on the floor beneath the chair; the chair box spans its wheeled base
+  and empty leg-space") — the other 6 answers are specific box-level
+  mechanisms awaiting user eyes. Script + results in the session
+  scratchpad (see PLAN_SCENE_GRAPH.md §0a.7 experiment note).
+- **USER VERDICT (judged view: merges + names + disputed set):**
+  **"good enough for me for now"** (2026-07-26) — soft acceptance;
+  formal in-viewer eyeball deferred (no judged viewer layer yet).
+  DIRECTION SET: next effort = the PLACEMENT stage, where the LLM
+  resolves the escalation flags AND affects boxes/placements; pipeline
+  formalized in PIPELINE.md + pipeline_map.html (all judges drawn).
+
+## R14 — CLEAN METHOD RERUN (settled design §0a.8) — paused BEFORE J6 for user approval (2026-07-26/27)
+- **What / paths:** the derived layer was RESET (loop-era products
+  discarded per user: "we don't want products from methods that aren't
+  what we want") and the settled chain re-run: build_judged (self-checks
+  PASS, mat-support + evidence fixes in) → J3 from cache (9/9, 0 calls)
+  → **J4 ONCE** (1 call, 12 flags, 4 existence-disputed:
+  obj_059/091/138/139). J6 (terminal: resolution + appearance in one
+  pass, `describe_nodes.py` v3 with judge_cases folded in) is BUILT and
+  its artifacts are ready, NOT run. Review artifacts:
+  `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week7\entangled_gen\out\bedroom_marble\graph\case_sheets\`
+  (cases_existence.png, cases_reexamine_1/2.png + verbatim prompts) and
+  `...\graph\appearance_sheets\` (11 sheets + manifest).
+- **Why:** methodological cleanliness — the file must be produced BY the
+  drawn pipeline (map = authority, new rule pipeline-viewer-authority),
+  not by the revoked loop. J1/J5 verdicts (record-side, R12-approved)
+  and the J3/appearance caches were legitimately reused.
+- **Note (honest):** J4's fresh run re-found the core suspects but NOT
+  identically to the loop era (e.g. the ghost chair obj_109 is now a
+  re-examine pair, not an existence flag; obj_035/obj_096 deep-"picture"
+  boxes are newly flagged, single-target → they SHIP unadjudicated).
+  Run-to-run variance is inherent; whatever J6 leaves ships.
+- **J6 queue if approved:** existence 4 · rename 0 · re-examine 5
+  (→ ~3 resolution calls, concurrent) + appearance (~86 mostly cache
+  hits; fresh sheets only for phase-A-renamed/confirmed clusters).
+  Est. 4–6 calls total, then SHIP — no re-scan.
+- **USER VERDICT (run J6 terminal pass):** **APPROVED AND RUN**
+  (2026-07-27; user first manually inspected the J5 verdicts + the J4
+  flag table). J6 results, 4 calls total: existence — obj_138/obj_139
+  REAL picture frames (mitred frame corners visible; door-containment =
+  geometry error) · obj_059/obj_091 NOT_REAL (artwork content inside
+  picture frames, not objects) · 0 unclear. Edges — 5/5 REINTERPRET with
+  suspect boxes for placement: lamp≁curtain (curtain box oversized) ·
+  basket under chair's leg-space (chair box) · AC wall-mounted, bookshelf
+  alignment coincidental (bookshelf box) · two pictures hung 6 cm apart,
+  not stacked · book ON shelf, not PART_OF (obj_023 box; model returned a
+  tile label as suspect once — validator added, verdict patched).
+  Appearance — 90/90 (86 cache hits + 1 fresh sheet). SHIPS OPEN:
+  obj_035/obj_096 deep-box flags + obj_083 floating plant (placement
+  work orders). **bedroom_marble scene_graph.json is now produced
+  end-to-end by the drawn pipeline: record → J1∥J5 → J2 → J3 → J4 once
+  → J6 once → ship.**
 
 _(further entries appended as artifacts land)_

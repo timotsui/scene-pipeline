@@ -7,16 +7,31 @@ protocol at bottom, checkpoints are hard stops unless autonomous mode is
 explicitly authorized).
 
 - Created: 2026-07-22
-- Current state: 🔴 CHECKPOINT R1 — record review WAITING ON USER
-  (2026-07-26 late; REVIEW_LOG R10, rebuilt per the §0a.0 amendment). The
-  design is settled (**record, then judge** — §0a; §0a.0: NO pre-merges,
-  dedup stage retired) AND pass 1 is BUILT: record builder (f30 → 108
-  nodes) + edges (incl. 14 SAME_CANDIDATE) + the viewer "graph record"
-  layer (progress rows R-0..R-2 below). Judge passes gated on R1. G1 (analyzer-seeded graph
-  review) is MOOT — v1 archived as scene_graph_v1.json / graph/crops_v1;
-  its Steps 1–4 remain DONE as machinery/lessons (edge thresholds,
-  appearance batching + cache, review-page builder).
+- Current state: ✅ **JUDGE CHAIN RUN END-TO-END (2026-07-26 follow-up
+  session)** — R1 passed → R12 approved → J0–J5 + J2/J3/J4 all built AND
+  run on bedroom_marble (progress log below; §0a.7 = the formal design):
+  102 det nodes → 92 clusters, 9 canonical names, floaters 3/3 vs user
+  ground truth, coherence 15 flags / 6 existence-disputed. User verdict
+  "good enough for me for now" (R13). REMAINING: J6 appearance rework,
+  viewer judged layer, formal G2, consumer wiring. Formalized in
+  PIPELINE.md ("Scene-graph stages") + pipeline_map.html (judge lane —
+  every judge drawn as its own node).
+- **DESIGN SETTLED 2026-07-26 (latest, §0a.8 — supersedes the earlier
+  escalation-to-placement split AND the closure-loop experiment):**
+  J1–J5 unchanged · J4 runs ONCE (flags = a queue, never a re-scan
+  trigger) · **J6 = the single terminal pass: appearance + resolution of
+  J4's flags together, once — whatever it doesn't settle SHIPS to the
+  placement stage as work orders** (suspect boxes; box-affecting moves
+  stay placement's job). The iterative coherence↔case loop that ran on
+  bedroom_marble today is REVOKED as a design (its verdicts stand; see
+  §0a.8 + memory judge-loop-effort-allocation).
 - Scene: bedroom_marble first (the fully-instrumented scene)
+- **GATES ARE DEV-TIME SCAFFOLDING (user ruling 2026-07-26):** every
+  review stop in this doc exists only while the machinery is designed and
+  validated on bedroom_marble. The FINAL pipeline has ZERO user gates —
+  record → judge → judged graph → downstream runs unattended on every
+  scene; production substitutes = loud self-checks/invariants, verdict
+  provenance for after-the-fact audit, viewer as optional inspection.
 
 ## 0a. SETTLED 2026-07-26 (pm) — what the scene graph IS: record, then judge
 
@@ -128,6 +143,131 @@ behind it. Two canonical files would drift; there is one.
 4. Judge passes: same-vs-part → naming → appearance.
 5. **CHECKPOINT G2 — judged-graph review (user)**, then consumer wiring
    (package + C1 read the graph).
+
+### 0a.7 JUDGE SUB-STEPS (planned 2026-07-26 post-R1 — supersedes the
+### 3-pass sketch in §0a.3; adds the COHERENCE judge)
+
+Queue sizes measured on the bedroom_marble record: 14 SAME_CANDIDATE pairs
+(10 confident / 4 gray; NOTE obj_031/033/055 rug-mat-yogamat form a 3-clique
+→ merging must be transitive, and 3 pairs are door↔window = arch-typing
+calls), 0 pre-merge naming disputes (disputes ARISE from merges of
+differently-labeled nodes), 3 NEAR floaters, ~102 nodes to describe.
+Estimated total ~25–35 claude.exe calls/scene. All passes: subscription
+bridge (describe_nodes.py pattern — ANTHROPIC_API_KEY stripped from child
+env, strict-JSON contract, malformed → one firmer retry), verdicts ADDITIVE
+with provenance (model, cache key, reason), conservative degradation
+(no LLM ⇒ unresolved/provisional, never a guess), nothing scene-specific in
+any prompt (node-local crops + numbers only).
+
+- **J1 — pair judge (`graph/judge_pairs.py`).** One cached call per
+  SAME_CANDIDATE edge: both nodes' crops + label lists + the edge's numbers
+  (IoU, containment, zone, height gap). Verdict SAME / PART_OF / DISTINCT +
+  reason, written onto the edge. Cache key = edge + evidence hash. ~14
+  calls, 3-way concurrent. DEV STOP after first run: user eyeballs the 14
+  verdicts (one bad merge would cascade into naming).
+- **J2 — judged-view reducer (`graph/build_judged.py`, deterministic, zero
+  LLM).** Applies verdicts: union-find over SAME verdicts (handles the
+  3-clique), merged clusters get union label multiset + union evidence,
+  geometric edges re-derived over merged boxes. The judged view is
+  derivable from record + verdicts at any time; the record is never edited.
+- **J3 — naming (`graph/judge_names.py`).** Every post-merge cluster whose
+  members disagree (chair/office-chair, lamp/ceiling-light, door/window ×3,
+  shelf/bookshelf …) → canonical name from crops + cheap facts (height
+  above floor, size, IN_WALL footprint). Batched (~10 nodes, 2–3 calls).
+- **J4 — COHERENCE judge (`graph/judge_coherence.py`) — NEW (user,
+  2026-07-26): the "does it make sense" pass. TEXT-ONLY, no images.**
+  - Input = the GRAPH DIGEST: deterministic flatten of the judged view —
+    one room line (dims, floor/ceiling), one line per node (id, judged
+    name, size, height above floor, n views, peak score), one line per
+    edge (type + numbers, post-merge). ~100 nodes + ~200 edges ⇒ fits in
+    **1–2 calls per scene** (chunk by spatial region only if a scene
+    outgrows one prompt).
+  - Ask: "inventory of a real room — flag every fact that doesn't make
+    sense." Three families: implausible RELATION (picture IN window),
+    dubious EXISTENCE (flagged relation + single weak detection — motivating
+    case obj_138 'picture', 1 view @ 0.32, 100% inside the door/window
+    pair), implausible LABEL-FOR-GEOMETRY (30 cm 'bed', 'rug' at 2 m).
+  - Output: strict-JSON flags `{target (node|edge id), issue, hypotheses
+    [nonexistent | mislabeled | wrong-edge | plausible-because…],
+    severity, suggested_action ∈ {existence_disputed, rename_candidate,
+    reexamine_with_crops, none}}`. Validator drops flags whose target id
+    doesn't exist (logged). Write-back: additive `coherence` block on
+    flagged items + top-level coherence_meta; a node flagged nonexistent
+    gets `existence: disputed` in the judged view — NEVER deleted;
+    downstream consumers skip disputed nodes. Cache keyed by digest sha256.
+  - v2 (parked): flags with `reexamine_with_crops` feed a targeted
+    vision call — cheap-text-triage → expensive-vision-only-where-flagged
+    funnel, sharing machinery with the NEAR pass.
+- **J5 — NEAR resolution (`graph/judge_near.py`).** The 3 caveated NEAR
+  edges: crops + recorded alternatives + truncation evidence → verdict
+  picks a real edge (ON floor / ON supporter / ATTACHED wall|parallel
+  surface) or stays unresolved. **ACCEPTANCE TEST = the user's R10 ground
+  truth:** obj_001 plant → ON floor (occluded base; 2/4 members
+  truncated), obj_005 monitor → supported by desk (undetected arm),
+  obj_096 picture → wall-attached. Prereq (record-side, evidence not
+  conclusion): surface member truncation counts onto the NEAR edge.
+  Independent of merges ⇒ can run alongside J1; its 3 first-run verdicts
+  reviewed at the same dev stop.
+- **J6 — appearance (`describe_nodes.py` REWORK).** Two required changes
+  before running: (a) adapt to the record schema (module still reads
+  retired analyzer ana_XXX nodes; old cache does NOT carry over — node ids
+  and crops changed), (b) land the §3a speed fixes FIRST (contact-sheet
+  batching + 3–4 concurrent calls → est. 2–4 min/scene). Runs over judged
+  (post-merge, non-disputed) nodes.
+
+EXPERIMENT (2026-07-26, user-directed, after the J4 run): can TEXT alone
+resolve the 7 reexamine_with_crops escalations if given RICHER numbers
+than the digest (full footprint ranges + vertical spans + each node's
+other edges)? One sonnet call, no images, ground truth held out of the
+prompt. Result: on the one user-verifiable case (obj_054 basket, truth =
+"under the chair") the text LLM answered exactly that, WITH the correct
+mechanism ("chair box spans the wheeled base and empty leg-space to the
+floor; basket footprint falls inside without touching"). All 7 answers
+were specific box-level mechanisms (obj_066 "book" = a whole shelf row;
+curtain box drawn over the desk; two pictures hung one above the other,
+6 cm apart). IMPLICATION for the escalation tier: try text-with-full-
+coordinates FIRST, vision only for what survives — pending user
+verification of the other 6 answers. Script + results:
+scratchpad/coherence_text_escalation_experiment.py / ..._results.json
+(session scratchpad; promote into graph/ if adopted).
+
+Order: J1 ∥ J5 → dev stop (17 verdicts) → J2 → J3 → J4 → J6 → G2
+(judged-graph review = the LAST dev gate; after it the judged graph is the
+downstream contract and a new scene runs the whole chain unattended).
+
+### 0a.8 AMENDMENT 2026-07-26 (late) — NO CLOSURE LOOP; J6 absorbs J4's
+### flags (user correction: "the loop is not the right place")
+
+What happened first: after J4's first run, a **closure loop** was built and
+run on bedroom_marble — `graph/judge_cases.py` (crop adjudication of J4's
+flags: existence / rename / re-examine queues) alternating with whole-room
+coherence re-scans until convergence (5 scans, flag counts 15→10→5→13→4,
+~20+ calls). It WORKED (see the results log below) but the user revoked
+the design: effort allocation inverted vs error cost (most calls went to
+"book"→"books" polish), and iteration lived in the wrong place — see
+memory `judge-loop-effort-allocation.md`.
+
+**THE SETTLED DESIGN:**
+- **J1–J5 stay exactly as specified.** One pass each. No loop anywhere.
+- **J4 runs ONCE.** Its flags are a queue, not a trigger for re-scans.
+- **J6 = the single terminal pass: appearance + J4-flag resolution
+  together.** It already opens every object's crops, so adjudication
+  (existence / rename / edge re-examine) rides along in the same pass.
+  Runs once. **Whatever it doesn't settle SHIPS** — unresolved flags go
+  to the placement stage as work orders (suspect boxes etc.).
+- Implementation TODO (before the next scene): fold judge_cases.py's
+  queue machinery INTO describe_nodes.py; judge_cases.py then retires
+  (banner'd, kept on disk). The map's judge lane (J4 → J6, straight
+  down) is the authoritative picture.
+
+**bedroom_marble final state (the loop's edits STAND; user: leave as-is):**
+6 rejected (obj_059/062/091/093/109/140 — ghosts, duplicates, artifacts),
+3 confirmed real (obj_138/139 picture frames — the "phantom" pictures were
+REAL, box overlap was the artifact; obj_083 small box), ~17 renames
+(book-rows → "books", binders, basket; obj_062 AC then rejected), 11 edge
+adjudications (incl. monitor-ON-desk CONFIRM, basket-in-cubby CONFIRM).
+Ships open: obj_023 disputed (shelf-board vs shelf) + 4 residual
+conf-0.25–0.45 box-geometry flags → placement work orders.
 
 ## 0. NEW DECISION 2026-07-26 (pm) — the graph inherits ALL semantic judgment
 
@@ -277,8 +417,16 @@ bedroom_marble never re-pays):
 | R-1 | record builder (§0a.6 step 2) | **DONE (rebuilt per §0a.0)** | `graph/build_graph.py` = RECORD builder reading f30 directly (v1 archived: `scene_graph_v1.json`, `graph/crops_v1`): **108 nodes (102 det + 6 envelope)**, nothing pre-merged, full label multisets, evidence pointers + 465 referenced member crops from rig views, prompt.txt in lineage, amodal/yaw = null, downstream state OUT. `graph/build_edges.py`: label-blind IN_WALL/ATTACHED (curtain rule dropped), **SAME_CANDIDATE computed from geometry (14 = 10 confident + 4 gray)**, z_fabricated retired; edges ON 41 / IN 105 / IN_WALL 29 / ATTACHED 3 / INTERP 31; frame self-check PASS (bed+rug ON floor, nothing on ceiling) | 2026-07-26 |
 | R-2 | record review artifact | **DONE** | viewer "graph record" layer (main HUD row; v1 toggle retired): nodes colored by open-question status (green single-label / amber naming / pink same-candidate), SAME_CANDIDATE lines on by default, click card = the RECORD card (label multiset w/ scores, dedup lineage + absorbed boxes, open questions, member crops, edge list) | 2026-07-26 |
 | R-3 | room shell + no-floater invariant | **DONE** | measured wall/ceiling/floor planes in the record (PLAN_ROOM_SHELL.md, R11); USER RULE 07-26: "no standing floaters" — every detection node must hold ≥1 structural edge (ON/IN/IN_WALL/ATTACHED); the 3 isolated nodes get an explicit **NEAR** fallback edge (status unresolved, caveated, with deduped alternatives incl. the floor/support runners-up) — judge resolves; invariant enforced in the self-check (PASS) | 2026-07-26 |
-| **R1** | **CHECKPOINT — record review (user)** | **🔴 WAITING ON USER** | REVIEW_LOG **R10** (+ R11 shell): viewer :8321 → "graph record"; also re-opens the dedup adoption verdict (R9) | 2026-07-26 |
-| J | judge passes (§0a.6 step 4: same-vs-part → naming → appearance) | gated on R1 | — | |
+| **R1** | **CHECKPOINT — record review (user)** | **✅ PASSED** | R10 + R11 verdicts in REVIEW_LOG ("all the graph nodes seems good"); 3 NEAR floaters user-diagnosed = J5 ground truth; method ruling: floater-type cases go to the judge, NOT record heuristics | 2026-07-26 |
+| J0 | record-side prereq: truncation evidence onto NEAR edges | **DONE** | build_edges.py NEAR block: `members_truncated: [n, m]` per edge; rebuilt bedroom_marble (edge counts unchanged, self-check PASS): plant 2/4, monitor 0/3, picture 3/4 truncated | 2026-07-26 |
+| J1 | pair judge — same-vs-part over 14 SAME_CANDIDATE (§0a.7) | **FIRST RUN DONE — 14/14 judged, 0 unresolved** | `graph/judge_pairs.py`; verdicts: **11 SAME / 3 PART_OF / 0 DISTINCT** — all 3 door↔window pairs = one DOOR detected twice; mat triple transitively consistent (3× SAME); PART_OF: obj_068 books-cluster part of shelf obj_023, obj_080 = upper section of bookshelf obj_043, obj_047 = shelf segment of obj_088. 14 sonnet calls ≈ 6 min. DEV STOP: verdicts await user | 2026-07-26 |
+| J2 | judged-view reducer (deterministic) | **DONE (R12 approved → built + run)** | `graph/build_judged.py` → `graph["judged"]` (one file, §0a.4): 102 det nodes → **92 clusters** (9 merged incl. the mat 3-clique; 3 PART_OF; 0 distinct), edges remapped/deduped, NEAR verdicts materialized (plant ON floor, monitor ON desk, picture IN_WALL). EDGE CASE found+fixed: the mat triple's ON edges all pointed at duplicate twins → vanished as internal → **post-merge support re-derivation** with the record's own thresholds (mat → ON floor, gap −0.017 m). Self-checks PASS (partition + no-floater) | 2026-07-26 |
+| J3 | naming over post-merge disputes | **DONE — 9/9 named** | `graph/judge_names.py` (versioned template, batch 5, cache): office chair · door ×3 (all door/window disputes → door, hinges/handles cited) · **ceiling light (the R9 fix)** · bookshelf ×2 · side table · yoga mat. All chosen_from_candidates, 2 calls | 2026-07-26 |
+| J4 | COHERENCE judge — "does it make sense" (text-only, NEW) | **DONE — 15 flags, 6 existence-disputed, 1 call** | `graph/judge_coherence.py`: 259-line room digest → ONE sonnet call. **Caught the motivating case: obj_138 AND obj_139 (pictures inside doors) → disputed**; also obj_059 tiny "lamp" inside a picture, obj_091 "toy" inside a picture, obj_109 ghost office chair (2 views @ .30, basket inside it), obj_083 floating plant; 7 reexamine_with_crops (v2 escalation queue, recorded not consumed); 2 rename_candidates (obj_062 1 m "lamp" on ceiling; obj_008 small bed). Apply rule: edge-targeted existence flags dispute the edge's SUBJECT node. Flags additive; record untouched | 2026-07-26 |
+| J5 | NEAR resolution (3 floaters) | **DONE — v2 prompt: 3/3 MATCH GROUND TRUTH** | v1 run scored 2/3: plant → shelf ✘, reason misread gap −1.32 m via the prompt's own gloss "negative = box overlaps it". USER RULING → **code interprets the numbers, the model interprets the pixels**: `judge_near.py` v2 = deterministic menu builder (classify(): plausible ≤0.25 m / floating / RULED OUT ≥0.25 m-below; SAME-verdict dedupe so one object can't hold two menu slots), fixed versioned template (PROMPT_VERSION salted into the cache hash — added to judge_pairs.py too), `--selftest` = zero-LLM regression on the plant menu (PASS). Rerun 3 calls: plant → ON floor ✔ ("pot base visible resting on the floor", underreach true) · monitor → ON desk ✔ · picture → IN_WALL ✔ | 2026-07-26 |
+| J6 | appearance rework (§3a fixes + record schema) | **DONE — v2 RUN: 86/86 in 11 calls** | `describe_nodes.py` v2: judged clusters (canonical names, 6 disputed SKIPPED), CONTACT SHEETS (batch of 8 → one grid PNG → one image read/call, ×3 concurrent; §3a landed) + `--sheets-only` review-first mode (user eyeballed 11 sheets + verbatim prompt before any calls). 0 failures (1 firmer retry). **3 label disagreements, cross-corroborating:** obj_027 "picture" → crops show BOOKS (matches the coherence flag + text experiment on obj_066 = shelf row) · obj_062 "lamp" → plain white box (matches coherence rename flag) · obj_075 "basket" → book/notepad-like (NEW). Cache appearance_cache_v2.json per-cluster | 2026-07-26 |
+| CR | **CLEAN METHOD RERUN (§0a.8)** — user rejected loop-era products | **DONE — SHIPPED** | derived layer reset → build_judged PASS → J3 from cache (0 calls) → J4 ONCE (12 flags) → user inspected J5 verdicts + J4 flags (R14) → **J6 TERMINAL RUN, 4 calls**: obj_138/139 REAL picture frames · obj_059/091 NOT_REAL · 5/5 edges REINTERPRET w/ suspect boxes · appearance 90/90 (86 cache hits). Ships open: obj_035/obj_096 deep boxes + obj_083 (placement work orders). **The file is now produced end-to-end by the drawn pipeline.** Total clean-run spend: 5 calls | 2026-07-27 |
+| **G2** | **CHECKPOINT — judged-graph review (user; LAST dev gate)** | **✅ PASSED — HANDED OFF** | user (2026-07-27): "this is the point to hand off to the next stage which is compose and loop". Review basis: R10–R14 inspections (record, floater ground truth, pair verdicts, J4 flag table, J5/J4 manual inspections) + the viewer's new JUDGED overlay (markers ✗/✓/→, JUDGED card section, edge verdicts, HUD summary) available for further eyeballing anytime. **The judged graph is now the downstream contract; next effort = COMPOSE + LOOP stage (rework C1–C7 against `graph["judged"]`, skip rejected/disputed, consume the placement work orders)** | 2026-07-27 |
 
 ## 5. Resume protocol
 

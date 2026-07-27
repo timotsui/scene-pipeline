@@ -359,6 +359,11 @@ def main():
                                "via_parallel_surface_raw": ps["value_raw"]}))
         cands.sort(key=lambda c: c[0])
         _, hint, target, ev = cands[0]
+        # truncation facts (J0, user 07-26): a box whose members were cut
+        # off at view edges may under-reach its real extent (occluded plant
+        # base) — evidence the judge weighs, not a conclusion
+        members = n.get("evidence", {}).get("members", [])
+        n_trunc = sum(1 for m in members if m.get("truncated"))
         # runners-up recorded too — a straddled parallel surface scores
         # distance 0 even when "on the floor, gap 0.19" is the truer
         # story; one candidate per (relation, target), judge decides
@@ -371,7 +376,8 @@ def main():
             if len(alts) == 3:
                 break
         add("NEAR", n["id"], target,
-            {"relation_hint": hint, **ev, "alternatives": alts},
+            {"relation_hint": hint, **ev, "alternatives": alts,
+             "members_truncated": [n_trunc, len(members)]},
             ["fallback_connection — outside normal thresholds; for the "
              "judge"], status="unresolved")
     isolated_resolved = [{"id": n["id"], "label": n["label"]}

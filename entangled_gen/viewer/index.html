@@ -17,6 +17,10 @@
   #cursor { color: #9ab; }
   .dim { color: #889; }
   button { font: 11px monospace; margin-right: 5px; }
+  #search { font: 11px monospace; background: #1d2027; color: #ddd;
+            border: 1px solid #445; border-radius: 3px; padding: 2px 5px; }
+  .srow { cursor: pointer; padding: 0 3px; border-radius: 3px; }
+  .srow:hover { background: rgba(255,255,255,.10); }
 </style>
 </head>
 <body>
@@ -64,6 +68,11 @@
        <button id="placeBtn">place (P)</button>
        <button id="measBtn">measure (M)</button>
        <button id="bmBtn">bookmark (B)</button><span id="msg"></span></div>
+  <div>find: <input id="search" placeholder="obj_065 · toy · lamp"
+       autocomplete="off" spellcheck="false" style="width:200px">
+       <span id="searchN" class="dim"></span>
+       <span class="dim">/ focuses · Enter = go, again = next · Esc clears</span></div>
+  <div id="searchRes" style="max-height:150px;overflow-y:auto"></div>
   <div class="dim">selected: arrows move (shift=×5) · PgUp/Dn height · Q/E rotate ·
       Del remove · Esc deselect</div>
   <div class="dim">grid: fine 0.25 m, bright 1 m · box colors: green ok ·
@@ -626,10 +635,15 @@ $('showCams').onchange = e => camGroup.visible = e.target.checked;
 // toggles (edges to envelope PLANE nodes project the detection center onto
 // the plane). Click a node box -> floating RECORD card (bottom right):
 // label multiset with scores, dedup lineage, evidence crops (served via
-// /graph_crops/), edge list with numeric evidence. NO judgments here —
-// the judge pass adds verdicts later. The analyzer-seeded v1 layer is
-// archived (scene_graph_v1.json). Everything here is additive: no other
-// layer or handler is touched.
+// /graph_crops/), edge list with numeric evidence.
+// JUDGED OVERLAY (2026-07-27, additive): graph["judged"] in the same file
+// carries the judge chain's verdicts (J1-J6, PLAN_SCENE_GRAPH.md §0a.8) —
+// box markers show pixel-verdicts (✗ not-real / ✓ confirmed / → canonical
+// rename), the record card gains a JUDGED section (cluster, final name,
+// existence + appearance verdicts, provenance), and edge rows show case
+// verdicts. The RECORD data underneath stays untouched, as always.
+// The analyzer-seeded v1 layer is archived (scene_graph_v1.json).
+// Everything here is additive: no other layer or handler is touched.
 const graphGroup = new THREE.Group(); worldGroup.add(graphGroup);
 graphGroup.visible = false;
 const G_CAT_COL = { clean: 0x33ee66, naming: 0xffb020, same_cand: 0xff5ad1,
@@ -644,6 +658,7 @@ const G_EDGE_COL = { ON: 0x00e5ff, IN: 0x3c82e6, IN_WALL: 0x8844dd,
 const gHex = c => '#' + c.toString(16).padStart(6, '0');
 const gNodeEntries = [];        // {n, grp, cat}
 let gSel = null;
+let gReveal = null;             // set once the graph loads; used by the search bar
 const gPickCycle = { key: '', i: 0 };   // same-spot reclick cycling
 // click-highlight state: neighbors tinted, selected node's edges drawn
 // bright in gConnGroup, all batched edge lines dimmed meanwhile
@@ -678,6 +693,18 @@ $('showGraph').onchange = e => {
 try {
   const gj = await (await fetch('scene_graph.json?' + sq)).json();
   const gNodes = {}; (gj.nodes || []).forEach(n => gNodes[n.id] = n);
+  // ---- judged view (graph["judged"]) lookup tables ----
+  const gJ = gj.judged || {};
+  const gClusterOf = {};          // member id -> its judged cluster
+  (gJ.nodes || []).forEach(jn =>
+      (jn.members || [jn.id]).forEach(m => gClusterOf[m] = jn));
+  const gCaseByPair = {};         // 'a|b' (sorted) -> case verdict
+  (gJ.edges || []).forEach(je => {
+    if (je.case_verdict)
+      gCaseByPair[[je.a, je.b].sort().join('|')] = je.case_verdict;
+  });
+  const gFlagsOf = id => (gJ.coherence_flags || []).filter(f =>
+      (f.target || '').split('->').includes(id));
   const gEdgesByNode = {};
   for (const e of (gj.edges || [])) {
     (gEdgesByNode[e.a] = gEdgesByNode[e.a] || []).push(e);
@@ -734,6 +761,16 @@ try {
     if (cat === 'naming') marks.push(['? naming', '#ffb020']);
     if (cat === 'same_cand') marks.push(['? same/part', '#ff5ad1']);
     if (gFloat.has(n.id)) marks.push(['~ floating', '#88aacc']);
+    // judged-overlay markers (pixel verdicts from the judge chain)
+    const jn0 = gClusterOf[n.id];
+    if (jn0) {
+      if (jn0.existence === 'rejected')
+        marks.push(['✗ judged not-real', '#ff4444']);
+      else if (jn0.existence === 'confirmed')
+        marks.push(['✓ pixel-confirmed', '#33ee66']);
+      if (jn0.name && jn0.name !== n.label && jn0.id === n.id)
+        marks.push(['→ ' + jn0.name, '#7fd4ff']);
+    }
     marks.forEach(([t, c], i) => {   // same +y label offset as the other layers
       const sp = wideSprite(t, c, 0.6);
       sp.position.set(0, n.geometry.size[1] / 2 + 0.06 + i * 0.1, 0);
@@ -797,6 +834,14 @@ try {
   // ---- click-highlight plumbing ----
   const gEntryById = {};
   gNodeEntries.forEach(en => gEntryById[en.n.id] = en);
+  gReveal = id => {   // search-bar hook: select a record node as if clicked
+    const en = gEntryById[id];
+    if (!en) return;
+    gClear();
+    gSel = en;
+    setHighlight(en.grp, true, 0xffee44);
+    gShow(en);
+  };
   gConnGroup = new THREE.Group();
   graphGroup.add(gConnGroup);
   {
@@ -825,12 +870,31 @@ try {
           '<input type="checkbox" checked' +
           ' id="gEdge_' + t + '"> ' + t + ' (' + (gEdgeCounts[t] || 0) +
           ')</label> ';
-  gh += '<div class="dim">RECORD layer — no judgments yet: amber box = open ' +
+  // judged-overlay summary (present when the judge chain has run)
+  if ((gJ.nodes || []).length) {
+    const jRej = gJ.nodes.filter(x => x.existence === 'rejected');
+    const jConf = gJ.nodes.filter(x => x.existence === 'confirmed');
+    const jOpen = (gJ.coherence_flags || []).filter(f => !f.resolution);
+    gh += '<div><b style="color:#7fd4ff">JUDGED</b> (record + verdicts, ' +
+          '§0a.8): ' + gJ.nodes.length + ' clusters · ' +
+          '<span style="color:#ff4444">✗ ' + jRej.length +
+          ' not-real (' + jRej.map(x => x.id).join(', ') + ')</span> · ' +
+          '<span style="color:#33ee66">✓ ' + jConf.length +
+          ' pixel-confirmed</span> · ' +
+          '<span style="color:#ff9f40">' + jOpen.length +
+          ' flags ship open → placement</span> · appearance on ' +
+          gJ.nodes.filter(x => (x.appearance || {}).description).length +
+          '</div>';
+  }
+  gh += '<div class="dim">RECORD layer + JUDGED overlay: amber box = open ' +
         'naming question, pink box = open same-vs-part question · ' +
-        '~ floating = no ON/IN edge (wall art etc., honest) · ALL edge ' +
+        '~ floating = no ON/IN edge (wall art etc., honest) · ✗/✓/→ above ' +
+        'a box = judge-chain pixel verdicts (not-real / confirmed ' +
+        '/ canonical rename) · ALL edge ' +
         'types drawn faint by default (explicit graph; untick to hide a ' +
-        'type) · click a box = its record card + ITS edges at full ' +
-        'strength, neighbors tinted blue, the rest stay whisper-faint · ' +
+        'type) · click a box = its record card (now with a JUDGED ' +
+        'section: cluster, final name, verdicts, appearance) + ITS edges ' +
+        'at full strength, neighbors tinted blue · ' +
         'edge colors ≠ box colors · Esc closes</div>';
   $('graphRow').innerHTML = gh;
   const applyCats = () => gNodeEntries.forEach(en =>
@@ -930,6 +994,44 @@ try {
     if ((n.open_questions || []).length)
       h += '<div style="color:#ffb020">open: ' +
            n.open_questions.join(', ') + ' — awaits the judge pass</div>';
+    // ---- JUDGED section: the judge chain's verdicts for this node ----
+    const jn = gClusterOf[n.id];
+    if (jn) {
+      const exCol = { confirmed: '#33ee66', rejected: '#ff4444',
+                      disputed: '#ffb020' }[jn.existence] || '#9fb4c8';
+      h += '<div style="border-top:1px solid #3a4a5a;margin-top:6px;' +
+           'padding-top:4px"><b style="color:#7fd4ff">JUDGED</b> — ' +
+           'cluster ' + jn.id +
+           ((jn.members || []).length > 1
+               ? ' <span class="dim">(merged: ' + jn.members.join('+') +
+                 ')</span>' : '') +
+           ' · name <b>' + gEsc(jn.name) + '</b>' +
+           ((jn.naming || {}).source
+               ? ' <span class="dim">[pixel-checked' +
+                 (jn.naming.was ? ', was "' + gEsc(jn.naming.was) + '"' : '')
+                 + ']</span>' : '') +
+           (jn.existence
+               ? ' · <span style="color:' + exCol + '">existence: ' +
+                 jn.existence + '</span>' : '') + '</div>';
+      if ((jn.existence_verdict || {}).reason)
+        h += '<div class="dim">pixel check: ' +
+             gEsc(jn.existence_verdict.verdict) + ' — ' +
+             gEsc(jn.existence_verdict.reason) + '</div>';
+      if ((jn.appearance || {}).description)
+        h += '<div class="dim">looks: "' +
+             gEsc(jn.appearance.description) + '" · ' +
+             gEsc((jn.appearance.colors || []).join('/')) + ' · ' +
+             gEsc(jn.appearance.material) +
+             (jn.appearance.label_agreement === false
+                 ? ' · <span style="color:#ffb020">label doubted</span>'
+                 : '') + '</div>';
+      const fl = gFlagsOf(n.id).filter(f => !f.resolution);
+      if (fl.length)
+        h += '<div style="color:#ff9f40">ships open (' + fl.length +
+             '): ' + fl.map(f => gEsc(f.kind) + ' — ' +
+             gEsc(f.issue).slice(0, 90)).join(' · ') +
+             ' <span class="dim">→ placement work order</span></div>';
+    }
     const mems = ((n.evidence || {}).members || []).filter(m => m.crop);
     if (mems.length)
       h += '<div>' + mems.map(m =>
@@ -947,11 +1049,17 @@ try {
         const out = e.a === n.id, oid = out ? e.b : e.a, on = gNodes[oid];
         const arrow = e.type === 'INTERPENETRATES' ? '↔' : (out ? '→' : '←');
         const dim = (e.caveats || []).includes('z_fabricated');
+        const cv = gCaseByPair[[e.a, e.b].sort().join('|')];
         h += '<div style="font-size:12px' + (dim ? ';opacity:.5' : '') + '">' +
              '<span style="color:' + gHex(G_EDGE_COL[e.type] ?? 0xffffff) +
              '">' + e.type + '</span> ' + arrow + ' ' + oid +
              (on ? ' ' + gEsc(on.label) : '') +
-             ' <span class="dim">(' + gEv(e) + ')</span></div>';
+             ' <span class="dim">(' + gEv(e) + ')</span>' +
+             (cv ? '<br><span style="color:#7fd4ff">&nbsp;&nbsp;judged: ' +
+                   gEsc(cv.edge_verdict) + '</span> <span class="dim">' +
+                   gEsc((cv.true_arrangement || '').slice(0, 110)) +
+                   (cv.suspect_box ? ' · suspect box: ' +
+                    gEsc(cv.suspect_box) : '') + '</span>' : '') + '</div>';
       }
       if (el.length > 24)
         h += '<div class="dim">… +' + (el.length - 24) +
@@ -1391,6 +1499,119 @@ addEventListener('keydown', e => {
   }
   if (dirty) { e.preventDefault(); push(); }
 });
+
+// ---------------- object search ----------------
+// HUD search bar over the VISIBLE box sets only (user 07-26): method box
+// sources whose checkbox is on, graph record nodes when the graph layer +
+// their category toggle are on (id + primary label + full label multiset),
+// and live placements. Substring match, all terms must hit ("toy box"
+// finds labels containing both). Activating a hit selects the object
+// exactly like a click would and flies the camera to frame it (RAW
+// coords mapped through the display rotation, like everything else).
+// Purely additive — no other layer/handler touched.
+{
+  const sIn = $('search'), sRes = $('searchRes'), sN = $('searchN');
+  const sEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function frameEntryGrp(grp) {
+    // approach from the camera's current horizontal direction, hover a
+    // little above the box; setPose keeps the near-eye orbit-pivot feel
+    worldGroup.updateMatrixWorld();
+    const c = grp.getWorldPosition(new THREE.Vector3());
+    const g = grp.userData.pick.geometry.parameters;
+    const r = Math.max(0.35, Math.hypot(g.width, g.height, g.depth) / 2);
+    const dir = new THREE.Vector3().subVectors(camera.position, c);
+    dir.y = 0;
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+    dir.normalize();
+    const eye = c.clone().addScaledVector(dir, r * 2.2 + 0.7);
+    eye.y = c.y + Math.max(0.4, r * 0.8);
+    setPose(eye.toArray(), c.toArray(), camera.fov);
+  }
+  function searchIndex() {   // rebuilt per query — VISIBLE layers only
+    const items = [];
+    for (const b of boxSrcs) {
+      if (!b.group.visible) continue;      // hidden method sources excluded
+      for (const e of b.entries)
+        items.push({
+          text: ((e.o.id ?? '') + ' ' + (e.o.label ?? '')).toLowerCase(),
+          id: e.o.id ?? '', label: e.o.label ?? '',
+          tag: b.s.label, color: b.s.color,
+          act: () => {
+            sel = { kind: 'man', entry: e, src: b };
+            applySelection();
+            frameEntryGrp(e.grp);
+          } });
+    }
+    if (graphGroup.visible) for (const en of gNodeEntries) {
+      if (!en.grp.visible) continue;       // category toggled off
+      const alts = [...new Set((en.n.labels || []).map(L => L.label))]
+          .filter(a => a !== en.n.label);
+      items.push({
+        text: (en.n.id + ' ' + en.n.label + ' ' + alts.join(' ')).toLowerCase(),
+        id: en.n.id,
+        label: en.n.label + (alts.length ? ' (' + alts.join(', ') + ')' : ''),
+        tag: 'graph record', color: gHex(G_CAT_COL[en.cat]),
+        act: () => {
+          if (gReveal) gReveal(en.n.id);
+          frameEntryGrp(en.grp);
+        } });
+    }
+    placements.forEach((p, i) => items.push({
+      text: ('+ ' + p.label).toLowerCase(), id: '+', label: p.label,
+      tag: 'placement', color: '#55ff88',
+      act: () => {
+        sel = { kind: 'pl', idx: i };
+        applySelection();
+        if (plEntries[i]) frameEntryGrp(plEntries[i].grp);
+      } }));
+    return items;
+  }
+  let sHits = [], sCursor = -1;
+  function sRender() {
+    const q = sIn.value.trim().toLowerCase();
+    const terms = q ? q.split(/\s+/) : [];
+    sHits = !terms.length ? [] :
+        searchIndex().filter(it => terms.every(t => it.text.includes(t)))
+            .sort((a, b) => a.text.indexOf(terms[0]) - b.text.indexOf(terms[0]))
+            .slice(0, 30);
+    sCursor = -1;
+    sN.textContent = !q ? '' : sHits.length
+        ? sHits.length + ' match' + (sHits.length === 1 ? '' : 'es')
+        : '0 matches in the visible layers';
+    sRes.innerHTML = '';
+    sHits.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.className = 'srow';
+      d.innerHTML = '<span style="color:' + it.color + '">' + sEsc(it.id) +
+          '</span> ' + sEsc(it.label) +
+          ' <span class="dim">[' + sEsc(it.tag) + ']</span>';
+      d.onclick = () => sGo(i);
+      sRes.appendChild(d);
+    });
+  }
+  function sGo(i) {
+    if (!sHits.length) return;
+    sCursor = ((i % sHits.length) + sHits.length) % sHits.length;
+    const it = sHits[sCursor];
+    it.act();
+    msg('search: ' + it.id + ' ' + it.label + ' (' + (sCursor + 1) + '/' +
+        sHits.length + ')');
+    [...sRes.children].forEach((el, k) =>
+        el.style.background = k === sCursor ? 'rgba(255,238,68,.15)' : '');
+  }
+  sIn.oninput = sRender;
+  sIn.addEventListener('keydown', e => {
+    e.stopPropagation();   // keep Esc/Enter from reaching the global handlers
+    if (e.key === 'Enter') { e.preventDefault(); sGo(sCursor + 1); }
+    else if (e.key === 'Escape') { sIn.value = ''; sRender(); sIn.blur(); }
+  });
+  addEventListener('keydown', e => {   // "/" jumps to the search box
+    if (e.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) {
+      e.preventDefault(); sIn.focus(); sIn.select();
+    }
+  });
+}
 
 // ---------------- capture & bookmark ----------------
 async function capture() {
