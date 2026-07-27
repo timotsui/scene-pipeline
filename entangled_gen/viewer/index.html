@@ -36,7 +36,8 @@
        <label><input type="checkbox" id="showComp"> composed</label>
        <label title="collider_registered.glb — the Marble bundle's collider MESH, ICP-registered into the RAW frame (collider_register.py). Not boxes: the actual mesh surface, for judging mesh↔splat alignment"><input type="checkbox" id="showColl"> collider mesh</label>
        <label title="mesh-overlap regions from collide.py --export: bright red = over the 0.05 acceptance threshold, dim red = tolerated contact"><input type="checkbox" id="showOverlap"> collisions</label>
-       <label title="STAGE 3 — the pano funnel's END STATE and pass-1 RECORD of the scene graph (record-then-judge, PLAN_SCENE_GRAPH.md §0a): every f30 object = one node (NOTHING pre-merged — duplicates included, by design), with full label multisets + evidence crops + geometric edges; probable-duplicate pairs = SAME_CANDIDATE edges (confident IoU≥.6 / gray) and MERGING IS A JUDGE VERDICT (pass 2). Click a box = its record card. Green = single label · amber = naming open · pink = in a same-candidate pair. Sub-toggles appear below when on. THE R1 review artifact"><input type="checkbox" id="showGraph"> graph record (stage 3)</label>
+       <label title="Pass-1 RECORD of the scene graph (record-then-judge, PLAN_SCENE_GRAPH.md §0a): every f30 object = one node (NOTHING pre-merged — duplicates included, by design), with full label multisets + evidence crops + geometric edges; probable-duplicate pairs = SAME_CANDIDATE edges and MERGING IS A JUDGE VERDICT. Click a box = its record card. Green = single label · amber = naming open · pink = in a same-candidate pair. NO judgments in this layer — see the judged graph toggle for pass 2"><input type="checkbox" id="showGraph"> graph record</label>
+       <label title="Pass-2 JUDGED GRAPH (graph[&quot;judged&quot;], §0a.8) — the SHIPPED contract the compose stage consumes: 92 merged clusters under canonical pixel-checked names, existence verdicts (✗ not-real / ✓ confirmed real), resolved edges with case verdicts + suspect boxes, appearance descriptions, and the flags that ship open as placement work orders. Derivative of the record (never edits it). Click a box = its judged card"><input type="checkbox" id="showJudged"> judged graph</label>
        <span id="hifiNote" class="dim"></span></div>
   <details class="dim" title="the upstream detection stages that feed the graph record: stage 1 (recentered full set, 108) → stage 2 (f30 score filter, 102) → stage 3 = the graph record toggle in the main row (same 102 objects as record nodes + edges; no dedup stage — merging is a judge verdict). Toggle stages against each other to see what each one changed; click a visible box to inspect">
     <summary>pano track · detect stages</summary>
@@ -51,6 +52,7 @@
     <div style="margin:2px 0 0 12px">boxes: <span id="boxSourcesArch" class="dim">loading…</span></div>
   </details>
   <div id="graphRow" style="display:none"></div>
+  <div id="judgedRow" style="display:none"></div>
   <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
        y <input type="number" id="ry" value="0" step="90" style="width:52px">
        z <input type="number" id="rz" value="180" step="90" style="width:52px">
@@ -635,13 +637,13 @@ $('showCams').onchange = e => camGroup.visible = e.target.checked;
 // toggles (edges to envelope PLANE nodes project the detection center onto
 // the plane). Click a node box -> floating RECORD card (bottom right):
 // label multiset with scores, dedup lineage, evidence crops (served via
-// /graph_crops/), edge list with numeric evidence.
-// JUDGED OVERLAY (2026-07-27, additive): graph["judged"] in the same file
-// carries the judge chain's verdicts (J1-J6, PLAN_SCENE_GRAPH.md §0a.8) —
-// box markers show pixel-verdicts (✗ not-real / ✓ confirmed / → canonical
-// rename), the record card gains a JUDGED section (cluster, final name,
-// existence + appearance verdicts, provenance), and edge rows show case
-// verdicts. The RECORD data underneath stays untouched, as always.
+// /graph_crops/), edge list with numeric evidence. NO judgments in THIS
+// layer — pass 2 lives in the SEPARATE "judged graph" toggle below
+// (user 2026-07-27: record and judged are two graphs, though derivative):
+// graph["judged"] drawn as its own layer — one box per merged cluster
+// under its canonical pixel-checked name, existence states (✗ not-real /
+// ✓ confirmed / shipping), judged edges with case verdicts, appearance,
+// and the flags that ship open as placement work orders.
 // The analyzer-seeded v1 layer is archived (scene_graph_v1.json).
 // Everything here is additive: no other layer or handler is touched.
 const graphGroup = new THREE.Group(); worldGroup.add(graphGroup);
@@ -722,7 +724,9 @@ try {
   // from the wall spans, walls from their fitted plane + extent) ----
   const archDeferred = [];        // floor/ceiling wait for wall spans
   const wallSpan = { x: [], z: [] };
+  const archSlabs = [];           // {n, center, size} — judged layer reuses
   const addArch = (n, center, size) => {
+    archSlabs.push({ n, center, size });
     const col = G_CAT_COL.arch;
     const grp = objBox(center, size, 0, col);
     grp.userData.gnode = n;
@@ -761,16 +765,6 @@ try {
     if (cat === 'naming') marks.push(['? naming', '#ffb020']);
     if (cat === 'same_cand') marks.push(['? same/part', '#ff5ad1']);
     if (gFloat.has(n.id)) marks.push(['~ floating', '#88aacc']);
-    // judged-overlay markers (pixel verdicts from the judge chain)
-    const jn0 = gClusterOf[n.id];
-    if (jn0) {
-      if (jn0.existence === 'rejected')
-        marks.push(['✗ judged not-real', '#ff4444']);
-      else if (jn0.existence === 'confirmed')
-        marks.push(['✓ pixel-confirmed', '#33ee66']);
-      if (jn0.name && jn0.name !== n.label && jn0.id === n.id)
-        marks.push(['→ ' + jn0.name, '#7fd4ff']);
-    }
     marks.forEach(([t, c], i) => {   // same +y label offset as the other layers
       const sp = wideSprite(t, c, 0.6);
       sp.position.set(0, n.geometry.size[1] / 2 + 0.06 + i * 0.1, 0);
@@ -870,32 +864,14 @@ try {
           '<input type="checkbox" checked' +
           ' id="gEdge_' + t + '"> ' + t + ' (' + (gEdgeCounts[t] || 0) +
           ')</label> ';
-  // judged-overlay summary (present when the judge chain has run)
-  if ((gJ.nodes || []).length) {
-    const jRej = gJ.nodes.filter(x => x.existence === 'rejected');
-    const jConf = gJ.nodes.filter(x => x.existence === 'confirmed');
-    const jOpen = (gJ.coherence_flags || []).filter(f => !f.resolution);
-    gh += '<div><b style="color:#7fd4ff">JUDGED</b> (record + verdicts, ' +
-          '§0a.8): ' + gJ.nodes.length + ' clusters · ' +
-          '<span style="color:#ff4444">✗ ' + jRej.length +
-          ' not-real (' + jRej.map(x => x.id).join(', ') + ')</span> · ' +
-          '<span style="color:#33ee66">✓ ' + jConf.length +
-          ' pixel-confirmed</span> · ' +
-          '<span style="color:#ff9f40">' + jOpen.length +
-          ' flags ship open → placement</span> · appearance on ' +
-          gJ.nodes.filter(x => (x.appearance || {}).description).length +
-          '</div>';
-  }
-  gh += '<div class="dim">RECORD layer + JUDGED overlay: amber box = open ' +
+  gh += '<div class="dim">RECORD layer — no judgments here: amber box = open ' +
         'naming question, pink box = open same-vs-part question · ' +
-        '~ floating = no ON/IN edge (wall art etc., honest) · ✗/✓/→ above ' +
-        'a box = judge-chain pixel verdicts (not-real / confirmed ' +
-        '/ canonical rename) · ALL edge ' +
+        '~ floating = no ON/IN edge (wall art etc., honest) · ALL edge ' +
         'types drawn faint by default (explicit graph; untick to hide a ' +
-        'type) · click a box = its record card (now with a JUDGED ' +
-        'section: cluster, final name, verdicts, appearance) + ITS edges ' +
-        'at full strength, neighbors tinted blue · ' +
-        'edge colors ≠ box colors · Esc closes</div>';
+        'type) · click a box = its record card + ITS edges at full ' +
+        'strength, neighbors tinted blue, the rest stay whisper-faint · ' +
+        'edge colors ≠ box colors · the JUDGED GRAPH is its own toggle · ' +
+        'Esc closes</div>';
   $('graphRow').innerHTML = gh;
   const applyCats = () => gNodeEntries.forEach(en =>
       en.grp.visible = $('gCat_' + en.cat).checked);
@@ -994,44 +970,10 @@ try {
     if ((n.open_questions || []).length)
       h += '<div style="color:#ffb020">open: ' +
            n.open_questions.join(', ') + ' — awaits the judge pass</div>';
-    // ---- JUDGED section: the judge chain's verdicts for this node ----
-    const jn = gClusterOf[n.id];
-    if (jn) {
-      const exCol = { confirmed: '#33ee66', rejected: '#ff4444',
-                      disputed: '#ffb020' }[jn.existence] || '#9fb4c8';
-      h += '<div style="border-top:1px solid #3a4a5a;margin-top:6px;' +
-           'padding-top:4px"><b style="color:#7fd4ff">JUDGED</b> — ' +
-           'cluster ' + jn.id +
-           ((jn.members || []).length > 1
-               ? ' <span class="dim">(merged: ' + jn.members.join('+') +
-                 ')</span>' : '') +
-           ' · name <b>' + gEsc(jn.name) + '</b>' +
-           ((jn.naming || {}).source
-               ? ' <span class="dim">[pixel-checked' +
-                 (jn.naming.was ? ', was "' + gEsc(jn.naming.was) + '"' : '')
-                 + ']</span>' : '') +
-           (jn.existence
-               ? ' · <span style="color:' + exCol + '">existence: ' +
-                 jn.existence + '</span>' : '') + '</div>';
-      if ((jn.existence_verdict || {}).reason)
-        h += '<div class="dim">pixel check: ' +
-             gEsc(jn.existence_verdict.verdict) + ' — ' +
-             gEsc(jn.existence_verdict.reason) + '</div>';
-      if ((jn.appearance || {}).description)
-        h += '<div class="dim">looks: "' +
-             gEsc(jn.appearance.description) + '" · ' +
-             gEsc((jn.appearance.colors || []).join('/')) + ' · ' +
-             gEsc(jn.appearance.material) +
-             (jn.appearance.label_agreement === false
-                 ? ' · <span style="color:#ffb020">label doubted</span>'
-                 : '') + '</div>';
-      const fl = gFlagsOf(n.id).filter(f => !f.resolution);
-      if (fl.length)
-        h += '<div style="color:#ff9f40">ships open (' + fl.length +
-             '): ' + fl.map(f => gEsc(f.kind) + ' — ' +
-             gEsc(f.issue).slice(0, 90)).join(' · ') +
-             ' <span class="dim">→ placement work order</span></div>';
-    }
+    const jn0 = gClusterOf[n.id];
+    if (jn0)
+      h += '<div class="dim">judged as cluster <b>' + jn0.id + '</b> "' +
+           gEsc(jn0.name) + '" — see the judged-graph layer</div>';
     const mems = ((n.evidence || {}).members || []).filter(m => m.crop);
     if (mems.length)
       h += '<div>' + mems.map(m =>
@@ -1049,17 +991,11 @@ try {
         const out = e.a === n.id, oid = out ? e.b : e.a, on = gNodes[oid];
         const arrow = e.type === 'INTERPENETRATES' ? '↔' : (out ? '→' : '←');
         const dim = (e.caveats || []).includes('z_fabricated');
-        const cv = gCaseByPair[[e.a, e.b].sort().join('|')];
         h += '<div style="font-size:12px' + (dim ? ';opacity:.5' : '') + '">' +
              '<span style="color:' + gHex(G_EDGE_COL[e.type] ?? 0xffffff) +
              '">' + e.type + '</span> ' + arrow + ' ' + oid +
              (on ? ' ' + gEsc(on.label) : '') +
-             ' <span class="dim">(' + gEv(e) + ')</span>' +
-             (cv ? '<br><span style="color:#7fd4ff">&nbsp;&nbsp;judged: ' +
-                   gEsc(cv.edge_verdict) + '</span> <span class="dim">' +
-                   gEsc((cv.true_arrangement || '').slice(0, 110)) +
-                   (cv.suspect_box ? ' · suspect box: ' +
-                    gEsc(cv.suspect_box) : '') + '</span>' : '') + '</div>';
+             ' <span class="dim">(' + gEv(e) + ')</span></div>';
       }
       if (el.length > 24)
         h += '<div class="dim">… +' + (el.length - 24) +
@@ -1109,6 +1045,277 @@ try {
   addEventListener('keydown', e => { if (e.key === 'Escape') gClear(); });
   console.log('graph layer: ' + gNodeEntries.length + ' node boxes, ' +
               (gj.edges || []).length + ' edges ' + JSON.stringify(gEdgeCounts));
+
+  // ================= JUDGED GRAPH — its own layer =================
+  // graph["judged"] (PLAN_SCENE_GRAPH.md §0a.8): the SHIPPED pass-2
+  // contract. A separate toggle from the record (user 07-27: "two
+  // separate graphs, although derivative"): 92 cluster boxes under
+  // canonical names, judged/resolved edges with case verdicts, existence
+  // states, appearance. Reads the same fetch; touches nothing above.
+  if ((gJ.nodes || []).length) {
+    const judgedGroup = new THREE.Group(); worldGroup.add(judgedGroup);
+    judgedGroup.visible = false;
+    const J_COL = { ship: 0x55c8ff, confirmed: 0x33ee66,
+                    rejected: 0xff4444, arch: 0x8899aa };
+    const J_LBL = { ship: 'shipping', confirmed: '✓ confirmed real',
+                    rejected: '✗ judged not-real', arch: 'architecture' };
+    const jState = jn => jn.existence === 'rejected' ? 'rejected'
+        : jn.existence === 'confirmed' ? 'confirmed' : 'ship';
+    const jById = {}; (gJ.nodes || []).forEach(jn => jById[jn.id] = jn);
+    const jEntries = []; let jSel = null; const jNbr = [];
+    const jCycle = { key: '', i: 0 };
+    const jInfo = document.createElement('div');
+    jInfo.className = 'panel';
+    jInfo.style.cssText = 'right:8px;bottom:8px;width:400px;' +
+        'max-height:66vh;overflow-y:auto;display:none;z-index:12';
+    document.body.appendChild(jInfo);
+    // cluster boxes + canonical-name sprites
+    for (const jn of gJ.nodes) {
+      const st = jState(jn);
+      const col = J_COL[st];
+      const g = jn.geometry;
+      const grp = objBox(g.center, g.size, 0, col);
+      grp.userData.baseColor = col;
+      const marks = [['' + jn.name, gHex(col)]];
+      if (st !== 'ship') marks.push([J_LBL[st], gHex(col)]);
+      if ((jn.naming || {}).was)
+        marks.push(['was "' + jn.naming.was + '"', '#8899aa']);
+      marks.forEach(([t, c], i) => {
+        const sp = wideSprite(t, c, 0.6);
+        sp.position.set(0, g.size[1] / 2 + 0.06 + i * 0.1, 0);
+        grp.add(sp);
+      });
+      judgedGroup.add(grp);
+      jEntries.push({ jn, grp, cat: st });
+    }
+    // the measured architecture, same slabs as the record layer
+    for (const s of archSlabs) {
+      const grp = objBox(s.center, s.size, 0, J_COL.arch);
+      grp.userData.baseColor = J_COL.arch;
+      grp.userData.fill.visible = true;
+      grp.userData.fill.material.opacity = 0.10;
+      judgedGroup.add(grp);
+      jEntries.push({ arch: s.n, grp, cat: 'arch' });
+    }
+    // judged edges (remapped/deduped; NEAR verdicts already materialized)
+    const J_EDGE_COL = Object.assign({ PART_OF: 0xffd24a }, G_EDGE_COL);
+    const jEdgeGroups = {}, jEdgeCounts = {}, jEdgesByNode = {};
+    {
+      const pos = {};
+      for (const e of gJ.edges || []) {
+        (jEdgesByNode[e.a] = jEdgesByNode[e.a] || []).push(e);
+        (jEdgesByNode[e.b] = jEdgesByNode[e.b] || []).push(e);
+        const ja = jById[e.a];
+        if (!ja) continue;
+        const ca = ja.geometry.center;
+        const nb = jById[e.b] ? { geometry: jById[e.b].geometry }
+                              : gNodes[e.b];
+        if (!nb) continue;
+        const cb = gAnchor(nb, ca);
+        (pos[e.type] = pos[e.type] || []).push(
+            ca[0], ca[1], ca[2], cb[0], cb[1], cb[2]);
+        jEdgeCounts[e.type] = (jEdgeCounts[e.type] || 0) + 1;
+      }
+      for (const [t, arr] of Object.entries(pos)) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position',
+            new THREE.BufferAttribute(new Float32Array(arr), 3));
+        const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+            color: J_EDGE_COL[t] ?? 0xffffff, transparent: true,
+            opacity: 0.30, depthTest: false }));
+        ls.renderOrder = 198;
+        const tg = new THREE.Group(); tg.add(ls);
+        judgedGroup.add(tg);
+        jEdgeGroups[t] = tg;
+      }
+    }
+    const jConn = new THREE.Group(); judgedGroup.add(jConn);
+    const jMats = [];
+    Object.values(jEdgeGroups).forEach(tg =>
+        tg.traverse(o => { if (o.isLineSegments) jMats.push(o.material); }));
+    const jEdgeDim = on => jMats.forEach(m => m.opacity = on ? 0.12 : 0.30);
+    function jClear() {
+      const un = en => {
+        setHighlight(en.grp, false);
+        en.grp.userData.edges.material.color.set(en.grp.userData.baseColor);
+        en.grp.userData.fill.material.color.set(en.grp.userData.baseColor);
+        if (en.cat === 'arch') en.grp.userData.fill.visible = true;
+      };
+      if (jSel) { un(jSel); jSel = null; }
+      jNbr.forEach(un); jNbr.length = 0;
+      jConn.clear(); jEdgeDim(false);
+      jInfo.style.display = 'none';
+    }
+    // ---- HUD sub-row ----
+    const jCats = ['ship', 'confirmed', 'rejected', 'arch'];
+    const jCatN = {};
+    jEntries.forEach(en => jCatN[en.cat] = (jCatN[en.cat] || 0) + 1);
+    const jOpenFlags = (gJ.coherence_flags || []).filter(f => !f.resolution);
+    let jh = 'judged clusters: ';
+    for (const t of jCats)
+      jh += '<label style="color:' + gHex(J_COL[t]) + '">' +
+            '<input type="checkbox" checked id="jCat_' + t + '"> ' +
+            J_LBL[t] + ' (' + (jCatN[t] || 0) + ')</label> ';
+    jh += ' · edges: ';
+    for (const t of Object.keys(jEdgeGroups))
+      jh += '<label style="color:' + gHex(J_EDGE_COL[t] ?? 0xffffff) + '">' +
+            '<input type="checkbox" checked id="jEdge_' + t + '"> ' + t +
+            ' (' + (jEdgeCounts[t] || 0) + ')</label> ';
+    jh += '<div class="dim">JUDGED GRAPH — the shipped contract: one box ' +
+          'per cluster (canonical pixel-checked name above it) · ' +
+          '<span style="color:#ff4444">red = judged not-real</span> / ' +
+          '<span style="color:#33ee66">green = pixel-confirmed real</span>' +
+          ' / blue = shipping normally · ' + jOpenFlags.length +
+          ' flags ship OPEN as placement work orders · click a box = the ' +
+          'judged card (verdicts, appearance, provenance) · Esc closes</div>';
+    $('judgedRow').innerHTML = jh;
+    const jApply = () => jEntries.forEach(en =>
+        en.grp.visible = $('jCat_' + en.cat).checked);
+    jCats.forEach(t => $('jCat_' + t).onchange = jApply);
+    for (const t of Object.keys(jEdgeGroups))
+      $('jEdge_' + t).onchange = e => jEdgeGroups[t].visible = e.target.checked;
+    $('showJudged').onchange = e => {
+      judgedGroup.visible = e.target.checked;
+      $('judgedRow').style.display = e.target.checked ? 'block' : 'none';
+      if (!e.target.checked) jClear();
+    };
+    // ---- judged card ----
+    const jEntryById = {};
+    jEntries.forEach(en => { if (en.jn) jEntryById[en.jn.id] = en; });
+    function jShow(en) {
+      if (en.cat === 'arch') {
+        const p = (en.arch.geometry || {}).plane || {};
+        jInfo.innerHTML = '<h3>' + en.arch.id + '</h3><div class="dim">' +
+            'measured plane ' + p.axis + ' = ' + gNum(p.value_raw) +
+            ' (raw) — see the record layer for full architecture ' +
+            'evidence</div>';
+        jInfo.style.display = 'block';
+        return;
+      }
+      const jn = en.jn;
+      jConn.clear();
+      for (const e of (jEdgesByNode[jn.id] || [])) {
+        const oid = e.a === jn.id ? e.b : e.a;
+        const other = jById[oid] ? { geometry: jById[oid].geometry }
+                                 : gNodes[oid];
+        if (!other) continue;
+        const ca = jn.geometry.center, cb = gAnchor(other, ca);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(
+            new Float32Array([...ca, ...cb]), 3));
+        const ln = new THREE.Line(geo, new THREE.LineBasicMaterial({
+            color: J_EDGE_COL[e.type] ?? 0xffffff, transparent: true,
+            opacity: 1.0, depthTest: false }));
+        ln.renderOrder = 201;
+        jConn.add(ln);
+        const nen = jEntryById[oid];
+        if (nen && nen !== en) { setHighlight(nen.grp, true, 0x8fd0ff); jNbr.push(nen); }
+      }
+      jEdgeDim(true);
+      const st = jState(jn);
+      let h = '<h3>' + jn.id + ' — ' + gEsc(jn.name) +
+          ' <span style="color:' + gHex(J_COL[st]) + '">[' + J_LBL[st] +
+          ']</span></h3>';
+      h += '<div class="dim">cluster of ' + (jn.members || []).length +
+           ': ' + (jn.members || []).join(' + ') + ' · ' +
+           jn.n_detections + ' detections (peak ' + gNum(jn.peak_score) +
+           ')</div>';
+      if ((jn.naming || {}).source)
+        h += '<div class="dim">name pixel-checked' +
+             (jn.naming.was ? ' (was "' + gEsc(jn.naming.was) + '")' : '') +
+             (jn.naming.reason ? ': ' + gEsc(jn.naming.reason) : '') +
+             '</div>';
+      if ((jn.existence_verdict || {}).reason)
+        h += '<div style="color:' + gHex(J_COL[st]) + '">pixel check ' +
+             gEsc(jn.existence_verdict.verdict) + ' (conf ' +
+             gNum(jn.existence_verdict.confidence) + '): ' +
+             gEsc(jn.existence_verdict.reason) + '</div>';
+      if ((jn.appearance || {}).description)
+        h += '<div>looks: "' + gEsc(jn.appearance.description) + '"' +
+             '<span class="dim"> · ' +
+             gEsc((jn.appearance.colors || []).join('/')) + ' · ' +
+             gEsc(jn.appearance.material) + ' · ' +
+             gEsc(jn.appearance.style) + '</span>' +
+             (jn.appearance.label_agreement === false
+                 ? ' <span style="color:#ffb020">[label doubted]</span>'
+                 : '') + '</div>';
+      const fl = [];
+      for (const m of [jn.id, ...(jn.members || [])])
+        for (const f of gFlagsOf(m))
+          if (!f.resolution && !fl.includes(f)) fl.push(f);
+      if (fl.length)
+        h += '<div style="color:#ff9f40">ships open (' + fl.length + '): ' +
+             fl.map(f => gEsc(f.kind) + ' — ' +
+                 gEsc(f.issue).slice(0, 100)).join('<br>') +
+             ' <span class="dim">→ placement work orders</span></div>';
+      // member crops from the record
+      const imgs = [];
+      for (const m of jn.members || [])
+        for (const mm of ((gNodes[m] || {}).evidence || {}).members || []) {
+          if (mm.crop && imgs.length < 6)
+            imgs.push('<img src="graph_crops/' + mm.crop + '?' + sq +
+                '" loading="lazy" style="height:80px;margin:2px;' +
+                'border-radius:3px;cursor:pointer" ' +
+                'onclick="window.open(this.src)">');
+        }
+      if (imgs.length) h += '<div>' + imgs.join('') + '</div>';
+      const el = jEdgesByNode[jn.id] || [];
+      if (el.length) {
+        h += '<div style="color:#ffe27f;margin-top:4px">judged edges (' +
+             el.length + ')</div>';
+        for (const e of el.slice(0, 20)) {
+          const out = e.a === jn.id, oid = out ? e.b : e.a;
+          const on = jById[oid];
+          const cv = e.case_verdict;
+          h += '<div style="font-size:12px"><span style="color:' +
+               gHex(J_EDGE_COL[e.type] ?? 0xffffff) + '">' + e.type +
+               '</span> ' + (out ? '→' : '←') + ' ' + oid +
+               (on ? ' ' + gEsc(on.name) : '') +
+               ' <span class="dim">(' + gEv(e) + ')</span>' +
+               (cv ? '<br><span style="color:#7fd4ff">&nbsp;&nbsp;' +
+                     gEsc(cv.edge_verdict) + '</span> <span class="dim">' +
+                     gEsc((cv.true_arrangement || '').slice(0, 110)) +
+                     (cv.suspect_box ? ' · suspect box: ' +
+                      gEsc(cv.suspect_box) : '') + '</span>' : '') +
+               '</div>';
+        }
+      }
+      h += '<div class="dim">record view of these objects: the graph ' +
+           'record toggle · Esc closes</div>';
+      jInfo.innerHTML = h;
+      jInfo.style.display = 'block';
+    }
+    renderer.domElement.addEventListener('pointerdown', ev => {
+      if (ev.button !== 0 || !judgedGroup.visible || placeMode || measMode)
+        return;
+      const vis = jEntries.filter(en => en.grp.visible);
+      const picks = vis.map(en => en.grp.userData.pick);
+      const hits = ray.intersectObjects(picks, false);
+      jClear();
+      if (!hits.length) { jCycle.key = ''; return; }
+      const under = [...new Set(hits.map(h => vis[picks.indexOf(h.object)]))];
+      const vol = en => en.jn
+          ? en.jn.geometry.size[0] * en.jn.geometry.size[1] *
+            en.jn.geometry.size[2]
+          : 1e9;
+      under.sort((a, b) => (a.cat === 'arch') - (b.cat === 'arch')
+                           || vol(a) - vol(b));
+      const key = 'j' + Math.round(ev.clientX / 8) + ',' +
+                  Math.round(ev.clientY / 8);
+      if (jCycle.key === key) jCycle.i = (jCycle.i + 1) % under.length;
+      else { jCycle.key = key; jCycle.i = 0; }
+      const en = under[jCycle.i];
+      jSel = en;
+      setHighlight(en.grp, true, 0xffee44);
+      if (under.length > 1)
+        msg('judged cluster ' + (jCycle.i + 1) + '/' + under.length +
+            ' under cursor — click again for next');
+      jShow(en);
+    });
+    addEventListener('keydown', e => { if (e.key === 'Escape') jClear(); });
+    console.log('judged layer: ' + jEntries.length + ' boxes, ' +
+                (gJ.edges || []).length + ' edges');
+  }
 } catch (e) { console.warn('no scene_graph.json', e); }
 
 // ---------------- composed meshes (composition C6 glb) ----------------
