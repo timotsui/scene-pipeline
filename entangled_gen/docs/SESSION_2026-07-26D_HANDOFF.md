@@ -9,10 +9,18 @@
   queue · J6 = TERMINAL (appearance + J4-flag resolution in one pass,
   judge_cases.py folded into describe_nodes.py) · unsettled ships to
   placement. NO loops anywhere.
-- **Viewer :8321 now carries the judged overlay** (additive on the graph
-  record layer): ✗/✓/→ pixel-verdict markers on boxes, JUDGED section on
-  the record card (cluster, final name, existence + appearance verdicts,
-  open flags), case verdicts on edge rows, HUD summary line.
+- **Viewer :8321 — record and judged are TWO SEPARATE LAYERS** (user
+  ruling 07-27, final form): "graph record" (stage-3 suffix scraped,
+  record-pure — no verdicts) and a new **"judged graph" checkbox**: one
+  box per merged cluster with its canonical name sprited above, state
+  colors (blue shipping / green ✓ confirmed real / red ✗ not-real),
+  arch slabs, judged edges incl. PART_OF with case verdicts inline,
+  full judged click-card (members, verdicts, appearance, open flags as
+  placement work orders, member crops), same-spot cycling. Both layers
+  can be on at once to see 102 record boxes collapse into 92 clusters.
+- **COMMITS (local, PUSH PENDING — blocked by permission gate, user
+  runs `git push`):** `b6e63a8` (judge chain complete + docs + map) and
+  `73ef33f` (judged layer separation).
 - **USER RULES minted this session:** gates + review artifacts are
   dev-time only, never pipeline stages · pipeline_map.html is the
   AUTHORITY — deviations need warning + approval (memory
