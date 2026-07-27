@@ -326,6 +326,8 @@ def main():
     det = {n["id"]: n for n in graph["nodes"] if n["source"] == "detection"}
     floor_y = next(n for n in graph["nodes"] if n["id"] == "arch_floor")[
         "geometry"]["plane"]["value_raw"]
+    frames_dir = Path(graph.get("lineage", {}).get("crop_source")
+                      or (gdir / "rig_sp0" / "crops"))
 
     # ================= PHASE A -- resolve J4's flags (once) =============
     import judge_cases as jc
@@ -369,26 +371,11 @@ def main():
     if q_exist or q_rename or q_reex:
         case_sheets.mkdir(parents=True, exist_ok=True)
     if q_exist:
-        tiles, items = [], []
-        for i, (jn, f) in enumerate(q_exist, 1):
-            crops = jc.cluster_all_crops(jn, det, crops_dir,
-                                         jc.CROPS_EXIST)
-            labs = []
-            for k, p in enumerate(crops):
-                lab = f"{i}{'abc'[k]}"
-                labs.append(lab)
-                tiles.append((lab, p))
-            items.append(
-                f'Case {i}: id={jn["id"]}, currently named '
-                f'"{jn["name"]}", tiles {", ".join(labs)} -- '
-                f'{jc.facts(jn, floor_y)}.\n'
-                f'  why doubted: {f["issue"] if f else "?"}\n'
-                f'  hypotheses: '
-                f'{"; ".join(f["hypotheses"]) if f else "?"}')
-        sheet = case_sheets / "cases_existence.png"
-        jc.build_sheet(tiles, sheet)
-        case_jobs.append(("existence", jc.T_EXIST, sheet,
-                          "\n\n".join(items), q_exist))
+        sheet, items = jc.build_exist_job(q_exist, det, crops_dir,
+                                          frames_dir, case_sheets,
+                                          floor_y)
+        case_jobs.append(("existence", jc.T_EXIST, sheet, items,
+                          q_exist))
     if q_rename:
         tiles, items = [], []
         for i, (jn, why) in enumerate(q_rename, 1):
@@ -399,9 +386,15 @@ def main():
                 lab = f"{i}{'ab'[k]}"
                 labs.append(lab)
                 tiles.append((lab, p))
+            ctx = jc.context_tile(jn, det, frames_dir, case_sheets)
+            if ctx is not None:
+                lab = f"{i}x"
+                labs.append(lab + " (context)")
+                tiles.append((lab, ctx))
             items.append(
                 f'Item {i}: id={jn["id"]}, current name "{jn["name"]}", '
                 f'tiles {", ".join(labs)} -- {jc.facts(jn, floor_y)}.\n'
+                + jc.trunc_note(jn, det)
                 + "\n".join(f"  doubt: {w}" for w in why))
         sheet = case_sheets / "cases_rename.png"
         jc.build_sheet(tiles, sheet)
@@ -466,8 +459,8 @@ def main():
         prov = {"model": args.model, "date": today,
                 "prompt_version": jc.PROMPT_VERSION,
                 "source": "judge_cases"}
-        summary = {"confirmed": [], "rejected": [], "unclear": [],
-                   "renamed": [], "edges": []}
+        summary = {"confirmed": [], "rejected": [], "structure": [],
+                   "unclear": [], "renamed": [], "edges": []}
         for (kind, _, _, _, cases_q), arr in zip(case_jobs, case_results):
             if arr is None:
                 print(f"[j6/cases] {kind}: FAILED -- statuses unchanged")
@@ -504,6 +497,14 @@ def main():
                     elif e["verdict"] == "NOT_REAL":
                         jn["existence"] = "rejected"
                         summary["rejected"].append(jn["id"])
+                    elif e["verdict"] == "PART_OF_STRUCTURE":
+                        # real pixels, but they belong to a door/window/
+                        # trim/furniture host -- the node must not ship
+                        # as a standalone furnishing
+                        jn["existence"] = "structure"
+                        summary["structure"].append(
+                            f'{jn["id"]} -> part of '
+                            f'{e.get("what_it_is") or "?"}')
                     else:
                         summary["unclear"].append(jn["id"])
                     case_cache["cases"][f'exist:{jn["id"]}'] = v
@@ -562,9 +563,11 @@ def main():
 
     # ================= PHASE B -- appearance =============================
     clusters = [jn for jn in sorted(judged["nodes"], key=lambda n: n["id"])
-                if jn.get("existence") not in ("disputed", "rejected")]
+                if jn.get("existence") not in ("disputed", "rejected",
+                                               "structure")]
     skipped = [jn["id"] for jn in judged["nodes"]
-               if jn.get("existence") in ("disputed", "rejected")]
+               if jn.get("existence") in ("disputed", "rejected",
+                                          "structure")]
     cache = (json.loads(cache_path.read_text())
              if cache_path.exists() else {"meta": {"calls": 0}, "nodes": {}})
 

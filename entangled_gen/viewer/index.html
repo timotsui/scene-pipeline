@@ -36,8 +36,7 @@
        <label><input type="checkbox" id="showComp"> composed</label>
        <label title="collider_registered.glb — the Marble bundle's collider MESH, ICP-registered into the RAW frame (collider_register.py). Not boxes: the actual mesh surface, for judging mesh↔splat alignment"><input type="checkbox" id="showColl"> collider mesh</label>
        <label title="mesh-overlap regions from collide.py --export: bright red = over the 0.05 acceptance threshold, dim red = tolerated contact"><input type="checkbox" id="showOverlap"> collisions</label>
-       <label title="Pass-1 RECORD of the scene graph (record-then-judge, PLAN_SCENE_GRAPH.md §0a): every f30 object = one node (NOTHING pre-merged — duplicates included, by design), with full label multisets + evidence crops + geometric edges; probable-duplicate pairs = SAME_CANDIDATE edges and MERGING IS A JUDGE VERDICT. Click a box = its record card. Green = single label · amber = naming open · pink = in a same-candidate pair. NO judgments in this layer — see the judged graph toggle for pass 2"><input type="checkbox" id="showGraph"> graph record</label>
-       <label title="Pass-2 JUDGED GRAPH (graph[&quot;judged&quot;], §0a.8) — the SHIPPED contract the compose stage consumes: 92 merged clusters under canonical pixel-checked names, existence verdicts (✗ not-real / ✓ confirmed real), resolved edges with case verdicts + suspect boxes, appearance descriptions, and the flags that ship open as placement work orders. Derivative of the record (never edits it). Click a box = its judged card"><input type="checkbox" id="showJudged"> judged graph</label>
+       <label title="THE CANONICAL SCENE GRAPH — the stage's handoff contract (user ruling 07-26): verdicts materialized, BOXES VERBATIM from the judged layer (not-real + part-of-structure boxes removed, REINTERPRET edges rewritten, NO box surgery — suspect boxes ship untouched as next-stage work orders). Opens in RESOLVED view; untick it in the sub-row for the pre-edit judged audit view. Click a box = its judged card"><input type="checkbox" id="showJudged"> scene graph (canonical)</label>
        <span id="hifiNote" class="dim"></span></div>
   <details class="dim" title="the upstream detection stages that feed the graph record: stage 1 (recentered full set, 108) → stage 2 (f30 score filter, 102) → stage 3 = the graph record toggle in the main row (same 102 objects as record nodes + edges; no dedup stage — merging is a judge verdict). Toggle stages against each other to see what each one changed; click a visible box to inspect">
     <summary>pano track · detect stages</summary>
@@ -46,6 +45,7 @@
   <details class="dim" title="superseded / reference-only layers — decisions on record (see pipeline_map.html); files stay on disk, nothing deleted">
     <summary>archive / reference (superseded methods)</summary>
     <div style="margin:4px 0 0 12px">
+       <label title="Pass-1 RECORD of the scene graph (record-then-judge, PLAN_SCENE_GRAPH.md §0a): every f30 object = one node (NOTHING pre-merged), full label multisets + evidence crops + geometric edges; SAME_CANDIDATE pairs, merging is a judge verdict. AUDIT LAYER (archived 07-26: canonical = the resolved scene graph in the main row); still fully browsable — click a box = its record card"><input type="checkbox" id="showGraph"> graph record (audit)</label>
        <label title="splat_analyzer job cameras (newest analyzer/job_*/transforms.json; ?job=<name> to pick): the density-sampled standpoints as numbered spheres + one short ray per rendered frame along its look direction (az &times; el sweep per standpoint). RAW frame, color = standpoint. REFERENCE — analyzer demoted to side tool 07-26"><input type="checkbox" id="showCams"> analyzer cams</label>
        <span class="dim" title="the analyzer-seeded graph v1 is archived on disk as scene_graph_v1.json + graph/crops_v1 (2026-07-26); the live graph-record layer above replaced it">graph v1 → archived on disk</span>
     </div>
@@ -697,6 +697,7 @@ try {
   const gNodes = {}; (gj.nodes || []).forEach(n => gNodes[n.id] = n);
   // ---- judged view (graph["judged"]) lookup tables ----
   const gJ = gj.judged || {};
+  const gR = gj.resolved || {};   // pass-3 layer: verdicts materialized
   const gClusterOf = {};          // member id -> its judged cluster
   (gJ.nodes || []).forEach(jn =>
       (jn.members || [jn.id]).forEach(m => gClusterOf[m] = jn));
@@ -1056,11 +1057,15 @@ try {
     const judgedGroup = new THREE.Group(); worldGroup.add(judgedGroup);
     judgedGroup.visible = false;
     const J_COL = { ship: 0x55c8ff, confirmed: 0x33ee66,
-                    rejected: 0xff4444, arch: 0x8899aa };
+                    rejected: 0xff4444, structure: 0xc09aff,
+                    arch: 0x8899aa };
     const J_LBL = { ship: 'shipping', confirmed: '✓ confirmed real',
-                    rejected: '✗ judged not-real', arch: 'architecture' };
+                    rejected: '✗ judged not-real',
+                    structure: '⌂ part of structure',
+                    arch: 'architecture' };
     const jState = jn => jn.existence === 'rejected' ? 'rejected'
-        : jn.existence === 'confirmed' ? 'confirmed' : 'ship';
+        : jn.existence === 'confirmed' ? 'confirmed'
+        : jn.existence === 'structure' ? 'structure' : 'ship';
     const jById = {}; (gJ.nodes || []).forEach(jn => jById[jn.id] = jn);
     const jEntries = []; let jSel = null; const jNbr = [];
     const jCycle = { key: '', i: 0 };
@@ -1077,7 +1082,12 @@ try {
       const grp = objBox(g.center, g.size, 0, col);
       grp.userData.baseColor = col;
       const marks = [['' + jn.name, gHex(col)]];
-      if (st !== 'ship') marks.push([J_LBL[st], gHex(col)]);
+      if (st !== 'ship') {
+        let lbl = J_LBL[st];
+        if (st === 'structure' && (jn.existence_verdict || {}).what_it_is)
+          lbl += ': ' + jn.existence_verdict.what_it_is;
+        marks.push([lbl, gHex(col)]);
+      }
       if ((jn.naming || {}).was)
         marks.push(['was "' + jn.naming.was + '"', '#8899aa']);
       marks.forEach(([t, c], i) => {
@@ -1097,14 +1107,34 @@ try {
       judgedGroup.add(grp);
       jEntries.push({ arch: s.n, grp, cat: 'arch' });
     }
+    // TRIMMED suspect boxes (resolved.box_ops): post-shrink geometry
+    // in orange; the normal judged box doubles as the pre-shrink ghost
+    // (hidden via the "pre-shrink originals" checkbox)
+    const trimGrps = [], trimmedIds = new Set();
+    for (const op of (gR.box_ops || []).filter(o => o.op === 'TRIM')) {
+      const rn = (gR.nodes || []).find(n => n.id === op.suspect);
+      if (!rn) continue;
+      trimmedIds.add(op.suspect);
+      const g = rn.geometry;
+      const grp = objBox(g.center, g.size, 0, 0xffa64d);
+      grp.userData.baseColor = 0xffa64d;
+      const sp = wideSprite(rn.name + ' · post-shrink (−' +
+          Math.round((op.volume_loss || 0) * 100) + '%)', '#ffa64d', 0.6);
+      sp.position.set(0, g.size[1] / 2 + 0.06, 0);
+      grp.add(sp);
+      grp.visible = false;
+      judgedGroup.add(grp);
+      trimGrps.push(grp);
+    }
     // judged edges (remapped/deduped; NEAR verdicts already materialized)
+    // + the RESOLVED edge set (pass 3: REINTERPRET rewrites applied,
+    // REJECT/NONE edges gone) as a swappable alternative
     const J_EDGE_COL = Object.assign({ PART_OF: 0xffd24a }, G_EDGE_COL);
-    const jEdgeGroups = {}, jEdgeCounts = {}, jEdgesByNode = {};
-    {
-      const pos = {};
-      for (const e of gJ.edges || []) {
-        (jEdgesByNode[e.a] = jEdgesByNode[e.a] || []).push(e);
-        (jEdgesByNode[e.b] = jEdgesByNode[e.b] || []).push(e);
+    const buildEdgeSet = edges => {
+      const groups = {}, counts = {}, byNode = {}, pos = {};
+      for (const e of edges) {
+        (byNode[e.a] = byNode[e.a] || []).push(e);
+        (byNode[e.b] = byNode[e.b] || []).push(e);
         const ja = jById[e.a];
         if (!ja) continue;
         const ca = ja.geometry.center;
@@ -1114,7 +1144,7 @@ try {
         const cb = gAnchor(nb, ca);
         (pos[e.type] = pos[e.type] || []).push(
             ca[0], ca[1], ca[2], cb[0], cb[1], cb[2]);
-        jEdgeCounts[e.type] = (jEdgeCounts[e.type] || 0) + 1;
+        counts[e.type] = (counts[e.type] || 0) + 1;
       }
       for (const [t, arr] of Object.entries(pos)) {
         const geo = new THREE.BufferGeometry();
@@ -1126,13 +1156,22 @@ try {
         ls.renderOrder = 198;
         const tg = new THREE.Group(); tg.add(ls);
         judgedGroup.add(tg);
-        jEdgeGroups[t] = tg;
+        groups[t] = tg;
       }
-    }
+      return { groups, counts, byNode };
+    };
+    const jSet = buildEdgeSet(gJ.edges || []);
+    const rSet = buildEdgeSet(gR.edges || []);
+    Object.values(rSet.groups).forEach(tg => tg.visible = false);
+    let jResolvedMode = false;
+    const jEdgeGroups = jSet.groups, jEdgeCounts = jSet.counts;
+    let jEdgesByNode = jSet.byNode;
+    const jEdgeTypes = [...new Set([...Object.keys(jSet.groups),
+                                    ...Object.keys(rSet.groups)])];
     const jConn = new THREE.Group(); judgedGroup.add(jConn);
     const jMats = [];
-    Object.values(jEdgeGroups).forEach(tg =>
-        tg.traverse(o => { if (o.isLineSegments) jMats.push(o.material); }));
+    [jSet, rSet].forEach(s => Object.values(s.groups).forEach(tg =>
+        tg.traverse(o => { if (o.isLineSegments) jMats.push(o.material); })));
     const jEdgeDim = on => jMats.forEach(m => m.opacity = on ? 0.12 : 0.30);
     function jClear() {
       const un = en => {
@@ -1147,7 +1186,7 @@ try {
       jInfo.style.display = 'none';
     }
     // ---- HUD sub-row ----
-    const jCats = ['ship', 'confirmed', 'rejected', 'arch'];
+    const jCats = ['ship', 'confirmed', 'rejected', 'structure', 'arch'];
     const jCatN = {};
     jEntries.forEach(en => jCatN[en.cat] = (jCatN[en.cat] || 0) + 1);
     const jOpenFlags = (gJ.coherence_flags || []).filter(f => !f.resolution);
@@ -1157,23 +1196,74 @@ try {
             '<input type="checkbox" checked id="jCat_' + t + '"> ' +
             J_LBL[t] + ' (' + (jCatN[t] || 0) + ')</label> ';
     jh += ' · edges: ';
-    for (const t of Object.keys(jEdgeGroups))
+    for (const t of jEdgeTypes)
       jh += '<label style="color:' + gHex(J_EDGE_COL[t] ?? 0xffffff) + '">' +
             '<input type="checkbox" checked id="jEdge_' + t + '"> ' + t +
-            ' (' + (jEdgeCounts[t] || 0) + ')</label> ';
+            ' (' + (jEdgeCounts[t] || 0) +
+            ((gR.nodes || []).length && rSet.counts[t] !== jEdgeCounts[t]
+                ? '→' + (rSet.counts[t] || 0) : '') + ')</label> ';
+    if ((gR.nodes || []).length) {
+      jh += ' · <label title="pass 3 (materialize_verdicts.py): verdicts ' +
+            'APPLIED — not-real + part-of-structure boxes hidden, edge set ' +
+            'swapped to graph[&quot;resolved&quot;] (REINTERPRET rewrites ' +
+            'in, judge-rejected + endpoint-removed edges gone), suspect ' +
+            'boxes adjudicated TRIM/KEEP (orange = post-shrink). Counts ' +
+            'above show judged→resolved where they differ. CANONICAL ' +
+            'default (user 07-26) — untick for the pre-edit judged audit ' +
+            'view"><b><input type="checkbox" id="jResolved"> RESOLVED ' +
+            'view (' + gR.counts.removed + ' boxes out, ' +
+            gR.counts.rewritten + ' edges rewritten' +
+            (trimGrps.length
+                ? ', ' + trimGrps.length + ' trimmed' : '') +
+            ', boxes verbatim)</b></label>';
+      if (trimGrps.length)
+        jh += ' <label style="color:#ffa64d" title="show the untrimmed ' +
+              'judged boxes (blue) behind the orange post-shrink boxes ' +
+              'for a pre-vs-post comparison"><input type="checkbox" ' +
+              'checked id="jGhost"> pre-shrink originals</label>';
+    }
     jh += '<div class="dim">JUDGED GRAPH — the shipped contract: one box ' +
           'per cluster (canonical pixel-checked name above it) · ' +
           '<span style="color:#ff4444">red = judged not-real</span> / ' +
           '<span style="color:#33ee66">green = pixel-confirmed real</span>' +
-          ' / blue = shipping normally · ' + jOpenFlags.length +
+          ' / <span style="color:#c09aff">purple = part of a structure ' +
+          '(door/window/trim host)</span> / ' +
+          (trimGrps.length
+              ? '<span style="color:#ffa64d">orange = post-shrink box' +
+                '</span> / ' : '') +
+          'blue = shipping normally · ' +
+          jOpenFlags.length +
           ' flags ship OPEN as placement work orders · click a box = the ' +
           'judged card (verdicts, appearance, provenance) · Esc closes</div>';
     $('judgedRow').innerHTML = jh;
     const jApply = () => jEntries.forEach(en =>
-        en.grp.visible = $('jCat_' + en.cat).checked);
+        en.grp.visible = $('jCat_' + en.cat).checked &&
+            !(jResolvedMode &&
+              (en.cat === 'rejected' || en.cat === 'structure')) &&
+            !(jResolvedMode && en.jn && trimmedIds.has(en.jn.id) &&
+              !($('jGhost') && $('jGhost').checked)));
     jCats.forEach(t => $('jCat_' + t).onchange = jApply);
-    for (const t of Object.keys(jEdgeGroups))
-      $('jEdge_' + t).onchange = e => jEdgeGroups[t].visible = e.target.checked;
+    const jEdgeApply = () => {
+      for (const t of jEdgeTypes) {
+        const on = $('jEdge_' + t).checked;
+        if (jSet.groups[t]) jSet.groups[t].visible = on && !jResolvedMode;
+        if (rSet.groups[t]) rSet.groups[t].visible = on && jResolvedMode;
+      }
+    };
+    for (const t of jEdgeTypes) $('jEdge_' + t).onchange = jEdgeApply;
+    if ($('jResolved')) {
+      const jResolvedApply = () => {
+        jResolvedMode = $('jResolved').checked;
+        jEdgesByNode = jResolvedMode ? rSet.byNode : jSet.byNode;
+        trimGrps.forEach(gp => gp.visible = jResolvedMode);
+        jClear(); jApply(); jEdgeApply();
+      };
+      $('jResolved').onchange = jResolvedApply;
+      if ($('jGhost')) $('jGhost').onchange = jApply;
+      // canonical default (user ruling 07-26): open in RESOLVED view
+      $('jResolved').checked = true;
+      jResolvedApply();
+    }
     $('showJudged').onchange = e => {
       judgedGroup.visible = e.target.checked;
       $('judgedRow').style.display = e.target.checked ? 'block' : 'none';

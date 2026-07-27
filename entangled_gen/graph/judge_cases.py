@@ -83,9 +83,12 @@ CROPS_REEX = 2            # per object, per re-examine case
 TILE = 256
 LABEL_H = 22
 SHEET_COLS = 4
-PROMPT_VERSION = "1"
+CTX_PAD_FACTOR = 1.2      # context margin = this x the box's larger side
+CTX_MIN_PAD = 200         # px, floor on that margin
+PROMPT_VERSION = "2"      # v2: context tiles + truncation facts +
+                          # PART_OF_STRUCTURE (the obj_138 door-frame case)
 
-EXIST_VERDICTS = ("REAL", "NOT_REAL", "UNCLEAR")
+EXIST_VERDICTS = ("REAL", "NOT_REAL", "PART_OF_STRUCTURE", "UNCLEAR")
 EDGE_VERDICTS = ("CONFIRM", "REJECT", "REINTERPRET")
 
 T_EXIST = """\
@@ -93,18 +96,29 @@ T_EXIST = """\
 REAL (weak evidence + a physically impossible relationship). You get \
 their actual image crops on this contact sheet:
   {sheet}
-Tile labels like "2a" mean crop a of case 2. Crops are small \
-low-resolution renders; judge only what you can see.
+Tile labels like "2a" mean crop a of case 2. A tile labeled "2x" is \
+that case's ZOOMED-OUT CONTEXT view: the same detection outlined in \
+red inside its surroundings -- use it to judge what the outlined \
+pixels belong to. Crops are small low-resolution renders; judge only \
+what you can see.
 
-For EACH numbered case decide: is there a real physical object here?
-  "REAL"     -- a real object is visible (say what it actually is)
-  "NOT_REAL" -- texture/reflection/duplicate/artifact, not an object
-  "UNCLEAR"  -- the crops cannot settle it
+For EACH numbered case decide what the outlined pixels really are:
+  "REAL"      -- a real standalone object is visible (say what it is)
+  "NOT_REAL"  -- texture/reflection/duplicate/artifact, not an object
+  "PART_OF_STRUCTURE" -- real pixels, but they belong to a larger \
+structure or object (door frame, window frame, wall trim, molding, \
+built-in shelving, part of a furniture piece) -- name that host
+  "UNCLEAR"   -- the crops cannot settle it
+A case noted as CUT OFF at the image edge shows only a fragment of \
+something -- check its context tile for what the fragment extends \
+into before naming a small standalone object.
 Return ONE fenced ```json block, a JSON ARRAY, one object per case, \
 same order:
-{{"id": "<the id given>", "verdict": "REAL|NOT_REAL|UNCLEAR", \
-"what_it_is": "<short lowercase name if REAL, else null>", \
-"confidence": 0.0-1.0, "reason": "one sentence"}}
+{{"id": "<the id given>", "verdict": \
+"REAL|NOT_REAL|PART_OF_STRUCTURE|UNCLEAR", "what_it_is": "<short \
+lowercase name of the object, or of the HOST structure for \
+PART_OF_STRUCTURE; else null>", "confidence": 0.0-1.0, \
+"reason": "one sentence"}}
 Output ONLY the fenced JSON block.
 
 {items}"""
@@ -114,10 +128,14 @@ T_RENAME = """\
 room-level plausibility check or an appearance check disagreed with the \
 label). Look at their crops on this contact sheet:
   {sheet}
-Tile labels like "2a" mean crop a of item 2. Pick the best everyday \
-name from what you SEE -- lowercase, at most 3 words. The doubts are \
-given as context; you are free to confirm the current name if the \
-crops support it.
+Tile labels like "2a" mean crop a of item 2. A tile labeled "2x" is \
+that item's ZOOMED-OUT CONTEXT view: the same detection outlined in \
+red inside its surroundings -- use it to judge what the pixels belong \
+to (an item CUT OFF at the image edge may be a fragment of a larger \
+structure such as a door or window frame; name what it IS, e.g. \
+"door frame"). Pick the best everyday name from what you SEE -- \
+lowercase, at most 3 words. The doubts are given as context; you are \
+free to confirm the current name if the crops support it.
 Return ONE fenced ```json block, a JSON ARRAY, one object per item, \
 same order:
 {{"id": "<the id given>", "name": "<chosen name>", "confidence": \
@@ -262,6 +280,90 @@ def facts(jn, floor_y):
             f'{floor_y - g["aabb_max"][1]:.2f}-'
             f'{floor_y - g["aabb_min"][1]:.2f} m above the floor, '
             f'{jn["n_detections"]} views (peak {jn["peak_score"]:.2f})')
+
+
+def best_member(jn, det):
+    """Highest-scoring member detection that has a crop on disk."""
+    best = None
+    for mid in sorted(jn["members"]):
+        for m in det[mid]["evidence"].get("members", []):
+            if not m.get("crop"):
+                continue
+            if best is None or m.get("score", 0.0) > best.get("score", 0.0):
+                best = m
+    return best
+
+
+def context_tile(jn, det, frames_dir, out_dir):
+    """Zoomed-out evidence tile: the best member's source view with the
+    detection box outlined in red, cropped to the box plus a generous
+    margin (so the judge sees what the pixels belong to -- the obj_138
+    lesson: a tight crop of a door frame reads as a picture frame).
+    Returns the tile path, or None if the source frame is missing."""
+    m = best_member(jn, det)
+    if m is None:
+        return None
+    src = Path(frames_dir) / f'{m["view"]}.webp'
+    if not src.exists():
+        return None
+    im = Image.open(src).convert("RGB")
+    x0, y0, x1, y1 = m["box_2d"]
+    ImageDraw.Draw(im).rectangle([x0, y0, x1, y1],
+                                 outline=(255, 40, 40), width=4)
+    pad = max(CTX_PAD_FACTOR * max(x1 - x0, y1 - y0), CTX_MIN_PAD)
+    box = (max(0, int(x0 - pad)), max(0, int(y0 - pad)),
+           min(im.width, int(x1 + pad)), min(im.height, int(y1 + pad)))
+    out = Path(out_dir) / f'ctx_{jn["id"]}.png'
+    im.crop(box).save(out)
+    return out
+
+
+def trunc_note(jn, det):
+    """One prompt line when the box is truncated at the image edge --
+    warns the judge it is looking at a fragment. '' when not."""
+    tot = cut = 0
+    for mid in sorted(jn["members"]):
+        for m in det[mid]["evidence"].get("members", []):
+            tot += 1
+            if m.get("truncated"):
+                cut += 1
+    if cut == 0:
+        return ""
+    return (f"  CUT OFF at the image edge in {cut}/{tot} of its views "
+            f"-- the visible pixels are a fragment; the true extent is "
+            f"unknown.\n")
+
+
+def build_exist_job(q_exist, det, crops_dir, frames_dir, sheets_dir,
+                    floor_y):
+    """Assemble the existence-resolution contact sheet + prompt items
+    (tight crops + context tile + truncation facts). Shared by
+    describe_nodes.py phase A and retry harnesses -- one code path so
+    experiments exercise exactly what the pipeline runs."""
+    tiles, items = [], []
+    for i, (jn, f) in enumerate(q_exist, 1):
+        crops = cluster_all_crops(jn, det, crops_dir, CROPS_EXIST)
+        labs = []
+        for k, p in enumerate(crops):
+            lab = f"{i}{'abc'[k]}"
+            labs.append(lab)
+            tiles.append((lab, p))
+        ctx = context_tile(jn, det, frames_dir, sheets_dir)
+        if ctx is not None:
+            lab = f"{i}x"
+            labs.append(lab + " (context)")
+            tiles.append((lab, ctx))
+        items.append(
+            f'Case {i}: id={jn["id"]}, currently named '
+            f'"{jn["name"]}", tiles {", ".join(labs)} -- '
+            f'{facts(jn, floor_y)}.\n'
+            + trunc_note(jn, det)
+            + f'  why doubted: {f["issue"] if f else "?"}\n'
+            f'  hypotheses: '
+            f'{"; ".join(f["hypotheses"]) if f else "?"}')
+    sheet = Path(sheets_dir) / "cases_existence.png"
+    build_sheet(tiles, sheet)
+    return sheet, "\n\n".join(items)
 
 
 def case_hash(*parts):

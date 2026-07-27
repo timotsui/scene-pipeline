@@ -239,10 +239,16 @@ only; production runs this chain unattended.
 | J2 | merge view (zero LLM) | `graph/build_judged.py` | record + J1/J5 verdicts | `graph["judged"]`: clusters (union-find over SAME), remapped/re-derived edges, naming queue, support conflicts; self-checks (partition, no-floater) |
 | J3 | naming judge | `graph/judge_names.py` | judged naming queue + crops | canonical `name` + provenance on judged clusters + `graph/judge_names_cache.json` |
 | J4 | coherence judge (text-only; runs ONCE — its flags are a queue, never a re-scan trigger) | `graph/judge_coherence.py` | the judged view (post-merge, post-naming — order matters) | `coherence_flags` (relation / existence / label_geometry) + `existence: "disputed"` on judged clusters + `graph/judge_coherence_cache.json`; `--digest-only` prints the room digest |
-| J6 | appearance + J4-flag resolution — the single TERMINAL pass | `graph/describe_nodes.py` (absorbing judge_cases.py's queue machinery — PLAN_SCENE_GRAPH.md §0a.8) | judged clusters + crops + J4's flag queues | `appearance` blocks + existence/rename/edge adjudications + caches. Runs ONCE; what it doesn't settle SHIPS |
+| J6 | appearance + J4-flag resolution — the single TERMINAL judge pass | `graph/describe_nodes.py` (absorbing judge_cases.py's queue machinery — PLAN_SCENE_GRAPH.md §0a.8) | judged clusters + crops + J4's flag queues | `appearance` blocks + existence/rename/edge adjudications + caches. Runs ONCE; what it doesn't settle SHIPS. v2 evidence pack (07-26, PROMPT_VERSION 2): every existence/rename case gets a zoomed-out red-box CONTEXT TILE + a truncation fact line, and existence verdicts include `PART_OF_STRUCTURE` → `existence: "structure"` (the obj_138 door-frame lesson: identity is unanswerable at tight-crop zoom) |
+| J7 | materialize verdicts — verdicts become the box/edge set | `graph/materialize_verdicts.py` (1 batched cached mapping call) | `graph["judged"]` (existence states + case verdicts) | `graph["resolved"]`: shipping nodes (judged geometry VERBATIM) minus rejected/structure/disputed (removals listed with provenance); REINTERPRET sentences → closed edge vocab ON/IN/ATTACHED/NEAR/NONE; REJECT + endpoint-removed edges dropped (recorded) + `graph/resolve_cache.json`. NO box surgery (stage contract, user 07-26); the shrink experiment is retired behind `--shrink` as placement-stage donor code |
 
-Downstream contract: consumers (agent package, composition C1) read
-`graph["judged"]` and SKIP existence-rejected/disputed clusters. Flags J6
-leaves unsettled travel WITH the graph as PLACEMENT-stage work orders
-(suspect boxes etc.). There is NO iteration loop at the graph stage —
-user ruling 2026-07-26: J1–J5 fixed, J4 once, J6 once, ship.
+Downstream contract (user ruling 2026-07-26): **`graph["resolved"]` is
+the CANONICAL handoff** — the scene-graph stage stops there. The record
+and pre-edit judged views are archived IN PLACE in the same file as
+immutable audit layers (delete `graph["resolved"]` and J7 reproduces it
+from judged + cache). Box GEOMETRY is verbatim from the judged layer:
+all box surgery belongs to the next stage, which receives the
+suspect-box work orders (obj_014 curtain / obj_109 chair / obj_023
+shelf on bedroom_marble) and the open deep-box flags inside the layer's
+provenance. There is NO iteration loop at the graph stage — J1–J5
+fixed, J4 once, J6 once, J7 deterministic+cached, ship.
