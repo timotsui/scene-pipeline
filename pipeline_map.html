@@ -598,45 +598,69 @@
       <text class="plabel pl-bus" style="font-size:15px" x="24" y="1968">3.2 PHYSICAL — WHERE, LEGALLY</text>
 
       <g class="node" data-k="lp0" transform="translate(276,1676)">
-        <rect class="nbox" width="232" height="72" rx="8"/>
-        <rect class="b-comp" width="4" height="72" rx="2"/>
-        <text class="ntitle" x="14" y="17">S1 · ANCHOR SET<tspan class="nactive"> · LIVE 07-26</tspan></text>
-        <text class="nscript" x="14" y="31">anchor = any arch support edge (user rule)</text>
-        <text class="nsub" x="14" y="45">44 = floor 16 · wall 26 · ceiling 2 · 45 dependents wait</text>
-        <text class="nsub" x="14" y="58">review lens = viewer "anchor focus" filter :8321</text></g>
-      <path class="edge e-comp" d="M392,1748 V1778" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="1768">anchors (44) — the working set</text>
-      <g class="node" data-k="s2" transform="translate(276,1780)">
+        <rect class="nbox" width="232" height="58" rx="8"/>
+        <rect class="b-comp" width="4" height="58" rx="2"/>
+        <text class="ntitle" x="14" y="17">S1 · SUPPORTED_BY<tspan class="nactive"> · BUILT 07-26</tspan></text>
+        <text class="nscript" x="14" y="31">compose/supported_by.py — what holds it up</text>
+        <text class="nsub" x="14" y="45">metrics in, ranked options out · anchors = derived (30 vs 44 crude)</text></g>
+      <path class="edge e-comp" d="M392,1734 V1746" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="1744">supported_by.json — the support truth</text>
+      <g class="node" data-k="cons" transform="translate(276,1748)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-comp" width="4" height="52" rx="2"/>
-        <text class="ntitle" x="14" y="17">S2 · SCREENING<tspan class="ngate"> · NEXT</tspan></text>
-        <text class="nscript" x="14" y="31">compose or skip, per anchor</text>
-        <text class="nsub" x="14" y="45">doors / windows / curtain question · suspect holds</text></g>
-      <path class="edge e-comp" d="M392,1832 V1860" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="1852">anchor cast — to be shopped</text>
-      <g class="node" data-k="s3" transform="translate(276,1862)">
-        <rect class="nbox" width="232" height="64" rx="8"/>
-        <rect class="b-comp" width="4" height="64" rx="2"/>
-        <text class="ntitle" x="14" y="17">S3 · SHOPPING — the cast list</text>
+        <text class="ntitle" x="14" y="17">S2 · CONSISTENCY<tspan class="nactive"> · BUILT 07-26</tspan></text>
+        <text class="nscript" x="14" y="31">compose/consistency.py — edges vs verdicts</text>
+        <text class="nsub" x="14" y="45">157 edges: code 132 · LLM 25 → 8 keep / 17 drop</text></g>
+      <path class="edge e-comp" d="M392,1800 V1812" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="1810">clean support + arrangement facts</text>
+      <g class="node" data-k="s2" transform="translate(276,1814)">
+        <rect class="nbox" width="232" height="46" rx="8"/>
+        <rect class="b-comp" width="4" height="46" rx="2"/>
+        <text class="ntitle" x="14" y="17">S3 · SCREENING<tspan class="ngate"> · LATER</tspan></text>
+        <text class="nscript" x="14" y="31">compose or skip · doors / windows / curtain</text></g>
+      <path class="edge e-comp" d="M392,1860 V1872" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="1870">anchor cast — to be shopped</text>
+      <g class="node" data-k="s3" transform="translate(276,1874)">
+        <rect class="nbox" width="232" height="58" rx="8"/>
+        <rect class="b-comp" width="4" height="58" rx="2"/>
+        <text class="ntitle" x="14" y="17">S4 · SHOPPING — the cast list<tspan class="ngate"> · LATER</tspan></text>
         <text class="nscript" x="14" y="31">shortlist → measure → thumbs → CLIP → pick</text>
-        <text class="nsub" x="14" y="45">donor: old C1–C5 · queries = judged name +</text>
-        <text class="nsub" x="14" y="58">appearance fields · graph crops</text></g>
-      <path class="edge e-comp" d="M392,1926 V1954" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="1946">cast list — asset + alternates per anchor</text>
+        <text class="nsub" x="14" y="45">donor: old C1–C5 · judged name + appearance + crops</text></g>
+      <path class="edge e-comp" d="M392,1932 V1954" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="1948">cast list — asset + alternates per anchor</text>
+
+      <!-- PROPOSE EDITS: isolated module (07-27), nothing wired yet -->
+      <g class="node" data-k="pedit" transform="translate(24,1720)">
+        <rect class="nbox" width="220" height="64" rx="8"/>
+        <rect class="b-comp" width="4" height="64" rx="2"/>
+        <text class="ntitle" x="14" y="17">PROPOSE EDITS<tspan class="ngate"> · ISOLATED 07-27</tspan></text>
+        <text class="nscript" x="14" y="31">compose/propose_edits.py — adds + deletes</text>
+        <text class="nsub" x="14" y="45">delete: flags · dupes · dropped support</text>
+        <text class="nsub" x="14" y="58">add: room-inventory reasoning, support declared</text></g>
+      <path class="edge e-comp e-dash" d="M276,1730 H248" marker-end="url(#ah-comp)"/>
+      <path class="edge e-comp e-dash" d="M276,1772 H248" marker-end="url(#ah-comp)"/>
+      <path class="edge e-comp e-dash" d="M134,1784 V2244 H274" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="24" y="1800">edit_proposals.json — feeds the JUDGE's</text>
+      <text class="elab" x="24" y="1812">add / delete channel (NOT wired yet)</text>
 
       <g class="node" data-k="ph1" transform="translate(276,1976)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-comp" width="4" height="52" rx="2"/>
-        <text class="ntitle" x="14" y="17">PH1 · SNAP TO SUPPORT<tspan class="ngate"> · DESIGN</tspan></text>
-        <text class="nscript" x="14" y="31">floor / wall / ceiling planes — the graph shell</text>
-        <text class="nsub" x="14" y="45">zero LLM: code interprets numbers</text></g>
+        <text class="ntitle" x="14" y="17">PH1 · SNAP TO SUPPORT<tspan class="nactive"> · v0 BUILT 07-27</tspan></text>
+        <text class="nscript" x="14" y="31">compose/snap.py — zero LLM, box-proxy analyzer</text>
+        <text class="nsub" x="14" y="45">7 LARGE deltas = exactly the known suspect boxes</text></g>
       <path class="edge e-comp" d="M392,2028 V2052" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2046">posed cast</text>
+      <text class="elab" x="398" y="2046">posed cast (v0: snap.json deltas)</text>
+      <!-- loop-in-loop (user direction 07-27): deterministic physics
+           results feed BACK into the semantic loop as evidence -->
+      <path class="edge e-comp e-dash" d="M276,1996 H246 V1712 H274" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="24" y="1700">snap deltas / collide reports — suspect-box +</text>
+      <text class="elab" x="24" y="1712">re-attribution EVIDENCE (loop in loop, 07-27)</text>
       <g class="node" data-k="ph2" transform="translate(276,2054)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2 · COLLIDE GATE<tspan class="ngate"> · DESIGN</tspan></text>
-        <text class="nscript" x="14" y="31">collide.py voxel 3 cm · reasons feed back</text></g>
+        <text class="nscript" x="14" y="31">collide.py voxel 3 cm · PER SELECTED MODEL (user)</text></g>
       <path class="edge e-comp" d="M392,2100 V2124" marker-end="url(#ah-comp)"/>
       <text class="elab" x="398" y="2118">legal arrangement</text>
       <g class="node" data-k="ph3" transform="translate(276,2126)">
@@ -656,8 +680,8 @@
       <path class="edge e-comp" d="M392,2256 V2270" marker-end="url(#ah-comp)"/>
       <text class="elab" x="398" y="2282">edits.jsonl — append-only trace (the paper trail)</text>
       <!-- the loop: typed edits re-enter their sub-stage -->
-      <path class="edge e-comp e-dash" d="M276,2216 H254 V1806 H274" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="132" y="1826">add · delete · replace</text>
+      <path class="edge e-comp e-dash" d="M276,2216 H254 V1838 H274" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="132" y="1858">add · delete · replace</text>
       <path class="edge e-comp e-dash" d="M276,2234 H264 V2002 H274" marker-end="url(#ah-comp)"/>
       <text class="elab" x="132" y="2024">move · nudge</text>
 
@@ -1028,22 +1052,42 @@ j6: {mod:"lane", eyebrow:"J6 · APPEARANCE + J4-FLAG RESOLUTION · the single TE
        "Appearance half: describes every viable judged cluster under its canonical name — colors, material, style, one-sentence description, is_label agreement (the fields retrieval shops with); contact sheets = one numbered grid PNG per batch of 8 → ONE image read per call, ×3 concurrent",
        "Resolution half (donor code = judge_cases.py, proven on bedroom_marble): existence flags → REAL/NOT_REAL/PART_OF_STRUCTURE/UNCLEAR from crops · rename flags → short name from crops · edge re-examines → CONFIRM/REJECT/REINTERPRET + suspect_box",
        "v2 EVIDENCE PACK (07-26, PROMPT_VERSION 2): every existence/rename case now gets a zoomed-out CONTEXT TILE (source view, detection outlined in red) + a 'CUT OFF at the image edge' fact line when truncated — the obj_138 lesson: a tight crop of a door frame reads as a picture frame; the identity question is unanswerable at crop zoom. Retry flipped obj_138/139 → PART_OF_STRUCTURE (door frame) at unchanged confidence",
+       "v3 CONTEXT CROPS (07-27, PROMPT_VERSION 3): the appearance half now describes from graph/crops_ctx/ — padded view (35% sides/top, 75% BELOW: support lives there), object outlined in red — instead of the tight crops. Tight crops made the VLM invent support ('sitting on a shelf' for the obj_001 plant whose crop never showed its bottom); --appearance-only refreshes descriptions without re-running flag resolution; --no-ctx = old behavior",
        "REVIEW-FIRST: --sheets-only builds sheets + manifest + verbatim prompts with zero model calls",
        "bedroom_marble history (ran as separate passes before the design settled): appearance 86/86 in 11 calls; the closure loop's adjudications — 6 rejected ghosts/dupes, obj_138/139 pictures + obj_083 box confirmed REAL, ~17 renames, 11 edge verdicts — all STAND; obj_023 + 4 low-confidence box flags shipped open"],
   reads:["graph['judged'] (clusters, canonical names, J4 flag queues)","graph/crops/ (record member crops)"],
   writes:["appearance blocks + existence/rename/edge adjudications + meta","graph/appearance_sheets/ + case sheets (review artifacts)","caches (per-cluster hash)"],
   note:"An iterative coherence↔case-closing loop was tried here and REVOKED (user: 'the loop is not the right place'; ~20 calls, mostly label polish — memory judge-loop-effort-allocation). The straight-line lane you see IS the design: flags flow down into J6 exactly once."},
-lp0: {mod:"comp", eyebrow:"3.1 SEMANTIC / S1 — LIVE (viewer filter 07-26)", name:"Anchor set — the working set the stage starts with",
-  script:"derived from graph[\"resolved\"] edges · review lens = the viewer's 'anchor focus' filter (:8321)",
-  how:["USER RULE 07-26: anchor = ANY object with a support edge (ON / IN / IN_WALL / ATTACHED) to an architecture node — floor, wall or ceiling contact; back-to-back wall contact counts",
-       "Tier for the tint when several apply: floor beats wall beats ceiling",
-       "bedroom_marble: 44 anchors (floor 16 · wall 26 · ceiling 2) · 45 dependents dimmed — dependents enter only after the anchor loop stands; their support will be the placed parent MESH, not the shell",
-       "Deliberately visible borderlines for review: 5 books + pillow + basket + desk lamp are 'wall anchors' via flush-shelf graze; plant obj_083 rides a suspect deep box",
-       "Filtering is by OBJECT, not by edge (user): all edge types always drawn, no edge toggles"],
-  reads:["graph['resolved'] (support edges → arch nodes)"],
-  writes:["no file yet — classification is derived live in the viewer"],
-  note:"First step of the stage: define the anchors and work only with them. The classification needs no LLM and no new judgment — the graph already knows every object's support."},
-s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S2 — SCREENING · NEXT TO BUILD", name:"Screening — compose or skip, per anchor",
+lp0: {mod:"comp", eyebrow:"3.1 SEMANTIC / S1 — SUPPORTED_BY · BUILT 07-26G", name:"Support attribution — what actually holds each object up",
+  script:"compose/supported_by.py → out/<scene>/compose/supported_by.json (+ cache) · viewer: THE canonical scene-graph row",
+  how:["Replaces the crude touch-anchor rule (false anchors: obj_061 book wall-graze; misses: obj_013 picture on shelf). Crude rule ported + must match the viewer count (44 = 16/26/2) BEFORE diverging",
+       "Deterministic candidates per object WITH metrics: graph edges · beneath scan (±30 cm, occlusion-truncated boxes) · floor ALWAYS offered with clearance · wall/ceiling proximity · near scan · directional overlap (footprint %, thin edge slivers, side-by-side vs stacked — the obj_001 plant-beside-bookshelf lesson)",
+       "ONE batched LLM call (sonnet, prompt v5) → the superseding supported_by field: 1..n ranked options {supporter, how, confidence, reason}; ambiguity legitimate; none_plausible allowed (obj_083 plant = 'greenery through a window'); degrade → NEEDS_REVIEW",
+       "anchor = DERIVED reading (top option's supporter is arch_*): bedroom_marble 30 anchors vs 44 crude, 15 fluke demotions, 1 added",
+       "Prompt-version lesson: the template is NOT hashed — never reuse an old version number (v2 = retracted bundled nonsense job)"],
+  reads:["graph['resolved'] + judged appearance descriptions","measured arch planes"],
+  writes:["compose/supported_by.json — the support truth (contacts stay as evidence)"],
+  note:"USER GATE R1 open (PLAN_COMPOSE_LOOP.md). Contact edges are NOT deleted — superseded as the support view, kept as arrangement-fact evidence for S2."},
+pedit: {mod:"comp", eyebrow:"PROPOSE EDITS · ISOLATED (built 07-27, NOT wired — review first)", name:"Propose add / delete items",
+  script:"compose/propose_edits.py → out/<scene>/compose/edit_proposals.json",
+  how:["ISOLATED by design (user 07-27): no consumer reads its output yet — built for testing and review before it earns a wire into the loop",
+       "DELETE proposals — deterministic aggregation of every existing doubt signal: none_plausible objects (supported_by) · duplicate suspicions (consistency DROP reasons) · objects whose every support-type edge was dropped · unresolved existence disputes; one batched LLM pass confirms/denies each with a reason",
+       "ADD proposals — one batched LLM call over the room inventory (names + counts + support tiers): what obviously-expected items are missing? Every add MUST DECLARE its support (floor / wall / on-anchor) — physically checkable the moment it is proposed (stage rule)",
+       "Conservative by prompt: few, high-confidence proposals; degrade → empty lists, never fabricated"],
+  reads:["compose/supported_by.json","compose/consistency.json","graph['resolved'] inventory"],
+  writes:["compose/edit_proposals.json — PROPOSALS ONLY"],
+  note:"Intended landing spot: the JUDGE's add/delete channel (dashed arrow) — adds/deletes re-enter screening once the loop stands. Until then this is a standalone evidence pass the user reviews."},
+cons: {mod:"comp", eyebrow:"3.1 SEMANTIC / S2 — CONSISTENCY · BUILT 07-26G", name:"Self-consistency — every edge vs the support verdicts",
+  script:"compose/consistency.py → out/<scene>/compose/consistency.json (first consumer of supported_by)",
+  how:["USER RULING: supported_by does NOT fully supersede the edges — containment / attachment / adjacency are ARRANGEMENT facts composition will consume, so every edge gets a verdict instead of blanket archiving",
+       "Part A self-audit (pure code): support cycles · supporters flagged none_plausible (dependents inherit doubt) · unresolved supporters — bedroom_marble: 0 flags",
+       "Part B classify (code first): CONFIRMED_SUPPORT / SUPPORT_ALT / TRANSITIVE (support chain) / KEPT_ARRANGEMENT / KEPT_GEOMETRIC / KEPT_STRUCTURAL — 132 of 157 edges explained by code",
+       "Leftovers → ONE batched LLM call: KEEP (real arrangement fact) vs DROP (artifact) — 8 keep / 17 drop; the model split wall contact semantically: furniture flush-to-wall = real, shelf-riding grazes = noise",
+       "NEW FIND: obj_093 IN obj_080 flagged probable duplicate shelf — dedup-free graph design surfacing duplicates at judge time, as predicted"],
+  reads:["compose/supported_by.json","graph['resolved'] edges"],
+  writes:["compose/consistency.json — per-edge verdicts + audit flags (PROPOSALS; graph untouched)"],
+  note:"USER GATE R2 open (17 drop proposals + 8 keeps). Downstream module by user ruling: the nonsense judgment needs BOTH endpoints' resolved verdicts — cross-object coherence a bundled pass can't have."},
+s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S3 — SCREENING · LATER (parked design in PLAN_COMPOSE_LOOP.md)", name:"Screening — compose or skip, per anchor",
   script:"new module (design)",
   how:["SEMANTIC = WHAT is in the scene; the PHYSICAL sub-stage never decides what, SEMANTIC never places",
        "Per anchor: does this object get composed at all? Where the doors/windows/curtain question lives (wall-plane objects vs architecture left alone)",
@@ -1052,7 +1096,7 @@ s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S2 — SCREENING · NEXT TO BUILD", nam
   reads:["graph['resolved'] anchors (names, edges, provenance flags)"],
   writes:["anchor cast — the to-be-shopped list (file contract TBD)"],
   note:"First real decision of the stage. Manual review for now (user)."},
-s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S3 — SHOPPING · DESIGN", name:"Shopping — the cast list",
+s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SHOPPING · LATER", name:"Shopping — the cast list",
   script:"reworks the old C1–C5 machinery as donor code (retrieve2 → measure → thumbs → relevance → pick)",
   how:["Queries with the judged canonical NAME + J6 APPEARANCE fields (colors/material/style) and the graph crops — never raw detector labels",
        "True-size measure + orientation-aware fit + CLIP style score, unchanged donor logic",
@@ -1061,20 +1105,22 @@ s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S3 — SHOPPING · DESIGN", name:"Shopp
   reads:["anchor cast + graph['resolved'] appearance","graph/crops/","objathor catalog"],
   writes:["cast list (file contract TBD — successor of shortlists2/picks2)"],
   note:"The :8322 look-only picker is the review gate for this module."},
-ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP TO SUPPORT · DESIGN", name:"Snap to support planes",
-  script:"new module · donor: place2.py placement math",
+ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP TO SUPPORT · v0 BUILT 07-27", name:"Snap analyzer — make the support verdict physically exact",
+  script:"compose/snap.py → out/<scene>/compose/snap.json · donor place2.py math folds in when real meshes arrive",
   how:["Deterministic, ZERO LLM (standing rule: code interprets numbers) — the model never gets to violate physics because physics isn't its job",
-       "Floor anchors snap to the measured shell floor; wall anchors flush to their wall plane; ceiling anchors to the ceiling — all planes read from the graph's architecture nodes",
-       "Dependents (later) snap to the placed parent MESH's real top surface — boxes lie, meshes don't",
-       "Ordering guarantee: anchors before dependents means a support always exists before what rests on it"],
-  reads:["cast list (stage-internal) + graph['resolved'] — shell planes AND every box come from the graph; NOTHING else enters the stage (user 07-26: envelope OUT)"],
-  writes:["posed cast (positions + orientations, contract TBD)"],
-  note:"The sandbox in action: measured walls + observed boxes = the whole physics world."},
-ph2: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2 — COLLIDE GATE · DESIGN", name:"Collision gate",
+       "v0 runs on the graph's OWN boxes as proxy geometry (no cast list needed): per object, the correction that makes its TOP supported_by option exact — floor/ceiling contact, wall flush, parent-top contact; supporters snap BEFORE dependents (support-chain depth ordering)",
+       "INTERNAL_SURFACE rule: a bottom deep inside the supporter's span (book on a bookshelf's inner board) is NOT snapped to the supporter's top — the observed height IS the shelf; interior boards aren't in the box model",
+       "bedroom_marble v0 result: 7 LARGE corrections (>10 cm) = EXACTLY the known suspect family, zero false alarms — plant obj_083 0.94 m (occlusion-truncated), picture obj_096 0.32, curtain obj_014 0.25, monitor 0.22 (stand neck), bookshelves 0.21/0.15, obj_013 0.10",
+       "LOOP-IN-LOOP (user direction 07-27): the deltas feed BACK into the semantic loop as suspect-box / re-attribution evidence — the dashed return arrow"],
+  reads:["compose/supported_by.json (top options)","graph['resolved'] boxes + measured shell planes — NOTHING else enters the stage (envelope OUT)"],
+  writes:["compose/snap.json — corrections + snapped boxes (ANALYZER layer; graph verbatim)"],
+  note:"The sandbox in action: measured walls + observed boxes = the whole physics world. Same snap contract poses real meshes after S4 shopping."},
+ph2: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2 — COLLIDE GATE · DESIGN (mesh-only, user 07-27)", name:"Collision gate",
   script:"donor: collide.py (solid-voxel occupancy, 3 cm pitch, RATIO_MAX 0.05)",
-  how:["Mesh-level overlap check on every placement; accept/reject deterministic",
+  how:["USER RULING 07-27: collision is checked PER SELECTED MODEL — mesh-level, never box-vs-box (boxes drown in false contacts: every book 'collides' with its shelf, while real mesh clearance goes unmeasured)",
+       "Therefore this module waits for S4 shopping to produce placed meshes; accept/reject deterministic",
        "Rejection reasons feed back into the next loop proposal (proven pattern from loop run 3)"],
-  reads:["posed cast + placed meshes"],
+  reads:["posed cast + placed meshes (post-shopping)"],
   writes:["legal arrangement + collision report (viewer 'collisions' layer)"],
   note:"Second, finer gate after snap — pure code, no model."},
 ph3: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH3 — BOX SURGERY · DESIGN", name:"Box surgery — the work orders land here",

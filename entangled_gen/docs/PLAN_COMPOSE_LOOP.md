@@ -116,6 +116,58 @@ writes `compose/consistency.json`. Nothing removed — verdicts are proposals.
    drop-proposal list + counts. Review: console summary + JSON first; viewer
    marking only if the result earns it (effort rule).
 
+## STEP · CONTEXT CROPS (07-27, user: "make the crops more correct")
+
+Root cause of the obj_001 wrong description: `build_graph.py` cuts crops at
+CROP_PAD 0.10 — a tight box that excludes what the object stands on, so the
+appearance VLM invented support ("sitting on a shelf"). Fix in
+`graph/describe_nodes.py` (appearance v3): **context crops** in
+`graph/crops_ctx/` — source view padded 35% sides/top and **75% below**
+(support lives there), object outlined in red (the `judge_cases.context_tile`
+pattern + its obj_138 lesson). New flags: `--appearance-only` (skip phase A
+flag resolution) and `--no-ctx` (old behavior). Tight evidence crops are
+untouched — the settled naming/pairs judges keep their caches.
+
+## ISOLATED MODULE · PROPOSE EDITS (07-27, built for tomorrow's review)
+
+`compose/propose_edits.py` → `compose/edit_proposals.json`. **Nothing
+consumes it** (map: dashed arrows; intended landing = the JUDGE loop's
+add/delete channel). DELETE candidates aggregated deterministically from
+every existing doubt signal (none_plausible, consistency duplicate DROPs,
+all-support-edges-dropped + weak confidence, unresolved existence disputes)
+then one batched LLM confirm/deny; ADD proposals from one batched LLM call
+over the room inventory + dimensions, conservative (0–6), **every add
+declares its support** (floor / wall / ceiling / on:<id>) per the stage rule.
+Degrade: `--no-llm` → candidates unconfirmed, adds empty. TOMORROW: full run
++ user review of both lists.
+
+## PH1 v0 · SNAP ANALYZER (07-27, built + run)
+
+**User architecture direction (07-27, recorded):** the semantic stage is a
+LOOP; the physical stage is DETERMINISTIC; physical results feed BACK into
+the semantic loop — **a loop within a loop**. And: **collision is checked
+PER SELECTED MODEL (mesh), never box-vs-box** — so PH2 waits for shopping.
+
+`compose/snap.py` → `compose/snap.json`, zero LLM, runs on the graph's own
+boxes as proxy geometry (no cast list needed). Per object: the correction
+making its TOP supported_by option physically exact — floor/ceiling contact,
+wall flush (horizontal only; mounting height = observed truth), parent-top
+contact with supporters snapped BEFORE dependents (chain-depth ordering).
+`INTERNAL_SURFACE` rule: a bottom deep inside the supporter's span (books on
+bookshelf boards) is NOT snapped to the supporter's top — interior boards
+aren't in the box model, the observed height IS the shelf.
+
+**bedroom_marble v0 result:** dispositions 16 floor / 13 wall-flush /
+2 ceiling / 12 on-object / 13 internal-surface / 32 inside-container /
+1 embedded. **7 LARGE corrections (>10 cm) = exactly the known suspect
+family, zero false alarms:** obj_083 plant 0.94 m (occlusion-truncated box,
+matches the v5 verdict's own reasoning) · obj_096 picture 0.32 · obj_014
+curtain 0.25 · obj_005 monitor 0.22 (stand neck) · obj_088 bookshelf 0.21 ·
+obj_043 bookshelf 0.15 · obj_013 picture 0.10. The physics pass
+independently re-derived the suspect-box work-order list from geometry +
+verdicts alone — the loop-in-loop feedback channel demonstrated on real
+data. Map: dashed return arrow PH1 → S1.
+
 ## Progress
 
 | # | item | status | ruled by |
@@ -132,6 +184,14 @@ writes `compose/consistency.json`. Nothing removed — verdicts are proposals.
 | 6b | `compose/consistency.py` design + build + run (STEP 2, downstream of supported_by) | DONE 07-26G — 157 edges: 132 explained by code, 25 LLM leftovers → 8 KEEP / 17 DROP proposals; 0 audit flags; see R2 | — |
 | 6c | USER GATE: consistency verdicts (R2 — 17 drop proposals + 8 keeps) | **OPEN — awaiting user** | user |
 | 6d | tuning: `BENEATH_TOL` 0.12→0.30 (+`--beneath-tol` flag; user: occluded detections truncate boxes past 12 cm) | DONE 07-26G — 33 objects re-judged; anchors/demotions UNCHANGED; 29 top-option shifts: mass rests_on→inside for bookshelf contents, some supporters coarsened (shelf board→whole bookshelf), wall-mount confidences dropped (AC 0.8→0.6, pictures →0.5/0.45); trade-off on record: wider window = occlusion-robust but more distractor candidates. consistency.json now STALE (built on tol-0.12 layer) | user |
+| 6e | prompt v5 (most-plausible framing + directional metrics: footprint %, edge slivers, side-by-side vs stacked) — the obj_001 lesson chain | DONE 07-26G/27 | — |
+| 6f | CONTEXT CROPS: describe_nodes v3 (`crops_ctx/`, pad 35/35/75 + red outline, `--appearance-only`) + appearance re-run 89/89 | DONE 07-27 — obj_001 description STILL says "resting on a wooden shelf" under context crops → now honest pixel testimony, not a cropping artifact; gate evidence = `graph/crops_ctx/obj_001_m*.png` (user judges) | user |
+| 6g | supported_by v5 re-run on refreshed (context-crop) descriptions | DONE 07-27 — 89/89; **31 anchors** (kept 31 / demoted 13 / added 0); multi-option 22→**5** (only the genuinely contested: doors ×2, pictures ×2, book); none_plausible → **0**: obj_083 FLIPPED to rests_on floor 0.55 (new description: "leafy plant as green silhouette against bright window, washed out by backlight" — context crop sees a real plant; verdict applies occlusion-truncation reasoning to the 93.6 cm gap); obj_030 identity self-resolved ("group of books… on a wooden shelf" — the yoga-mat text was reason-bleed); obj_001 shelf story persists at 0.55 (user's crops_ctx ruling pending, R3) | user |
+| 6g2 | consistency re-run on the v5 layer | DONE 07-27 — 157 edges: 84 CONFIRMED / 4 ALT / 10 TRANSITIVE / 31 kept facts / **17 KEEP + 11 DROP** (LLM), 0 audit flags. Drop list sharpened: obj_080 repeatedly fingered as an OVERSIZED box swallowing books at wildly different heights (the duplicate-shelf suspicion, second independent angle); obj_095 caught claiming IN_WALL with an 8.4 cm gap FROM the wall | user |
+| 6h2 | PH1 `compose/snap.py` v0 built + run (see PH1 section + R4) | DONE 07-27 — 7 LARGE corrections = the known suspect family exactly, zero false alarms | user |
+| 6h3 | S4 shopping design notes mined from old C1–C5 (subagent research) | DONE 07-27 → `docs/S4_SHOPPING_DESIGN_NOTES.md` (module contracts, worked/failed record, reuse verdicts, 17 open questions) | — |
+| 6h | `compose/propose_edits.py` — ISOLATED add/delete proposer + map placement (dashed, unwired) | BUILT 07-27, `--no-llm` sanity only; **FULL RUN + REVIEW = TOMORROW** | user |
+| 6i | pipeline map redrawn: 3.1 = S1 supported_by → S2 consistency → S3 screening → S4 shopping; cards updated; propose-edits node dashed; J6 card v3 note | DONE 07-27 (user pre-approved "update the pipeline viewer") | — |
 | 7 | next step chosen + designed AFTER gate 6 — direction (user rulings 07-26G, superseding each other in order): (a) edge cleaning is downstream of supported_by [5c]; (b) briefly scoped down to "no edge pass at all — supersede + archive"; (c) FINAL: **supported_by does NOT fully supersede the edges** — containment (book IN bookshelf) / attachment / adjacency (table flush with table) are ARRANGEMENT facts composition will consume. Next step = **edge–support consistency module**: each contact edge checked against BOTH endpoints' resolved supported_by + sibling edges → confirmed (support's own evidence) / kept arrangement fact / impossible (drop-proposal: in-two-shelves, in-wall-while-on-shelf); deterministic core, LLM for leftovers, verdicts as proposals. Plus supported_by self-audit (cycles, flagged supporters) + box/identity cleaning (obj_030, obj_083, deep pictures). Viewer stance: click-card edges stay (meaningful relations); only the global spaghetti is archived | user |
 
 ## REVIEW_LOG
@@ -209,6 +269,51 @@ keep/drop split on wall contact is a real semantic distinction applied
 consistently, and the duplicate-shelf find is new information the dedup-free
 graph design predicted would surface at judge time. **User verdict: pending
 (gate 6c).**
+
+### R3 · the obj_001 evidence chain + context crops (07-26G → 07-27)
+
+**The chain, as it actually unfolded:** (1) crude rule: plant obj_001 = floor
+anchor (ON-floor edge). (2) supported_by v3/v4: rests_on bookshelf — the
+metrics line hid overlap DIRECTION. (3) v4 directional metrics added (6 cm
+sliver, side-by-side) — verdict STILL bookshelf, reason cites the appearance
+description "sitting on a shelf". (4) User checked the crops: **too tight,
+never show the plant's bottom** — the description was invented support.
+(5) Fix: context crops (35/35/**75-below** pad + red outline) + appearance
+v3 re-run (89/89) + supported_by v5 downgrade of description support-claims
+→ **the new description from context crops STILL says "resting on a wooden
+shelf."** The claim survived better evidence — it is now honest pixel
+testimony, and the remaining question is box-vs-pixels, not cropping.
+
+**Look for (user, tomorrow):** open `graph/crops_ctx/obj_001_m*.png` — does
+the wider view actually show the floor / the shelf? If shelf: the crude
+ON-floor edge + box position are wrong (box-surgery order). If floor still
+not visible: crop padding needs another notch (or this object needs a
+purpose-cut view).
+
+**Provisional verdict:** the crops fix is WORKING as designed (descriptions
+now grounded in visible context; support claims no longer croppping
+artifacts) — obj_001 itself stays UNRESOLVED, correctly, until your eyes
+rule. **User verdict: pending.**
+
+### R4 · PH1 snap analyzer v0 (07-27) — GATE OPEN
+
+**What:** `compose/snap.py` — deterministic corrections making each top
+supported_by option physically exact, on the graph's own boxes (details in
+the PH1 section above). **Why:** the user's loop-in-loop direction — the
+physical stage is deterministic and its outputs are semantic-loop evidence.
+
+**Look for:** (1) the 7 LARGE corrections — every one should read as a
+suspect box you already believe (they are the known work-order list,
+re-derived independently); (2) the `INTERNAL_SURFACE` rule (13 objects) —
+books/objects on bookshelf inner boards left at observed height rather than
+teleported to the shelf's top: is that the right v0 behavior?; (3) obj_083's
+0.94 m floor snap — if the plant is real (R3 ruling), this is the box
+surgery order; if not, it's a delete and the snap is moot — the two gates
+resolve together.
+
+**Provisional verdict:** PASS — zero false alarms in the flag list, frame
+math verified against hand-computed values (obj_043 0.154, obj_088 0.206).
+**User verdict: pending.**
 
 ---
 
