@@ -239,6 +239,18 @@ class H(BaseHTTPRequestHandler):
             else:
                 self._send(404, b"no scene_graph.json; run "
                                 b"graph/build_graph.py --scene " + sc.encode())
+        elif p == "/supported_by.json":
+            # compose/supported_by.py output (STEP 3 module 1): per object
+            # the superseding supported_by options; RAW frame ids only (no
+            # geometry of its own). Feeds the scene-graph row's support
+            # arrows + semantic anchor tint. sc sanitized by _scene().
+            f = paths.compose_dir(sc) / "supported_by.json"
+            if f.exists():
+                self._send(200, f.read_bytes(), "application/json")
+            else:
+                self._send(404, b"no compose/supported_by.json; run "
+                                b"compose/supported_by.py --scene "
+                                + sc.encode())
         elif p.startswith("/graph_crops/"):
             # per-node evidence crops (graph/describe_nodes.py output) for the
             # graph layer's click card. Filename sanitized to alnum/_-. and

@@ -82,6 +82,11 @@ def package_dir(sc):
     return scene_dir(sc) / "package"
 
 
+def compose_dir(sc):
+    """STEP 3 COMPOSE+LOOP outputs (supported_by.json, ...). 2026-07-26."""
+    return scene_dir(sc) / "compose"
+
+
 def manifest(sc):
     return scene_dir(sc) / "scene_manifest.json"
 

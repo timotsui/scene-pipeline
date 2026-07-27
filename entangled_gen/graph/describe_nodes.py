@@ -103,7 +103,18 @@ CROPS_PER_CLUSTER = 2
 TILE = 256                 # px, square cell for each crop
 LABEL_H = 22               # px, label strip under each cell
 SHEET_COLS = 4
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"       # v3: CONTEXT crops (padded view, extra below,
+                           # red outline) -- tight crops cut off what the
+                           # object stands on and the VLM invented support
+                           # ("sitting on a shelf" for a floor plant beside
+                           # a bookshelf: the obj_001 lesson, 07-26G)
+
+# context-crop padding, fractions of the 2D box (extra BELOW: support
+# lives there); min px guards tiny boxes
+CTX_PAD_SIDE = 0.35
+CTX_PAD_TOP = 0.35
+CTX_PAD_BOTTOM = 0.75
+CTX_MIN_PAD = 40
 
 REQUIRED_KEYS = {"id", "colors", "material", "style", "description",
                  "is_label"}
@@ -115,7 +126,11 @@ grid of small evidence crops):
   {sheet}
 Tile labels like "3a"/"3b" mean: crop a/b of item 3. Crops are small, \
 low-resolution renders -- describe only what you can actually see, do \
-NOT invent detail.
+NOT invent detail. Each tile shows the target object OUTLINED IN RED \
+with its surroundings included. Describe ONLY the outlined object; the \
+surroundings are there so you can see what it visibly rests on, hangs \
+from, or is mounted to -- mention that support context when (and only \
+when) the pixels actually show it.
 
 For EACH numbered item below, look at its tiles and return one JSON \
 object. "is_label": answer honestly -- do the tiles actually show a \
@@ -141,10 +156,40 @@ FIRM_PREFIX = ("Your previous response was malformed. This time output "
 # crop selection + contact sheets (deterministic)
 # --------------------------------------------------------------------------
 
-def cluster_crops(jn, det, crops_dir):
+def context_crop(nid, m, frames_dir, ctx_dir):
+    """Context variant of a member crop: the source view cropped to the
+    detection box plus a generous margin -- EXTRA below, where support
+    lives -- with the box outlined in red so the judge knows which object
+    is meant (judge_cases.context_tile pattern; the obj_001 floor-plant
+    lesson). Deterministic, skips existing files. None if no frame."""
+    src = Path(frames_dir) / f'{m["view"]}.webp'
+    if not src.exists():
+        return None
+    out = ctx_dir / f'{nid}_m{m["member"]:03d}.png'
+    if out.exists():
+        return out
+    im = Image.open(src).convert("RGB")
+    x0, y0, x1, y1 = m["box_2d"]
+    ImageDraw.Draw(im).rectangle([x0, y0, x1, y1],
+                                 outline=(255, 40, 40), width=4)
+    w, h = x1 - x0, y1 - y0
+    ps = max(CTX_PAD_SIDE * w, CTX_MIN_PAD)
+    pt = max(CTX_PAD_TOP * h, CTX_MIN_PAD)
+    pb = max(CTX_PAD_BOTTOM * h, CTX_MIN_PAD)
+    box = (max(0, int(x0 - ps)), max(0, int(y0 - pt)),
+           min(im.width, int(x1 + ps)), min(im.height, int(y1 + pb)))
+    if box[2] <= box[0] or box[3] <= box[1]:
+        return None
+    im.crop(box).save(out)
+    return out
+
+
+def cluster_crops(jn, det, crops_dir, ctx=None):
     """Top crops for a cluster: best-scoring crop of each member first
     (diversity for merged clusters), then next-best overall; cap
-    CROPS_PER_CLUSTER. Deterministic ordering."""
+    CROPS_PER_CLUSTER. Deterministic ordering. ctx=(frames_dir, ctx_dir):
+    each selected crop is swapped for its CONTEXT variant (context_crop)
+    when buildable, falling back to the tight crop."""
     per_member, rest = [], []
     for mid in sorted(jn["members"]):
         ms = sorted(det[mid]["evidence"].get("members", []),
@@ -154,19 +199,25 @@ def cluster_crops(jn, det, crops_dir):
             p = crops_dir / m.get("crop", "")
             if not m.get("crop") or not p.exists():
                 continue
-            entry = (round(-m.get("score", 0.0), 4), m.get("member", 0), p)
+            entry = (round(-m.get("score", 0.0), 4), m.get("member", 0),
+                     p, mid, m)
             if not found_first:
                 per_member.append(entry)
                 found_first = True
             else:
                 rest.append(entry)
-    per_member.sort()
-    rest.sort()
-    out = [p for _, _, p in per_member[:CROPS_PER_CLUSTER]]
-    for _, _, p in rest:
-        if len(out) >= CROPS_PER_CLUSTER:
+    key = lambda e: e[:2]                    # dicts in [3:] aren't orderable
+    per_member.sort(key=key)
+    rest.sort(key=key)
+    chosen = per_member[:CROPS_PER_CLUSTER]
+    for e in rest:
+        if len(chosen) >= CROPS_PER_CLUSTER:
             break
-        out.append(p)
+        chosen.append(e)
+    out = []
+    for _, _, p, mid, m in chosen:
+        cp = context_crop(mid, m, *ctx) if ctx else None
+        out.append(cp or p)
     return out
 
 
@@ -311,6 +362,12 @@ def main():
                     help="build contact sheets + manifest + sample prompt; "
                          "NO model calls, no write-back")
     ap.add_argument("--smoke", action="store_true", help="1 batch only")
+    ap.add_argument("--appearance-only", action="store_true",
+                    help="skip PHASE A flag resolution (already ran once); "
+                         "refresh appearance descriptions only")
+    ap.add_argument("--no-ctx", action="store_true",
+                    help="use the tight evidence crops instead of the "
+                         "context variants (pre-07-27 behavior)")
     args = ap.parse_args()
 
     gdir = paths.scene_dir(args.scene)
@@ -367,6 +424,10 @@ def main():
 
     print(f"[j6/cases] queues: existence {len(q_exist)}, rename "
           f"{len(q_rename)}, re-examine {len(q_reex)}")
+    if args.appearance_only:
+        print("[j6/cases] --appearance-only: PHASE A SKIPPED (flag "
+              "resolution already ran once; refreshing appearance only)")
+        q_exist, q_rename, q_reex = [], [], []
     case_jobs = []
     if q_exist or q_rename or q_reex:
         case_sheets.mkdir(parents=True, exist_ok=True)
@@ -571,9 +632,14 @@ def main():
     cache = (json.loads(cache_path.read_text())
              if cache_path.exists() else {"meta": {"calls": 0}, "nodes": {}})
 
+    ctx = None
+    if not args.no_ctx:
+        ctx_dir = gdir / "graph" / "crops_ctx"
+        ctx_dir.mkdir(parents=True, exist_ok=True)
+        ctx = (frames_dir, ctx_dir)
     todo, hits, no_crops = [], 0, []
     for jn in clusters:
-        crops = cluster_crops(jn, det, crops_dir)
+        crops = cluster_crops(jn, det, crops_dir, ctx=ctx)
         if not crops:
             no_crops.append(jn["id"])
             continue
