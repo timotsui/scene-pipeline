@@ -110,7 +110,20 @@ BATCH_SIZE = 8
 CROPS_PER_CLUSTER = 2
 TILE = 256                 # px, square cell for each crop
 # (v5 row-sheets replaced the 4-col grid; LABEL_H/SHEET_COLS retired)
-PROMPT_VERSION = "6"       # v6 (07-31): STRUCTURED TESTIMONY -- the
+PROMPT_VERSION = "7"       # v7 (08-02): ADJACENCY VERBS ONLY -- the AC
+                           # lesson (user GT: wall-mounted; the witness
+                           # said "rests flat on a wooden furniture
+                           # surface" and that weight verb overrode a
+                           # real, well-measured 5-10 cm air gap in the
+                           # S1 judge). A photo cannot show weight or a
+                           # small gap: the witness now reports VISIBLE
+                           # ADJACENCY ("appears to meet/touch", "flush
+                           # against"), never weight verbs ("rests on",
+                           # "sits on", "supported by"), and must note
+                           # that thin gaps are invisible at crop
+                           # resolution. Weighing adjacency against
+                           # measured gaps is the S1 judge's job.
+                           # v6 (07-31): STRUCTURED TESTIMONY -- the
                            # prose description becomes INTRINSIC-ONLY
                            # (never mentions other objects) and support
                            # moves to support_view: a LIST of GENERIC
@@ -198,19 +211,26 @@ object with TWO SEPARATE parts:
 style. NEVER mention any other object, surface, or where it sits; \
 identifying the surroundings is a downstream job.
 
-2. "support_view": a LIST of physical contacts you can actually SEE \
-holding this object up, in GENERIC surface terms only -- never name or \
-guess what the supporting thing is. Allowed "contact" values:
-  "floor"               -- bottom visibly meets the room's ground plane
-  "horizontal_surface"  -- bottom rests on some raised horizontal surface
-  "vertical_surface"    -- held against / mounted on a vertical surface
-  "ceiling"             -- hangs from or mounts to the ceiling
+2. "support_view": a LIST of the VISIBLE ADJACENCIES -- surfaces this \
+object appears to meet or touch -- in GENERIC surface terms only, never \
+naming or guessing what the surface belongs to. A photograph cannot \
+show WEIGHT, and a thin air gap (a few centimeters) is usually \
+invisible at this crop resolution -- so you report what appears \
+adjacent, and a downstream judge weighs it against measured geometry. \
+Allowed "contact" values:
+  "floor"               -- bottom edge appears to meet the ground plane
+  "horizontal_surface"  -- bottom edge appears to meet a raised \
+horizontal surface
+  "vertical_surface"    -- appears flush against a vertical surface
+  "ceiling"             -- appears to meet the ceiling
   "not_visible"         -- the contact region is NOT visible in the crops
-"detail" = a short generic phrase about the visible contact (e.g. \
-"bottom edge meets a flat wooden surface"), still naming no objects. \
-Multiple entries are allowed (e.g. a leaning object: bottom on a \
-horizontal surface AND back against a vertical one). If you cannot see \
-what holds it up, the ONLY honest answer is \
+"detail" = a short generic phrase using ADJACENCY language ONLY: \
+"appears to meet", "appears to touch", "flush against", "adjacent to". \
+NEVER use weight verbs -- "rests on", "sits on", "stands on", \
+"supported by" claim something pixels cannot show. Still naming no \
+objects. Multiple entries are allowed (e.g. bottom appears to meet a \
+horizontal surface AND back is flush against a vertical one). If you \
+cannot see any contact region, the ONLY honest answer is \
 [{{"contact": "not_visible", "detail": "..."}}] -- do NOT guess from \
 plausibility.
 

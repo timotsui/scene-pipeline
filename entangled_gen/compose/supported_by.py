@@ -57,7 +57,21 @@ import paths  # noqa: E402
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
 BATCH_SIZE = 30          # text-only items; ~3 calls for a 90-object room
-PROMPT_VERSION = "9"     # v9 (08-02): REAL-GAP RULE -- the symmetric
+PROMPT_VERSION = "10"    # v10 (08-02): SURFACE VOCABULARY -- the "how"
+                         # menu reworked to name WHERE THE WEIGHT LANDS
+                         # (user design: "on top is categorically
+                         # different from inside"). on_top / inside /
+                         # mounted_on / hangs_from / embedded_in;
+                         # rests_on + leans_on RETIRED (leaning = on_top
+                         # + the against slot). Kills the synonym
+                         # overlaps (rests_on~leans_on, rests_on~inside
+                         # for compartment items) that let verdicts
+                         # wander between runs with real snap
+                         # consequences. Also: rulings auto-apply
+                         # REMOVED (prime directive: ground truth is an
+                         # ANSWER KEY, never an input) -- gt_labels.json
+                         # is now scored against, loudly, not applied.
+                         # v9 (08-02): REAL-GAP RULE -- the symmetric
                          # twin of v8. v8 taught "views disagree ->
                          # forgive the gap (truncation)"; v9 adds
                          # "views AGREE -> BELIEVE the gap": a
@@ -103,8 +117,13 @@ PROMPT_VERSION = "9"     # v9 (08-02): REAL-GAP RULE -- the symmetric
                          # (template isn't hashed -- never reuse a number)
 
 SUPPORT_EDGE_TYPES = ("ON", "IN", "IN_WALL", "ATTACHED")  # crude rule (viewer)
-HOW_VOCAB = ("rests_on", "mounted_on", "leans_on", "hangs_from",
-             "embedded_in", "inside")
+# v10 surface vocabulary: each value names WHERE THE WEIGHT LANDS --
+# categorically distinct, no two can describe the same arrangement
+HOW_VOCAB = ("on_top", "inside", "mounted_on", "hangs_from",
+             "embedded_in")
+# legacy values accepted when READING old layers/labels (viewer, gt
+# comparisons); the judge may only emit HOW_VOCAB
+HOW_LEGACY = {"rests_on": "on_top", "leans_on": "on_top"}
 
 # tolerances (m) -- box error > contact tolerance (the obj_013 lesson)
 BENEATH_TOL = 0.30       # |object bottom - candidate top| window; raised
@@ -135,8 +154,23 @@ beneath; a footprint overlap that is only a thin edge sliver means the \
 objects are BESIDE each other, not one inside/on the other; wall mounting \
 needs a plausible fastening (AC unit, picture, curtain rod -- a book does \
 not mount to a wall); a thin graze against a wall while something solid \
-sits beneath is NOT support; leaning objects rest on one thing AND \
-balance against another.
+sits beneath is NOT support; a leaning object is on_top of one thing \
+and balances AGAINST another (use the "against" field).
+
+The "how" vocabulary names WHERE THE WEIGHT LANDS -- the values are \
+categorically distinct, no two can describe the same arrangement:
+  "on_top"      -- carried by the supporter's EXTERIOR TOP face (lamp \
+on a desk; furniture on the floor)
+  "inside"      -- within the supporter's volume, carried by an \
+INTERIOR surface (book in a shelf compartment; item in a basket)
+  "mounted_on"  -- fastened to a VERTICAL face (wall-hung picture, \
+wall AC unit)
+  "hangs_from"  -- suspended from above (ceiling fixture; curtain \
+from a rod/rail)
+  "embedded_in" -- set into architecture (door or window in a wall)
+on_top vs inside is the exterior-top vs interior distinction -- for a \
+shelf unit, an object on its very top surface is on_top; an object in \
+any compartment is inside.
 
 About the testimony lines: "Looks like" describes the object ITSELF \
 only -- identity evidence, it never names surroundings. "Witness \
@@ -186,9 +220,9 @@ below it and a plausible vertical fastening is mounted, not resting.
 Return ONE fenced ```json block containing a JSON ARRAY with EXACTLY one \
 object per item, same order:
 {{"id": "<the id given>", "options": [{{"supporter": "<candidate id>", \
-"how": "rests_on|mounted_on|leans_on|hangs_from|embedded_in|inside", \
-"against": "<second id, ONLY for leans_on>", "confidence": 0.0-1.0, \
-"reason": "one sentence"}}]}}
+"how": "on_top|inside|mounted_on|hangs_from|embedded_in", \
+"against": "<optional: the id this object leans/balances against>", \
+"confidence": 0.0-1.0, "reason": "one sentence"}}]}}
 Rank options best-first. Give MULTIPLE options only when several are \
 genuinely semantically viable (e.g. a picture that could hang on the wall \
 OR stand on the shelf); one option is the normal case. Supporters must be \
@@ -719,37 +753,35 @@ def main():
                                   encoding="utf-8")
         todo_ids = {n["id"] for n in nodes if n["id"] not in verdicts}
 
-    # ---------------- user rulings: ground truth outranks the judge ------
-    # compose/supported_by_rulings.json: {oid: {supporter, how, note,
-    # confidence?}}. The ruling becomes options[0] (by:"user"); the
-    # judge's own differing options stay behind it as audit alternates.
-    # Born 08-02 (AC case): three prompt versions couldn't beat a witness
-    # overclaim -- user ground truth belongs IN THE STATE, like snap's
-    # snap_rulings.json.
-    rulings_path = cdir / "supported_by_rulings.json"
-    if rulings_path.exists():
-        rulings = json.loads(rulings_path.read_text(encoding="utf-8"))
-        node_ids = {n["id"] for n in nodes}
-        for oid, ru in rulings.items():
-            if oid not in node_ids:
-                continue
-            if not ru.get("supporter") or ru.get("how") not in HOW_VOCAB:
-                print(f"[supported_by] ruling for {oid} malformed -- "
-                      f"ignored")
-                continue
-            opt = {"supporter": ru["supporter"], "how": ru["how"],
-                   "confidence": float(ru.get("confidence", 0.95)),
-                   "reason": ("USER RULING (ground truth): "
-                              + str(ru.get("note", "")).strip()),
-                   "by": "user"}
-            old = (verdicts.get(oid) or {}).get("options") or []
-            keep = [o for o in old if o.get("supporter") != opt["supporter"]]
-            v = dict(verdicts.get(oid) or {})
-            v["options"] = [opt] + keep[:3]
-            v.pop("none_plausible", None)
-            verdicts[oid] = v
-            print(f"[supported_by] USER RULING applied: {oid} "
-                  f"{opt['how']} {opt['supporter']}")
+    # ---------------- ground-truth check: ANSWER KEY, never an input -----
+    # PRIME DIRECTIVE (user 08-02): the pipeline runs BLIND; ground truth
+    # lives in compose/gt_labels.json ({oid: {supporter, how, note}}) as
+    # an answer key. Here we only SCORE the blind verdicts against it,
+    # loudly -- a regression bench for the judges. (The earlier rulings
+    # auto-apply mechanism is deliberately gone: pinning answers made a
+    # human part of the pipeline.)
+    gt_path = cdir / "gt_labels.json"
+    gt_report = []
+    if gt_path.exists():
+        gt = json.loads(gt_path.read_text(encoding="utf-8"))
+        for oid, lab in gt.items():
+            v = verdicts.get(oid)
+            top = (v or {}).get("options") or []
+            got_sup = top[0]["supporter"] if top else None
+            got_how = top[0].get("how") if top else None
+            want_how = HOW_LEGACY.get(lab.get("how"), lab.get("how"))
+            norm_how = HOW_LEGACY.get(got_how, got_how)
+            ok = got_sup == lab.get("supporter") and norm_how == want_how
+            gt_report.append({"id": oid, "label": {
+                                  "supporter": lab.get("supporter"),
+                                  "how": want_how},
+                              "blind": {"supporter": got_sup,
+                                        "how": norm_how},
+                              "match": ok})
+            mark = "MATCH   " if ok else "MISMATCH"
+            print(f"[supported_by] GT {mark} {oid}: blind said "
+                  f"{norm_how} {got_sup} | label says {want_how} "
+                  f"{lab.get('supporter')}")
 
     # assemble the layer
     objects = []
@@ -793,6 +825,7 @@ def main():
                  "as evidence. anchor = top option's supporter is arch_*. "
                  "Boxes verbatim; graph untouched."),
         "crude_check": {"anchors": len(crude), **tc},
+        "gt_check": gt_report,
         "counts": {"objects": len(nodes),
                    "resolved": sum(1 for o in objects if o["status"] == "ok"),
                    "needs_review": sum(1 for o in objects

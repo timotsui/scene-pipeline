@@ -218,6 +218,7 @@ data. Map: dashed return arrow PH1 → S1.
 | 6v | **S1 v8 BOTTOM-EDGE EVIDENCE** (starved-judge fix): per-item line = where each view measured the lowest visible point (74/82); template reads disagreement as occlusion. Full re-judge + chain refresh (S2 10 calls · snap · S3) | **RUN 08-02** — obj_023 FLIPPED BACK to floor 0.60 ("likely truncation" — textbook) · books → inside 0.8–0.9 · doors → wall · anchors 30 · **⚠ snap curtain verdict FLIPPED to DEFER (run variance, no verdict cache — the R8 slim curtain is out of the layer)** · S3 adds: mouse out, wardrobe/trash in; see R10b — **GATE OPEN** | user |
 | 6w | **snap v1.2 CACHE + RULINGS + reframed docket** (R10b/R11): adj prompt v2 (majority rule, magnitude never a defer reason), "k of n AGREE" framing, flags with direction; snap_cache.json (evidence-keyed) + snap_rulings.json (user pins); AC pinned NO_SNAP pending eyeball | **DONE 08-02** — curtain ADOPT 0.85 (flag read correctly), re-run = 0 LLM calls; see R11 — **GATE OPEN**. Accepted-not-built: surface-based support vocabulary (on_top/inside/…, leans_on retired) | user |
 | 6x | **AC GROUND TRUTH (user 08-02: wall-mounted) + S1 rulings mechanism** (`supported_by_rulings.json`, mirror of snap's; ruling = options[0] by:"user"). v9 real-gap prompt rule tried first — did NOT flip the AC + reshuffled synonym families (prompt accretion limit). Chain refreshed: AC snaps wall-flush, off the suspect lists; curtain/shelf verdicts stable | **DONE 08-02** — see R12 (closed). Queued: surface vocab rework + witness verb fix | user |
+| 6y | **BLIND TEST: witness v7 adjacency verbs (82/82 re-described; AC's fake "rests flat" testimony GONE) + S1 v10 surface vocab (on_top/inside/mounted_on/hangs_from/embedded_in) + gt_labels.json answer-key scorer (rulings auto-apply REMOVED — GT never leaks)** | **PASSED 08-02** — `GT MATCH obj_002 mounted_on wall` BLIND; chain: AC edge dropped for the right reason, curtain ADOPT 0.9, LARGE 12→7, books inside=40; see R13 — **GATE OPEN** | user |
 | 6i | pipeline map redrawn: 3.1 = S1 supported_by → S2 consistency → S3 screening → S4 shopping; cards updated; propose-edits node dashed; J6 card v3 note | DONE 07-27 (user pre-approved "update the pipeline viewer") | — |
 | 6j | 07-30 session: R3 RULED (floor) → root-cause chain → appearance v4 (geometry-blind) + v5 (ROW-SHEETS) adopted in describe_nodes.py; viewer review-mode colors + existence badges dropped from titles + ctx crops in the click card (+ /graph_crops_ctx/ route); map: J6 v4/v5 notes + OLD C1–C7 column REMOVED (user); hybrid escalation designed (safety net, re-time later) | DONE 07-30 — v5 chain ran: obj_001 fixed end-to-end (rests_on floor 0.6, anchor back; 30 anchors / 14 demoted); obj_083 flip-flopped to none_plausible (run-to-run instability = v6 motivation); consistency v5-layer: 84 confirmed / 25 DROP / 3 KEEP (fact-consolidation shift) | user |
 | 6k | **v6 STRUCTURED TESTIMONY adopted (user 07-31)**: appearance v6 = intrinsic-only description + support_view (GENERIC contacts: floor/horizontal_surface/vertical_surface/ceiling/**not_visible**, never names the neighbor — the invention channel closed) · supported_by v6 consumes support_view instead of prose support-claims (witness reports contact geometry, judge matches to candidates). Probe 07-30 on 8 hard cases: 7/8 (obj_001 floor ✓, obj_083 honest not_visible + "seen through glass" intrinsic ✓, obj_013 gave vertical only — dual-contact under-report, watch); full v6 chain (describe → supported_by → consistency) | **DONE 07-31** — 89/89 described (all intrinsic-only); supported_by v6: 30 anchors / 14 demoted (obj_001 floor **0.75**, shelf alt 0.2 ✓ · obj_083 stable rests_on desk 0.35, no more none_plausible flip-flop · obj_013 collapsed to rests_on bookshelf-top **0.9** · **obj_002 AC DEMOTED**: rests_on bookshelf-top 0.55 vs wall-mount 0.4 — user eyes) · **multi-option 5→30** (mostly second-place candidates 0.2–0.4 inside the duplicate-shelf nest — dedup evidence, not indecision; open Q: viewer "contested" threshold) · consistency: 77 confirmed / 26 alt / 13 DROP + 8 KEEP, 0 audit flags. STDIN fix both bridges (WinError 206: v6 prompts crossed the 32k argv cap — prompts now piped). | user |
@@ -942,6 +943,56 @@ mounted_on / hangs_from / embedded_in; leans_on retired): books
 (inside↔rests_on), doors (mounted_on↔rests_on floor). Also queued from
 the autopsy: witness-side fix — describe_nodes detail verbs should say
 "appears adjacent/in contact", never weight verbs.
+
+---
+
+### R13 · THE BLIND TEST PASSES — witness v7 + vocab v10 + answer-key doctrine (08-02) — GATE OPEN
+
+**PRIME DIRECTIVE wiring (user: "record ground truth to tune and
+reference, but it must never leak into the pipeline"):** the S1
+rulings auto-apply is REMOVED; `compose/gt_labels.json` (renamed from
+supported_by_rulings.json) is an ANSWER KEY — a scorer prints GT
+MATCH/MISMATCH after each blind run and stores `gt_check` as layer
+metadata; no judge, docket, or prompt ever sees it.
+
+**The two source fixes:**
+- **Witness v7 (describe_nodes, adjacency verbs):** support_view details
+  may only say "appears to meet/touch / flush against" — never weight
+  verbs; the prompt states a photo cannot show weight and thin gaps are
+  invisible at crop resolution. Full re-describe 82/82. THE AC'S FAKE
+  TESTIMONY VANISHED: v6 "rests flat on a wooden furniture surface" →
+  v7 reports ONLY "flush against a vertical surface".
+- **S1 v10 (surface vocabulary):** how = WHERE THE WEIGHT LANDS —
+  on_top / inside / mounted_on / hangs_from / embedded_in; rests_on +
+  leans_on retired (leaning = on_top + against). Distribution landed
+  clean: 27 on_top / 40 inside / 11 mounted_on / 2 hangs_from / 2
+  embedded_in; books decisively inside (0.85); multi-option 4.
+
+**BLIND RESULT: `GT MATCH obj_002: blind said mounted_on
+arch_wall_z_high`** — the pipeline got the AC on the wall BY ITSELF
+(0.75: "witness sees only vertical-surface contact, face penetrates the
+wall plane, matching a typical wall-mounted AC"). The full causal chain
+that produced the wrong answer is dead at the source.
+
+**Chain on the blind layer:** S2 — the ON-bookshelf edge DROPped for the
+right reason ("already wall-mounted; 4.9 cm gap = no contact"); gap-aware
+reasoning visible across the drop list (desk/pillow "a gap, not
+contact"). Snap — curtain ADOPT **0.9**, obj_023 ADOPT 0.88, **LARGE
+list 12 → 7** (the book noise absorbed into INSIDE_CONTAINER=40; the 7
+left are the genuine knowns: obj_096 deep picture, monitor stand-neck,
+shelf/plant truncation floats, basket, obj_013). S3 — 4 adds
+(wastebasket 0.75 / keyboard 0.7 / blanket 0.65 / mouse 0.55).
+
+**Look for:** (1) support view — the on_top/inside split vs your read;
+(2) obj_127 vs obj_128: the two doors got different verdicts (on_top
+floor 0.75 vs embedded_in wall 0.55) — candidates differ, but worth an
+eye; (3) curtain now hangs_from wall 0.55 — semantically the best it's
+been; (4) more gt_labels welcome: every label you add (obj_062? obj_083?)
+grows the regression bench for free.
+
+**Provisional verdict:** the autonomy loop closed the right way — wrong
+verdict → autopsy → source fix → blind re-test → GT MATCH, with the
+label kept as a permanent benchmark. **User verdict: pending (R13).**
 
 ---
 
