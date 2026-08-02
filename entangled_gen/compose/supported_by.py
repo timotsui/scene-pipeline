@@ -57,7 +57,33 @@ import paths  # noqa: E402
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
 BATCH_SIZE = 30          # text-only items; ~3 calls for a 90-object room
-PROMPT_VERSION = "10"    # v10 (08-02): SURFACE VOCABULARY -- the "how"
+PROMPT_VERSION = "12"    # v12 (08-02): BOX ERROR MODEL -- user design
+                         # ("does it understand boxes come with large
+                         # variance? literally prompt it"). The noise
+                         # sentence becomes a calibrated failure-mode
+                         # list: jitter / truncation (tens of cm) /
+                         # single-face bleed / whole-box mis-lift /
+                         # MISSING OBJECTS (undetected stands, risers,
+                         # boards -- the plant's pot-stand case). A
+                         # measured gap is never certain refutation;
+                         # the judge names which error mode it assumed.
+                         # Trigger: v11 flipped the plant INTO the
+                         # neighboring bookshelf because "a real 19 cm
+                         # gap rules out the floor".
+                         # v11 (08-02): NEAREST-THINGS CONTEXT + CARRY
+                         # TEST. Door obj_127 (user eyeball: box LIFTED
+                         # OFF the wall) -- the true supporter was never
+                         # OFFERED (15 cm wall cutoff): the nearest wall
+                         # is now ALWAYS a candidate (the floor lesson,
+                         # again) and every item carries a "nearest
+                         # things" distance line so a mis-lifted box can
+                         # be reasoned about. Basket obj_009 (user: on
+                         # the floor UNDER the side table) -- "inside"
+                         # now requires the CARRY TEST: would it fall if
+                         # the supporter vanished? Box containment alone
+                         # is never support (boxes include empty
+                         # leg-space/under-space).
+                         # v10 (08-02): SURFACE VOCABULARY -- the "how"
                          # menu reworked to name WHERE THE WEIGHT LANDS
                          # (user design: "on top is categorically
                          # different from inside"). on_top / inside /
@@ -140,9 +166,23 @@ ARCH_LABEL = {"arch_floor": "the floor", "arch_ceiling": "the ceiling",
 
 TEMPLATE = """\
 {firm}You are auditing the support structure of objects extracted from a \
-3D scan of ONE indoor room. All boxes were measured; sizes are noisy \
-(centimeter-level error is normal, so a small gap or graze can be \
-measurement noise rather than real contact).
+3D scan of ONE indoor room. All boxes were MEASURED, and measurements \
+here fail in known ways -- treat every number as evidence with an error \
+model, never as exact truth:
+  (a) jitter: any bound is routinely off by a few centimeters;
+  (b) truncation: a bound can be off by TENS of centimeters when the \
+region was occluded (the Bottom-edge evidence line tells you when);
+  (c) bleed: one face stretched outward by a bad segmentation mask;
+  (d) mis-lift: rarely, a whole box sits translated off its true place;
+  (e) MISSING OBJECTS: small supports -- stands, risers, rails, interior \
+boards -- are often never detected at all, so an object can genuinely \
+rest on something that has no box and no candidate line.
+A measured gap is therefore NEVER certain refutation of an otherwise \
+physically sensible support: weigh which error mode is most plausible \
+for this object's kind and this evidence, prefer the mundane explanation \
+(a floor plant floats 19 cm -> an undetected pot stand, not residence \
+inside a neighboring bookshelf), and NAME the error mode you assumed in \
+your reason.
 
 For EACH numbered item you get the object's name, size, height, and its \
 CANDIDATE relations with measured metrics. Your job: the SINGLE MOST \
@@ -171,6 +211,27 @@ from a rod/rail)
 on_top vs inside is the exterior-top vs interior distinction -- for a \
 shelf unit, an object on its very top surface is on_top; an object in \
 any compartment is inside.
+
+THE CARRY TEST for "inside": would the object FALL if the supporter \
+vanished? "inside" requires the supporter to carry the weight on one \
+of its own interior surfaces (a shelf board, a container bottom). Box \
+containment alone is NEVER support -- boxes include empty leg-space \
+and under-space. An object whose bottom sits at FLOOR height (small \
+measured clearance) while engulfed by another object's box (a basket \
+under a table, between chair legs) is on_top of the floor, not inside \
+the furniture: remove the furniture and it would not move.
+
+MIS-LIFTED BOXES: reconstruction sometimes places a box translated \
+off its true position, so a real attachment can measure as a gap of \
+tens of centimeters. The "nearest things" context line gives the \
+closest entities with raw distances. When an object's KIND requires a \
+support that no candidate provides at contact range (a door must be \
+in a wall; nothing else in its list can hold a door), pick the \
+nearest candidate of the required kind even at a large measured gap, \
+say the box is likely mis-lifted in the reason, and lower the \
+confidence. Use this ONLY when no candidate at contact range makes \
+physical sense for the kind -- never to override a sensible touching \
+supporter.
 
 About the testimony lines: "Looks like" describes the object ITSELF \
 only -- identity evidence, it never names surroundings. "Witness \
@@ -422,16 +483,31 @@ def build_candidates(nodes, arch_planes, edges, beneath_tol=BENEATH_TOL):
                 f"is {cm(abs(d))} "
                 f"{'above' if d >= 0 else 'below'} it")
 
-        # 3) wall/ceiling proximity not already edged
+        # 3) wall/ceiling proximity not already edged. The NEAREST wall
+        # is ALWAYS offered (v11, the door lesson -- same as the floor:
+        # a mis-lifted box can sit far from the wall it belongs in, and
+        # a supporter that is never offered can never be chosen; the
+        # number does the arguing)
+        wall_d = {}
         for aid, pl in arch_planes.items():
-            if aid in partners or pl["axis"] == "y":
+            if pl["axis"] == "y":
                 continue
             g, face = wall_gap(A, pl)
+            wall_d[aid] = (g, face)
+            if aid in partners:
+                continue
             if g < WALL_NEAR:
                 m = (f"face {face} penetrates the wall plane {cm(-g)}"
                      if g < 0 else f"face {face} is {cm(g)} from the wall")
                 add(aid, "computed", "near-wall",
                     f"near {ARCH_LABEL[aid]} ({aid}) [computed]: {m}")
+        if not any(a.startswith("arch_wall") for a in partners):
+            aid = min(wall_d, key=lambda a: abs(wall_d[a][0]))
+            g, face = wall_d[aid]
+            add(aid, "computed", "nearest-wall",
+                f"nearest wall {ARCH_LABEL[aid]} ({aid}) [computed, "
+                f"always offered]: face {face} is {cm(abs(g))} "
+                f"{'past' if g < 0 else 'from'} the wall plane")
         if "arch_ceiling" not in partners:
             d = ceil_h - A.top_h
             if d <= WALL_NEAR:
@@ -450,6 +526,17 @@ def build_candidates(nodes, arch_planes, edges, beneath_tol=BENEATH_TOL):
                 add(bid, "computed", "near",
                     f"near {names[bid]} ({bid}) [computed]: "
                     f"box gap {cm(g)}")
+
+        # 5) nearest-things line (v11): the closest entities with raw
+        # distances, thresholds-free -- spatial awareness for reasoning
+        # about mis-lifted boxes (a door 30 cm from every wall)
+        near = [(box_gap(A, boxes[bid]), f"{names[bid]} ({bid})")
+                for bid in boxes if bid != oid]
+        near += [(abs(g), ARCH_LABEL[aid] + f" ({aid})")
+                 for aid, (g, _f) in wall_d.items()]
+        near.sort(key=lambda t: t[0])
+        context.append("nearest things (box-to-box): " + " · ".join(
+            f"{lbl} {d:.2f} m" for d, lbl in near[:5]))
 
         out[oid] = {"cands": cands, "partners": partners, "context": context}
     return out

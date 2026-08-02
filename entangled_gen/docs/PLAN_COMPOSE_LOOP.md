@@ -996,6 +996,51 @@ label kept as a permanent benchmark. **User verdict: pending (R13).**
 
 ---
 
+### R13b · v11+v12 — nearest-wall, carry test, BOX ERROR MODEL: 4/4 blind (08-02) — GATE OPEN
+
+**User eyeball rulings in:** obj_127 door = a LIFTING error (box off the
+wall) → labeled embedded_in wall; obj_009 basket = on the FLOOR under
+the side table (volume engulfed by the table's empty under-space).
+
+**v11:** nearest wall ALWAYS offered as a candidate (the floor lesson
+again — a supporter never offered can never be chosen) + per-item
+"nearest things" distance line + the CARRY TEST for inside (would it
+fall if the supporter vanished? box containment ≠ support) + the
+mis-lift rule (kind requires a support no candidate provides at contact
+range → pick the nearest of the required kind, flag the box). Blind:
+door + basket both flipped correct (3/3) — **but the plant regressed**
+("a real 19 cm gap rules out the floor" → dove inside the neighboring
+bookshelf): the judge treated measured numbers as binding truth.
+
+**v12 (user design: "literally prompt it about the variance"):** the
+noise sentence became a calibrated BOX ERROR MODEL — jitter / truncation
+(tens of cm) / single-face bleed / whole-box mis-lift / **missing
+objects** (undetected stands, risers, boards — the pot-stand case);
+gaps are never certain refutation; the judge names the error mode it
+assumed. Plant GT added to the answer key (J-era user-verified floor).
+
+**BLIND RESULT v12: 4/4 GT MATCH** — AC mounted_on wall · door obj_127
+embedded_in wall · basket obj_009 on_top floor · plant obj_001 on_top
+floor. 31 anchors, multi-option 4, demoted list = only the shelf-nest
+dependents.
+
+**Chain:** S2 — 17 drops, all coherent (all three doors' ON-floor edges
+dropped as "swing clearance"; basket-in-side-table dropped as
+side-by-side). Snap — curtain refit ADOPT 0.85 (stable), obj_023 0.85;
+obj_096 settled mounted_on wall this run (its standing-on-shelf story
+remains the alt — still the deepest suspect + eyeball); **obj_062, the
+second "air conditioner" (open rename item), entered the docket** and
+snapped wall-flush 0.128. LARGE = 8. S3 — keyboard 0.8 / blanket 0.75 /
+mouse 0.7 / wastebasket 0.55.
+
+**The regression-bench doctrine is now visibly working:** every judge
+change gets scored against ALL labels; v11 fixing two cases while
+breaking a third was CAUGHT the same run because the plant had a label.
+The bench: obj_002, obj_127, obj_009, obj_001. **User verdict: pending
+(R13/R13b).**
+
+---
+
 ## PARKED — screening draft (earlier this session, now a later step)
 
 Compose-or-skip per anchor (`COMPOSE` / `SKIP_ARCH` / `HOLD`), one batched call,
