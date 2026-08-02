@@ -16,9 +16,11 @@ judges, materializing them is arithmetic):
      node). Cluster id = the lowest member id. Merged geometry = union
      AABB; label multiset = union of member multisets; evidence = all
      members' evidence pointers.
-  2. PART_OF verdicts -> a PART_OF edge (a = the part) in the judged
-     edges, replacing the SAME_CANDIDATE edge. DISTINCT -> edge dropped.
-     UNJUDGED SAME_CANDIDATE edges are carried over as-is (conservative).
+  2. DISTINCT -> edge dropped (spatial relations live in the record's
+     IN/ON/ATTACHED edges). UNJUDGED SAME_CANDIDATE edges are carried
+     over as-is (conservative). PART_OF verdicts RETIRED 08-01 (judge
+     v2: fragments are SAME, contents DISTINCT); a stale one aborts the
+     build with a re-judge instruction.
   3. Record edges remapped to cluster ids; intra-cluster edges vanish;
      duplicates after remap collapse (ON keeps the smallest |gap| per
      (a, b); a cluster supported by TWO different surfaces keeps both,
@@ -50,7 +52,7 @@ import paths  # noqa: E402
 from build_edges import (TOL_ON_AIR, TOL_ON_PEN, FLOOR_TOL,  # noqa: E402
                          MIN_FOOT_OVERLAP, xz_overlap_area, h)
 
-STRUCT = ("ON", "IN", "IN_WALL", "ATTACHED", "PART_OF")
+STRUCT = ("ON", "IN", "IN_WALL", "ATTACHED")
 
 
 def main():
@@ -71,7 +73,7 @@ def main():
         return x
 
     sc_edges = [e for e in graph["edges"] if e["type"] == "SAME_CANDIDATE"]
-    applied, part_edges, dropped, open_pairs = [], [], [], []
+    applied, dropped, open_pairs = [], [], []
     for e in sc_edges:
         v = e.get("verdict", {})
         verdict = v.get("verdict")
@@ -81,7 +83,14 @@ def main():
                 parent[max(ra, rb)] = min(ra, rb)
             applied.append((e["a"], e["b"]))
         elif verdict == "PART_OF":
-            part_edges.append(e)
+            # verdict retired 08-01 (judge_pairs v2: fragments are SAME,
+            # contents DISTINCT) -- a PART_OF here means stale v1 verdicts:
+            # re-run judge_pairs before building the judged layer
+            raise SystemExit(
+                f"[judged] stale PART_OF verdict on {e['a']}|{e['b']} -- "
+                "the verdict menu retired PART_OF (08-01); re-run "
+                "graph/judge_pairs.py (prompt v2 re-judges from cache) "
+                "and rebuild")
         elif verdict == "DISTINCT":
             dropped.append((e["a"], e["b"]))
         else:
@@ -179,13 +188,6 @@ def main():
         jedges.append({"type": t, "a": a, "b": b, "evidence": ev,
                        "caveats": caveats, **extra})
 
-    for e in part_edges:              # PART_OF verdicts materialize
-        part = e["verdict"]["part"]
-        whole = e["b"] if part == e["a"] else e["a"]
-        jedges.append({"type": "PART_OF", "a": cid(part), "b": cid(whole),
-                       "evidence": dict(e["evidence"]), "caveats": [],
-                       "resolved_by": "judge_pairs",
-                       "verdict_reason": e["verdict"]["reason"]})
     for e in open_pairs:              # unjudged pairs stay visible
         jedges.append({"type": "SAME_CANDIDATE", "a": cid(e["a"]),
                        "b": cid(e["b"]), "evidence": dict(e["evidence"]),
@@ -290,7 +292,7 @@ def main():
 
     graph["judged"] = {
         "built": date.today().isoformat(),
-        "built_from": {"pair_verdicts": len(applied) + len(part_edges)
+        "built_from": {"pair_verdicts": len(applied)
                        + len(dropped), "near_verdicts":
                        sum(1 for e in graph["edges"] if e["type"] == "NEAR"
                            and "verdict" in e)},
@@ -312,7 +314,7 @@ def main():
     print(f"[judged] wrote graph['judged'] in {gpath}")
     print(f"[judged] {len(det)} detection nodes -> {len(jnodes)} clusters "
           f"({len(graph['judged']['merge_clusters'])} merged, "
-          f"{len(part_edges)} PART_OF, {len(dropped)} distinct, "
+          f"{len(dropped)} distinct, "
           f"{len(open_pairs)} unjudged carried)")
     for c in graph["judged"]["merge_clusters"]:
         print(f"           {c['id']} <= {'+'.join(c['members'])} "

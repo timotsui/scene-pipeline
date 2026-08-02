@@ -24,6 +24,14 @@ orders. There is NO re-scan after this pass.
 with zero model calls (standing review-first rule). NOTE: in that mode
 phase B sheets show pre-resolution names (renames happen live).
 
+07-30 (appearance prompt v4+v5, PLAN_COMPOSE_LOOP.md R3): phase B item
+lines are GEOMETRY-BLIND (v4 -- the witness must not hear the geometry
+its testimony is weighed against by supported_by), and the contact
+sheet is a ROW-SHEET (v5 -- one item per color-framed row; the old
+mixed grid cross-contaminated neighboring items: obj_001 3/3 wrong on
+grids, correct on row-sheets, same cost). Phase A keeps geometry
+(jc.facts) on purpose: judges arbitrate, witnesses stay blind.
+
 --------------------------------------------------------------------------
 v2 docstring (appearance machinery, still accurate) follows.
 --------------------------------------------------------------------------
@@ -101,9 +109,42 @@ CONCURRENCY = 3
 BATCH_SIZE = 8
 CROPS_PER_CLUSTER = 2
 TILE = 256                 # px, square cell for each crop
-LABEL_H = 22               # px, label strip under each cell
-SHEET_COLS = 4
-PROMPT_VERSION = "3"       # v3: CONTEXT crops (padded view, extra below,
+# (v5 row-sheets replaced the 4-col grid; LABEL_H/SHEET_COLS retired)
+PROMPT_VERSION = "6"       # v6 (07-31): STRUCTURED TESTIMONY -- the
+                           # prose description becomes INTRINSIC-ONLY
+                           # (never mentions other objects) and support
+                           # moves to support_view: a LIST of GENERIC
+                           # visible contacts (floor / horizontal_surface
+                           # / vertical_surface / ceiling / not_visible)
+                           # with not_visible as a first-class honest
+                           # answer. The witness reports contact
+                           # geometry; supported_by matches it against
+                           # its candidate list -- naming the supporter
+                           # is the judge's job, not the witness's
+                           # (probe run 07-30: obj_001 floor, obj_083
+                           # honest not_visible, no invented neighbors).
+                           # v5 (07-30): ROW-SHEETS -- one item per row,
+                           # per-row color frame, item number burned INTO
+                           # each crop, thick dark separators, and the
+                           # prompt forbids reading other rows as context.
+                           # The old 4-col mixed grid caused cross-tile
+                           # contamination: obj_001 (floor plant) came
+                           # back "on a wooden shelf" 3/3 on grid sheets
+                           # but correct on solo calls, one-by-one feeds,
+                           # AND the row-sheet (15.0s vs 16.1s grid --
+                           # the fix is free). Controlled experiment
+                           # 07-30, PLAN_COMPOSE_LOOP.md R3.
+                           # v4 (07-30): GEOMETRY-BLIND item lines -- box
+                           # size + floor-height dropped from PHASE B.
+                           # Appearance is pixel TESTIMONY that
+                           # supported_by weighs AGAINST measured
+                           # geometry; "bottom 0.19 m above the floor"
+                           # pre-answered the support question (obj_001
+                           # -> invented shelf), and geometry was never
+                           # in the cache hash. Label-geometry conflicts
+                           # route via J4 -> phase A, which keeps
+                           # jc.facts() on purpose (arbitration).
+                           # v3: CONTEXT crops (padded view, extra below,
                            # red outline) -- tight crops cut off what the
                            # object stands on and the VLM invented support
                            # ("sitting on a shelf" for a floor plant beside
@@ -116,32 +157,73 @@ CTX_PAD_TOP = 0.35
 CTX_PAD_BOTTOM = 0.75
 CTX_MIN_PAD = 40
 
+# row-sheet layout (v5): one item per row, framed in its own color; the
+# frame color + burned-in number give the model TWO redundant mappings
+ROW_SEP = 16               # px, dark bar between rows
+ROW_BORDER = 5             # px, per-row color frame
+ROW_COLORS = [(230, 40, 40), (40, 90, 230), (30, 170, 60), (240, 140, 20),
+              (200, 40, 200), (20, 180, 190), (200, 180, 20),
+              (130, 60, 220)]
+COLOR_NAMES = ["red", "blue", "green", "orange", "magenta", "cyan",
+               "yellow", "purple"]   # cycled if BATCH_SIZE ever exceeds 8
+
 REQUIRED_KEYS = {"id", "colors", "material", "style", "description",
-                 "is_label"}
+                 "support_view", "is_label"}
+# support_view contact vocabulary (v6): generic surfaces only -- the
+# witness never names the supporting OBJECT, and not_visible beats a
+# plausibility guess
+SV_CONTACTS = {"floor", "horizontal_surface", "vertical_surface",
+               "ceiling", "not_visible"}
 
 TEMPLATE = """\
 {firm}You are describing objects detected in a 3D indoor-scene \
-reconstruction. Open and look at this contact sheet image (a numbered \
-grid of small evidence crops):
+reconstruction. Open and look at this contact sheet image:
   {sheet}
-Tile labels like "3a"/"3b" mean: crop a/b of item 3. Crops are small, \
+Layout: each ITEM occupies exactly ONE ROW -- its crops side by side, \
+the whole row framed in that item's border color, and the item NUMBER \
+painted in the top-left corner of each crop. Rows are separated by \
+thick dark bars. Crops in DIFFERENT rows are DIFFERENT items -- never \
+read another row's pixels as context for this item. Crops are small, \
 low-resolution renders -- describe only what you can actually see, do \
-NOT invent detail. Each tile shows the target object OUTLINED IN RED \
+NOT invent detail. Each crop shows the target object OUTLINED IN RED \
 with its surroundings included. Describe ONLY the outlined object; the \
 surroundings are there so you can see what it visibly rests on, hangs \
 from, or is mounted to -- mention that support context when (and only \
 when) the pixels actually show it.
 
-For EACH numbered item below, look at its tiles and return one JSON \
-object. "is_label": answer honestly -- do the tiles actually show a \
-"<name>" as given? false if they clearly show something else.
+For EACH numbered item below, look at its row and return one JSON \
+object with TWO SEPARATE parts:
+
+1. "description": the object ITSELF only -- color, material, shape, \
+style. NEVER mention any other object, surface, or where it sits; \
+identifying the surroundings is a downstream job.
+
+2. "support_view": a LIST of physical contacts you can actually SEE \
+holding this object up, in GENERIC surface terms only -- never name or \
+guess what the supporting thing is. Allowed "contact" values:
+  "floor"               -- bottom visibly meets the room's ground plane
+  "horizontal_surface"  -- bottom rests on some raised horizontal surface
+  "vertical_surface"    -- held against / mounted on a vertical surface
+  "ceiling"             -- hangs from or mounts to the ceiling
+  "not_visible"         -- the contact region is NOT visible in the crops
+"detail" = a short generic phrase about the visible contact (e.g. \
+"bottom edge meets a flat wooden surface"), still naming no objects. \
+Multiple entries are allowed (e.g. a leaning object: bottom on a \
+horizontal surface AND back against a vertical one). If you cannot see \
+what holds it up, the ONLY honest answer is \
+[{{"contact": "not_visible", "detail": "..."}}] -- do NOT guess from \
+plausibility.
+
+"is_label": answer honestly -- do the crops actually show a "<name>" \
+as given? false if they clearly show something else.
 
 Return ONE fenced ```json block containing a JSON ARRAY with EXACTLY \
 one object per item, in the same order:
 {{"id": "<the id given>", "colors": ["dominant color words"], \
 "material": "best guess, e.g. wood/fabric/metal/ceramic", \
 "style": "a few words, e.g. modern minimal", \
-"description": "ONE sentence, plain language", \
+"description": "ONE sentence, the object only", \
+"support_view": [{{"contact": "...", "detail": "..."}}], \
 "is_label": true or false}}
 Output ONLY the fenced JSON block.
 
@@ -222,44 +304,44 @@ def cluster_crops(jn, det, crops_dir, ctx=None):
 
 
 def build_sheet(batch, sheet_path):
-    """batch: [(jn, [crop paths])]. One numbered grid PNG; returns the
-    tile-label map {cluster_id: ["1a", "1b"]}."""
-    tiles = []
-    tile_map = {}
-    for i, (jn, crops) in enumerate(batch, 1):
-        labels = []
-        for k, p in enumerate(crops):
-            lab = f"{i}{'abcdef'[k]}"
-            labels.append(lab)
-            tiles.append((lab, p))
-        tile_map[jn["id"]] = labels
-    cols = SHEET_COLS
-    rows = (len(tiles) + cols - 1) // cols
-    W = cols * TILE
-    H = rows * (TILE + LABEL_H)
-    sheet = Image.new("RGB", (W, H), (245, 245, 245))
+    """batch: [(jn, [crop paths])]. v5 ROW-SHEET: one item per ROW (its
+    crops side by side), the row framed in its own color, item number
+    burned INTO each crop's corner, thick dark separators. The old
+    4-col mixed grid let neighboring items' pixels contaminate each
+    other (obj_001 grid=shelf 3/3, row-sheet=floor; 07-30 experiment).
+    Returns {cluster_id: {"row": i, "color": name}}."""
+    row_map = {}
+    ncols = max(len(crops) for _, crops in batch)
+    W = ncols * TILE + (ncols + 1) * ROW_BORDER
+    H = len(batch) * (TILE + 2 * ROW_BORDER + ROW_SEP) - ROW_SEP
+    sheet = Image.new("RGB", (W, H), (15, 15, 15))
     draw = ImageDraw.Draw(sheet)
     try:
-        font = ImageFont.truetype("arial.ttf", 15)
+        font = ImageFont.truetype("arialbd.ttf", 26)
     except OSError:
         font = ImageFont.load_default()
-    for idx, (lab, p) in enumerate(tiles):
-        r, c = divmod(idx, cols)
-        x0, y0 = c * TILE, r * (TILE + LABEL_H)
-        im = Image.open(p).convert("RGB")
-        f = min(TILE / im.width, TILE / im.height)
-        im = im.resize((max(1, round(im.width * f)),
-                        max(1, round(im.height * f))), Image.LANCZOS)
-        sheet.paste(im, (x0 + (TILE - im.width) // 2,
-                         y0 + (TILE - im.height) // 2))
-        draw.rectangle([x0, y0 + TILE, x0 + TILE, y0 + TILE + LABEL_H],
-                       fill=(20, 20, 20))
-        draw.text((x0 + 8, y0 + TILE + 3), lab, fill=(255, 255, 100),
-                  font=font)
-        draw.rectangle([x0, y0, x0 + TILE - 1, y0 + TILE + LABEL_H - 1],
-                       outline=(180, 180, 180))
+    for i, (jn, crops) in enumerate(batch):
+        col = ROW_COLORS[i % len(ROW_COLORS)]
+        row_map[jn["id"]] = {"row": i + 1,
+                             "color": COLOR_NAMES[i % len(COLOR_NAMES)]}
+        y0 = i * (TILE + 2 * ROW_BORDER + ROW_SEP)
+        draw.rectangle([0, y0, W - 1, y0 + TILE + 2 * ROW_BORDER - 1],
+                       fill=col)
+        for k, p in enumerate(crops):
+            im = Image.open(p).convert("RGB")
+            f = min(TILE / im.width, TILE / im.height)
+            im = im.resize((max(1, round(im.width * f)),
+                            max(1, round(im.height * f))), Image.LANCZOS)
+            cell = Image.new("RGB", (TILE, TILE), (40, 40, 40))
+            cell.paste(im, ((TILE - im.width) // 2,
+                            (TILE - im.height) // 2))
+            d2 = ImageDraw.Draw(cell)
+            d2.rectangle([0, 0, 54, 36], fill=col)
+            d2.text((14, 3), str(i + 1), fill=(255, 255, 255), font=font)
+            sheet.paste(cell, (ROW_BORDER + k * (TILE + ROW_BORDER),
+                               y0 + ROW_BORDER))
     sheet.save(sheet_path)
-    return tile_map
+    return row_map
 
 
 def cluster_hash(jn, crops):
@@ -271,14 +353,12 @@ def cluster_hash(jn, crops):
     return h.hexdigest()[:32]
 
 
-def item_block(i, jn, tile_labels, floor_y):
-    g = jn["geometry"]
-    s = g["size"]
-    bottom = floor_y - g["aabb_max"][1]
-    return (f'Item {i}: id={jn["id"]}, name="{jn["name"]}", tiles: '
-            f'{", ".join(tile_labels)} -- '
-            f'{s[0]:.2f}x{s[2]:.2f}x{s[1]:.2f} m, bottom {bottom:.2f} m '
-            f'above the floor')
+def item_block(i, jn, row_info):
+    # v4: geometry-blind on purpose -- the witness must not hear the
+    # geometry its testimony will be weighed against (supported_by).
+    # v5: row + frame color = the redundant text half of the mapping.
+    return (f'Item {i}: id={jn["id"]}, name="{jn["name"]}" -- '
+            f'row {row_info["row"]} ({row_info["color"]} frame)')
 
 
 # --------------------------------------------------------------------------
@@ -296,7 +376,11 @@ def call_claude(prompt, cwd, model):
     exe = shutil.which("claude")
     if not exe:
         raise SystemExit("[appearance] claude.exe not on PATH")
-    r = subprocess.run([exe, "-p", prompt, "--model", model],
+    # prompt via STDIN, not argv: Windows CreateProcess caps the command
+    # line at ~32k chars (supported_by hit it first, 07-31); stdin has
+    # no such limit and scales to any scene
+    r = subprocess.run([exe, "-p", "--model", model],
+                       input=prompt,
                        capture_output=True, text=True, encoding="utf-8",
                        errors="replace", env=claude_env(), cwd=str(cwd),
                        timeout=CALL_TIMEOUT_S)
@@ -343,10 +427,21 @@ def parse_response(text, want_ids):
         if not all(isinstance(e[k], str) and e[k].strip()
                    for k in ("material", "style", "description")):
             continue
+        sv = e["support_view"]
+        if not (isinstance(sv, list) and sv
+                and all(isinstance(s, dict)
+                        and s.get("contact") in SV_CONTACTS
+                        and isinstance(s.get("detail", ""), str)
+                        for s in sv)):
+            continue
         good[e["id"]] = {"colors": e["colors"],
                          "material": e["material"].strip(),
                          "style": e["style"].strip(),
                          "description": e["description"].strip(),
+                         "support_view": [
+                             {"contact": s["contact"],
+                              "detail": (s.get("detail") or "").strip()}
+                             for s in sv],
                          "label_agreement": bool(e["is_label"])}
     return good
 
@@ -667,17 +762,17 @@ def main():
     manifest = []
     for bi, batch in enumerate(batches, 1):
         sheet_path = sheets_dir / f"sheet_{bi:03d}.png"
-        tile_map = build_sheet([(jn, crops) for jn, _, crops in batch],
-                               sheet_path)
+        row_map = build_sheet([(jn, crops) for jn, _, crops in batch],
+                              sheet_path)
         items = "\n".join(
-            item_block(i + 1, jn, tile_map[jn["id"]], floor_y)
+            item_block(i + 1, jn, row_map[jn["id"]])
             for i, (jn, _, _) in enumerate(batch))
         prompt = TEMPLATE.format(firm="", sheet=sheet_path, items=items)
-        prepared.append((batch, sheet_path, tile_map, items))
+        prepared.append((batch, sheet_path, row_map, items))
         manifest.append({
             "sheet": str(sheet_path),
             "clusters": [{"id": jn["id"], "name": jn["name"],
-                          "tiles": tile_map[jn["id"]],
+                          "row": row_map[jn["id"]],
                           "crops": [str(c) for c in crops]}
                          for jn, _, crops in batch]})
 
@@ -695,7 +790,7 @@ def main():
         return
 
     def describe(job):
-        batch, sheet_path, tile_map, items = job
+        batch, sheet_path, row_map, items = job
         want = {jn["id"] for jn, _, _ in batch}
         for attempt, firm in ((1, False), (2, True)):
             prompt = TEMPLATE.format(firm=FIRM_PREFIX if firm else "",

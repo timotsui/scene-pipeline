@@ -8,10 +8,19 @@ structural edges (the cheap facts the record already holds). Verdict per
 edge, ADDITIVE -- the record is never rewritten, nodes are never merged
 here (merging is materialized by graph/build_judged.py, J2):
 
-    SAME      the two nodes are one physical object detected twice
-    PART_OF   one node is a component/region of the other ("part" says which
-              node is the part)
-    DISTINCT  genuinely two objects
+    SAME      the two nodes are one physical object detected twice --
+              INCLUDING a partial detection of it (a fragment/section is
+              still that object)
+    DISTINCT  genuinely two objects (their spatial relation, if any, is
+              already carried by the record's IN/ON/ATTACHED edges)
+
+PART_OF REMOVED (user ruling 08-01, prompt v2): "component or sub-region"
+was a vague middle category -- it let spatial answers wear an ontological
+label (the books-cluster was ruled PART_OF its shelf and needed a
+downstream REINTERPRET to fix). A fragment of the host = SAME (merge; the
+host's appearance description covers its components -- "a table with a
+drawer"); contents/attachments = DISTINCT + the existing edges. If it is
+not a separately shoppable object, it must not stay a node.
 
 WRITE-BACK (additive-only): each judged edge gains
     "verdict": {verdict, part, confidence, reason, model, date,
@@ -61,10 +70,12 @@ MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
 CONCURRENCY = 3
 CROPS_PER_NODE = 2
-VERDICTS = ("SAME", "PART_OF", "DISTINCT")
-PROMPT_VERSION = "1"       # bump on ANY prompt change -- salted into the
+VERDICTS = ("SAME", "DISTINCT")
+PROMPT_VERSION = "2"       # bump on ANY prompt change -- salted into the
                            # cache hash so template edits re-judge (the
                            # v1 judge_near lesson, REVIEW_LOG R12)
+                           # v2 (08-01): PART_OF removed from the verdict
+                           # menu -- fragments are SAME, contents DISTINCT
 
 
 # --------------------------------------------------------------------------
@@ -124,13 +135,7 @@ def parse_verdict(text, a, b):
         conf = float(v.get("confidence"))
     except (TypeError, ValueError):
         return None
-    part = v.get("part")
-    if v["verdict"] == "PART_OF":
-        if part not in (a, b):
-            return None
-    else:
-        part = None
-    return {"verdict": v["verdict"], "part": part,
+    return {"verdict": v["verdict"], "part": None,
             "confidence": round(min(1.0, max(0.0, conf)), 2),
             "reason": v["reason"].strip()}
 
@@ -206,16 +211,19 @@ def pair_prompt(edge, na, nb, crops_a, crops_b, floor_y, graph, firm=False):
     lines += [
         "",
         "Verdicts:",
-        '  "SAME"     -- one physical object detected twice '
-        "(different views/labels of the same thing)",
-        '  "PART_OF"  -- one is a component or sub-region of the other '
-        '(then "part" = the id of the PART)',
-        '  "DISTINCT" -- genuinely two different objects',
+        '  "SAME"     -- one physical object detected twice: different '
+        "views, different labels, OR a partial detection (a section/"
+        "fragment of an object IS that object -- e.g. the upper half of "
+        "a bookshelf detected separately is SAME as the bookshelf)",
+        '  "DISTINCT" -- genuinely two different objects. Contents and '
+        "attachments are DISTINCT, never the same thing (books inside a "
+        "shelf are their own objects; their spatial relation is already "
+        "recorded elsewhere)",
         "",
         "Crops are small low-resolution renders; judge from what you can "
         "actually see plus the numbers. Return ONE fenced ```json block:",
-        '{"pair": "%s|%s", "verdict": "SAME|PART_OF|DISTINCT", '
-        '"part": "<id or null>", "confidence": 0.0-1.0, '
+        '{"pair": "%s|%s", "verdict": "SAME|DISTINCT", '
+        '"confidence": 0.0-1.0, '
         '"reason": "one sentence"}' % (edge["a"], edge["b"]),
         "Output ONLY the fenced JSON block.",
     ]

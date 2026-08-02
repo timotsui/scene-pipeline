@@ -174,3 +174,21 @@ choosing among already-admissible); (16) re-shop termination: max re-shops
 per node + uid ban list (old loop's MAX_ITERS lesson); (17) single-node
 re-shop must reuse the FROZEN scene-median scale, never recompute from one
 node.
+
+## Dependent-placement contract (user ruling 08-01, from the R4 snap review)
+
+Sub-objects (books on shelves etc.) have NO exact position target until
+their parent is a real mesh: the box model carries no interior levels.
+Standing contract for S4:
+
+- The graph hands over RELATIONSHIPS + verbatim boxes; a dependent's
+  observed RELATIVE placement (height fraction of the parent's vertical
+  span, lateral offset within the footprint) is the mesh-independent
+  evidence — derive it from the boxes at shopping time, no earlier stage
+  computes it.
+- When a parent is shopped: re-resolve its children against the mesh's
+  real interior (shelf boards, drawer cavities), using observed relative
+  height as the level selector, in support-chain order (snap's
+  supporters-before-dependents rule extended forward).
+- Snap-analyzer output classes: anchor corrections = suspect-box
+  evidence; dependent corrections = advisory only, never work orders.

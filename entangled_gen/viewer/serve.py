@@ -32,71 +32,76 @@ def box_sources(sc):
     one entry per detection/lift METHOD. group='current' = the canonical
     lane; group='archive' = superseded/reference methods, rendered in the
     HUD's collapsed archive section (files stay on disk — nothing deleted).
-    Registry order = HUD order. Only entries whose file exists are served."""
+    Registry order = HUD order. Only entries whose file exists are served.
+
+    2026-08-01 (user: latest-and-greatest only): registry EMPTIED — the
+    resolved scene model is the one current view; every box-source layer
+    below is superseded audit. Entries kept commented for one-line
+    re-enable; all files remain on disk."""
     sd = paths.scene_dir(sc)
-    return [
-        # ---- current: the pano-track funnel, upstream -> downstream ----
-        # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->
-        # stage 3 = geometry dedup + GRAPH RECORD (the "graph record"
-        # toggle in the main checkbox row — richer view than a box layer)
-        ("pano_track", "pano · stage 1 · recentered full set", "current",
-         sd / "scene_manifest_pano2c_rc.json", "#ffd24d",
-         "STAGE 1 — the most UPSTREAM full manifest (input to stage 2): "
-         "detection chain output after the recenter round. Self-rendered "
-         "pano at (0,0)+1.6m -> 20-crop rig -> batched-vocab detect thr "
-         "0.20 -> z-buffer lift -> robust merge q.05 -> RECENTER as the "
-         "real filter (42 phantoms refuted by aimed close-ups, no "
-         "arithmetic gate). 108 objects; floor-gap min +0.012"),
-        ("pano_track_f30", "pano · stage 2 · f30 score filter", "current",
-         sd / "scene_manifest_pano2c_rc_f30.json", "#7fd4ff",
-         "STAGE 2 — stage 1 after the hard 0.30 score filter "
-         "(manifest_filter.py; no reruns, pure post-processing): 102 "
-         "objects, 6 dropped (3 toy, 2 book, 1 conditioner; 3 of the 6 "
-         "were retake-confirmed — the filter overrules the verifier "
-         "there; drops preserved in filtered_out). INPUT to stage 3 = the "
-         "scene-graph RECORD (same 102 objects as nodes, duplicate pairs "
-         "as SAME_CANDIDATE edges — no dedup stage, merging is a judge "
-         "verdict; toggle 'graph record' above)"),
-        # Δ pre-recenter audit layer REMOVED from the HUD (user, 07-26
-        # late, "for simplicity"); the file stays on disk
-        # (scene_manifest_pano_rcdelta.json — 42 refuted + 26 pre-
-        # refinement boxes) and pano_track_diffs.py can regenerate it.
-        # ---- archive / reference: superseded by decisions on record ----
-        # REMOVED from the HUD entirely (user, 07-26 late): f30+dedup
-        # geometry-only (redundant view — the 'graph record' layer draws
-        # the same 93 boxes with the full card; the FILE stays the record
-        # builder's input), f30+dedup LLM version (retired method), and
-        # Δ gate kills (audit of the dropped 0.40 gate). Files untouched
-        # on disk: scene_manifest_pano2c_rc_f30_dd.json / _dd_llm.json /
-        # scene_manifest_pano_gatekills.json.
-        # sweep-lane entries (G3/robust/gated/G4) RETIRED from the HUD
-        # 2026-07-26 — superseded by the canonical pano track; manifests
-        # stay on disk (scene_manifest_sweep*.json) for the record.
-        # fuse · 3h2 pool entry REMOVED 2026-07-26 — never built; the
-        # multiview-vote idea lives on the map's parked-ideas card.
-        ("recenter_C1", "pano 1.0 · recenter C1 (superseded)",
-         "archive", sd / "recenter_experiment" / "manifest_C1_raw.json",
-         "#f0a028",
-         "Marble-pano lane, superseded by the canonical PANO TRACK "
-         "(carries the +6.5cm registration pedestal); kept for comparison"),
-        ("analyzer_hybrid", "analyzer + OUR lift (hybrid · closed)",
-         "archive", sd / "scene_manifest_analyzer_hybrid.json", "#00c89a",
-         "REFERENCE (experiment closed 07-26): analyzer's OWLv2 detections "
-         "AND clustering kept 1:1, geometry replaced by our SAM + z-buffer "
-         "lift + robust per-axis fusion. Verdict: their clustering shreds "
-         "(8x bed); the pano track won the FIND comparison"),
-        ("analyzer", "analyzer · OWLv2 vote (reference)",
-         "archive", sd / "analyzer" / "bridged_boxes.json", "#00ffff",
-         "REFERENCE (analyzer demoted to side tool 07-26): bridged "
-         "clusters — surface-biased centers, fabricated depth extent "
-         "(w+h)/2; kept runnable as an independent second opinion"),
-        ("legacy_v1", "yaw4 mask-lift +amodal (retired)",
-         "archive", paths.manifest(sc), "#8899aa",
-         "ARCHIVED: the old default scene_manifest.json: 4 gpu_yaw renders "
-         "-> GroundingDINO+SAM -> per-pixel z-buffer mask lift -> "
-         "label+IoU merge (lift_views.py), then splat-amodal box extension "
-         "(amodal_apply.py, 2026-07-15). 4-yaw observation retired 07-24"),
-    ]
+    _ = sd  # kept for the commented registry below
+    return []
+    #     # ---- current: the pano-track funnel, upstream -> downstream ----
+    #     # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->
+    #     # stage 3 = geometry dedup + GRAPH RECORD (the "graph record"
+    #     # toggle in the main checkbox row — richer view than a box layer)
+    #     ("pano_track", "pano · stage 1 · recentered full set", "current",
+    #      sd / "scene_manifest_pano2c_rc.json", "#ffd24d",
+    #      "STAGE 1 — the most UPSTREAM full manifest (input to stage 2): "
+    #      "detection chain output after the recenter round. Self-rendered "
+    #      "pano at (0,0)+1.6m -> 20-crop rig -> batched-vocab detect thr "
+    #      "0.20 -> z-buffer lift -> robust merge q.05 -> RECENTER as the "
+    #      "real filter (42 phantoms refuted by aimed close-ups, no "
+    #      "arithmetic gate). 108 objects; floor-gap min +0.012"),
+    #     ("pano_track_f30", "pano · stage 2 · f30 score filter", "current",
+    #      sd / "scene_manifest_pano2c_rc_f30.json", "#7fd4ff",
+    #      "STAGE 2 — stage 1 after the hard 0.30 score filter "
+    #      "(manifest_filter.py; no reruns, pure post-processing): 102 "
+    #      "objects, 6 dropped (3 toy, 2 book, 1 conditioner; 3 of the 6 "
+    #      "were retake-confirmed — the filter overrules the verifier "
+    #      "there; drops preserved in filtered_out). INPUT to stage 3 = the "
+    #      "scene-graph RECORD (same 102 objects as nodes, duplicate pairs "
+    #      "as SAME_CANDIDATE edges — no dedup stage, merging is a judge "
+    #      "verdict; toggle 'graph record' above)"),
+    #     # Δ pre-recenter audit layer REMOVED from the HUD (user, 07-26
+    #     # late, "for simplicity"); the file stays on disk
+    #     # (scene_manifest_pano_rcdelta.json — 42 refuted + 26 pre-
+    #     # refinement boxes) and pano_track_diffs.py can regenerate it.
+    #     # ---- archive / reference: superseded by decisions on record ----
+    #     # REMOVED from the HUD entirely (user, 07-26 late): f30+dedup
+    #     # geometry-only (redundant view — the 'graph record' layer draws
+    #     # the same 93 boxes with the full card; the FILE stays the record
+    #     # builder's input), f30+dedup LLM version (retired method), and
+    #     # Δ gate kills (audit of the dropped 0.40 gate). Files untouched
+    #     # on disk: scene_manifest_pano2c_rc_f30_dd.json / _dd_llm.json /
+    #     # scene_manifest_pano_gatekills.json.
+    #     # sweep-lane entries (G3/robust/gated/G4) RETIRED from the HUD
+    #     # 2026-07-26 — superseded by the canonical pano track; manifests
+    #     # stay on disk (scene_manifest_sweep*.json) for the record.
+    #     # fuse · 3h2 pool entry REMOVED 2026-07-26 — never built; the
+    #     # multiview-vote idea lives on the map's parked-ideas card.
+    #     ("recenter_C1", "pano 1.0 · recenter C1 (superseded)",
+    #      "archive", sd / "recenter_experiment" / "manifest_C1_raw.json",
+    #      "#f0a028",
+    #      "Marble-pano lane, superseded by the canonical PANO TRACK "
+    #      "(carries the +6.5cm registration pedestal); kept for comparison"),
+    #     ("analyzer_hybrid", "analyzer + OUR lift (hybrid · closed)",
+    #      "archive", sd / "scene_manifest_analyzer_hybrid.json", "#00c89a",
+    #      "REFERENCE (experiment closed 07-26): analyzer's OWLv2 detections "
+    #      "AND clustering kept 1:1, geometry replaced by our SAM + z-buffer "
+    #      "lift + robust per-axis fusion. Verdict: their clustering shreds "
+    #      "(8x bed); the pano track won the FIND comparison"),
+    #     ("analyzer", "analyzer · OWLv2 vote (reference)",
+    #      "archive", sd / "analyzer" / "bridged_boxes.json", "#00ffff",
+    #      "REFERENCE (analyzer demoted to side tool 07-26): bridged "
+    #      "clusters — surface-biased centers, fabricated depth extent "
+    #      "(w+h)/2; kept runnable as an independent second opinion"),
+    #     ("legacy_v1", "yaw4 mask-lift +amodal (retired)",
+    #      "archive", paths.manifest(sc), "#8899aa",
+    #      "ARCHIVED: the old default scene_manifest.json: 4 gpu_yaw renders "
+    #      "-> GroundingDINO+SAM -> per-pixel z-buffer mask lift -> "
+    #      "label+IoU merge (lift_views.py), then splat-amodal box extension "
+    #      "(amodal_apply.py, 2026-07-15). 4-yaw observation retired 07-24"),
 
 
 class H(BaseHTTPRequestHandler):
@@ -112,6 +117,27 @@ class H(BaseHTTPRequestHandler):
     def _scene(self, q):
         sc = (q.get("scene") or [args.scene])[0]
         return "".join(ch for ch in sc if ch.isalnum() or ch in "_-") or args.scene
+
+    def _compose_json(self, sc, name, run_hint):
+        """Serve a compose/ layer file with a FRESHNESS gate: compose files
+        are derived from scene_graph.json, so one older than the current
+        graph describes a graph that no longer exists. Stale -> a stub
+        {stale: true} (viewer hides that review mode + notes it); fresh ->
+        the file verbatim. Un-stales automatically when the module re-runs."""
+        f = paths.compose_dir(sc) / name
+        if not f.exists():
+            return self._send(404, b"no compose/" + name.encode() + b"; run "
+                              + run_hint.encode() + b" --scene " + sc.encode())
+        graph = paths.scene_dir(sc) / "scene_graph.json"
+        if graph.exists() and f.stat().st_mtime < graph.stat().st_mtime:
+            stub = {"stale": True, "file": name,
+                    "built": time.strftime("%Y-%m-%d %H:%M",
+                                           time.localtime(f.stat().st_mtime)),
+                    "graph": time.strftime("%Y-%m-%d %H:%M",
+                                           time.localtime(graph.stat().st_mtime)),
+                    "hint": f"re-run {run_hint} --scene {sc}"}
+            return self._send(200, json.dumps(stub).encode(), "application/json")
+        self._send(200, f.read_bytes(), "application/json")
 
     def do_GET(self):
         u = urlparse(self.path)
@@ -244,13 +270,27 @@ class H(BaseHTTPRequestHandler):
             # the superseding supported_by options; RAW frame ids only (no
             # geometry of its own). Feeds the scene-graph row's support
             # arrows + semantic anchor tint. sc sanitized by _scene().
-            f = paths.compose_dir(sc) / "supported_by.json"
-            if f.exists():
-                self._send(200, f.read_bytes(), "application/json")
-            else:
-                self._send(404, b"no compose/supported_by.json; run "
-                                b"compose/supported_by.py --scene "
-                                + sc.encode())
+            # Freshness-gated vs scene_graph.json (see _compose_json).
+            self._compose_json(sc, "supported_by.json",
+                               "compose/supported_by.py")
+        elif p == "/consistency.json":
+            # compose/consistency.py output (STEP 3 module 2): per-edge
+            # KEEP/DROP verdicts vs the supported_by layer (R2 gate).
+            # Feeds the scene-graph row's consistency review colors.
+            self._compose_json(sc, "consistency.json",
+                               "compose/consistency.py")
+        elif p == "/snap.json":
+            # compose/snap.py output (PH1 analyzer): per-object deterministic
+            # correction making the top supported_by option physically exact
+            # (R4 gate). Feeds the scene-graph row's snap ghosts + colors.
+            self._compose_json(sc, "snap.json", "compose/snap.py")
+        elif p == "/edit_proposals.json":
+            # compose/propose_edits.py output (isolated add/delete
+            # proposer): DELETE verdicts per doubt-flagged object + ADD
+            # proposals with declared support. Feeds the scene-graph
+            # row's edits review mode.
+            self._compose_json(sc, "edit_proposals.json",
+                               "compose/propose_edits.py")
         elif p.startswith("/graph_crops/"):
             # per-node evidence crops (graph/describe_nodes.py output) for the
             # graph layer's click card. Filename sanitized to alnum/_-. and
@@ -263,6 +303,19 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), "image/png", cache=True)
             else:
                 self._send(404, b"no such graph crop")
+        elif p.startswith("/graph_crops_ctx/"):
+            # CONTEXT crops (padded 35%/35%/75% + red outline) — the exact
+            # views the appearance-v3 describe pass saw; shown in the judged
+            # card alongside tight crops so review sees the pipeline's real
+            # evidence. Same names as graph/crops/, same sanitize+resolve.
+            base = (paths.scene_dir(sc) / "graph" / "crops_ctx").resolve()
+            name = p[len("/graph_crops_ctx/"):].lstrip("/")
+            name = "".join(ch for ch in name if ch.isalnum() or ch in "_-.")
+            f = (base / name).resolve() if name else base
+            if name and f.is_file() and base in f.parents:
+                self._send(200, f.read_bytes(), "image/png", cache=True)
+            else:
+                self._send(404, b"no such graph ctx crop")
         elif p == "/composed.glb":
             # composition C6 output (RENDER frame; browser flips via
             # frame.raw_to_render, self-inverse)

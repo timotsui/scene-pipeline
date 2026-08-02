@@ -196,7 +196,7 @@ def build_digest(graph):
         elif t == "INTERPENETRATES":
             d = (f'boxes overlap {ev.get("frac_of_smaller", 0):.0%} of '
                  f'the smaller')
-        elif t == "PART_OF":
+        elif t == "PART_OF":   # legacy edge type (retired 08-01)
             d = "judged a component of it"
         else:
             d = "unresolved fallback"

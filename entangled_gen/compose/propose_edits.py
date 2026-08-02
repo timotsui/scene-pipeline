@@ -1,19 +1,36 @@
 """
-STEP 3 COMPOSE+LOOP -- PROPOSE EDITS (adds + deletes). ISOLATED MODULE.
+STEP 3 COMPOSE+LOOP, 3.1 SEMANTIC / S3 -- PROPOSE EDITS (adds + deletes).
 
-Built 07-27 on the user's directive: "propose add and delete items --
-make sure it's isolated so we can test and review tomorrow." NOTHING
-consumes its output yet; it earns a wire into the JUDGE loop's
-add/delete channel only after review (pipeline_map.html: dashed arrows).
+Built 07-27 isolated ("test and review tomorrow"); INCORPORATED into the
+lane 08-01 (user ruling) as S3, between S2 consistency and S4 screening.
+Proposals land at S4 SCREENING -- the same door as the JUDGE's
+add/delete/replace re-entry. Screening is not built yet, so the output
+is review-only for now; R5 stays open (duplicat-tripwire rework first).
 
-DELETE proposals -- deterministic aggregation of every doubt signal the
-pipeline has already produced, then ONE batched LLM confirm/deny pass:
+DELETE proposals -- deterministic aggregation of typed doubt signals,
+then ONE batched LLM confirm/deny pass:
   - none_plausible objects (supported_by: obj_083 "greenery through a
     window")
-  - duplicate suspicions (consistency DROP reasons mentioning duplicates)
   - objects whose EVERY support-type edge was DROPped and whose own
     support confidence is weak
-  - existence disputes that shipped unresolved (graph provenance)
+v2 removals (R5 postmortem): the 'duplicat' word-match detector is GONE
+(code never interprets prose -- it relabeled the consistency module's
+"duplicate wall contact" as duplicate OBJECT and got two real books
+deleted). The existence-disputed detector is GONE too: contract check
+08-01 showed materialize_verdicts already REMOVES disputed nodes from
+the resolved working set (resolved['removed'] carries them), so it
+could only accuse objects that aren't in the inventory.
+
+RAW EVIDENCE TO THE JUDGE (user design 08-01): the confirm/deny call
+gets each candidate's consistency verdicts VERBATIM plus all dropped-
+edge wordings scene-wide -- no labels, no code interpretation; the one
+LLM that owns the stay/go decision reads the words itself. It is told
+duplication is NOT a deletion reason; instead it reports
+duplicate_suspicions -- pairs the wordings suggest are ONE physical
+object recorded twice. Valid pairs are written as reopen_petitions:
+referrals to the step-2 pair judge (SAME_CANDIDATE, the judge with
+crops), and future hold-inputs for screening's non-visual dedup.
+Review-only until those wires exist.
 
 ADD proposals -- ONE batched LLM call over the room inventory (canonical
 names + counts + support tiers + room size): what obviously-expected
@@ -47,28 +64,46 @@ import paths  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 WEAK_TOP_CONF = 0.5      # top-option confidence below this = weak support
 
 SUPPORT_EDGE_TYPES = ("ON", "IN", "IN_WALL", "ATTACHED")
 
 T_DELETE = """\
-{firm}You are auditing DELETE candidates in a 3D scene graph of one \
-indoor room. Each numbered candidate below was flagged by earlier \
-pipeline passes (support attribution / edge consistency / existence \
-checks). For each, decide: should this object be REMOVED from the scene \
-model, or KEPT? Removal is right when the evidence says the detection is \
-not a real standalone object (ghost, duplicate of another object, \
-misread background). Keep when doubt is weak or the object is plausibly \
-real despite a bad box.
+{firm}You are auditing a 3D scene graph of ONE indoor room. Two tasks, \
+one response.
 
-Return ONE fenced ```json block, a JSON ARRAY, EXACTLY one object per \
-candidate, same order:
-{{"id": "<the id given>", "verdict": "DELETE|KEEP", "confidence": \
-0.0-1.0, "reason": "one sentence"}}
+TASK 1 -- DELETE candidates. Each numbered candidate below was flagged \
+by earlier pipeline passes (support attribution / edge consistency). \
+For each, decide: should this object be REMOVED from the scene model, \
+or KEPT? Removal is right when the evidence says the detection is not \
+a real standalone object (ghost, misread background). Keep when doubt \
+is weak or the object is plausibly real despite a bad box. NOTE: "this \
+may be a duplicate of another object" is NOT a deletion reason -- \
+duplicates are resolved by merging elsewhere; report them in task 2 \
+instead.
+
+TASK 2 -- duplicate suspicions. Below the candidates: every dropped \
+edge with the consistency judge's verbatim reason. If any wording \
+suggests two detected OBJECTS may be the SAME physical thing (one \
+object recorded twice), report the pair. Read carefully: "duplicate \
+wall contact inherited from X" means a redundant FACT, not a duplicate \
+object. Only report pairs the wording itself points at; do not infer \
+from geometry alone. An empty list is the normal outcome.
+
+Return ONE fenced ```json block, a single JSON OBJECT:
+{{"verdicts": [EXACTLY one per candidate, same order: {{"id": "<the id \
+given>", "verdict": "DELETE|KEEP", "confidence": 0.0-1.0, "reason": \
+"one sentence"}}],
+ "duplicate_suspicions": [zero or more: {{"pair": ["<obj id>", \
+"<obj id>"], "confidence": 0.0-1.0, "evidence": "the giveaway \
+wording, quoted"}}]}}
 Output ONLY the fenced JSON block.
 
-{items}"""
+{items}
+
+DROPPED-EDGE WORDINGS (scene-wide, verbatim):
+{drops}"""
 
 T_ADD = """\
 {firm}You are reviewing the object inventory of ONE reconstructed \
@@ -93,8 +128,8 @@ Output ONLY the fenced JSON block.
 {inventory}"""
 
 FIRM_PREFIX = ("Your previous response was malformed. This time output "
-               "ONLY one fenced ```json code block containing the JSON "
-               "array, no prose.\n\n")
+               "ONLY one fenced ```json code block containing exactly "
+               "the JSON structure requested, no prose.\n\n")
 
 
 def claude_env():
@@ -143,6 +178,25 @@ def parse_array(text):
         return None
 
 
+def parse_object(text):
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    raw = m.group(1) if m else None
+    if raw is None:
+        i = text.find("{")
+        if i < 0:
+            return None
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text[i:])
+        except ValueError:
+            return None
+        return obj if isinstance(obj, dict) else None
+    try:
+        obj = json.loads(raw)
+    except ValueError:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
 def conf_of(x, default=0.0):
     try:
         return round(min(1.0, max(0.0, float(x))), 2)
@@ -186,15 +240,6 @@ def main():
             flag(o["id"], "supported_by: none_plausible -- "
                           + o.get("flag_reason", "")[:160])
 
-    dup_re = re.compile(r"duplicat", re.IGNORECASE)
-    for e in coL["edges"]:
-        if e["verdict"] == "DROP" and dup_re.search(e.get("reason", "")):
-            for oid in (e["a"], e["b"]):
-                if str(oid).startswith("obj_"):
-                    flag(oid, f"consistency: possible duplicate "
-                              f"({e['a']} -{e['type']}- {e['b']}): "
-                              + e["reason"][:140])
-
     # every support-type edge dropped + weak own support
     by_subject = {}
     for e in coL["edges"]:
@@ -209,48 +254,68 @@ def main():
                       f"top support confidence "
                       f"{top.get('confidence')} < {WEAK_TOP_CONF}")
 
-    for jn in graph["judged"]["nodes"]:
-        if jn.get("existence") == "disputed":
-            flag(jn["id"], "existence still disputed at graph handoff")
-
     print(f"[propose_edits] delete candidates: {len(cand)}")
     for oid, sigs in sorted(cand.items()):
         print(f"    {oid} ({names.get(oid, '?')}): {len(sigs)} signal(s)")
 
     # ---------------- LLM passes ----------------------------------------
-    deletes, adds = [], []
+    deletes, adds, petitions = [], [], []
     if args.no_llm:
         deletes = [{"id": oid, "name": names.get(oid),
                     "signals": sigs, "status": "CANDIDATE",
                     "verdict": None}
                    for oid, sigs in sorted(cand.items())]
         print("[propose_edits] --no-llm: candidates written unconfirmed, "
-              "no adds proposed")
+              "no adds proposed, no petitions")
     else:
-        # delete confirm/deny
-        if cand:
+        # audit call: delete confirm/deny + duplicate suspicions.
+        # RAW EVIDENCE, verbatim -- code pipes, never interprets.
+        co_by_obj = {}
+        for e in coL["edges"]:
+            line = (f'{e.get("verdict", "?")} {e["a"]} -{e["type"]}- '
+                    f'{e["b"]}: '
+                    + (f'"{e["reason"]}"' if e.get("reason")
+                       else f'[{e.get("class", "code-stamped")}]'))
+            for oid in (e["a"], e["b"]):
+                co_by_obj.setdefault(oid, []).append(line)
+        drops = [e for e in coL["edges"]
+                 if e.get("verdict") == "DROP" and e.get("reason")]
+        dtxt = "\n".join(
+            f'- {e["a"]} ("{names.get(e["a"], e["a"])}") -{e["type"]}- '
+            f'{e["b"]} ("{names.get(e["b"], e["b"])}"): "{e["reason"]}"'
+            for e in drops) or "(none)"
+        if cand or drops:
             items = []
             for i, (oid, sigs) in enumerate(sorted(cand.items()), 1):
                 o = sb.get(oid, {})
                 top = (o.get("supported_by") or [{}])[0]
+                ver = co_by_obj.get(oid) or ["(none)"]
                 items.append(
                     f'CANDIDATE {i}: {oid} "{names.get(oid, "?")}" -- '
                     f'current support: {top.get("how")} '
                     f'{top.get("supporter")} ({top.get("confidence")})\n'
-                    + "\n".join(f"  signal: {s}" for s in sigs))
+                    + "\n".join(f"  signal: {s}" for s in sigs)
+                    + "\n  consistency verdicts on this object "
+                    "(verbatim):\n"
+                    + "\n".join(f"    {v}" for v in ver[:8]))
             got = None
             for firm in ("", FIRM_PREFIX):
                 try:
                     out = call_claude(
-                        T_DELETE.format(firm=firm, items="\n\n".join(items)),
+                        T_DELETE.format(
+                            firm=firm,
+                            items=("\n\n".join(items)
+                                   or "(no delete candidates this run)"),
+                            drops=dtxt),
                         cdir, args.model)
                 except (RuntimeError, subprocess.TimeoutExpired) as ex:
-                    print(f"[propose_edits] delete pass failed: {ex}")
+                    print(f"[propose_edits] audit pass failed: {ex}")
                     break
-                got = parse_array(out)
+                got = parse_object(out)
                 if got:
                     break
-            by_id = {e.get("id"): e for e in (got or [])
+            by_id = {e.get("id"): e
+                     for e in (got or {}).get("verdicts", [])
                      if isinstance(e, dict)}
             for oid, sigs in sorted(cand.items()):
                 e = by_id.get(oid)
@@ -263,6 +328,19 @@ def main():
                     "confidence": conf_of(e.get("confidence")) if ok
                     else None,
                     "reason": e["reason"].strip() if ok else None})
+            valid = set(names)
+            for s in (got or {}).get("duplicate_suspicions", []):
+                if not isinstance(s, dict):
+                    continue
+                pair = s.get("pair") or []
+                if (len(pair) == 2 and pair[0] != pair[1]
+                        and all(str(p).startswith("obj_") and p in valid
+                                for p in pair)):
+                    petitions.append({
+                        "pair": [pair[0], pair[1]],
+                        "names": [names[pair[0]], names[pair[1]]],
+                        "confidence": conf_of(s.get("confidence")),
+                        "evidence": str(s.get("evidence", "")).strip()})
         # add proposals
         inv = {}
         for o in sbL["objects"]:
@@ -310,15 +388,19 @@ def main():
         "generated_by": "compose/propose_edits.py",
         "model": None if args.no_llm else args.model,
         "prompt_version": PROMPT_VERSION,
-        "note": ("ISOLATED MODULE -- proposals only, nothing consumes "
-                 "this yet (map: dashed arrows). Intended landing: the "
-                 "JUDGE loop's add/delete channel."),
+        "note": ("S3 IN-LANE MODULE -- proposals only; adds/deletes land "
+                 "at S4 SCREENING (not built yet), the same door as the "
+                 "judge's add/delete/replace re-entry. reopen_petitions "
+                 "are referrals to the step-2 pair judge (SAME_CANDIDATE) "
+                 "+ future screening hold-inputs -- unwired, review-only."),
         "counts": {"delete_candidates": len(cand),
                    "delete_proposed": sum(1 for d in deletes
                                           if d.get("verdict") == "DELETE"),
-                   "adds_proposed": len(adds)},
+                   "adds_proposed": len(adds),
+                   "reopen_petitions": len(petitions)},
         "deletes": deletes,
         "adds": adds,
+        "reopen_petitions": petitions,
     }
     opath = cdir / "edit_proposals.json"
     opath.write_text(json.dumps(layer, indent=1), encoding="utf-8")
@@ -331,6 +413,10 @@ def main():
     for a in adds:
         print(f"    ADD {a['name']} ({a['support']}) "
               f"[{a['confidence']}]: {a['reason'][:100]}")
+    for p in petitions:
+        print(f"    PETITION {p['pair'][0]}+{p['pair'][1]} "
+              f"({p['names'][0]}/{p['names'][1]}) [{p['confidence']}]: "
+              f"{p['evidence'][:100]}")
 
 
 if __name__ == "__main__":

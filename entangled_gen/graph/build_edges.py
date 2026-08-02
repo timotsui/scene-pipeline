@@ -60,10 +60,22 @@ SAME_CANDIDATE (the open "same object or part?" questions -- computed HERE
   detected twice; "gray" = IoU .40-.60 + containment >= .90 -- same-vs-
   part genuinely ambiguous), center height difference, both labels.
   status: "open" -- the judge pass resolves EVERY pair (confident zone
-  included) to merge / PART_OF / distinct; merging is a judge VERDICT,
+  included) to SAME / DISTINCT (v2 08-01; PART_OF retired -- fragments
+  are SAME, contents DISTINCT); merging is a judge VERDICT,
   never a record operation. These pairs are excluded from IN and
   INTERPENETRATES (already represented). High-containment LOW-IoU nesting
   (book in shelf, IoU < 0.40) stays plain IN -- unchanged.
+
+NESTING (record fact, user ruling 08-01 -- "if future runs always add
+this, it's permissible"): every detection pair with containment >=
+SC_CONTAIN (0.90) writes a `nesting` entry onto the SMALLER node:
+{host, host_label, containment, iou, same_candidate} -- the box-inside-
+box facts the SAME_CANDIDATE IoU floor deliberately excludes (shelf
+board fully inside its bookshelf scores containment 1.0 but IoU 0.29
+and is never nominated; the R5b shelf-nest reconstruction had to
+recompute these by hand). Deterministic, produced identically every
+run, sorted (containment desc, host id). Consumers: viewer object card,
+the planned semantic-dedup nomination.
 
 INTERPENETRATES (unordered; a < b by id):
   detection-node pairs with box overlap volume > 0.001 m3 that hold NO
@@ -177,6 +189,7 @@ def main():
     # No pre-merge dedup stage (amendment 07-26 late): both objects of every
     # probable-duplicate pair are nodes; the pair itself is this open edge.
     sc_pairs = []
+    nesting = {}            # smaller-node id -> [nesting facts]
     for i in range(len(det)):
         for j in range(i + 1, len(det)):
             ga, gb = det[i]["geometry"], det[j]["geometry"]
@@ -186,6 +199,14 @@ def main():
             va, vb = vol(ga), vol(gb)
             iou = ov / (va + vb - ov)
             contain = ov / min(va, vb)
+            if contain >= SC_CONTAIN:
+                small, big = ((det[i], det[j]) if va <= vb
+                              else (det[j], det[i]))
+                nesting.setdefault(small["id"], []).append({
+                    "host": big["id"], "host_label": big["label"],
+                    "containment": round(contain, 3),
+                    "iou": round(iou, 3),
+                    "same_candidate": iou >= SC_IOU_MIN})
             if iou >= SC_IOU_CONF:
                 zone = "confident"
             elif iou >= SC_IOU_MIN and contain >= SC_CONTAIN:
@@ -206,6 +227,16 @@ def main():
                              "zone": zone})
     graph.setdefault("open_questions", {})["same_candidate_pairs"] = sc_pairs
     graph.setdefault("counts", {})["same_candidate_pairs"] = len(sc_pairs)
+
+    # ---------------- nesting facts onto nodes (record; idempotent) -------
+    for n in det:
+        ents = nesting.get(n["id"])
+        if ents:
+            ents.sort(key=lambda e: (-e["containment"], e["host"]))
+            n["nesting"] = ents
+        else:
+            n.pop("nesting", None)
+    graph["counts"]["nested_nodes"] = len(nesting)
 
     # ---------------- IN (containment) ----------------
     in_pairs = set()
@@ -463,6 +494,8 @@ def main():
     # ---------------- report ----------------
     print(f"[edges] wrote {gpath}")
     print(f"[edges] counts by type: {counts}")
+    print(f"[edges] nesting facts: {sum(len(v) for v in nesting.values())} "
+          f"entries on {len(nesting)} nodes (containment >= {SC_CONTAIN})")
     sc_edges = [e for e in edges if e["type"] == "SAME_CANDIDATE"]
     for e in sc_edges:
         print(f"           ? SAME_CANDIDATE [{e['evidence']['zone']:9s}] "

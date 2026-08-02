@@ -13,7 +13,11 @@ none_plausible (dependents inherit the doubt), supporters NEEDS_REVIEW.
 Part B -- every resolved contact edge classified against BOTH endpoints'
 supported_by verdicts, code first:
   CONFIRMED_SUPPORT  edge matches the subject's TOP option (the support's
-                     own evidence)
+                     own evidence) -- SUPPORTER slot only (v7 fix, 08-01
+                     late, the AC IN_WALL case: an AGAINST-slot hit is
+                     DISAGREEMENT, not confirmation -- those edges fall
+                     through to the LLM leftovers, whose docket now shows
+                     the against ruling)
   SUPPORT_ALT        matches a live alternate option
   TRANSITIVE         target sits in the subject's support CHAIN
                      (book IN shelf, shelf inside bookshelf ->
@@ -237,13 +241,19 @@ def main():
                              "reason": "box overlap -- box-surgery food"})
             continue
         if t == "PART_OF":
+            # LEGACY (retired 08-01, judge_pairs v2: fragments merge as
+            # SAME) -- fires only on graphs resolved before the re-judge;
+            # after the rebuild no PART_OF edge exists
             verdicts.append({"verdict": "KEPT_STRUCTURAL", "by": "code",
                              "reason": "structural membership"})
             continue
-        # support-type edge: subject a, target b
+        # support-type edge: subject a, target b. SUPPORTER slot only --
+        # an against-slot hit means the ruling REJECTED this candidate;
+        # that edge is the record disagreeing with the ruling, exactly
+        # what the leftover judge exists to read (v7, the AC case).
         matched = None
         for i, opt in enumerate(options(a)):
-            if opt["supporter"] == b or opt.get("against") == b:
+            if opt["supporter"] == b:
                 matched = "CONFIRMED_SUPPORT" if i == 0 else "SUPPORT_ALT"
                 break
         if matched:
@@ -270,8 +280,9 @@ def main():
                     + ("judged NOT a real object"
                        if oid in flagged else "unresolved"))
         o = op[0]
+        ag = (f", ruled AGAINST {o['against']}" if o.get("against") else "")
         return (f"{oid} ({names.get(oid, '?')}): {o['how']} "
-                f"{o['supporter']} ({o['confidence']})")
+                f"{o['supporter']} ({o['confidence']}){ag}")
 
     def item_text(i, ei):
         e = edges[ei]

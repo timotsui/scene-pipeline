@@ -191,7 +191,7 @@
 <body>
 <div class="wrap">
 <header class="top">
-  <div class="kicker">scene-pipeline · CS 8903 · updated 2026-07-26</div>
+  <div class="kicker">scene-pipeline · CS 8903 · updated 2026-08-01</div>
   <h1>Pipeline map — the canonical pano track</h1>
   <p class="rule"><b>The isolation rule:</b> stages communicate only through
   per-scene files — every arrow is a file, labeled with its name. Swapping a
@@ -247,7 +247,8 @@
     Pass 2 JUDGES (fixed versioned prompt templates, deterministic
     fillers, cached — <b>code interprets the numbers, the model
     interprets the pixels</b>), six sub-passes, five RUN 2026-07-26:
-    pair judge (14/14: 11 same · 3 part-of) ∥ floater judge (3/3 vs the
+    pair judge (20/20: 18 same · 2 distinct — incl. 6 semantic-triage
+    nominations) ∥ floater judge (3/3 vs the
     user's ground truth, after the v1 prompt-gloss bug forced the
     deterministic-menu rework) → merge view (zero LLM: 102 → 92
     clusters) → naming (9/9, "ceiling light" fixed) → <b>coherence</b>
@@ -271,17 +272,22 @@
     <span class="dstat ds-decided">design 2026-07-26</span>
     <h2>COMPOSE+LOOP — semantic ⇄ physical, anchors first</h2>
     <p><b>The last stage is a LOOP over two SUB-STAGES, each a chain of
-    modules.</b> 3.1 SEMANTIC decides WHAT (S1 anchor set → S2 screening
-    → S3 shopping = the cast list; add / delete / replace edits re-enter
-    here); 3.2 PHYSICAL decides WHERE (PH1 snap-to-support → PH2 collide
-    gate → PH3 box surgery — deterministic, the LLM never gets to violate
-    physics; the suspect-box work orders land in PH3).
+    modules.</b> 3.1 SEMANTIC decides WHAT (S1 supported_by → S2
+    consistency → PH1 snap (physical evidence, drawn in run order) →
+    S3 propose edits → S4 screening → S5 shopping = the cast list;
+    add / delete / replace edits re-enter at screening, where S3's
+    proposals also land); 3.2 PHYSICAL decides WHERE at mesh time
+    (PH2 collide gate → PH3 box surgery — deterministic, the LLM never
+    gets to violate physics; the suspect-box work orders land in PH3).
+    Loop arrows are omitted from the drawing for clarity (08-01); the
+    re-entry contract stands.
     Working set = <b>ANCHORS first</b>: anchor = any object with a
     support edge to the room shell (floor / wall / ceiling; back-to-back
     wall contact counts) — 44 of 89 on bedroom_marble (floor 16 ·
     wall 26 · ceiling 2); dependents follow once anchors stand, resting
-    on the placed parent MESH, not the graph box. Old C1–C7 chain moved
-    aside as reference / donor code; <b>manual review at every step
+    on the placed parent MESH, not the graph box. Old C1–C7 chain
+    RETIRED from the map 07-30 (code stays on disk; its lessons live in
+    docs/S4_SHOPPING_DESIGN_NOTES.md); <b>manual review at every step
     while the halves are built</b>. <b>SOLE INPUT:</b> the scene graph —
     the sandbox (measured shell + all boxes) is built upstream and rides
     in graph["resolved"]; envelope is OUT of the stage (parked as a
@@ -310,7 +316,7 @@
     <div class="phase-h"><span class="phase-n">DATAFLOW</span>
       <span class="phase-t">1 WORLD → 2 ANALYSIS (observe · detect · lift · place) → 3 COMPOSE+LOOP · one canonical lane + side references</span></div>
     <div class="phase-body">
-    <svg class="pipe" viewBox="0 0 800 2296" role="img"
+    <svg class="pipe" viewBox="0 0 800 2464" role="img"
          aria-label="scene-pipeline dataflow graph">
       <defs>
         <marker id="ah-eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
@@ -331,7 +337,7 @@
       <path d="M8,392 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
       <path d="M8,511 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
       <path d="M8,879 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
-      <path d="M8,1600 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
+      <path d="M8,1672 H792" fill="none" stroke="var(--line)" stroke-width="1.2"/>
       <text class="plabel pl-bus" style="font-size:15px" x="8" y="198">2.1 OBSERVE</text>
       <text class="plabel pl-bus" style="font-size:15px" x="8" y="438">2.2 DETECT</text>
       <text class="plabel pl-bus" style="font-size:15px" x="8" y="608">2.3 LIFT</text>
@@ -521,233 +527,181 @@
            every arrow flows right or down, ending in 4g3) ===== -->
       <text class="plabel pl-lane" x="544" y="1016">PASS 2 · THE JUDGES · fixed templates · deterministic fill · cached</text>
       <path class="edge e-bus" d="M508,1050 H542" marker-end="url(#ah-bus)"/>
-      <path class="edge e-bus" d="M508,1084 H526 V1122 H542" marker-end="url(#ah-bus)"/>
-      <g class="node" data-k="j1" transform="translate(544,1028)">
+      <path class="edge e-bus" d="M508,1084 H526 V1194 H542" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j0" transform="translate(544,1028)">
         <rect class="nbox" width="232" height="44" rx="8"/>
         <rect class="b-lane" width="4" height="44" rx="2"/>
-        <text class="ntitle" x="14" y="17">J1 · pair judge — same vs part</text>
-        <text class="nscript" x="14" y="31">graph/judge_pairs.py · 14 pairs · crops</text></g>
-      <g class="node" data-k="j5" transform="translate(544,1100)">
+        <text class="ntitle" x="14" y="17">J0 · pair triage — text docket<tspan class="nactive"> · BUILT 08-01</tspan></text>
+        <text class="nscript" x="14" y="31">triage_pairs.py · 94 → 6 nominate / 88 skip</text></g>
+      <path class="edge e-bus" d="M660,1072 V1098" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="550" y="1090">semantic nominations → SAME_CANDIDATE queue</text>
+      <g class="node" data-k="j1" transform="translate(544,1100)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-lane" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">J1 · pair judge — same vs distinct</text>
+        <text class="nscript" x="14" y="31">graph/judge_pairs.py · 20 pairs · crops</text></g>
+      <g class="node" data-k="j5" transform="translate(544,1172)">
         <rect class="nbox" width="232" height="44" rx="8"/>
         <rect class="b-lane" width="4" height="44" rx="2"/>
         <text class="ntitle" x="14" y="17">J5 · floater judge — what holds it</text>
         <text class="nscript" x="14" y="31">graph/judge_near.py · crops · GT 3/3</text></g>
-      <path class="edge e-bus" d="M776,1050 H784 V1158 H730 V1170" marker-end="url(#ah-bus)"/>
-      <path class="edge e-bus" d="M660,1144 V1170" marker-end="url(#ah-bus)"/>
-      <g class="node" data-k="j2" transform="translate(544,1172)">
+      <path class="edge e-bus" d="M776,1122 H784 V1230 H730 V1242" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M660,1216 V1242" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j2" transform="translate(544,1244)">
         <rect class="nbox" width="232" height="44" rx="8"/>
         <rect class="b-eg" width="4" height="44" rx="2"/>
         <text class="ntitle" x="14" y="17">J2 · merge view — zero LLM</text>
         <text class="nscript" x="14" y="31">graph/build_judged.py · union-find + rederive</text></g>
-      <path class="edge e-bus" d="M660,1216 V1242" marker-end="url(#ah-bus)"/>
-      <g class="node" data-k="j3" transform="translate(544,1244)">
+      <path class="edge e-bus" d="M660,1288 V1314" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j3" transform="translate(544,1316)">
         <rect class="nbox" width="232" height="44" rx="8"/>
         <rect class="b-lane" width="4" height="44" rx="2"/>
         <text class="ntitle" x="14" y="17">J3 · naming judge — canonical names</text>
         <text class="nscript" x="14" y="31">graph/judge_names.py · crops + facts · 9/9</text></g>
-      <path class="edge e-bus" d="M660,1288 V1314" marker-end="url(#ah-bus)"/>
-      <g class="node" data-k="j4" transform="translate(544,1316)">
+      <path class="edge e-bus" d="M660,1360 V1386" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j4" transform="translate(544,1388)">
         <rect class="nbox" width="232" height="44" rx="8"/>
         <rect class="b-lane" width="4" height="44" rx="2"/>
         <text class="ntitle" x="14" y="17">J4 · coherence judge — text-only</text>
         <text class="nscript" x="14" y="31">graph/judge_coherence.py · whole room · 1 call</text></g>
-      <path class="edge e-bus" d="M660,1360 V1386" marker-end="url(#ah-bus)"/>
-      <g class="node" data-k="j6" transform="translate(544,1388)">
+      <path class="edge e-bus" d="M660,1432 V1458" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j6" transform="translate(544,1460)">
         <rect class="nbox" width="232" height="44" rx="8"/>
         <rect class="b-lane" width="4" height="44" rx="2"/>
         <text class="ntitle" x="14" y="17">J6 · appearance + resolve J4 flags</text>
         <text class="nscript" x="14" y="31">describe_nodes.py · TERMINAL · once, then ship</text></g>
-      <path class="edge e-bus" d="M544,1410 H510" marker-end="url(#ah-bus)"/>
-      <path class="edge e-bus" d="M392,1096 V1386" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M544,1482 H510" marker-end="url(#ah-bus)"/>
+      <path class="edge e-bus" d="M392,1096 V1458" marker-end="url(#ah-bus)"/>
       <text class="elab" x="398" y="1256">the record (same file, never edited)</text>
-      <g class="node" data-k="g3" transform="translate(276,1388)">
+      <g class="node" data-k="g3" transform="translate(276,1460)">
         <rect class="nbox" width="232" height="80" rx="8"/>
         <rect class="b-lane" width="4" height="80" rx="2"/>
-        <text class="ntitle" x="14" y="17">4g3 · JUDGED GRAPH<tspan class="nactive"> · SHIPPED 07-27</tspan></text>
+        <text class="ntitle" x="14" y="17">4g3 · JUDGED GRAPH<tspan class="nactive"> · RE-RUN 08-01</tspan></text>
         <text class="nscript" x="14" y="31">graph["judged"] in scene_graph.json</text>
-        <text class="nsub" x="14" y="45">102 → 92 clusters · 9 named · ✗2 · ✓2 real</text>
-        <text class="nsub" x="14" y="58">5 edges reinterpreted · 90 described</text>
-        <text class="nsub" x="14" y="71">3 flags ship open → placement work orders</text></g>
-      <path class="edge e-bus" d="M392,1468 V1474" marker-end="url(#ah-bus)"/>
-      <g class="node" data-k="j7" transform="translate(276,1476)">
+        <text class="nsub" x="14" y="45">102 → 86 clusters · 12 merged · 9 named</text>
+        <text class="nsub" x="14" y="58">incl. shelf nest 043+080+093+140 (4-member)</text>
+        <text class="nsub" x="14" y="71">+ 023+047+088 (3) · open flags → placement</text></g>
+      <path class="edge e-bus" d="M392,1540 V1546" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="j7" transform="translate(276,1548)">
         <rect class="nbox" width="232" height="44" rx="8"/>
         <rect class="b-lane" width="4" height="44" rx="2"/>
         <text class="ntitle" x="14" y="17">J7 · materialize verdicts</text>
         <text class="nscript" x="14" y="31">graph/materialize_verdicts.py · boxes verbatim</text></g>
-      <path class="edge e-bus" d="M392,1520 V1526" marker-end="url(#ah-bus)"/>
-      <g class="node" data-k="g4" transform="translate(276,1528)">
-        <rect class="nbox" width="232" height="58" rx="8"/>
-        <rect class="b-eg" width="4" height="58" rx="2"/>
+      <path class="edge e-bus" d="M392,1592 V1598" marker-end="url(#ah-bus)"/>
+      <g class="node" data-k="g4" transform="translate(276,1600)">
+        <rect class="nbox" width="232" height="64" rx="8"/>
+        <rect class="b-eg" width="4" height="64" rx="2"/>
         <text class="ntitle" x="14" y="17">4g4 · RESOLVED = CANONICAL<tspan class="nactive"> · STAGE ENDS HERE</tspan></text>
         <text class="nscript" x="14" y="31">graph["resolved"] in scene_graph.json</text>
-        <text class="nsub" x="14" y="45">89 boxes VERBATIM (3 out) · 4 edges rewritten</text></g>
+        <text class="nsub" x="14" y="45">82 boxes ship · 4 removed: obj_040 structure,</text>
+        <text class="nsub" x="14" y="58">obj_083 plant REJECTED · obj_138/139 door-frame</text></g>
       <!-- ===== downstream: COMPOSE + LOOP (design 07-26) =====
            The stage is a LOOP with two halves: SEMANTIC (what is in the
            scene) and PHYSICAL (where it legally goes). Working set =
            ANCHORS first (arch-supported objects); dependents follow.
-           The old C1–C7 chain is moved aside (right column) as
-           reference / donor code. -->
-      <text class="plabel pl-comp" x="8" y="1662">STEP 3 · COMPOSE + LOOP — SUB-STAGES 3.1 SEMANTIC · 3.2 PHYSICAL (DESIGN 07-26)</text>
-      <path class="edge e-eg" d="M392,1586 V1674" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="398" y="1636">graph["resolved"] — the SOLE input (the sandbox rides inside)</text>
+           The old C1–C7 chain is RETIRED from the map (07-30); its
+           donor code stays on disk, lessons in S4_SHOPPING_DESIGN_NOTES. -->
+      <text class="plabel pl-comp" x="8" y="1734">STEP 3 · COMPOSE + LOOP — SUB-STAGES 3.1 SEMANTIC · 3.2 PHYSICAL (DESIGN 07-26)</text>
+      <path class="edge e-eg" d="M392,1664 V1746" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="398" y="1708">scene-graph state — all layers (resolved = canonical; sandbox rides inside)</text>
 
       <!-- sub-stage bands (new-lane width only; old column excluded) -->
-      <rect x="0" y="1668" width="524" height="268" fill="var(--ink)" opacity="0.035"/>
-      <rect x="0" y="1944" width="524" height="232" fill="var(--ink)" opacity="0.035"/>
-      <text class="plabel pl-bus" style="font-size:15px" x="24" y="1692">3.1 SEMANTIC — WHAT</text>
-      <text class="plabel pl-bus" style="font-size:15px" x="24" y="1968">3.2 PHYSICAL — WHERE, LEGALLY</text>
+      <rect x="0" y="1740" width="524" height="416" fill="var(--ink)" opacity="0.035"/>
+      <rect x="0" y="2184" width="524" height="158" fill="var(--ink)" opacity="0.035"/>
+      <text class="plabel pl-bus" style="font-size:15px" x="24" y="1764">3.1 SEMANTIC — WHAT (PH1 snap runs mid-lane as evidence)</text>
+      <text class="elab" x="24" y="1780">each arrow = the full scene-graph state;</text>
+      <text class="elab" x="24" y="1792">a module's write joins the state ·</text>
+      <text class="elab" x="24" y="1804">upstream rerun ⇒ downstream layers stale</text>
+      <text class="plabel pl-bus" style="font-size:15px" x="24" y="2208">3.2 PHYSICAL — WHERE, LEGALLY (mesh-time)</text>
 
-      <g class="node" data-k="lp0" transform="translate(276,1676)">
+      <g class="node" data-k="lp0" transform="translate(276,1748)">
         <rect class="nbox" width="232" height="58" rx="8"/>
         <rect class="b-comp" width="4" height="58" rx="2"/>
-        <text class="ntitle" x="14" y="17">S1 · SUPPORTED_BY<tspan class="nactive"> · BUILT 07-26</tspan></text>
+        <text class="ntitle" x="14" y="17">S1 · SUPPORTED_BY<tspan class="ngate"> · v7 · R10 OPEN</tspan></text>
         <text class="nscript" x="14" y="31">compose/supported_by.py — what holds it up</text>
-        <text class="nsub" x="14" y="45">metrics in, ranked options out · anchors = derived (30 vs 44 crude)</text></g>
-      <path class="edge e-comp" d="M392,1734 V1746" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="1744">supported_by.json — the support truth</text>
-      <g class="node" data-k="cons" transform="translate(276,1748)">
+        <text class="nsub" x="14" y="45">v8: type-prior + bottom-edge evidence · 30 anchors</text></g>
+      <path class="edge e-comp" d="M392,1806 V1818" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="1816">state + support layer (supported_by.json)</text>
+      <g class="node" data-k="cons" transform="translate(276,1820)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-comp" width="4" height="52" rx="2"/>
-        <text class="ntitle" x="14" y="17">S2 · CONSISTENCY<tspan class="nactive"> · BUILT 07-26</tspan></text>
+        <text class="ntitle" x="14" y="17">S2 · CONSISTENCY<tspan class="nactive"> · R2 PASSED 08-01</tspan></text>
         <text class="nscript" x="14" y="31">compose/consistency.py — edges vs verdicts</text>
-        <text class="nsub" x="14" y="45">157 edges: code 132 · LLM 25 → 8 keep / 17 drop</text></g>
-      <path class="edge e-comp" d="M392,1800 V1812" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="1810">clean support + arrangement facts</text>
-      <g class="node" data-k="s2" transform="translate(276,1814)">
-        <rect class="nbox" width="232" height="46" rx="8"/>
-        <rect class="b-comp" width="4" height="46" rx="2"/>
-        <text class="ntitle" x="14" y="17">S3 · SCREENING<tspan class="ngate"> · LATER</tspan></text>
-        <text class="nscript" x="14" y="31">compose or skip · doors / windows / curtain</text></g>
-      <path class="edge e-comp" d="M392,1860 V1872" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="1870">anchor cast — to be shopped</text>
-      <g class="node" data-k="s3" transform="translate(276,1874)">
-        <rect class="nbox" width="232" height="58" rx="8"/>
-        <rect class="b-comp" width="4" height="58" rx="2"/>
-        <text class="ntitle" x="14" y="17">S4 · SHOPPING — the cast list<tspan class="ngate"> · LATER</tspan></text>
-        <text class="nscript" x="14" y="31">shortlist → measure → thumbs → CLIP → pick</text>
-        <text class="nsub" x="14" y="45">donor: old C1–C5 · judged name + appearance + crops</text></g>
-      <path class="edge e-comp" d="M392,1932 V1954" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="1948">cast list — asset + alternates per anchor</text>
-
-      <!-- PROPOSE EDITS: isolated module (07-27), nothing wired yet -->
-      <g class="node" data-k="pedit" transform="translate(24,1720)">
-        <rect class="nbox" width="220" height="64" rx="8"/>
+        <text class="nsub" x="14" y="45">v7: against-slot ≠ confirm (AC fix) · 12 drop / 4 keep</text></g>
+      <path class="edge e-comp" d="M392,1872 V1884" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="1882">state + edge verdicts (consistency.json)</text>
+      <!-- PH1 SNAP drawn IN RUN ORDER (user 08-01): after S2, before S3;
+           step-3 loop arrows omitted for clarity (user 08-01) -->
+      <g class="node" data-k="ph1" transform="translate(276,1886)">
+        <rect class="nbox" width="232" height="52" rx="8"/>
+        <rect class="b-comp" width="4" height="52" rx="2"/>
+        <text class="ntitle" x="14" y="17">PH1 · SNAP + ADJUDICATE<tspan class="ngate"> · v1.2 · R11 OPEN</tspan></text>
+        <text class="nscript" x="14" y="31">compose/snap.py — propose · docket agent · cache+rulings</text>
+        <text class="nsub" x="14" y="45">verdicts frozen to evidence · user pins outrank · 0-call re-runs</text></g>
+      <path class="edge e-comp" d="M392,1938 V1950" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="1948">state + snap deltas (snap.json)</text>
+      <!-- PROPOSE EDITS: in the lane since 08-01 (was isolated 07-27) -->
+      <g class="node" data-k="pedit" transform="translate(276,1952)">
+        <rect class="nbox" width="232" height="64" rx="8"/>
         <rect class="b-comp" width="4" height="64" rx="2"/>
-        <text class="ntitle" x="14" y="17">PROPOSE EDITS<tspan class="ngate"> · ISOLATED 07-27</tspan></text>
+        <text class="ntitle" x="14" y="17">S3 · PROPOSE EDITS<tspan class="nactive"> · R5c PASSED 08-01</tspan></text>
         <text class="nscript" x="14" y="31">compose/propose_edits.py — adds + deletes</text>
         <text class="nsub" x="14" y="45">delete: flags · dupes · dropped support</text>
         <text class="nsub" x="14" y="58">add: room-inventory reasoning, support declared</text></g>
-      <path class="edge e-comp e-dash" d="M276,1730 H248" marker-end="url(#ah-comp)"/>
-      <path class="edge e-comp e-dash" d="M276,1772 H248" marker-end="url(#ah-comp)"/>
-      <path class="edge e-comp e-dash" d="M134,1784 V2244 H274" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="24" y="1800">edit_proposals.json — feeds the JUDGE's</text>
-      <text class="elab" x="24" y="1812">add / delete channel (NOT wired yet)</text>
+      <!-- 4g2→S3 side-read arrow REMOVED (user 08-01, state-oriented lane):
+           the record layer rides inside the state baton; S3's arch-shell
+           read stays listed in its click-card reads -->
+      <path class="edge e-comp" d="M392,2016 V2028" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2026">state + edit proposals (edit_proposals.json)</text>
+      <g class="node" data-k="s2" transform="translate(276,2030)">
+        <rect class="nbox" width="232" height="46" rx="8"/>
+        <rect class="b-comp" width="4" height="46" rx="2"/>
+        <text class="ntitle" x="14" y="17">S4 · SCREENING<tspan class="ngate"> · LATER</tspan></text>
+        <text class="nscript" x="14" y="31">compose or skip · doors / windows / curtain</text></g>
+      <path class="edge e-comp" d="M392,2076 V2088" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2086">anchor cast — to be shopped</text>
+      <g class="node" data-k="s3" transform="translate(276,2090)">
+        <rect class="nbox" width="232" height="58" rx="8"/>
+        <rect class="b-comp" width="4" height="58" rx="2"/>
+        <text class="ntitle" x="14" y="17">S5 · SHOPPING — the cast list<tspan class="ngate"> · LATER</tspan></text>
+        <text class="nscript" x="14" y="31">shortlist → measure → thumbs → CLIP → pick</text>
+        <text class="nsub" x="14" y="45">donor: old C1–C5 · judged name + appearance + crops</text></g>
+      <path class="edge e-comp" d="M392,2148 V2170" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2164">cast list — asset + alternates per anchor</text>
 
-      <g class="node" data-k="ph1" transform="translate(276,1976)">
-        <rect class="nbox" width="232" height="52" rx="8"/>
-        <rect class="b-comp" width="4" height="52" rx="2"/>
-        <text class="ntitle" x="14" y="17">PH1 · SNAP TO SUPPORT<tspan class="nactive"> · v0 BUILT 07-27</tspan></text>
-        <text class="nscript" x="14" y="31">compose/snap.py — zero LLM, box-proxy analyzer</text>
-        <text class="nsub" x="14" y="45">7 LARGE deltas = exactly the known suspect boxes</text></g>
-      <path class="edge e-comp" d="M392,2028 V2052" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2046">posed cast (v0: snap.json deltas)</text>
-      <!-- loop-in-loop (user direction 07-27): deterministic physics
-           results feed BACK into the semantic loop as evidence -->
-      <path class="edge e-comp e-dash" d="M276,1996 H246 V1712 H274" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="24" y="1700">snap deltas / collide reports — suspect-box +</text>
-      <text class="elab" x="24" y="1712">re-attribution EVIDENCE (loop in loop, 07-27)</text>
-      <g class="node" data-k="ph2" transform="translate(276,2054)">
+      <g class="node" data-k="ph2" transform="translate(276,2216)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2 · COLLIDE GATE<tspan class="ngate"> · DESIGN</tspan></text>
         <text class="nscript" x="14" y="31">collide.py voxel 3 cm · PER SELECTED MODEL (user)</text></g>
-      <path class="edge e-comp" d="M392,2100 V2124" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2118">legal arrangement</text>
-      <g class="node" data-k="ph3" transform="translate(276,2126)">
+      <path class="edge e-comp" d="M392,2262 V2286" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2280">legal arrangement</text>
+      <g class="node" data-k="ph3" transform="translate(276,2288)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
         <text class="ntitle" x="14" y="17">PH3 · BOX SURGERY<tspan class="ngate"> · DESIGN</tspan></text>
         <text class="nscript" x="14" y="31">suspect-box work orders · shrink-donor lessons</text></g>
-      <path class="edge e-comp" d="M392,2172 V2196" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2190">composed state + renders</text>
+      <path class="edge e-comp" d="M392,2334 V2358" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2352">composed state + renders</text>
 
-      <g class="node" data-k="lp3" transform="translate(276,2198)">
+      <g class="node" data-k="lp3" transform="translate(276,2360)">
         <rect class="nbox" width="232" height="58" rx="8"/>
         <rect class="b-comp" width="4" height="58" rx="2"/>
         <text class="ntitle" x="14" y="17">JUDGE — closes the loop<tspan class="ngate"> · MANUAL</tspan></text>
         <text class="nscript" x="14" y="31">composed vs target splat · 7 judge views</text>
         <text class="nsub" x="14" y="45">user reviews; VLM judge grows in later</text></g>
-      <path class="edge e-comp" d="M392,2256 V2270" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2282">edits.jsonl — append-only trace (the paper trail)</text>
-      <!-- the loop: typed edits re-enter their sub-stage -->
-      <path class="edge e-comp e-dash" d="M276,2216 H254 V1838 H274" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="132" y="1858">add · delete · replace</text>
-      <path class="edge e-comp e-dash" d="M276,2234 H264 V2002 H274" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="132" y="2024">move · nudge</text>
+      <path class="edge e-comp" d="M392,2418 V2432" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2444">edits.jsonl — append-only trace (the paper trail)</text>
+      <!-- step-3 loop arrows OMITTED for clarity (user 08-01); the
+           re-entry contract stays in force, noted here: -->
+      <text class="elab" x="24" y="2384">loop re-entry (arrows omitted for clarity):</text>
+      <text class="elab" x="24" y="2396">add·delete·replace → S4 · move·nudge → PH1</text>
 
-      <!-- envelope → the OLD chain's augment path (reference; the new
-           stage takes the graph only) -->
-      <path class="edge e-comp e-dash e-ref" d="M124,1066 V1090 H6 V2290 H530 V2246 H542" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="30" y="2284">envelope.npz — old augment-path gates (suggest_spots / probe)</text>
-
-      <!-- ===== OLD COMPOSE C1–C7 — moved aside 07-26, reference/donor ===== -->
-      <text class="plabel pl-comp" x="544" y="1662" opacity=".6" style="font-size:12px">OLD COMPOSE · C1–C7 · REFERENCE / DONOR CODE</text>
-      <path class="edge e-comp e-dash e-ref" d="M508,1557 H660 V1674" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="612" y="1620">was the handoff consumer</text>
-      <g class="node ndash nref" data-k="pkg" transform="translate(544,1676)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-eg" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">2→3 · agent package</text>
-        <text class="nscript" x="14" y="31">agent_package.py</text></g>
-      <path class="edge e-comp e-dash e-ref" d="M660,1716 V1764" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="666" y="1744">package/ — sole handoff</text>
-      <g class="node ndash nref" data-k="c1" transform="translate(544,1766)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-comp" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">C1 · shortlist</text>
-        <text class="nscript" x="14" y="31">retrieve2.py</text></g>
-      <path class="edge e-comp e-dash e-ref" d="M660,1806 V1854" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="666" y="1834">shortlists2.json</text>
-      <g class="node ndash nref" data-k="c2" transform="translate(544,1856)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-comp" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">C2+ · thumbs · measure · CLIP</text>
-        <text class="nscript" x="14" y="31">thumbs / measure / relevance</text></g>
-      <path class="edge e-comp e-dash e-ref" d="M660,1896 V1944" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="666" y="1924">+ true sizes · + CLIP scores</text>
-      <g class="node ndash nref" data-k="c4" transform="translate(544,1946)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-comp" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">C4 · review viewer
-          <tspan class="ngate"> · DEV BENCH</tspan></text>
-        <text class="nscript" x="14" y="31">review_server.py :8322</text></g>
-      <path class="edge e-comp e-dash e-ref" d="M660,1986 V2034" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="666" y="2014">(judged, unchanged)</text>
-      <g class="node ndash nref" data-k="c5" transform="translate(544,2036)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-comp" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">C5 · pick</text>
-        <text class="nscript" x="14" y="31">pick.py</text></g>
-      <path class="edge e-comp e-dash e-ref" d="M660,2076 V2124" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="666" y="2104">picks2.json</text>
-      <g class="node ndash nref" data-k="c6" transform="translate(544,2126)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-comp" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">C6 · place</text>
-        <text class="nscript" x="14" y="31">place2.py — bg resolver</text></g>
-      <path class="edge e-comp e-dash e-ref" d="M660,2166 V2214" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="666" y="2194">composed_state2.json</text>
-      <g class="node ndash nref" data-k="c7" transform="translate(544,2216)">
-        <rect class="nbox" width="232" height="40" rx="8"/>
-        <rect class="b-comp" width="4" height="40" rx="2"/>
-        <text class="ntitle" x="14" y="17">C7 · VLM loop {add, nudge}</text>
-        <text class="nscript" x="14" y="31">loop.py + collide.py</text></g>
-      <path class="edge e-comp e-dash e-ref" d="M660,2256 V2270" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="676" y="2282">edits.jsonl — the journaled trace</text>
-      <path class="edge e-comp e-dash e-ref" d="M544,1876 H538 V1806 H542" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="556" y="1828">measure re-runs C1</text>
-      <path class="edge e-comp e-dash e-ref" d="M776,2236 H786 V1786 H778" marker-end="url(#ah-comp)"/>
-      <text class="elab lab-ref" x="700" y="1758">add re-enters C1</text>
+      <!-- OLD COMPOSE C1–C7 reference column: RETIRED from the map
+           07-30 (user: "we are over that now"). Code stays on disk
+           (composition/ + agent_package.py); the mined lessons live in
+           docs/S4_SHOPPING_DESIGN_NOTES.md. The envelope augment-path
+           reference edge went with it. -->
 
       <!-- object cut-out (GaussianCut): REMOVED from the flow graph
            07-26 (user: out of scope for this pipeline) — decision on
@@ -873,7 +827,7 @@ post: {mod:"eg", eyebrow:"P6 · 2.3 LIFT — post-process · dedup retired 07-26
   script:"manifest_filter.py --thr 0.30",
   how:["Hard score filter at 0.30 (ADOPTED): 108 → 102; the 6 drops preserved in filtered_out — caveat: 3 of them were retake-confirmed, the filter overrules the verifier there",
        "DEDUP STAGE RETIRED (user amendment 07-26 late: 'record both objects and indicate their relationship faithfully'): NO pre-merges anywhere — even a confident IoU ≥ 0.6 overlap is an identity commitment, and identity commitments are JUDGE verdicts",
-       "Duplicate-suspect pairs are computed from box geometry by the graph's edge builder as SAME_CANDIDATE edges (zone: confident IoU ≥ .6 / gray IoU .40–.60 + containment ≥ .90); the judge resolves each to merge / part-of / distinct",
+       "Duplicate-suspect pairs are computed from box geometry by the graph's edge builder as SAME_CANDIDATE edges (zone: confident IoU ≥ .6 / gray IoU .40–.60 + containment ≥ .90); the judge resolves each to SAME (merge) or DISTINCT (v2 08-01 — PART_OF retired: fragments are SAME, contents DISTINCT)",
        "History, same day: R9 rejected score-based naming (lamp beat ceiling light) → dedup went geometry-only → then retired entirely; manifest_dedup.py kept runnable with a banner, its _dd/_dd_llm outputs stay on disk unused"],
   reads:["scene_manifest_pano2c_rc.json (108)"],
   writes:["scene_manifest_pano2c_rc_f30.json (102 — ADOPTED, feeds the record verbatim)"],
@@ -962,9 +916,10 @@ g2: {mod:"eg", eyebrow:"4g2 · PASS 1 — RECORD · edges", name:"Geometric edge
        "SAME_CANDIDATE edges computed HERE from box geometry (no dedup stage): IoU ≥ .40 AND (IoU ≥ .60 = zone confident, or containment ≥ .90 = zone gray) — the open 'same object or part?' questions drawn as graph structure, both nodes present",
        "NO-FLOATER INVARIANT (user rule 07-26): every detection node must hold ≥1 structural edge (ON/IN/IN_WALL/ATTACHED); isolated nodes get ONE caveated NEAR fallback edge (nearest supporter/floor/wall — incl. the shell's parallel surfaces — with deduped runner-up alternatives recorded); enforced in the self-check",
        "Still record: reproducible, no model calls; self-check exits nonzero on a violated invariant (frame sign + no-floater)",
-       "In production nothing stops here: the self-check is the gate (exit 1 on a violated invariant). The R1 record review was DEV-TIME validation while the machinery was being built (passed 07-26) — not a pipeline stage"],
+       "In production nothing stops here: the self-check is the gate (exit 1 on a violated invariant). The R1 record review was DEV-TIME validation while the machinery was being built (passed 07-26) — not a pipeline stage",
+       "NESTING record facts (08-01): every detection pair with containment ≥ 0.90 is recorded on the smaller node ({host, containment, iou, same_candidate}) — deterministic, produced identically every run; consumed by J0 triage + the viewer card"],
   reads:["scene_graph.json (record: nodes incl. shell architecture)"],
-  writes:["scene_graph.json (+ geometric edges + SAME_CANDIDATE queue + NEAR fallbacks)"],
+  writes:["scene_graph.json (+ geometric edges + SAME_CANDIDATE queue + NEAR fallbacks + per-node nesting facts)"],
   note:"The edges recorded here double as the judge's cheap facts: 'both boxes ATTACHED to the ceiling at 2.7 m, one inside the other' nearly decides lamp-vs-ceiling-light before the VLM sees a pixel."},
 g3: {mod:"lane", eyebrow:"4g3 · THE JUDGED GRAPH · AUDIT LAYER (superseded as handoff by 4g4, 07-26)", name:"Judged graph — record + verdicts, archived in place",
   script:"graph[\"judged\"] inside out/<scene>/scene_graph.json — one file (two canonical files would drift)",
@@ -973,7 +928,8 @@ g3: {mod:"lane", eyebrow:"4g3 · THE JUDGED GRAPH · AUDIT LAYER (superseded as 
        "Every verdict carries provenance: model, date, prompt_version, evidence hash, one-sentence reason — a bad verdict is one cached re-run, not archaeology",
        "Downstream consumers read the judged view and SKIP existence-disputed nodes; the record keeps everything",
        "LLM unavailable ⇒ conservative degradation: provisional names stand, pairs/NEAR stay unresolved, nothing disputed — never a guess",
-       "Dev stops (R12, R13) were SCAFFOLDING — production runs the whole chain gate-free (user ruling 07-26)"],
+       "Dev stops (R12, R13) were SCAFFOLDING — production runs the whole chain gate-free (user ruling 07-26)",
+       "08-01 RE-RUN (PART_OF retired → v2 pair re-judge; the J0 triage docket added its 6 semantic nominations): 102 → 86 clusters · 12 merged — incl. the 4-member bookshelf nest obj_043+080+093+140 and the 3-member obj_023+047+088. THESE are the current numbers; the 07-27 bullets above are history"],
   reads:["the record layer (same file)","the judges' verdict writes"],
   writes:["scene_graph.json — graph['judged']: clusters, canonical names, resolved edges, coherence flags, disputed set"],
   note:"DECIDED 07-26 late: the coherence ESCALATION queue (7 reexamine_with_crops flags) is NOT a graph-stage v2 — box-affecting resolution moves INTO the placement stage, where the LLM will resolve flags and adjust boxes/placements together. A text-only resolution experiment already nailed the one user-verified case (basket under the chair) from coordinates alone — see PLAN_SCENE_GRAPH.md §0a.7. SUPERSEDED IN PART by the 07-26 v2 retry: obj_138/139 → PART_OF_STRUCTURE (door frame), obj_059 revived as a small wall print — applied via retry_cases_context.py --apply (backup graph/scene_graph_pre_ctxretry.json)."},
@@ -995,15 +951,28 @@ g4: {mod:"eg", eyebrow:"4g4 · RESOLVED = THE CANONICAL BOX SET · RUN 07-26", n
   how:["USER RULING 07-26: the judge-edited shipped handoff IS canonical; the record and pre-edit judged view are ARCHIVED IN PLACE — immutable audit layers in the same file (nothing moved on disk; delete graph['resolved'] and materialize_verdicts.py reproduces it from judged + cache)",
        "THE STAGE CONTRACT (user ruling 07-26 late): the scene-graph stage STOPS HERE — verdicts materialized, box geometry VERBATIM from judged; all box surgery belongs to the next stage",
        "bedroom_marble: 89 nodes (geometry verbatim) · 3 removed · 157 edges (4 rewritten, 6 dropped incl. 1 REINTERPRET→NONE) · 0 unresolved · work orders riding along: 3 suspect boxes + open deep-box flags",
-       "Viewer: main-row 'scene graph (canonical)' toggle OPENS in RESOLVED view (untick for the judged audit view; graph record moved to the archive section)"],
+       "Viewer: main-row 'scene graph (canonical)' toggle OPENS in RESOLVED view (untick for the judged audit view; graph record moved to the archive section)",
+       "08-01 RE-RUN (v2 pair re-judge + J0 triage nominations upstream): 82 boxes ship · 4 removed — obj_040 structure, obj_083 plant REJECTED, obj_138/139 door-frame. Current numbers; the 07-26 bullets above are history"],
   reads:["written by J7 · materialize"],
   writes:["the COMPOSE+LOOP stage reads THIS layer — L0's anchor set derives from its support edges (live in the viewer 07-26)"],
   note:"Remaining suspect/open flags ship inside this layer's provenance as next-stage work orders — placement is where boxes change; this layer never edits geometry."},
-j1: {mod:"lane", eyebrow:"J1 · PAIR JUDGE · 14/14 RUN 07-26", name:"Pair judge — same object, part, or distinct",
+j0: {mod:"lane", eyebrow:"J0 · PAIR TRIAGE · BUILT + FIRST RUN 08-01 (94 → 6/88)", name:"Pair triage — text-only docket clerk",
+  script:"graph/triage_pairs.py → additive SAME_CANDIDATE edges (zone: semantic) + graph/triage_pairs_cache.json",
+  how:["COST GRADIENT (user design 08-01: lower the bar for candidates, filter before the expensive judge): code records every fact for free → a cheap text LLM triages which facts deserve attention → the expensive VLM rules with crops. This module is the middle tier",
+       "Candidates = the record's NESTING facts: every detection pair with containment ≥ 0.90 — exactly the box-inside-box pairs the SAME_CANDIDATE IoU ≥ 0.40 floor deliberately excludes (a shelf board fully inside a bookshelf sits at IoU 0.29)",
+       "ONE batched text call, NO crops: per pair NOMINATE ('worth the visual judge's time — plausibly the same object or a recorded fragment of it') or SKIP ('contents, not identity — a book inside a bookshelf')",
+       "Asymmetric by prompt — nominate on doubt: a wrong nomination costs one crop call; a wrong skip ships a duplicate object into the composed scene",
+       "A JUDGE sub-pass, not record (the record stays deterministic): NOMINATEs are appended ADDITIVELY as SAME_CANDIDATE edges (zone 'semantic', nominated_by 'triage'), like every judge's writes; the cache re-applies them on rebuild; degrade = no new nominations",
+       "FIRST RUN bedroom_marble: 94 candidates → 6 NOMINATE / 88 SKIP — both loose shelf boards obj_093/obj_140 vs the bookshelf, the top-shelf pair obj_023+obj_088, toy-in-picture obj_091+obj_024, picture-in-book obj_040+obj_066; all 88 skips were books/toys/contents, every one correctly skipped"],
+  reads:["scene_graph.json (record nesting facts + existing SAME_CANDIDATE pairs + judged members)"],
+  writes:["additive SAME_CANDIDATE edges (zone semantic, nominated_by triage)","graph/triage_pairs_cache.json"],
+  note:"Future suspicion sources — propose-edits reopen petitions, loop-judge observations — can file into this same docket: one queue of pair questions, one visual judge answering them."},
+j1: {mod:"lane", eyebrow:"J1 · PAIR JUDGE · v2 MENU 08-01 · 20/20 JUDGED (14 geometric + 6 semantic)", name:"Pair judge — same object or distinct",
   script:"graph/judge_pairs.py — claude.exe sonnet, 3-way concurrent, cache judge_pairs_cache.json",
   how:["One cached call per SAME_CANDIDATE edge: both nodes' crops + label lists + the edge's numbers (IoU, containment, zone, height gap)",
-       "SAME → merge exists as a VERDICT (materialized by J2) · PART_OF (names the part) · DISTINCT → edge dropped",
-       "Results: 11 SAME (all 3 door↔window pairs = one door detected twice; the mat triple transitively consistent) · 3 PART_OF (books-in-shelf, shelf sections) · 0 DISTINCT",
+       "v2 MENU (user ruling 08-01): SAME → merge (materialized by J2) · DISTINCT → edge dropped. PART_OF RETIRED — 'component or sub-region' was a vague middle category that let spatial answers wear an ontological label (books-cluster ruled PART_OF its shelf; needed a downstream REINTERPRET). Rule: a fragment/section IS the object (SAME — the host's appearance covers its components, 'a table with a drawer'); contents/attachments are DISTINCT (their relation lives in the record's IN/ON edges). Not separately shoppable → not a node",
+       "v1 results 07-26 (pre-retirement history): 11 SAME (all 3 door↔window pairs = one door detected twice; the mat triple transitively consistent) · 3 PART_OF (books-in-shelf + two shelf sections) · 0 DISTINCT",
+       "v2 RE-JUDGE RAN 08-01 over all 20 pairs (14 geometric + 6 J0-triage-nominated) — final tally 18 SAME / 2 DISTINCT. The 6 nominated pairs, judged with crops: obj_093+obj_043 SAME (fragment of the bookshelf) · obj_140+obj_043 SAME · obj_140+obj_080 SAME · obj_023+obj_088 SAME (upper compartment of the same unit) · obj_091+obj_024 SAME (mislabeled fragment of the picture) · obj_040+obj_066 DISTINCT (a single book vs the row of books)",
        "PROMPT_VERSION salted into the cache hash — template edits automatically re-judge (the J5-v1 lesson)"],
   reads:["scene_graph.json (record: SAME_CANDIDATE queue)","graph/crops/"],
   writes:["verdict blocks on the SAME_CANDIDATE edges","judge_pairs_cache.json"],
@@ -1019,7 +988,7 @@ j5: {mod:"lane", eyebrow:"J5 · FLOATER JUDGE · 3/3 GROUND TRUTH · v2 prompt",
 j2: {mod:"eg", eyebrow:"J2 · MERGE VIEW · DETERMINISTIC · zero LLM", name:"Merge view — materialize the verdicts",
   script:"graph/build_judged.py",
   how:["Union-find over SAME verdicts → transitive merge clusters (mat 3-clique → one node); merged geometry = union AABB, label multisets united, evidence pointers concatenated",
-       "Record edges remapped to cluster ids; intra-cluster edges vanish; duplicates collapse (ON keeps the tightest gap); PART_OF verdicts become edges; NEAR verdicts materialize as real ON/IN_WALL/ATTACHED edges",
+       "Record edges remapped to cluster ids; intra-cluster edges vanish; duplicates collapse (ON keeps the tightest gap); NEAR verdicts materialize as real ON/IN_WALL/ATTACHED edges (PART_OF materialization removed 08-01 — a stale PART_OF verdict now aborts with a re-judge instruction)",
        "EDGE CASE found on first run: the mat triple's ON edges all pointed at duplicate twins → vanished as internal → post-merge support RE-DERIVATION with the record's own thresholds (merged mat → ON floor, gap −0.017 m)",
        "Self-checks, exit 1 on failure: membership is a partition · the no-floater invariant survives the merge",
        "Emits the NAMING QUEUE (clusters whose members disagree) for J3"],
@@ -1053,50 +1022,67 @@ j6: {mod:"lane", eyebrow:"J6 · APPEARANCE + J4-FLAG RESOLUTION · the single TE
        "Resolution half (donor code = judge_cases.py, proven on bedroom_marble): existence flags → REAL/NOT_REAL/PART_OF_STRUCTURE/UNCLEAR from crops · rename flags → short name from crops · edge re-examines → CONFIRM/REJECT/REINTERPRET + suspect_box",
        "v2 EVIDENCE PACK (07-26, PROMPT_VERSION 2): every existence/rename case now gets a zoomed-out CONTEXT TILE (source view, detection outlined in red) + a 'CUT OFF at the image edge' fact line when truncated — the obj_138 lesson: a tight crop of a door frame reads as a picture frame; the identity question is unanswerable at crop zoom. Retry flipped obj_138/139 → PART_OF_STRUCTURE (door frame) at unchanged confidence",
        "v3 CONTEXT CROPS (07-27, PROMPT_VERSION 3): the appearance half now describes from graph/crops_ctx/ — padded view (35% sides/top, 75% BELOW: support lives there), object outlined in red — instead of the tight crops. Tight crops made the VLM invent support ('sitting on a shelf' for the obj_001 plant whose crop never showed its bottom); --appearance-only refreshes descriptions without re-running flag resolution; --no-ctx = old behavior",
+       "v4 GEOMETRY-BLIND item lines (07-30, PROMPT_VERSION 4): the appearance half no longer gets box size or height-above-floor — appearance is pixel TESTIMONY that supported_by weighs AGAINST the measured geometry, and 'bottom 0.19 m above the floor' pre-answered the support question (obj_001: truncated box → the VLM concluded shelf). Geometry was also never in the appearance cache hash (crop bytes + name + prompt version), so any geometry in the prompt = stale-description risk after box surgery. The RESOLUTION half keeps jc.facts() on purpose — judges arbitrate pixels vs numbers, witnesses stay blind",
+       "v5 ROW-SHEETS (07-30, PROMPT_VERSION 5): one item per color-framed ROW (crops side by side, item number burned INTO each crop, thick dark separators, prompt forbids reading other rows as context) replaces the 4-col mixed grid. Controlled experiment: obj_001 (floor plant) = 'on a shelf' 3/3 on grid sheets, correct on solo calls / one-by-one feed (52.6s) / row-sheet (15.0s vs grid 16.1s — the fix is FREE); mechanism = cross-tile contamination, resolution exonerated (solo 256px tiles answer correctly). Designed hybrid safety net on record: escalate objects whose supported_by top conf < 0.6 or whose verdict leans on the description → one-by-one re-describe (mechanical trigger, tested: selects obj_001+obj_006 on batch 1; timing pending, first run hit API 529)",
+       "v6 STRUCTURED TESTIMONY (07-31, PROMPT_VERSION 6): description = INTRINSIC-ONLY (never mentions other objects — the witness misidentifying peripheral objects from crop fragments was the invention channel) + support_view = LIST of GENERIC visible contacts (floor / horizontal_surface / vertical_surface / ceiling / not_visible), detail phrases name surfaces never objects, not_visible is the required honest answer when the contact region isn't in the crops. Identifying WHOSE surface it is = supported_by's job (v6 there). Probe 07-30: 7/8 expectations hit; obj_083's intrinsic description ('leafy plant seen through glass, blurred') now feeds the existence dispute honestly",
        "REVIEW-FIRST: --sheets-only builds sheets + manifest + verbatim prompts with zero model calls",
        "bedroom_marble history (ran as separate passes before the design settled): appearance 86/86 in 11 calls; the closure loop's adjudications — 6 rejected ghosts/dupes, obj_138/139 pictures + obj_083 box confirmed REAL, ~17 renames, 11 edge verdicts — all STAND; obj_023 + 4 low-confidence box flags shipped open"],
   reads:["graph['judged'] (clusters, canonical names, J4 flag queues)","graph/crops/ (record member crops)"],
   writes:["appearance blocks + existence/rename/edge adjudications + meta","graph/appearance_sheets/ + case sheets (review artifacts)","caches (per-cluster hash)"],
   note:"An iterative coherence↔case-closing loop was tried here and REVOKED (user: 'the loop is not the right place'; ~20 calls, mostly label polish — memory judge-loop-effort-allocation). The straight-line lane you see IS the design: flags flow down into J6 exactly once."},
-lp0: {mod:"comp", eyebrow:"3.1 SEMANTIC / S1 — SUPPORTED_BY · BUILT 07-26G", name:"Support attribution — what actually holds each object up",
+lp0: {mod:"comp", eyebrow:"3.1 SEMANTIC / S1 — SUPPORTED_BY · BUILT 07-26G · v8 EVIDENCE-FED 08-02 · R10b OPEN", name:"Support attribution — what actually holds each object up",
   script:"compose/supported_by.py → out/<scene>/compose/supported_by.json (+ cache) · viewer: THE canonical scene-graph row",
-  how:["Replaces the crude touch-anchor rule (false anchors: obj_061 book wall-graze; misses: obj_013 picture on shelf). Crude rule ported + must match the viewer count (44 = 16/26/2) BEFORE diverging",
+  how:["v8 BOTTOM-EDGE EVIDENCE (08-02, the obj_023 postmortem — starved judge, not dumb judge): every item now carries where each camera view measured the object's lowest VISIBLE point (heights above floor + image-edge clips, from the lift pool via resolved→manifest→members); >25 cm cross-view disagreement is annotated 'lower part hidden from most views — true bottom may be lower still'. RESULT: obj_023 bookshelf flipped BACK to rests_on floor 0.60 ('20.6 cm gap is likely truncation') — same model, same tiebreaker, one evidence line. Books moved rests_on → inside compartments 0.8–0.9; both doors → wall; anchors 30",
+       "v7 TYPE-PRIOR TIEBREAK (user design 08-02, the AC case): when two candidates are OBSERVATIONALLY EQUIVALENT (flush fit vs resting — boxes and pixels can't tell), the judge may break the tie with what objects of this KIND typically rest on/mount to. TIEBREAKER ONLY — clear measurements still outrank the typical story (generated scenes are weird); rulings that defy type must say so. v7-only run: AC softened to leans_on 0.62 + wall RANKED ALT 0.35 · door fixed · BUT obj_023 flipped floor→wall (21 cm float taken at face value) — the failure that motivated v8",
+       "Replaces the crude touch-anchor rule (false anchors: obj_061 book wall-graze; misses: obj_013 picture on shelf). Crude rule ported + must match the viewer count (44 = 16/26/2) BEFORE diverging",
        "Deterministic candidates per object WITH metrics: graph edges · beneath scan (±30 cm, occlusion-truncated boxes) · floor ALWAYS offered with clearance · wall/ceiling proximity · near scan · directional overlap (footprint %, thin edge slivers, side-by-side vs stacked — the obj_001 plant-beside-bookshelf lesson)",
-       "ONE batched LLM call (sonnet, prompt v5) → the superseding supported_by field: 1..n ranked options {supporter, how, confidence, reason}; ambiguity legitimate; none_plausible allowed (obj_083 plant = 'greenery through a window'); degrade → NEEDS_REVIEW",
+       "ONE batched LLM call (sonnet, prompt v6) → the superseding supported_by field: 1..n ranked options {supporter, how, confidence, reason}; ambiguity legitimate; none_plausible allowed (obj_083 plant = 'greenery through a window'); degrade → NEEDS_REVIEW",
        "anchor = DERIVED reading (top option's supporter is arch_*): bedroom_marble 30 anchors vs 44 crude, 15 fluke demotions, 1 added",
-       "Prompt-version lesson: the template is NOT hashed — never reuse an old version number (v2 = retracted bundled nonsense job)"],
-  reads:["graph['resolved'] + judged appearance descriptions","measured arch planes"],
+       "Prompt-version lesson: the template is NOT hashed — never reuse an old version number (v2 = retracted bundled nonsense job)",
+       "v6 STRUCTURED TESTIMONY (07-31): consumes appearance v6's support_view — GENERIC visible contacts (floor / horizontal_surface / vertical_surface / ceiling / not_visible) instead of parsing support claims from prose. The witness reports contact geometry, THIS judge matches contacts to concrete candidates via the metrics; 'not visible' = no pixel evidence, numbers alone. Probe validated 07-30: obj_001 floor ✓, obj_083 honest not_visible ✓, no invented neighbors"],
+  reads:["graph['resolved'] + judged appearance (intrinsic description + support_view)","measured arch planes"],
   writes:["compose/supported_by.json — the support truth (contacts stay as evidence)"],
   note:"USER GATE R1 open (PLAN_COMPOSE_LOOP.md). Contact edges are NOT deleted — superseded as the support view, kept as arrangement-fact evidence for S2."},
-pedit: {mod:"comp", eyebrow:"PROPOSE EDITS · ISOLATED (built 07-27, NOT wired — review first)", name:"Propose add / delete items",
+pedit: {mod:"comp", eyebrow:"3.1 SEMANTIC / S3 — PROPOSE EDITS · IN LANE 08-01 (built isolated 07-27) · v2 · R5c PASSED 08-01 (fresh-state run)", name:"Propose add / delete items",
   script:"compose/propose_edits.py → out/<scene>/compose/edit_proposals.json",
-  how:["ISOLATED by design (user 07-27): no consumer reads its output yet — built for testing and review before it earns a wire into the loop",
-       "DELETE proposals — deterministic aggregation of every existing doubt signal: none_plausible objects (supported_by) · duplicate suspicions (consistency DROP reasons) · objects whose every support-type edge was dropped · unresolved existence disputes; one batched LLM pass confirms/denies each with a reason",
+  how:["INCORPORATED into the lane 08-01 (user ruling; built isolated 07-27 for review-first): S2's verdicts in, proposals out — adds/deletes land at S4 SCREENING, the same door as the judge's add/delete/replace re-entry",
+       "DELETE candidates (v2) — TWO typed code signals only: none_plausible objects (supported_by) · every-support-edge-dropped + weak top confidence. v2 REMOVED the 'duplicat' word-match (the R5 bug: code interpreting prose) AND the existence-disputed detector (contract check 08-01: materialize_verdicts already removes disputed nodes from resolved; resolved['removed'] carries them as provenance)",
+       "RAW EVIDENCE to the judge (user design 08-01): each candidate's consistency verdicts VERBATIM + all dropped-edge wordings scene-wide, no labels, no code interpretation — the one LLM owning the stay/go decision reads the words itself; told duplication is NOT a delete reason, it reports duplicate_suspicions instead → code-validated pairs land in reopen_petitions (referrals to the J1 pair judge — same courtroom, new front door — + future hold-inputs for screening's non-visual dedup; unwired, review-only)",
        "ADD proposals — one batched LLM call over the room inventory (names + counts + support tiers): what obviously-expected items are missing? Every add MUST DECLARE its support (floor / wall / on-anchor) — physically checkable the moment it is proposed (stage rule)",
-       "Conservative by prompt: few, high-confidence proposals; degrade → empty lists, never fabricated"],
-  reads:["compose/supported_by.json","compose/consistency.json","graph['resolved'] inventory"],
-  writes:["compose/edit_proposals.json — PROPOSALS ONLY"],
-  note:"Intended landing spot: the JUDGE's add/delete channel (dashed arrow) — adds/deletes re-enter screening once the loop stands. Until then this is a standalone evidence pass the user reviews."},
-cons: {mod:"comp", eyebrow:"3.1 SEMANTIC / S2 — CONSISTENCY · BUILT 07-26G", name:"Self-consistency — every edge vs the support verdicts",
+       "Conservative by prompt: few, high-confidence proposals; degrade → empty lists, never fabricated",
+       "FIRST FULL RUN 08-01 (v6 layer): 4 delete candidates → 3 DELETE / 1 KEEP (obj_093 shelf — the duplicate-shelf question correctly DEFERRED to SAME_CANDIDATE judging, not deletion) · 5 ADDs, every one with declared support (blanket on:obj_008 0.8 · keyboard on:obj_039 0.75 · mouse on:obj_039 0.6 · wardrobe floor 0.55 · trash can floor 0.55) — R5 GATE OPEN",
+       "R5 FINDING (the improvement seed): the two book DELETEs (obj_061 0.72, obj_076 0.70) trace to a SIGNAL-SEMANTICS BUG — the aggregator's word-match on 'duplicat' in consistency DROP reasons converts duplicate-FACT drops (R2's inherited-wall-contact consolidation family) into duplicate-OBJECT suspicion; the LLM then confirmed deletion from that misread signal alone (existence was never in doubt)",
+       "v2 REWORK RUN 08-01: candidates 4 → 1 (books + shelf never accused — the bug class is structurally gone) · plant obj_083 FLIPPED to KEEP 0.6 (the richer verbatim evidence read the dropped edges as 'benign box grazes on an oversized box', not a ghost) · petitions 0 = CORRECT (the v6 wordings contain zero object-duplicate phrasing — the shelf-nest question needs its own nomination source: the planned non-visual dedup after this module) · adds 5 → 4 (blanket dropped out; run-to-run variance of the add pass = R5b look-for)",
+       "FRESH-STATE RUN 08-01 late (post-R6 resolved 82 + R7 layers): 0 delete candidates (verified honest: 0 none_plausible, no all-edges-dropped object — obj_083 already removed by the graph itself) · 4 ADDs (window wall 0.75 — curtain with no window in inventory, lands at screening which owns doors/windows · keyboard 0.7 · mouse 0.65 · blanket 0.55) · 0 petitions — R5c USER PASS 08-01. Add-pass variance across 3 runs (keyboard+mouse stable core; wardrobe/trash-can/blanket/window rotate) = open design point for screening (union-of-N?)"],
+  reads:["compose/supported_by.json","compose/consistency.json","graph['resolved'] inventory","arch shell nodes (record layer) — room dims for the add prompt"],
+  writes:["compose/edit_proposals.json — PROPOSALS ONLY (deletes · adds · reopen_petitions)"],
+  review:[{t:"viewer :8321 — 'edits' review mode (red DELETE / green KEEP · blue '+ADD' labels at declared support) · serve.py /edit_proposals.json",
+           h:"http://localhost:8321/?scene=bedroom_marble"}],
+  note:"Proposals land at S4 SCREENING (once built) alongside the judge's re-entry channel; until screening exists the output is review-only. R5 rework (the duplicat-tripwire) comes first."},
+cons: {mod:"comp", eyebrow:"3.1 SEMANTIC / S2 — CONSISTENCY · BUILT 07-26G · R2 PASSED 08-01 · v7 FIX 08-01 late", name:"Self-consistency — every edge vs the support verdicts",
   script:"compose/consistency.py → out/<scene>/compose/consistency.json (first consumer of supported_by)",
   how:["USER RULING: supported_by does NOT fully supersede the edges — containment / attachment / adjacency are ARRANGEMENT facts composition will consume, so every edge gets a verdict instead of blanket archiving",
        "Part A self-audit (pure code): support cycles · supporters flagged none_plausible (dependents inherit doubt) · unresolved supporters — bedroom_marble: 0 flags",
        "Part B classify (code first): CONFIRMED_SUPPORT / SUPPORT_ALT / TRANSITIVE (support chain) / KEPT_ARRANGEMENT / KEPT_GEOMETRIC / KEPT_STRUCTURAL — 132 of 157 edges explained by code",
        "Leftovers → ONE batched LLM call: KEEP (real arrangement fact) vs DROP (artifact) — 8 keep / 17 drop; the model split wall contact semantically: furniture flush-to-wall = real, shelf-riding grazes = noise",
-       "NEW FIND: obj_093 IN obj_080 flagged probable duplicate shelf — dedup-free graph design surfacing duplicates at judge time, as predicted"],
+       "NEW FIND: obj_093 IN obj_080 flagged probable duplicate shelf — dedup-free graph design surfacing duplicates at judge time, as predicted",
+       "R2 GATE PASSED 08-01 (provisional, 'results make sense, for now') on the v6 sheet — 13 DROP / 8 KEEP after the v6 supported_by re-run, reviewed in the viewer's new consistency box-color mode. VERIFIED INVARIANT (user-spotted): a DROP proposal can NEVER touch a supported_by relation — structural (matched edges are code-stamped before the LLM sees leftovers, consistency.py:245) + empirical (0/13 drops conflict with any option of their subject, alternates and against included)",
+       "v7 FIX (08-01 late, user-spotted via the AC card — the against-slot bug): the code matcher counted a hit on an option's AGAINST slot as CONFIRMED_SUPPORT, silently blessing the exact edge the ruling had rejected (obj_002 IN_WALL) AND exempting it from the leftover judge. v7: supporter slot only; against-hits fall through to the LLM lane, whose docket line now shows ', ruled AGAINST <id>'. Re-run: the AC wall edge judged DROP ('support analysis explicitly rejected the wall') — 12 DROP / 4 KEEP, 76 CONFIRMED (was 77), 1 fresh call / 15 cached. Note: fires exactly on CONTESTED support calls — rare but the cases that matter most"],
   reads:["compose/supported_by.json","graph['resolved'] edges"],
   writes:["compose/consistency.json — per-edge verdicts + audit flags (PROPOSALS; graph untouched)"],
-  note:"USER GATE R2 open (17 drop proposals + 8 keeps). Downstream module by user ruling: the nonsense judgment needs BOTH endpoints' resolved verdicts — cross-object coherence a bundled pass can't have."},
-s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S3 — SCREENING · LATER (parked design in PLAN_COMPOSE_LOOP.md)", name:"Screening — compose or skip, per anchor",
+  review:[{t:"viewer :8321 — 'consistency' review mode (box colors = per-edge verdicts + click-card section) · serve.py /consistency.json",
+           h:"http://localhost:8321/?scene=bedroom_marble"}],
+  note:"USER GATE R2 PASSED 08-01 (provisional). Downstream module by user ruling: the nonsense judgment needs BOTH endpoints' resolved verdicts — cross-object coherence a bundled pass can't have."},
+s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SCREENING · LATER (parked design in PLAN_COMPOSE_LOOP.md)", name:"Screening — compose or skip, per anchor",
   script:"new module (design)",
   how:["SEMANTIC = WHAT is in the scene; the PHYSICAL sub-stage never decides what, SEMANTIC never places",
        "Per anchor: does this object get composed at all? Where the doors/windows/curtain question lives (wall-plane objects vs architecture left alone)",
        "Suspect-box anchors (obj_014 curtain · obj_083 plant · deep-box pictures) can be HELD BACK rather than shopped on bad geometry",
-       "Loop re-entry point: add / delete / replace edits from the judge land HERE"],
-  reads:["graph['resolved'] anchors (names, edges, provenance flags)"],
+       "Loop re-entry point: add / delete / replace edits from the judge land HERE — and S3's edit_proposals.json arrives at the same door"],
+  reads:["graph['resolved'] anchors (names, edges, provenance flags)","compose/edit_proposals.json — S3's adds/deletes to apply (once built)"],
   writes:["anchor cast — the to-be-shopped list (file contract TBD)"],
   note:"First real decision of the stage. Manual review for now (user)."},
-s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SHOPPING · LATER", name:"Shopping — the cast list",
+s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S5 — SHOPPING · LATER", name:"Shopping — the cast list",
   script:"reworks the old C1–C5 machinery as donor code (retrieve2 → measure → thumbs → relevance → pick)",
   how:["Queries with the judged canonical NAME + J6 APPEARANCE fields (colors/material/style) and the graph crops — never raw detector labels",
        "True-size measure + orientation-aware fit + CLIP style score, unchanged donor logic",
@@ -1105,20 +1091,29 @@ s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SHOPPING · LATER", name:"Shoppi
   reads:["anchor cast + graph['resolved'] appearance","graph/crops/","objathor catalog"],
   writes:["cast list (file contract TBD — successor of shortlists2/picks2)"],
   note:"The :8322 look-only picker is the review gate for this module."},
-ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP TO SUPPORT · v0 BUILT 07-27", name:"Snap analyzer — make the support verdict physically exact",
+ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP + BOX ADJUDICATION · v1 08-01 · v1.2 CACHE+RULINGS 08-02 · R11 OPEN", name:"Snap proposes; flagged boxes get an agent verdict",
   script:"compose/snap.py → out/<scene>/compose/snap.json · donor place2.py math folds in when real meshes arrive",
-  how:["Deterministic, ZERO LLM (standing rule: code interprets numbers) — the model never gets to violate physics because physics isn't its job",
+  how:["v1 (user design 08-01 late, after the curtain-thickness diagnosis): the scripted snap becomes a PROPOSAL (pass A). Clean boxes snap scripted, unchanged. FLAGGED boxes — LARGE where support involves architecture (top pick, an alternate, or the ruled-against candidate) plus every judge suspect_box pointer — form a DOCKET adjudicated by ONE batched sonnet call over a TYPED MENU: ADOPT_REFIT_AND_SNAP · SNAP_AS_IS · NO_SNAP (attribution in doubt — don't bake it in) · DEFER_TO_SURGERY. Shrink-experiment lesson honored: the agent CHOOSES, code EXECUTES — no freehand resizing",
+       "REFIT (pure code): re-fuse the box from its raw per-view lift measurements (provenance chain: resolved members → manifest members → lift_pool<sfx>.json), per-bound MAD outlier rejection then union of survivors — the curtain mechanism (one bleeding mask's bound survives q=0.05 fusion at small n) reversed mechanically. Pass B re-snaps everything with adopted refits substituted + held boxes pinned, so dependents land on final supporter tops",
+       "v1 first run (bedroom_marble, docket 6): curtain ADOPT_REFIT z_hi 4.442→4.199 (thickness 0.449→0.206 m — the diagnosed outlier dropped; wall-gap flag RESOLVED by the same fix) · obj_023 shelf ADOPT_REFIT z_lo trim 0.13 · AC obj_002 NO_SNAP (wall-vs-bookshelf doubt correctly preserved) · obj_096/obj_001/obj_043 SNAP_AS_IS · LARGE 18 → 16 · degrade --no-llm reproduces v0 verbatim",
+       "⚠ RUN VARIANCE DEMONSTRATED then FIXED (08-02): the v8-chain re-run flipped the curtain verdict ADOPT 0.65 → DEFER 0.55 on identical evidence (reason misread the judge flag's direction) — structural diagnosis: snap was the only judged module with NO verdict memory + our own prompt invited magnitude-suspicion + docket framed '1 rejected' instead of '7 of 8 agree' + flags arrived direction-less",
+       "v1.2 STRUCTURAL FIXES (adj prompt v2, 08-02): explicit decision rule (MAJORITY matters, magnitude alone NEVER a reason to defer; thin = few total or split vote) · docket says 'k of n measurements AGREE' · flags arrive with direction stated ('this SUPPORTS correcting the box') · VERDICT CACHE snap_cache.json (evidence-keyed, like every other judged module) · USER RULINGS snap_rulings.json (hand pins, outrank cache; --fresh spares them). RESULT: curtain ADOPT 0.85 with the flag read correctly ('corroborating the prior flag') · AC pinned NO_SNAP by user ruling (open eyeball preserved) · door NO_SNAP (refit strong but attribution tied — sophisticated) · re-run = 1 ruled + 6 cached + 0 LLM calls, fully deterministic",
+       "Deterministic core, ZERO LLM on the clean path (standing rule: code interprets numbers) — the model never gets to violate physics because physics isn't its job",
        "v0 runs on the graph's OWN boxes as proxy geometry (no cast list needed): per object, the correction that makes its TOP supported_by option exact — floor/ceiling contact, wall flush, parent-top contact; supporters snap BEFORE dependents (support-chain depth ordering)",
        "INTERNAL_SURFACE rule: a bottom deep inside the supporter's span (book on a bookshelf's inner board) is NOT snapped to the supporter's top — the observed height IS the shelf; interior boards aren't in the box model",
        "bedroom_marble v0 result: 7 LARGE corrections (>10 cm) = EXACTLY the known suspect family, zero false alarms — plant obj_083 0.94 m (occlusion-truncated), picture obj_096 0.32, curtain obj_014 0.25, monitor 0.22 (stand neck), bookshelves 0.21/0.15, obj_013 0.10",
-       "LOOP-IN-LOOP (user direction 07-27): the deltas feed BACK into the semantic loop as suspect-box / re-attribution evidence — the dashed return arrow"],
-  reads:["compose/supported_by.json (top options)","graph['resolved'] boxes + measured shell planes — NOTHING else enters the stage (envelope OUT)"],
-  writes:["compose/snap.json — corrections + snapped boxes (ANALYZER layer; graph verbatim)"],
-  note:"The sandbox in action: measured walls + observed boxes = the whole physics world. Same snap contract poses real meshes after S4 shopping."},
+       "LOOP-IN-LOOP (user direction 07-27): the deltas feed the semantic loop as suspect-box / re-attribution evidence — since the 08-01 linearization this is drawn IN LANE: snap runs after S2 and its deltas flow forward into S3 propose-edits",
+       "08-01 RE-RUN on the v6 layer (the v0 numbers above were STALE): 18 LARGE corrections (was 7) — the knowns persist (obj_096 / obj_014 / obj_005 / obj_088 / obj_043); v6 newcomers: obj_001 floor-snap 0.191 = exactly its known truncation float · obj_002 AC 0.255 up to bookshelf-top = the demoted verdict quantified (eyeball item open) · a book cluster in the duplicate-shelf nest",
+       "R4 PASSED 08-01 (provisional) + the DEPENDENT-PLACEMENT CONTRACT (standing user ruling): dependents (sub-objects) have NO exact position target by nature until real meshes exist — books sit on shelf LEVELS the box model doesn't carry — so large dependent corrections are expected noise, ADVISORY only; the stage invariants are (1) anchors correct, (2) relationship edges correct. Recorded in PLAN (PH1 section) + S4_SHOPPING_DESIGN_NOTES: relative placement re-derives from the verbatim boxes against the shopped parent's real interior at mesh time"],
+  reads:["compose/supported_by.json (top options + against)","graph['resolved'] boxes + members + suspect_box edges + measured shell planes","manifest + rig_sp0/lift_pool<sfx>.json — raw per-view measurements for refit"],
+  writes:["compose/snap.json — corrections + refits + verdicts + snapped boxes (ANALYZER layer; graph verbatim)"],
+  review:[{t:"viewer :8321 — 'snap' review mode (colors by correction size, white ghost = snapped AABB) · serve.py /snap.json",
+           h:"http://localhost:8321/?scene=bedroom_marble"}],
+  note:"The sandbox in action: measured walls + observed boxes = the whole physics world. Same snap contract poses real meshes after S5 shopping."},
 ph2: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2 — COLLIDE GATE · DESIGN (mesh-only, user 07-27)", name:"Collision gate",
   script:"donor: collide.py (solid-voxel occupancy, 3 cm pitch, RATIO_MAX 0.05)",
   how:["USER RULING 07-27: collision is checked PER SELECTED MODEL — mesh-level, never box-vs-box (boxes drown in false contacts: every book 'collides' with its shelf, while real mesh clearance goes unmeasured)",
-       "Therefore this module waits for S4 shopping to produce placed meshes; accept/reject deterministic",
+       "Therefore this module waits for S5 shopping to produce placed meshes; accept/reject deterministic",
        "Rejection reasons feed back into the next loop proposal (proven pattern from loop run 3)"],
   reads:["posed cast + placed meshes (post-shopping)"],
   writes:["legal arrangement + collision report (viewer 'collisions' layer)"],
@@ -1134,71 +1129,13 @@ ph3: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH3 — BOX SURGERY · DESIGN", name:"
 lp3: {mod:"comp", eyebrow:"STEP 3 · JUDGE — closes the loop · MANUAL FOR NOW", name:"Render + judge — close the loop",
   script:"donor code: render_judge_views.py (7 same-standpoint views) + loop.py verify/journal machinery",
   how:["Composed render vs target splat render, same cameras; critique proposes TYPED edits",
-       "SEMANTIC edits (add / delete / replace) re-enter S2 screening; PHYSICAL edits (move / nudge) re-enter PH1 snap",
+       "SEMANTIC edits (add / delete / replace) re-enter S4 screening; PHYSICAL edits (move / nudge) re-enter PH1 snap",
        "Add/delete proposal sources: render comparison vs target · the graph's own provenance flags · physics-as-evidence (an object that repeatedly fails to rest/fit is a delete candidate)",
        "An add must DECLARE its support (floor / wall / on-anchor) — physically checkable the moment it is proposed",
        "Known weak link from loop runs 1–4: verify sensitivity (crop-zoom or stronger judge = next lever)"],
   reads:["composed renders + target splat renders + edit journal"],
   writes:["append-only edit journal — doubles as Reflexion memory and the paper trace"],
   note:"MANUAL REVIEW FOR NOW (user 07-26): the user judges renders; the VLM judge grows in after both halves stand."},
-pkg: {mod:"eg", eyebrow:"OLD COMPOSE (REFERENCE) · was the 2→3 boundary", name:"Agent package",
-  script:"agent_package.py (orchestrated by scene_ready.py, mtime-driven)",
-  how:["Bundle the scene model, photos, and overlays with a guide into one folder",
-       "That folder is the ONLY thing the recreation module gets to see"],
-  reads:["canonical manifest / scene_graph.json + rig crops + overlays"],
-  writes:["package/GUIDE.md","copied views/overlays/manifest"],
-  note:"MOVED TO REFERENCE 07-26 — the new COMPOSE+LOOP reads graph['resolved'] directly; whether any package folder survives is an open design question of the new stage. (Its old pending rewires are moot.)"},
-c1: {mod:"comp", eyebrow:"OLD COMPOSE / C1 · REFERENCE — donor for L1", name:"Shortlist",
-  script:"retrieve2.py — category tiers (exact > token subset > overlap), orientation-aware fit over 6 perms, tiling k=1..3",
-  how:["For each 3D box, search the asset catalog by category words only (descriptions don't get a vote)",
-       "Rank candidates by how well their shape fills the box — trying all 6 orientations, allowing tiling (e.g. two rugs side by side)",
-       "Labels with no category match go through one batch LLM call for a functional stand-in (rug → doormat)"],
-  reads:["canonical manifest (rewire to scene_graph.json pending)","objathor annotations.json.gz"],
-  writes:["package/shortlists2.json"],
-  note:"Category-only gating (descriptions never vote — kills the v0 rug hijack). The canonical manifest's child objects (books on shelves) open a tiering question for retrieval: fill parents first, children later."},
-c2: {mod:"comp", eyebrow:"OLD COMPOSE / C2 · C2.5 · C3 · REFERENCE — donor for L1", name:"Thumbs · measure · CLIP",
-  script:"thumbs.py · measure.py · relevance.py (CLIP ViT-B/16)",
-  how:["Render a thumbnail of every candidate asset",
-       "Measure the actual meshes — this fixes the ~34% of catalog assets authored rotated — then redo the shortlist with the true sizes",
-       "CLIP compares each thumbnail to the object's real photo crop → a style-similarity score"],
-  reads:["shortlists2.json","objathor meshes","review_crops/<id>_clean.png"],
-  writes:["_thumbs/<uid>.png (dataset cache)","_mesh_sizes.json + _mesh_yaw.json (canonical-yaw fix)","additive clip / clip_txt fields in shortlists2.json"],
-  note:"measure fixes the ~34% mis-rotated meshes (yaw fix) and TRUE sizes shift the shortlists → re-run C1. CLIP re-orders, never filters."},
-c4: {mod:"comp", eyebrow:"OLD COMPOSE / C4 — DEV BENCH (stays useful for L1 review)", name:"Review viewer",
-  script:"review_server.py :8322 (look-only) · asset_viewer.py :8323",
-  how:["A local web page: each object's photo crop next to its candidate assets, in best-fit order and best-style order",
-       "You look and judge the stages' quality here — nothing gets picked in this step"],
-  reads:["shortlists2.json + views + thumbs"],
-  writes:["package/review_crops/*.png"],
-  review:[{t:"http://localhost:8322 (start: python composition/review_server.py --scene <scene>)",
-           h:"http://localhost:8322"},
-          {t:"http://localhost:8323 — asset viewer (asset_viewer.py)",
-           h:"http://localhost:8323"}],
-  note:"Two candidate strips per box (dimension-fit order, CLIP order); glowing frame = fits inside natively. Judging the stages, not driving them — selection is C5's job."},
-c5: {mod:"comp", eyebrow:"OLD COMPOSE / C5 · REFERENCE — donor for L1", name:"Pick",
-  script:"pick.py — fit tolerance band (score ≤ 0.8, ×0.5–1.6 of scene-median scale), argmax clip inside it",
-  how:["Keep only candidates that fit well enough AND match the room's overall scale (a tolerance band, never a single best-fit)",
-       "Among those, take the most style-similar one (highest CLIP score)"],
-  reads:["shortlists2.json"],
-  writes:["package/picks2.json (+ top-3 alternates)"],
-  note:"Fit is a band, never an argmax. Empty band → top-5 by fit, flagged gate_relaxed. Warns if relevance.py hasn't run."},
-c6: {mod:"comp", eyebrow:"OLD COMPOSE / C6 · REFERENCE — donor for L2", name:"Place",
-  script:"place2.py — perm rotation + uniform fit scale + tiling; --clean (tinted floor) · --background auto|cut|tinted|original",
-  how:["Rotate, scale, and drop each picked asset into its 3D box (tiling copies along an axis when the fit said so)",
-       "Render the assembled scene over a backdrop — newest cut background if one exists, else the tinted-floor stand-in",
-       "Export the result: a state file listing every placement, renders, and a GLB"],
-  reads:["picks2.json + shortlists2.json + manifest (+ cut background.ply)"],
-  writes:["package/composed_state2.json","composed2_view_*.png","composed_scene2.glb"],
-  note:"Facing (0/180) initialization still open. Background resolver prefers the newest cut background, falls back to tinted floor."},
-c7: {mod:"comp", eyebrow:"OLD COMPOSE / C7 · REFERENCE — donor for L3", name:"VLM propose → verify",
-  script:"loop.py — critique (one VLM call) → validate (caps, room shell, collide.py voxel collision) → apply ONE edit → verify better|worse|neutral → journal",
-  how:["A vision model compares our renders to the original photos and proposes small edits: add a missed object, or nudge one",
-       "Every proposal is checked with geometry first — inside the room? collides with anything? — free, no model call",
-       "Apply ONE edit, re-render, ask the model: better or worse? Keep only 'better'; anything else reverts",
-       "Every attempt goes in a journal; rejected edits are shown back to the model so they're never re-proposed"],
-  reads:["composed_state2.json + views + shortlists2 + manifest + edits.jsonl (Reflexion memory)"],
-  writes:["package/edits.jsonl (append-only trace)","updated composed_state2.json","per-edit renders under package/loop/"],
-  note:"Ops scoped to {add, nudge}; add re-enters the chain at C1 for that box only. Accept only 'better'. SUPERSEDED as a stage 07-26 — its verify/journal machinery and 4 runs of lessons are L3's donor code."},
 realscan: {mod:"frozen", eyebrow:"STEP 1 · WORLD — alternative source (frozen)", name:"Real-scan leg",
   script:"01_inspect → 02_clean → 03/04 render/orbit → 05_planview · decode_sog · decompress_interiorgs · find_bedroom",
   how:["Start from a scanned real room (a capture dataset) instead of a generated one",

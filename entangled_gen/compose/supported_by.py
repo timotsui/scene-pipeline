@@ -57,7 +57,44 @@ import paths  # noqa: E402
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
 BATCH_SIZE = 30          # text-only items; ~3 calls for a 90-object room
-PROMPT_VERSION = "5"     # v5: "Looks like" sentences downgraded to
+PROMPT_VERSION = "9"     # v9 (08-02): REAL-GAP RULE -- the symmetric
+                         # twin of v8. v8 taught "views disagree ->
+                         # forgive the gap (truncation)"; v9 adds
+                         # "views AGREE -> BELIEVE the gap": a
+                         # well-measured air gap CONTRADICTS resting,
+                         # and witness contact verbs cannot overrule it
+                         # (a camera can't see weight or a 5 cm gap).
+                         # Motivation: the AC case -- 3 agreeing views
+                         # put its bottom 5-10 cm ABOVE the bookshelf,
+                         # yet "rests flat" testimony + the generous
+                         # BENEATH_TOL laundered a real gap into noise.
+                         # USER GROUND TRUTH 08-02: AC is wall-mounted.
+                         # v8 (08-02): BOTTOM-EDGE EVIDENCE -- each item
+                         # now carries where every camera view measured
+                         # the object's lowest visible point (heights
+                         # above floor + image-edge clips). Motivation:
+                         # the obj_023 flip -- the v7 judge read a 21 cm
+                         # floor gap as trustworthy fact and ruled the
+                         # bookshelf wall-mounted; the lift pool KNEW
+                         # 9 of 11 views never saw below ~80 cm
+                         # (occlusion). Starved judge, not dumb judge.
+                         # v7 (08-02): TYPE-PRIOR TIEBREAK -- when two
+                         # candidates are observationally equivalent
+                         # (the AC wall-vs-bookshelf case: flush fit ==
+                         # resting, boxes and crops can't tell), the
+                         # judge may now weigh what objects of this KIND
+                         # are typically supported by. Tiebreaker ONLY:
+                         # strong measurements still outrank the
+                         # typical story (generated scenes are weird).
+                         # v6 (07-31): STRUCTURED TESTIMONY -- consumes
+                         # appearance v6's support_view (generic visible
+                         # contacts: floor / horizontal_surface /
+                         # vertical_surface / ceiling / not_visible)
+                         # instead of parsing support claims out of
+                         # prose. The witness reports contact geometry;
+                         # THIS judge matches contacts to candidates.
+                         # Descriptions are intrinsic-only from v6 on.
+                         # v5: "Looks like" sentences downgraded to
                          # identity-only evidence (tight crops cut off the
                          # bottom -- their support claims are scene-dressing;
                          # obj_001 "sitting on a shelf" lesson).
@@ -101,12 +138,50 @@ not mount to a wall); a thin graze against a wall while something solid \
 sits beneath is NOT support; leaning objects rest on one thing AND \
 balance against another.
 
-About the "Looks like" sentences: they are pixel testimony from crops \
-that include the object's surroundings, so they may legitimately mention \
-what the object visibly rests on or hangs from. Weigh that testimony \
-TOGETHER with the measured numbers; when the two conflict, prefer the \
-explanation that reconciles both (a box truncated by occlusion is common \
--- e.g. a floor object whose box bottom floats above the floor).
+About the testimony lines: "Looks like" describes the object ITSELF \
+only -- identity evidence, it never names surroundings. "Witness \
+support view" lists the GENERIC contacts a vision pass could actually \
+SEE holding the object up (floor / raised horizontal surface / vertical \
+surface / ceiling) -- the witness never identifies WHICH object \
+provides a surface; matching each seen contact to a concrete candidate \
+below, using the measured numbers, is YOUR job. "Contact not visible" \
+means the pixels give no support evidence at all -- rely on the numbers \
+alone and weigh that absence when judging confidence. When testimony \
+and numbers conflict, prefer the explanation that reconciles both (a \
+box truncated by occlusion is common -- e.g. a floor object whose box \
+bottom floats above the floor).
+
+TIEBREAK BY TYPE: when two candidates BOTH fit the numbers and the \
+testimony (observationally equivalent -- e.g. an appliance flush \
+against a wall while a furniture top sits just beneath it: resting and \
+a flush fit look identical to boxes and pixels), break the tie with \
+what objects of this KIND are typically supported by in real rooms (an \
+AC unit or picture is typically wall-mounted; a book is typically \
+shelved, not wall-mounted). This is a TIEBREAKER ONLY: when the \
+measurements clearly favor one candidate, they outrank the typical \
+story -- this scene is generated and may be genuinely unusual. When \
+your ruling defies the typical placement for the kind, say so in the \
+reason.
+
+A "Bottom-edge evidence" line, when present, shows where each camera \
+view measured the object's lowest VISIBLE point. Strong disagreement \
+across views means the lower part was occluded from most views -- the \
+box bottom then rests on the single deepest-seeing view and the TRUE \
+bottom may be lower still: a floor gap on such a box is usually a \
+truncation artifact, not real floating (nothing floats). When the \
+views agree, the measured bottom is trustworthy.
+
+THE REAL-GAP RULE (the flip side): when the bottom-edge views AGREE, \
+the measured bottom is real -- and so is any air gap between it and a \
+candidate's top. A well-measured gap of several centimeters \
+CONTRADICTS resting on that candidate: things touch what they rest \
+on. Witness contact wording cannot overrule a real gap -- the witness \
+reports what contact LOOKS like, and a camera cannot see weight or a \
+few-centimeter air gap; read "rests on" in testimony as "appears \
+adjacent to". Gap forgiveness (reading a gap as box noise or \
+truncation) applies ONLY when the bottom evidence is missing, \
+clipped, or disagreeing. An object hanging at height with a real gap \
+below it and a plausible vertical fastening is mounted, not resting.
 
 Return ONE fenced ```json block containing a JSON ARRAY with EXACTLY one \
 object per item, same order:
@@ -374,7 +449,11 @@ def call_claude(prompt, cwd, model):
     exe = shutil.which("claude")
     if not exe:
         raise SystemExit("[supported_by] claude.exe not on PATH")
-    r = subprocess.run([exe, "-p", prompt, "--model", model],
+    # prompt via STDIN, not argv: Windows CreateProcess caps the command
+    # line at ~32k chars and v6's richer item blocks crossed it
+    # (WinError 206 on batch 2, 07-31)
+    r = subprocess.run([exe, "-p", "--model", model],
+                       input=prompt,
                        capture_output=True, text=True, encoding="utf-8",
                        errors="replace", env=claude_env(), cwd=str(cwd),
                        timeout=CALL_TIMEOUT_S)
@@ -390,14 +469,80 @@ def call_claude(prompt, cwd, model):
     return out
 
 
-def item_block(i, node, cand, desc):
+def bottom_evidence(graph, scene, arch_planes):
+    """Per object: where each camera view measured its lowest visible
+    point (heights above the floor + image-edge clips). The v8
+    truncation signal: strong cross-view disagreement = the lower part
+    was occluded from most views, so the box bottom rests on the single
+    deepest-seeing view. Chain: resolved.members -> manifest.members ->
+    lift_pool<sfx>.json; returns {} on any missing link (the line is
+    simply absent -- honest degrade)."""
+    man_name = None
+    for n in graph["nodes"]:
+        man_name = (n.get("provenance") or {}).get("manifest")
+        if man_name:
+            break
+    if not man_name:
+        return {}
+    man_path = paths.scene_dir(scene) / man_name
+    m = re.search(r"pano2([a-z]*)_", man_name)
+    pool_path = (paths.scene_dir(scene) / "rig_sp0"
+                 / f"lift_pool{m.group(1) if m else ''}.json")
+    if not man_path.exists() or not pool_path.exists():
+        return {}
+    man = {o["id"]: o for o in json.loads(
+        man_path.read_text(encoding="utf-8"))["objects"]}
+    pool = json.loads(pool_path.read_text(encoding="utf-8"))["pool"]
+    floor_h = phys_h(arch_planes["arch_floor"]["value_raw"])
+    out = {}
+    for n in graph["resolved"]["nodes"]:
+        mem = []
+        for mid in (n.get("members") or [n["id"]]):
+            mem.extend(pool[i]
+                       for i in (man.get(mid) or {}).get("members") or []
+                       if 0 <= i < len(pool))
+        if len(mem) < 2:
+            continue
+        hs = sorted(phys_h(mm["hi"][1]) - floor_h for mm in mem)
+        clipped = sum(1 for mm in mem if not mm["trust"][3])
+        line = (f"Bottom-edge evidence: {len(mem)} views measured the "
+                f"lowest visible point at {hs[0] * 100:.0f}–"
+                f"{hs[-1] * 100:.0f} cm above the floor"
+                + (f" ({clipped} clipped at the image edge)"
+                   if clipped else ""))
+        if hs[-1] - hs[0] > 0.25:
+            line += (" — views DISAGREE strongly: the lower part was "
+                     "hidden from most views; the box bottom rests on "
+                     "the deepest-seeing view and the true bottom may "
+                     "be lower still")
+        else:
+            line += " — views agree"
+        out[n["id"]] = line
+    return out
+
+
+def item_block(i, node, cand, app, bev=None):
     b = Box(node)
     s = node["geometry"]["size"]
     head = (f"ITEM {i} · {node['id']} \"{node['name']}\" — size "
             f"{s[0]:.2f}×{s[2]:.2f}×{s[1]:.2f} m (w×d×h), bottom "
             f"{b.bottom_h:.2f} m above floor, top {b.top_h:.2f} m.")
-    if desc:
-        head += f"\n  Looks like: {desc}"
+    app = app or {}
+    if bev:
+        head += f"\n  {bev}"
+    if app.get("description"):
+        head += f"\n  Looks like: {app['description']}"
+    sv = app.get("support_view") or []
+    if sv:
+        parts = []
+        for sc in sv:
+            lbl = ("contact NOT visible in the crops"
+                   if sc["contact"] == "not_visible"
+                   else sc["contact"].replace("_", " "))
+            det = (sc.get("detail") or "").strip()
+            parts.append(lbl + (f" ({det})" if det else ""))
+        head += ("\n  Witness support view (generic, from pixels): "
+                 + "; ".join(parts))
     if cand["context"]:
         head += "\n  Context: " + "; ".join(cand["context"][:6]) + "."
     body = "\n".join(f"  [c{i + 1}] {c['text']}"
@@ -490,8 +635,8 @@ def main():
     edges = res["edges"]
     arch_planes = {n["id"]: n["geometry"]["plane"] for n in graph["nodes"]
                    if n["id"].startswith("arch_")}
-    jdesc = {n["id"]: (n.get("appearance") or {}).get("description")
-             for n in graph["judged"]["nodes"]}
+    japp = {n["id"]: (n.get("appearance") or {})
+            for n in graph["judged"]["nodes"]}
 
     cdir = paths.compose_dir(args.scene)
     cdir.mkdir(parents=True, exist_ok=True)
@@ -515,9 +660,13 @@ def main():
           f"{n_lines} candidate lines "
           f"({n_lines / max(len(nodes), 1):.1f}/object)")
 
+    bev = bottom_evidence(graph, args.scene, arch_planes)
+    print(f"[supported_by] bottom-edge evidence lines: {len(bev)}")
+
     # evidence hash per object = prompt version + its item text
     blocks = {n["id"]: item_block(0, n, cands[n["id"]],
-                                  jdesc.get(n["id"])) for n in nodes}
+                                  japp.get(n["id"]), bev.get(n["id"]))
+              for n in nodes}
     ehash = {oid: hashlib.md5((PROMPT_VERSION + b).encode()).hexdigest()
              for oid, b in blocks.items()}
 
@@ -543,7 +692,8 @@ def main():
         for bi, batch in enumerate(batches):
             want = {n["id"]: cands[n["id"]]["partners"] for n in batch}
             items = "\n\n".join(item_block(i + 1, n, cands[n["id"]],
-                                           jdesc.get(n["id"]))
+                                           japp.get(n["id"]),
+                                           bev.get(n["id"]))
                                 for i, n in enumerate(batch))
             got = {}
             for attempt, firm in enumerate(("", FIRM_PREFIX)):
@@ -568,6 +718,38 @@ def main():
             cache_path.write_text(json.dumps(cache, indent=1),
                                   encoding="utf-8")
         todo_ids = {n["id"] for n in nodes if n["id"] not in verdicts}
+
+    # ---------------- user rulings: ground truth outranks the judge ------
+    # compose/supported_by_rulings.json: {oid: {supporter, how, note,
+    # confidence?}}. The ruling becomes options[0] (by:"user"); the
+    # judge's own differing options stay behind it as audit alternates.
+    # Born 08-02 (AC case): three prompt versions couldn't beat a witness
+    # overclaim -- user ground truth belongs IN THE STATE, like snap's
+    # snap_rulings.json.
+    rulings_path = cdir / "supported_by_rulings.json"
+    if rulings_path.exists():
+        rulings = json.loads(rulings_path.read_text(encoding="utf-8"))
+        node_ids = {n["id"] for n in nodes}
+        for oid, ru in rulings.items():
+            if oid not in node_ids:
+                continue
+            if not ru.get("supporter") or ru.get("how") not in HOW_VOCAB:
+                print(f"[supported_by] ruling for {oid} malformed -- "
+                      f"ignored")
+                continue
+            opt = {"supporter": ru["supporter"], "how": ru["how"],
+                   "confidence": float(ru.get("confidence", 0.95)),
+                   "reason": ("USER RULING (ground truth): "
+                              + str(ru.get("note", "")).strip()),
+                   "by": "user"}
+            old = (verdicts.get(oid) or {}).get("options") or []
+            keep = [o for o in old if o.get("supporter") != opt["supporter"]]
+            v = dict(verdicts.get(oid) or {})
+            v["options"] = [opt] + keep[:3]
+            v.pop("none_plausible", None)
+            verdicts[oid] = v
+            print(f"[supported_by] USER RULING applied: {oid} "
+                  f"{opt['how']} {opt['supporter']}")
 
     # assemble the layer
     objects = []
