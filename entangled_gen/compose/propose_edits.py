@@ -32,11 +32,19 @@ referrals to the step-2 pair judge (SAME_CANDIDATE, the judge with
 crops), and future hold-inputs for screening's non-visual dedup.
 Review-only until those wires exist.
 
-ADD proposals -- ONE batched LLM call over the room inventory (canonical
-names + counts + support tiers + room size): what obviously-expected
-items are missing? STAGE RULE: every add DECLARES its support (floor /
-wall / ceiling / on-<anchor id>) so it is physically checkable the
-moment it is proposed. Conservative by prompt: few, high-confidence.
+ADD proposals -- v3 (user design 08-02): ONE batched call, whole room
+as context, but the reply is FORCED PER ITEM -- every object and arch
+node answers "nothing missing" (the normal case) or names an
+expected-but-absent connection, plus one final "room" slot for
+room-level gaps that fit no single item. v2's room-level brainstorm
+rotated its proposal tail across runs; the per-item form gave an
+identical stable core (expB, 3 runs). The loop experiment (expC: adds
+folded back into the inventory) DIVERGED -- phantom items raised
+confidence in their complements and grew accessories -- so adds are
+PRIORS, never observations: an add enters the scene state only after
+a pixel check at screening confirms it. Every add still declares
+support (derived from its anchor); anchor="room" marks the scan
+channel.
 
 Degrade: --no-llm (or call failure) -> delete candidates written with
 status CANDIDATE (not confirmed), adds empty. Nothing fabricated.
@@ -64,7 +72,7 @@ import paths  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 WEAK_TOP_CONF = 0.5      # top-option confidence below this = weak support
 
 SUPPORT_EDGE_TYPES = ("ON", "IN", "IN_WALL", "ATTACHED")
@@ -106,23 +114,32 @@ DROPPED-EDGE WORDINGS (scene-wide, verbatim):
 {drops}"""
 
 T_ADD = """\
-{firm}You are reviewing the object inventory of ONE reconstructed \
-indoor room to propose MISSING items. The reconstruction detects most \
-large furniture reliably but misses items that are small, occluded, or \
-low-contrast. Below: the room's inventory (canonical names, counts, \
-what each rests on) and the room dimensions.
+{firm}You are reviewing ONE reconstructed indoor room. The \
+reconstruction detects most large furniture reliably but misses items \
+that are small, occluded, or low-contrast. Below: the room dimensions \
+and every item with its CONNECTIONS -- what it rests on, and \
+everything that rests on / hangs on / sits inside it.
 
-Propose the items that are OBVIOUSLY expected in this room but absent \
-from the inventory -- things whose absence would make the composed room \
-read as wrong or empty. Be CONSERVATIVE: propose few (0-6), only \
-high-confidence, everyday items; no decor filler. Every proposal MUST \
-declare its support: "floor", "wall", "ceiling", or "on:<id of an \
-inventory object>".
+For EVERY item listed (architecture included), answer: is anything \
+OBVIOUSLY expected to be connected to THIS item but absent? Use the \
+whole room as context -- never propose something that already exists \
+elsewhere in the inventory, and never propose decor filler. Be \
+CONSERVATIVE: most items should get an empty answer. Only everyday \
+items whose absence would make the composed room read as wrong. \
+Anchor each proposal to the item it would physically rest on or hang \
+from -- not a merely associated item.
 
-Return ONE fenced ```json block, a JSON ARRAY (may be empty):
-{{"name": "<lowercase item name>", "support": "floor|wall|ceiling|\
-on:<id>", "where": "one short phrase", "confidence": 0.0-1.0, \
-"reason": "one sentence"}}
+The LAST entry is "room": a whole-room scan. Considering everything \
+above, is anything expected in a room like this that is absent and \
+did NOT fit any single item's answer? Same conservatism applies.
+
+Return ONE fenced ```json block, a JSON ARRAY with EXACTLY one entry \
+per item, same order as listed:
+{{"id": "<item id>", "adds": []}}  -- nothing missing (the normal case)
+or {{"id": "<item id>", "adds": [{{"name": "<lowercase item>", \
+"relation": "on_top|inside|mounted_on|hangs_from|near", \
+"where": "one short phrase", "confidence": 0.0-1.0, \
+"reason": "one sentence"}}]}}
 Output ONLY the fenced JSON block.
 
 {inventory}"""
@@ -260,6 +277,7 @@ def main():
 
     # ---------------- LLM passes ----------------------------------------
     deletes, adds, petitions = [], [], []
+    add_answered = None   # v3 add pass: per-item reply coverage
     if args.no_llm:
         deletes = [{"id": oid, "name": names.get(oid),
                     "signals": sigs, "status": "CANDIDATE",
@@ -341,21 +359,55 @@ def main():
                         "names": [names[pair[0]], names[pair[1]]],
                         "confidence": conf_of(s.get("confidence")),
                         "evidence": str(s.get("evidence", "")).strip()})
-        # add proposals
-        inv = {}
+        # add proposals -- v3 (user design 08-02, "experiment B2"): the
+        # whole room is context, but the REPLY IS FORCED PER ITEM --
+        # every object and arch node answers "nothing to add" (normal)
+        # or names an expected-but-absent connection, then one final
+        # "room" slot scans for room-level gaps that fit no single item.
+        # Empirical basis (expB/expC, bedroom_marble): per-item slots
+        # gave an identical stable core across runs where the old
+        # room-level brainstorm rotated its tail; the loop experiment
+        # (adds folded back into the inventory) DIVERGED -- invented
+        # items raised confidence in their complements (phantom keyboard
+        # -> mouse 0.75) and grew accessories (mirror on the invented
+        # wardrobe). Hence the standing rule: these are PRIORS, and an
+        # add may enter the scene state only after a pixel check at
+        # screening confirms it. anchor="room" marks the scan channel.
+        parent, kids = {}, {}
         for o in sbL["objects"]:
             top = (o.get("supported_by") or [{}])[0]
-            key = names.get(o["id"], "?")
-            inv.setdefault(key, []).append(
-                f'{o["id"]} ({top.get("how")} {top.get("supporter")})')
+            sup, how = top.get("supporter"), top.get("how")
+            if not sup:
+                continue
+            parent[o["id"]] = f'{how} {names.get(sup, sup)} ({sup})'
+            kids.setdefault(sup, []).append(
+                f'{names.get(o["id"], "?")} ({o["id"]}, {how})')
         shell = {n["id"]: n["geometry"]["plane"]["value_raw"]
                  for n in graph["nodes"] if n["id"].startswith("arch_")}
         dims = (f'room ~{abs(shell["arch_wall_x_low"] - shell["arch_wall_x_high"]):.1f} x '
                 f'{abs(shell["arch_wall_z_low"] - shell["arch_wall_z_high"]):.1f} m, '
                 f'height {abs(shell["arch_ceiling"] - shell["arch_floor"]):.1f} m')
-        lines = [dims, "", "INVENTORY (name x count -- members):"]
-        for k in sorted(inv):
-            lines.append(f"  {k} x{len(inv[k])}: {'; '.join(inv[k][:6])}")
+        arch_ids = [n["id"] for n in graph["nodes"]
+                    if n["id"].startswith("arch_")]
+        lines = [dims, "", "ITEMS (id, name, connections):"]
+        order = []
+        for o in sbL["objects"]:
+            oid = o["id"]
+            order.append(oid)
+            k = kids.get(oid)
+            lines.append(
+                f'- {oid} "{names.get(oid, "?")}" -- rests: '
+                f'{parent.get(oid, "(unresolved)")}'
+                + (f'; holds: {"; ".join(k)}' if k else ''))
+        for aid in arch_ids:
+            order.append(aid)
+            k = kids.get(aid) or []
+            label = aid.replace("arch_", "").replace("_", " ")
+            lines.append(f'- {aid} [{label}] -- holds {len(k)}: '
+                         + ("; ".join(k) if k else "(nothing)"))
+        order.append("room")
+        lines.append('- room [the whole room -- final scan, '
+                     'see instructions]')
         got = None
         for firm in ("", FIRM_PREFIX):
             try:
@@ -368,20 +420,35 @@ def main():
             got = parse_array(out)
             if got is not None:
                 break
-        valid_ids = set(names)
-        for e in (got or []):
-            if not isinstance(e, dict):
-                continue
-            name = e.get("name")
-            sup = str(e.get("support", ""))
-            sup_ok = sup in ("floor", "wall", "ceiling") or (
-                sup.startswith("on:") and sup[3:] in valid_ids)
-            if not isinstance(name, str) or not name.strip() or not sup_ok:
-                continue
-            adds.append({"name": name.strip().lower(), "support": sup,
-                         "where": str(e.get("where", "")).strip(),
-                         "confidence": conf_of(e.get("confidence")),
-                         "reason": str(e.get("reason", "")).strip()})
+
+        def support_of(anchor):
+            if anchor.startswith("obj_"):
+                return f"on:{anchor}"
+            if anchor.startswith("arch_wall"):
+                return "wall"
+            if anchor == "arch_ceiling":
+                return "ceiling"
+            return "floor"   # arch_floor + the room-scan channel
+
+        by_item = {e.get("id"): e for e in (got or [])
+                   if isinstance(e, dict)}
+        add_answered = f"{sum(1 for o in order if o in by_item)}/{len(order)}"
+        for oid in order:   # anchor comes from list position, never
+            for a in (by_item.get(oid, {}).get("adds") or []):  # the reply
+                if not isinstance(a, dict):
+                    continue
+                name = a.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                adds.append({
+                    "name": name.strip().lower(),
+                    "support": support_of(oid),
+                    "anchor": oid,
+                    "anchor_name": names.get(oid, oid),
+                    "relation": str(a.get("relation", "")).strip(),
+                    "where": str(a.get("where", "")).strip(),
+                    "confidence": conf_of(a.get("confidence")),
+                    "reason": str(a.get("reason", "")).strip()})
 
     layer = {
         "scene": args.scene, "built": str(date.today()),
@@ -397,6 +464,7 @@ def main():
                    "delete_proposed": sum(1 for d in deletes
                                           if d.get("verdict") == "DELETE"),
                    "adds_proposed": len(adds),
+                   "add_items_answered": add_answered,
                    "reopen_petitions": len(petitions)},
         "deletes": deletes,
         "adds": adds,
@@ -411,8 +479,9 @@ def main():
             print(f"    DELETE {d['id']} ({d['name']}) "
                   f"[{d['confidence']}]: {d['reason'][:100]}")
     for a in adds:
-        print(f"    ADD {a['name']} ({a['support']}) "
-              f"[{a['confidence']}]: {a['reason'][:100]}")
+        print(f"    ADD {a['name']} <- {a.get('anchor')} "
+              f"({a.get('anchor_name')}) [{a['confidence']}]: "
+              f"{a['reason'][:100]}")
     for p in petitions:
         print(f"    PETITION {p['pair'][0]}+{p['pair'][1]} "
               f"({p['names'][0]}/{p['names'][1]}) [{p['confidence']}]: "

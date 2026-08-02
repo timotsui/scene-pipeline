@@ -1041,6 +1041,44 @@ The bench: obj_002, obj_127, obj_009, obj_001. **User verdict: pending
 
 ---
 
+### R14 · S3 ADD-PASS REDESIGN — per-item forced reply + the loop lesson (08-02) — USER PASS ("make it canon")
+
+**User diagnosis on review: the add channel is structurally faulty** —
+a judge with no witness. Its only input was a text inventory; proposals
+were samples from a bedroom PRIOR, not observations, which is why the
+tail rotated across runs (wardrobe/trash-can/window in and out) and
+why union-of-N could never fix it (more samples converge to the prior,
+not the scene).
+
+**v3 (user design): whole room as context, reply FORCED PER ITEM.**
+Every object + arch node answers "nothing to add" (normal) or names an
+expected-but-absent connection, anchored to the item it would rest
+on/hang from; one final `room` slot catches room-level gaps that fit
+no single item. **expB (3 runs): identical stable core every run**
+(blanket·keyboard·lamp; wobble quarantined in the room slot) vs v2's
+rotating tail. Closes the union-of-N question: structure, not sampling.
+
+**expC, the loop experiment (user: "the new list goes into run 2"):**
+adds folded back into the inventory as ordinary items, 3 rounds —
+**DIVERGED, no fixed point.** The phantom keyboard raised the mouse to
+0.75 ("desk has monitor and keyboard but no mouse"); round 3 mounted a
+mirror on the round-1 invented wardrobe. Internal coherence rises while
+fidelity falls: a bedroom-GENERATOR, not a reconstructor. **STANDING
+RULE for screening: an add enters the scene state only after a pixel
+check at its declared anchor confirms it. Prior proposes, witness
+confirms.**
+
+**Canon run (v12 layer, prompt v3):** 89/89 answered · 4 adds —
+blanket on bed 0.55 · keyboard 0.6 + mouse 0.55 on desk · **window
+embedded in the curtain wall 0.5** (the arch-lane candidate, correctly
+anchored to the wall now) · 0 deletes · 0 petitions. Records:
+`out/bedroom_marble/compose/edit_proposals_expB2_run*.json` + `_expC.json`.
+Adds now carry `anchor`/`anchor_name`/`relation` alongside the same
+`support` field (derived from the anchor), `anchor:"room"` = scan
+channel; `counts.add_items_answered` reports reply coverage.
+
+---
+
 ## PARKED — screening draft (earlier this session, now a later step)
 
 Compose-or-skip per anchor (`COMPOSE` / `SKIP_ARCH` / `HOLD`), one batched call,
