@@ -1499,14 +1499,29 @@ try {
       for (const a of (epL.adds || [])) {
         const sup = String(a.support || '');
         let p = null;
-        if (sup.startsWith('on:')) {
+        // v4 proposal box (box_source estimated_prior): draw the actual
+        // estimated box in dashed-look blue + label above it
+        if (a.box && a.box.aabb_min) {
+          const [c, s] = objCS({ aabb_min: a.box.aabb_min,
+                                 aabb_max: a.box.aabb_max });
+          const geo = new THREE.BoxGeometry(s[0], s[1], s[2]);
+          const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+              new THREE.LineBasicMaterial({ color: 0x7dc4ff,
+                  transparent: true, opacity: 0.9, depthTest: false }));
+          edges.renderOrder = 202;
+          edges.position.set(c[0], c[1], c[2]);
+          epAdds.add(edges);
+          p = [c[0], c[1] + s[1] / 2 + 0.14, c[2]];
+        }
+        if (!p && sup.startsWith('on:')) {
           const s = jById[sup.slice(3)];
           if (s) p = [s.geometry.center[0],
                       s.geometry.center[1] + s.geometry.size[1] / 2 + 0.22,
                       s.geometry.center[2]];
         }
         if (!p) p = [cx, cy + 0.8 + stack++ * 0.14, cz];
-        const sp = wideSprite('+ ADD ' + a.name + ' · ' + sup +
+        const cl = (a.placement && a.placement.clamped) ? ' CLAMPED' : '';
+        const sp = wideSprite('+ ADD ' + a.name + ' · ' + sup + cl +
                               ' (' + gNum(a.confidence) + ')', '#7dc4ff', 0.9);
         sp.position.set(p[0], p[1], p[2]);
         epAdds.add(sp);

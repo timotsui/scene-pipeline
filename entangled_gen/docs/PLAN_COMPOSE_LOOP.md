@@ -1079,6 +1079,44 @@ channel; `counts.add_items_answered` reports reply coverage.
 
 ---
 
+### R15 · S3 v4 — step-3 size+box, K-run union canon (08-02) — BUILT WITH USER IN-SESSION
+
+**User rulings that shaped it:** (1) "propose_edits should handle the
+sizing and hand off a CLEAR GRAPH to screening" — sizing is STEP 3 of
+this module, not screening's problem; (2) sizing must know the OTHER
+objects' sizes — the room is ~0.8× real metric, textbook cm would
+oversize everything (spawned the queued TRUE-SCALE SANDBOX question:
+rescale the scene to metric instead of shrinking assets); (3) **the
+K-run union is canon and lives INSIDE one invocation — NO CACHE, no
+human picking. PRIME-DIRECTIVE correction delivered bluntly after I
+proposed an evidence-keyed cache: anything that bakes a human choice
+into the flow is a failed pipeline.**
+
+**The module now (one command, fully automatic):**
+1. deletes (unchanged) →
+2. add pass ×K=3 (`--add-runs`), per-item forced replies, union by
+   (name, anchor) with `seen k/3` + mean/max confidence — stability is
+   EVIDENCE for screening, never a filter →
+3. size+box: one batched sizing call referenced to the scene's own 82
+   measured sizes; pure-code free-space placement (anchor top face /
+   floor / wall plane, both orientations, nearest "where" referent,
+   shrink-to-fit flagged `clamped`); every add ships as a complete node
+   record with `box_source: "estimated_prior"`.
+
+**V4 canon run (bedroom_marble):** 3 runs all 89/89 · 5 adds all boxed
+— blanket 3/3 (0.8×1.24, clamped around the pillow) · keyboard 3/3 ·
+mouse 2/3 (beside the keyboard — placed against the keyboard's own
+proposal box) · wardrobe 2/3 (room-scan → free floor) · lamp 1/3
+(bare nightstand). Viewer edits mode now draws proposal boxes (blue
+wireframe + CLAMPED tag).
+
+**Handoff contract to screening:** rule on ENTRY per add (the open
+fidelity-vs-plausibility question decides the policy; pixel check =
+the faithful-reconstruction route), seen-counts and `estimated_prior`
+provenance are the evidence. S3 is CLOSED.
+
+---
+
 ## PARKED — screening draft (earlier this session, now a later step)
 
 Compose-or-skip per anchor (`COMPOSE` / `SKIP_ARCH` / `HOLD`), one batched call,
