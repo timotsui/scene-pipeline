@@ -138,25 +138,33 @@ def main():
 
     def face_dir_of(item_id, lo, hi, mount):
         """(unit xz front direction, evidence source) -- layered by
-        evidence strength (obj_096 lesson: witness facing is +-45deg
-        quantized and oblique for wall items, but a wall thing can
-        ONLY face off its wall):
-          wall-mounted -> the wall's inward normal (hard geometry)
+        evidence strength (obj_096 + obj_032 lessons: witness facing
+        is +-45deg quantized and oblique for wall-adjacent things,
+        but geometry constrains them completely):
+          wall-mounted            -> the wall's inward normal
+          wall-HUGGING (box EDGE within 0.15 m of a wall -- center
+            distance lied for deep furniture) -> that wall's normal
           else observed witness facing (line-of-sight converted)
           else near-wall / room-middle heuristic (invented adds,
           no_front items). Ceiling items have no facing."""
         if mount == "ceiling":
             return None, None
-        cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
-        walls = [(cx - wx[0], (1.0, 0.0)), (wx[1] - cx, (-1.0, 0.0)),
-                 (cz - wz[0], (0.0, 1.0)), (wz[1] - cz, (0.0, -1.0))]
+        # edge gap to each wall, with the inward normal
+        walls = [(lo[0] - wx[0], (1.0, 0.0)), (wx[1] - hi[0], (-1.0, 0.0)),
+                 (lo[2] - wz[0], (0.0, 1.0)), (wz[1] - hi[2], (0.0, -1.0))]
         d, n = min(walls)
         if mount == "wall":
             return n, "wall_constraint"
+        # 0.30: lift boxes run fat (obj_032 flush shelf measured a
+        # 0.23 m edge gap); true huggers here are <= 0.23, the next
+        # nearest walls 0.37+, so 0.30 splits them with margin
+        if d < 0.30:
+            return n, "wall_hug"
         if item_id in observed_face:
             return observed_face[item_id], "observed"
         if d < 0.6:
             return n, "heuristic"
+        cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
         v = np.array([room_c[0] - cx, room_c[1] - cz])
         L = float(np.hypot(v[0], v[1]))
         return ((v[0] / L, v[1] / L) if L > 1e-6 else None), "heuristic"
@@ -167,6 +175,7 @@ def main():
 
     scene = trimesh.Scene()
     placed, failed = [], []
+    fdir_by = {}   # item id -> decided front (render frame)
     for r in sl["items"]:
         if not r.get("candidates"):
             continue
@@ -181,6 +190,7 @@ def main():
         hi = np.asarray(r["box"]["aabb_max"], np.float32) * r2r
         lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
         fdir, fsrc = face_dir_of(r["id"], lo, hi, r["mount"])
+        fdir_by[r["id"]] = fdir
         insts, face_deg = place_candidate(mesh, c, lo, hi, r["mount"],
                                           face_dir=fdir)
         for j, inst in enumerate(insts):
@@ -199,6 +209,29 @@ def main():
                            if fdir else None),
                        "mount": r["mount"], "score": c["score"]})
 
+    # SUB FACING = HOST INHERITANCE (obj_032 lesson: things in/on a
+    # shelf face wherever the shelf faces; their own photo readings
+    # are grazing-angle noise). Walk the host chain until it reaches
+    # a placed item's decided front; unresolvable hosts (e.g. the
+    # ceiling light) leave the sub without a preview front. The sub
+    # placement round applies the same contract with real meshes.
+    host_of = {s["id"]: s.get("host")
+               for s in sl.get("subs_deferred", [])}
+    sub_front = {}
+    for _ in range(4):   # host chains are short; sub-of-sub resolves
+        for sid, h in host_of.items():
+            if sid in sub_front or not h:
+                continue
+            f = fdir_by.get(h) or sub_front.get(h)
+            if f:
+                sub_front[sid] = f
+    subs_front = [{"id": sid, "host": host_of[sid],
+                   "face_source": "host_inherit",
+                   "front_dir_raw":
+                       [round(float(f[0] * float(r2r[0])), 3),
+                        round(float(f[1] * float(r2r[2])), 3)]}
+                  for sid, f in sorted(sub_front.items())]
+
     gpath = cdir / "fitted_preview.glb"
     gpath.write_bytes(scene.export(file_type="glb"))
     (cdir / "fitted_preview.json").write_text(json.dumps({
@@ -208,7 +241,7 @@ def main():
         "note": "NAIVE #1-candidate placement (no fit loop); RAW-frame "
                 "glb for the viewer's fitted-preview layer",
         "elapsed_s": round(time.time() - t0, 1),
-        "placed": placed, "failed": failed,
+        "placed": placed, "subs_front": subs_front, "failed": failed,
     }, indent=1), encoding="utf-8")
     print(f"[fit_preview] wrote {gpath} "
           f"({gpath.stat().st_size / 1e6:.1f} MB, {len(placed)} items, "

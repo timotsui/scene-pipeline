@@ -1664,8 +1664,14 @@ try {
       // observed > heuristic, from fit_preview) beats the raw
       // witness reading; subs fall back to the raw observation
       const fitFront = {};
-      if (fitL) (fitL.placed || []).forEach(p => {
-        if (p.front_dir_raw) fitFront[p.id] = p.front_dir_raw; });
+      if (fitL) {
+        (fitL.placed || []).forEach(p => {
+          if (p.front_dir_raw) fitFront[p.id] = p.front_dir_raw; });
+        // subs inherit their host's decided front (host_inherit)
+        (fitL.subs_front || []).forEach(p => {
+          if (p.front_dir_raw && !fitFront[p.id])
+            fitFront[p.id] = p.front_dir_raw; });
+      }
       for (const n of (gJ.nodes || [])) {
         const wd = fitFront[n.id] ||
             (((n.appearance || {}).facing) || {}).world_dir;
