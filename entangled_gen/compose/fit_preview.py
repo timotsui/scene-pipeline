@@ -62,24 +62,31 @@ def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
     m.apply_transform(P)
     m.apply_scale(cand["scale"])
     k, axis = cand.get("k", 1), cand.get("axis", 0)
-    face_deg = 0
+    face_deg, face_dot = 0, None
     if face_dir is not None:
         s0 = m.bounds[1] - m.bounds[0]
         sub_w = (hi[0] - lo[0]) / (k if axis == 0 else 1)
         sub_d = (hi[2] - lo[2]) / (k if axis == 2 else 1)
         best = None
         for deg in (0, 90, 180, 270):
-            ex, ez = (s0[0], s0[2]) if deg % 180 == 0 else (s0[2], s0[0])
-            if ex > sub_w * 1.05 or ez > sub_d * 1.05:
-                continue
+            # 0/180 keep the placed footprint EXACTLY -- never gate
+            # them (the old gate vetoed 180 whenever the scaled asset
+            # legitimately overhung its box, so 12/30 items silently
+            # kept arbitrary facing -- the backwards-shelf bug).
+            # 90/270 swap extents: allow only if the swap still fits.
+            if deg % 180 != 0:
+                ex, ez = s0[2], s0[0]
+                if ex > sub_w * 1.05 or ez > sub_d * 1.05:
+                    continue
             f = yaw_matrix(deg)[:3, :3] @ P[:3, :3] @ np.array(
                 [0.0, 0.0, 1.0])
             score = f[0] * face_dir[0] + f[2] * face_dir[1]
             if best is None or score > best[0]:
                 best = (score, deg)
-        if best and best[1]:
-            face_deg = best[1]
-            m.apply_transform(yaw_matrix(face_deg))
+        if best:
+            face_deg, face_dot = best[1], round(float(best[0]), 2)
+            if face_deg:
+                m.apply_transform(yaw_matrix(face_deg))
     step = (hi[axis] - lo[axis]) / k
     out = []
     for i in range(k):
@@ -100,7 +107,7 @@ def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
             t[1] = lo[1] - blo[1]
         inst.apply_translation(t)
         out.append(inst)
-    return out, face_deg
+    return out, face_deg, face_dot
 
 
 def main():
@@ -209,8 +216,8 @@ def main():
         lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
         fdir, fsrc = face_dir_of(r["id"], lo, hi, r["mount"])
         fdir_by[r["id"]] = fdir
-        insts, face_deg = place_candidate(mesh, c, lo, hi, r["mount"],
-                                          face_dir=fdir)
+        insts, face_deg, face_dot = place_candidate(
+            mesh, c, lo, hi, r["mount"], face_dir=fdir)
         for j, inst in enumerate(insts):
             inst.apply_transform(to_raw)   # render -> raw, baked
             scene.add_geometry(inst,
@@ -221,6 +228,13 @@ def main():
                        "scale": c["scale"], "k": c.get("k", 1),
                        "face_yaw_deg": face_deg,
                        "face_source": fsrc,
+                       # dot(achieved front, target); < 0.9 = the
+                       # chosen perm cannot reach the target with a
+                       # footprint-legal turn -- a FIT-LOOP work item
+                       # (orientation must join candidate scoring)
+                       "face_dot": face_dot,
+                       "face_conflict": (face_dot is not None
+                                         and face_dot < 0.9),
                        "front_dir_raw": (
                            [round(float(fdir[0] * float(r2r[0])), 3),
                             round(float(fdir[1] * float(r2r[2])), 3)]
