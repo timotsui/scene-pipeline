@@ -333,6 +333,18 @@ class H(BaseHTTPRequestHandler):
             else:
                 self._send(404, b"no collider_registered.glb; run "
                                 b"collider_register.py --scene " + sc.encode())
+        elif p == "/human.glb":
+            # stock reference human for scale eyeballing (CesiumMan,
+            # Khronos glTF sample assets, CC-BY 4.0 Cesium), BAKED to a
+            # static y-up mesh: exactly 1.75 m tall, feet at y=0 (the
+            # raw skinned+Z_UP original defeated browser-side bbox
+            # scaling -- wall-sized legs, 08-02). Scene-independent.
+            f = HERE / "assets" / "human_static.glb"
+            if f.exists():
+                self._send(200, f.read_bytes(), "model/gltf-binary",
+                           cache=True)
+            else:
+                self._send(404, b"no viewer/assets/human.glb")
         elif p == "/splat.ply":
             # full-quality splat for the hi-fi renderer (GaussianSplats3D).
             # Streamed in chunks: gen_raw.ply can be 100-800 MB.

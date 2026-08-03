@@ -33,6 +33,7 @@
        <label><input type="checkbox" id="clipCeil" checked> clip ceiling</label>
        <label><input type="checkbox" id="showClr" checked> clearance</label>
        <label title="rig-origin markers: RAW-frame axis triad (red +x / green +y / blue +z) + the red origin sphere"><input type="checkbox" id="showAxes"> axes</label>
+       <label title="stock reference human (CesiumMan, Khronos glTF sample assets, CC-BY 4.0 Cesium) uniform-scaled to 1.75 m standing on the floor at the rig origin — eyeball scale reference for the metric-normalization question"><input type="checkbox" id="showHuman"> human 1.75 m</label>
        <label><input type="checkbox" id="hifi" checked> hi-fi splats</label>
        <label title="collider_registered.glb — the Marble bundle's collider MESH, ICP-registered into the RAW frame (collider_register.py). Not boxes: the actual mesh surface, for judging mesh↔splat alignment"><input type="checkbox" id="showColl"> collider mesh</label>
        <label title="THE CANONICAL VIEW — the resolved scene graph (graph[resolved], stage-2 handoff: 82 clusters, boxes verbatim) with the compose-stage layers on top when fresh: anchor tint from each object's TOP supported_by option, green support arrows, review modes (supported_by / consistency / snap). Stale compose layers auto-hide (⚠ note in the row). ?audit=1 = pre-edit judged audit. Click a box = its card"><input type="checkbox" id="showJudged"> scene model (resolved · canonical)</label>
@@ -1359,8 +1360,11 @@ try {
           '(2-10 cm); evidence edges still anchor at observed centers',
       edits: 'box colors = PROPOSE-EDITS verdicts: red = DELETE ' +
           'proposal, green = flagged but judged KEEP, yellow = unjudged ' +
-          'candidate, dim gray = never doubt-flagged. Blue floating ' +
-          'labels = proposed ADDs at their declared support',
+          'candidate, dim gray = never doubt-flagged. Blue wire boxes ' +
+          '+ labels = proposed ADD boxes (v4+; CLAMPED = shrunk to ' +
+          'fit). Swaps (v5): red wire = out (re-interpreted away), ' +
+          'green wire = in (packed into the out envelope), label ' +
+          'carries the code feasibility verdict',
       plain: 'uniform boxes, no overlay'
     };
     const jh = 'scene model: ' + jObjEntries.length + ' objects · view ' +
@@ -1487,6 +1491,51 @@ try {
     // the room's object centroid). Visible only in edits review mode.
     const epAdds = new THREE.Group(); judgedGroup.add(epAdds);
     epAdds.visible = false;
+    // v5 swaps: out-boxes red wire, packed in-boxes green wire, one
+    // label per swap with the code's feasibility verdict
+    if (useSb && epL && (epL.swaps || []).length) {
+      for (const s of epL.swaps) {
+        let top = null;
+        for (const oid of (s.out || [])) {
+          const jn = jById[oid];
+          if (!jn) continue;
+          const [c, sz] = objCS(jn.geometry);
+          const geo = new THREE.BoxGeometry(sz[0], sz[1], sz[2]);
+          const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+              new THREE.LineBasicMaterial({ color: 0xff8484,
+                  transparent: true, opacity: 0.85, depthTest: false }));
+          edges.renderOrder = 202;
+          edges.position.set(c[0], c[1], c[2]);
+          epAdds.add(edges);
+          if (!top || c[1] + sz[1] / 2 > top[1])
+            top = [c[0], c[1] + sz[1] / 2, c[2]];
+        }
+        for (const ir of (s.in || [])) {
+          if (!ir.box || !ir.box.aabb_min) continue;
+          const [c, sz] = objCS({ aabb_min: ir.box.aabb_min,
+                                  aabb_max: ir.box.aabb_max });
+          const geo = new THREE.BoxGeometry(sz[0], sz[1], sz[2]);
+          const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+              new THREE.LineBasicMaterial({ color: 0x7dffb0,
+                  transparent: true, opacity: 0.9, depthTest: false }));
+          edges.renderOrder = 203;
+          edges.position.set(c[0], c[1], c[2]);
+          epAdds.add(edges);
+          if (!top || c[1] + sz[1] / 2 > top[1])
+            top = [c[0], c[1] + sz[1] / 2, c[2]];
+        }
+        if (top) {
+          const ins = (s.in || []).map(ir => ir.name).join(' + ');
+          const sp = wideSprite('SWAP r' + (s.round || '?') + ': ' +
+              (s.out_names || s.out || []).join('/') + ' → ' + ins +
+              (s.feasible ? '' : ' · INFEASIBLE') +
+              ' (' + gNum(s.confidence) + ')',
+              s.feasible ? '#7dffb0' : '#ff8484', 0.9);
+          sp.position.set(top[0], top[1] + 0.18, top[2]);
+          epAdds.add(sp);
+        }
+      }
+    }
     if (useSb && epL && (epL.adds || []).length) {
       let cx = 0, cy = 0, cz = 0, cn = 0;
       for (const en of jObjEntries) {
@@ -1953,6 +2002,46 @@ $('showColl').onchange = async e => {
     msg('collider unavailable: ' + err.message);
     e.target.checked = false;
     collGroup.visible = false;
+  }
+};
+
+// ---------------- reference human (scale eyeball) ----------------
+// stock CesiumMan (Khronos glTF sample assets, CC-BY 4.0 Cesium),
+// uniform-scaled so standing height = 1.75 m IN SCENE UNITS, feet on
+// the floor at the rig origin. If the room is truly metric he looks
+// right next to the doors; a mis-scaled scene makes him a giant or a
+// dwarf at a glance — the eyeball companion to scale_check.
+const humanGroup = new THREE.Group(); worldGroup.add(humanGroup);
+humanGroup.visible = false;
+let humanLoaded = false;
+$('showHuman').onchange = async e => {
+  humanGroup.visible = e.target.checked;
+  if (!e.target.checked || humanLoaded) return;
+  try {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    // human.glb serves the BAKED static mesh: y-up, exactly 1.75 m
+    // tall, feet at y=0, centered -- no browser-side measuring (the
+    // raw skinned original defeated Box3 scaling: wall-sized legs)
+    const gltf = await new GLTFLoader().loadAsync('human.glb');
+    // unlit on purpose: no lights in this scene -- lit materials
+    // render BLACK (the collider lesson, 07-25)
+    gltf.scene.traverse(o => {
+      if (o.isMesh) o.material = new THREE.MeshBasicMaterial({
+        map: o.material && o.material.map ? o.material.map : null,
+        color: o.material && o.material.map ? 0xffffff : 0xd9a066 });
+    });
+    if (upSign < 0) gltf.scene.rotation.x = Math.PI;
+    gltf.scene.position.set(0, floorY, 0);
+    humanGroup.add(gltf.scene);
+    const lb = textSprite('1.75 m', '#ffd27d', 1.2);
+    lb.position.set(0, floorY + upSign * 1.9, 0);
+    humanGroup.add(lb);
+    humanLoaded = true;
+    msg('reference human loaded: 1.75 m at the rig origin');
+  } catch (err) {
+    msg('human unavailable: ' + err.message);
+    e.target.checked = false;
+    humanGroup.visible = false;
   }
 };
 

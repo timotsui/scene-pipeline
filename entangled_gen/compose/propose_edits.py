@@ -32,35 +32,35 @@ referrals to the step-2 pair judge (SAME_CANDIDATE, the judge with
 crops), and future hold-inputs for screening's non-visual dedup.
 Review-only until those wires exist.
 
-ADD proposals -- v3 (user design 08-02): ONE batched call, whole room
-as context, but the reply is FORCED PER ITEM -- every object and arch
-node answers "nothing missing" (the normal case) or names an
-expected-but-absent connection, plus one final "room" slot for
-room-level gaps that fit no single item. v2's room-level brainstorm
-rotated its proposal tail across runs; the per-item form gave an
-identical stable core (expB, 3 runs). The loop experiment (expC: adds
-folded back into the inventory) DIVERGED -- phantom items raised
-confidence in their complements and grew accessories -- so adds are
-PRIORS, never observations: an add enters the scene state only after
-a pixel check at screening confirms it. Every add still declares
-support (derived from its anchor); anchor="room" marks the scan
-channel. K-RUN UNION (canon, user 08-02): the add pass runs K times
-(--add-runs, default 3) INSIDE one invocation; the union ships with
-per-proposal "seen k/K" counts. Stability is EVIDENCE for screening,
-never a filter here, and there is no cache and no human picking --
-the pipeline is fully automatic by the prime directive.
+ADD/SWAP proposals -- v5 CANON LOOP (user design 08-02): per-item
+forced replies (every object + arch node answers "nothing" or names
+an expected-but-absent connection; one final "room" slot for
+room-level gaps), looped -- each round FOLDS its proposals into the
+working inventory and re-asks, stopping on a dry round or at
+--max-rounds (default 6). User ruling replaced the 3-run union with
+the loop: later rounds SEE earlier proposals, so it never duplicates
+and self-paces; the round stamp is the salience evidence (round 1 =
+near-certain misses, later rounds = deeper inferences). Item lines
+carry measured in-scene sizes (SCENE units, ~0.8x real metric on
+bedroom_marble), which scene-scales the replies' size_m and enables
+the SWAP channel: re-interpret N listed items as M new ones (one big
+blob <-> several fragments) in roughly the same space. Adds are
+PRIORS, never observations -- nothing enters the scene state before
+screening rules on it. Fully automatic: no cache, no human picks.
 
-STEP 3, SIZE + BOX -- v4 (user design 08-02): S3 hands screening a
-COMPLETE graph delta -- every add leaves here with a concrete box.
-3a ONE batched sizing call whose reference frame is the scene's own
-measured object sizes (the room is not exactly metric, ~0.8x real on
-bedroom_marble; textbook cm would oversize everything). 3b pure-code
-placement: free-space scan of the anchor's top face (or floor / wall
-plane) against sibling footprints, nearest the "where" referent;
-both orientations tried; shrink-to-fit FLAGGED (clamped), never
-silent. Every add box carries box_source="estimated_prior" so
-invented geometry can never masquerade as measured. Screening rules
-on entry; nothing here touches the graph.
+STEP 3, SIZE + BOX (v4/v5): S3 hands screening a COMPLETE graph
+delta. Sizes normally ride in from the loop; T_SIZE (scene-size
+reference frame) is the fallback for sizeless adds. Placement is
+pure code: free-space scan of the anchor top face / floor / wall
+plane against sibling footprints, nearest the "where" referent,
+both orientations, shrink-to-fit FLAGGED (clamped). SWAP validation
+is code, not model: the in-items are PACKED into the out-items'
+combined envelope -- footprint arithmetic decides feasible /
+infeasible (height left free: one tall item may replace several
+short ones); out-objects are only marked, they leave the graph at
+screening or never. Every proposal box carries
+box_source="estimated_prior" so invented geometry can never
+masquerade as measured.
 
 Degrade: --no-llm (or call failure) -> delete candidates written with
 status CANDIDATE (not confirmed), adds empty. Nothing fabricated.
@@ -88,7 +88,7 @@ import paths  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
-PROMPT_VERSION = "4"
+PROMPT_VERSION = "5"
 WEAK_TOP_CONF = 0.5      # top-option confidence below this = weak support
 
 SUPPORT_EDGE_TYPES = ("ON", "IN", "IN_WALL", "ATTACHED")
@@ -132,18 +132,32 @@ DROPPED-EDGE WORDINGS (scene-wide, verbatim):
 T_ADD = """\
 {firm}You are reviewing ONE reconstructed indoor room. The \
 reconstruction detects most large furniture reliably but misses items \
-that are small, occluded, or low-contrast. Below: the room dimensions \
-and every item with its CONNECTIONS -- what it rests on, and \
-everything that rests on / hangs on / sits inside it.
+that are small, occluded, or low-contrast, and it sometimes MIS-GROUPS \
+geometry (one object detected as several fragments, or several objects \
+merged into one blob). Below: the room dimensions and every item with \
+its measured in-scene size (width x depth x height, meters -- SCENE \
+units, not exactly real-world metric) and its CONNECTIONS.
 
-For EVERY item listed (architecture included), answer: is anything \
-OBVIOUSLY expected to be connected to THIS item but absent? Use the \
-whole room as context -- never propose something that already exists \
-elsewhere in the inventory, and never propose decor filler. Be \
-CONSERVATIVE: most items should get an empty answer. Only everyday \
+For EVERY item listed (architecture included), give BOTH channels:
+
+1. "adds" -- is anything OBVIOUSLY expected to be connected to THIS \
+item but absent? Use the whole room as context -- never propose \
+something that already exists elsewhere in the inventory, never decor \
+filler. Be CONSERVATIVE: most items get an empty list. Only everyday \
 items whose absence would make the composed room read as wrong. \
-Anchor each proposal to the item it would physically rest on or hang \
-from -- not a merely associated item.
+Anchor each add to the item it would physically rest on or hang from \
+-- not a merely associated item. Give size_m in the SAME SCENE UNITS, \
+sized consistently with the listed sizes around it.
+
+2. "swaps" -- OPTIONAL and RARE: should THIS item (possibly together \
+with other listed items) be RE-INTERPRETED as different object(s)? \
+Use only when a listed name/size/grouping does not make physical \
+sense: one big blob that is really several distinct objects, or \
+several fragments that are really one object. A swap REPLACES the \
+"out" items with the "in" items in roughly the same space: do the \
+arithmetic from the listed sizes -- the in items must plausibly \
+occupy the out items' combined footprint. Never use a swap to merely \
+rename a single item to a similar thing.
 
 The LAST entry is "room": a whole-room scan. Considering everything \
 above, is anything expected in a room like this that is absent and \
@@ -151,11 +165,15 @@ did NOT fit any single item's answer? Same conservatism applies.
 
 Return ONE fenced ```json block, a JSON ARRAY with EXACTLY one entry \
 per item, same order as listed:
-{{"id": "<item id>", "adds": []}}  -- nothing missing (the normal case)
-or {{"id": "<item id>", "adds": [{{"name": "<lowercase item>", \
-"relation": "on_top|inside|mounted_on|hangs_from|near", \
-"where": "one short phrase", "confidence": 0.0-1.0, \
-"reason": "one sentence"}}]}}
+{{"id": "<item id>", "adds": [], "swaps": []}}  -- the normal case
+add entries: {{"name": "<lowercase item>", "relation": \
+"on_top|inside|mounted_on|hangs_from|near", "where": "one short \
+phrase", "size_m": [width, depth, height], "confidence": 0.0-1.0, \
+"reason": "one sentence"}}
+swap entries: {{"out": ["<ids of listed items to replace; the first \
+must be THIS item>"], "in": [{{"name": "<lowercase item>", "size_m": \
+[width, depth, height]}}], "confidence": 0.0-1.0, "reason": "one \
+sentence"}}
 Output ONLY the fenced JSON block.
 
 {inventory}"""
@@ -319,8 +337,8 @@ def main():
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--no-llm", action="store_true",
                     help="aggregate delete candidates only; no adds")
-    ap.add_argument("--add-runs", type=int, default=3,
-                    help="K union runs of the add pass (canon: 3)")
+    ap.add_argument("--max-rounds", type=int, default=6,
+                    help="loop cap; the natural stop is a dry round")
     args = ap.parse_args()
 
     cdir = paths.compose_dir(args.scene)
@@ -370,8 +388,8 @@ def main():
         print(f"    {oid} ({names.get(oid, '?')}): {len(sigs)} signal(s)")
 
     # ---------------- LLM passes ----------------------------------------
-    deletes, adds, petitions = [], [], []
-    add_answered = None   # v3 add pass: per-item reply coverage
+    deletes, adds, petitions, swaps = [], [], [], []
+    add_answered = None   # per-round reply coverage
     if args.no_llm:
         deletes = [{"id": oid, "name": names.get(oid),
                     "signals": sigs, "status": "CANDIDATE",
@@ -453,29 +471,21 @@ def main():
                         "names": [names[pair[0]], names[pair[1]]],
                         "confidence": conf_of(s.get("confidence")),
                         "evidence": str(s.get("evidence", "")).strip()})
-        # add proposals -- v3 (user design 08-02, "experiment B2"): the
-        # whole room is context, but the REPLY IS FORCED PER ITEM --
-        # every object and arch node answers "nothing to add" (normal)
-        # or names an expected-but-absent connection, then one final
-        # "room" slot scans for room-level gaps that fit no single item.
-        # Empirical basis (expB/expC, bedroom_marble): per-item slots
-        # gave an identical stable core across runs where the old
-        # room-level brainstorm rotated its tail; the loop experiment
-        # (adds folded back into the inventory) DIVERGED -- invented
-        # items raised confidence in their complements (phantom keyboard
-        # -> mouse 0.75) and grew accessories (mirror on the invented
-        # wardrobe). Hence the standing rule: these are PRIORS, and an
-        # add may enter the scene state only after a pixel check at
-        # screening confirms it. anchor="room" marks the scan channel.
-        parent, kids = {}, {}
-        for o in sbL["objects"]:
-            top = (o.get("supported_by") or [{}])[0]
-            sup, how = top.get("supporter"), top.get("how")
-            if not sup:
-                continue
-            parent[o["id"]] = f'{how} {names.get(sup, sup)} ({sup})'
-            kids.setdefault(sup, []).append(
-                f'{names.get(o["id"], "?")} ({o["id"]}, {how})')
+        # add/swap proposals -- v5 CANON LOOP (user 08-02): rounds fold
+        # this round's proposals into the working inventory and re-ask;
+        # stop when a round proposes nothing (dry) or at --max-rounds.
+        # The loop replaced the 3-run union by user ruling (total count
+        # is the wrong metric -- semantic/spatial coherence is): the
+        # loop self-paces, never duplicates (later rounds SEE earlier
+        # proposals), and the round stamp is the salience evidence
+        # (round 1 = near-certain misses, later = deeper inferences).
+        # SWAP channel (user design): re-interpret N listed items as M
+        # new ones (one big <-> several small); in-scene sizes ride in
+        # the item lines so the trade is arithmetic, and CODE validates
+        # the envelope in step 3, never the model. Proposals only --
+        # nothing enters the scene state before screening rules.
+        boxes = {n["id"]: n["geometry"]
+                 for n in graph["resolved"]["nodes"]}
         shell = {n["id"]: n["geometry"]["plane"]["value_raw"]
                  for n in graph["nodes"] if n["id"].startswith("arch_")}
         dims = (f'room ~{abs(shell["arch_wall_x_low"] - shell["arch_wall_x_high"]):.1f} x '
@@ -483,25 +493,7 @@ def main():
                 f'height {abs(shell["arch_ceiling"] - shell["arch_floor"]):.1f} m')
         arch_ids = [n["id"] for n in graph["nodes"]
                     if n["id"].startswith("arch_")]
-        lines = [dims, "", "ITEMS (id, name, connections):"]
-        order = []
-        for o in sbL["objects"]:
-            oid = o["id"]
-            order.append(oid)
-            k = kids.get(oid)
-            lines.append(
-                f'- {oid} "{names.get(oid, "?")}" -- rests: '
-                f'{parent.get(oid, "(unresolved)")}'
-                + (f'; holds: {"; ".join(k)}' if k else ''))
-        for aid in arch_ids:
-            order.append(aid)
-            k = kids.get(aid) or []
-            label = aid.replace("arch_", "").replace("_", " ")
-            lines.append(f'- {aid} [{label}] -- holds {len(k)}: '
-                         + ("; ".join(k) if k else "(nothing)"))
-        order.append("room")
-        lines.append('- room [the whole room -- final scan, '
-                     'see instructions]')
+
         def support_of(anchor):
             if anchor.startswith("obj_"):
                 return f"on:{anchor}"
@@ -511,14 +503,55 @@ def main():
                 return "ceiling"
             return "floor"   # arch_floor + the room-scan channel
 
-        # K-RUN UNION (canon, user 08-02): the add pass runs K times in
-        # THIS invocation and the union ships with per-proposal seen
-        # counts -- stability is EVIDENCE handed to screening, never a
-        # filter here. Fully automatic: no cache, no human picks.
+        def size_ok(sm):
+            return (isinstance(sm, list) and len(sm) == 3
+                    and all(isinstance(v, (int, float)) and 0 < v < 10
+                            for v in sm))
+
+        # working inventory (display state the loop folds into; the
+        # real graph is never touched)
+        inv_names = dict(names)
+        inv_size = {oid: [g["size"][0], g["size"][2], g["size"][1]]
+                    for oid, g in boxes.items()}   # w, d, h
+        inv_parent, inv_kids = {}, {}
+        for o in sbL["objects"]:
+            top = (o.get("supported_by") or [{}])[0]
+            sup, how = top.get("supporter"), top.get("how")
+            if not sup:
+                continue
+            inv_parent[o["id"]] = (f'{how} {inv_names.get(sup, sup)} '
+                                   f'({sup})')
+            inv_kids.setdefault(sup, []).append(
+                f'{inv_names.get(o["id"], "?")} ({o["id"]}, {how})')
+        obj_rows = [o["id"] for o in sbL["objects"]]
+        swapped_out = set()
         add_answered = []
-        sightings = []
-        runs_done = 0
-        for r in range(args.add_runs):
+        rounds_done = 0
+
+        for rnd in range(1, args.max_rounds + 1):
+            lines = [dims, "", "ITEMS (id, name, in-scene size "
+                     "w x d x h m, connections):"]
+            order = []
+            for oid in obj_rows:
+                order.append(oid)
+                sz = inv_size.get(oid)
+                stxt = (f'{sz[0]:.2f} x {sz[1]:.2f} x {sz[2]:.2f}'
+                        if sz else 'size ?')
+                k = inv_kids.get(oid)
+                lines.append(
+                    f'- {oid} "{inv_names.get(oid, "?")}" [{stxt}] -- '
+                    f'rests: {inv_parent.get(oid, "(unresolved)")}'
+                    + (f'; holds: {"; ".join(k)}' if k else ''))
+            for aid in arch_ids:
+                order.append(aid)
+                k = inv_kids.get(aid) or []
+                label = aid.replace("arch_", "").replace("_", " ")
+                lines.append(f'- {aid} [{label}] -- holds {len(k)}: '
+                             + ("; ".join(k) if k else "(nothing)"))
+            order.append("room")
+            lines.append('- room [the whole room -- final scan, '
+                         'see instructions]')
+
             got = None
             for firm in ("", FIRM_PREFIX):
                 try:
@@ -527,97 +560,181 @@ def main():
                                      inventory="\n".join(lines)),
                         cdir, args.model)
                 except (RuntimeError, subprocess.TimeoutExpired) as ex:
-                    print(f"[propose_edits] add run {r + 1} failed: {ex}")
+                    print(f"[propose_edits] round {rnd} failed: {ex}")
                     break
                 got = parse_array(out)
                 if got is not None:
                     break
             if got is None:
-                continue
-            runs_done += 1
+                break
+            rounds_done = rnd
             by_item = {e.get("id"): e for e in got if isinstance(e, dict)}
             add_answered.append(
                 f"{sum(1 for o in order if o in by_item)}/{len(order)}")
-            for oid in order:   # anchor comes from list position,
-                for a in (by_item.get(oid, {}).get("adds") or []):
+
+            new_adds, new_swaps = [], []
+            for oid in order:   # anchor = list position, never the reply
+                ent = by_item.get(oid) or {}
+                for a in (ent.get("adds") or []):
                     if not isinstance(a, dict):
                         continue
-                    name = a.get("name")
-                    if not isinstance(name, str) or not name.strip():
+                    nm = a.get("name")
+                    if not isinstance(nm, str) or not nm.strip():
                         continue
-                    sightings.append({
-                        "anchor": oid,
-                        "name": name.strip().lower(),
-                        "relation": str(a.get("relation", "")).strip(),
-                        "where": str(a.get("where", "")).strip(),
-                        "confidence": conf_of(a.get("confidence")),
-                        "reason": str(a.get("reason", "")).strip()})
-        union = {}
-        for s in sightings:
-            union.setdefault((s["name"], s["anchor"]), []).append(s)
-        for (nm, anc), ss in union.items():
-            best = max(ss, key=lambda x: x["confidence"])
-            adds.append({
-                "name": nm, "support": support_of(anc),
-                "anchor": anc, "anchor_name": names.get(anc, anc),
-                "relation": best["relation"], "where": best["where"],
-                "confidence": round(sum(x["confidence"] for x in ss)
-                                    / len(ss), 2),
-                "confidence_max": best["confidence"],
-                "seen": f"{len(ss)}/{runs_done}",
-                "reason": best["reason"]})
-        adds.sort(key=lambda a: (-int(a["seen"].split("/")[0]),
-                                 -a["confidence"]))
+                    new_adds.append((oid, a))
+                for s in (ent.get("swaps") or []):
+                    if not isinstance(s, dict):
+                        continue
+                    outs = s.get("out")
+                    ins = [it for it in (s.get("in") or [])
+                           if isinstance(it, dict)
+                           and isinstance(it.get("name"), str)
+                           and it["name"].strip()]
+                    if (not isinstance(outs, list) or not outs or not ins
+                            or len(set(outs)) != len(outs)
+                            or not all(isinstance(o_, str)
+                                       and o_.startswith("obj_")
+                                       and o_ in obj_rows
+                                       for o_ in outs)):
+                        continue
+                    new_swaps.append({
+                        "out": outs, "in": ins,
+                        "confidence": conf_of(s.get("confidence")),
+                        "reason": str(s.get("reason", "")).strip()})
+            if not new_adds and not new_swaps:
+                break   # DRY -- the loop's natural stop
 
-        # ---- STEP 3: size + box (v4, user design 08-02) -------------
-        # 3a ONE batched sizing call: the scene's own measured sizes are
-        # the reference frame (the room is not exactly metric -- ~0.8x
-        # real scale on bedroom_marble), so new items are sized
-        # consistently with their neighbors, never from textbook cm.
-        # 3b pure-code placement: free-space scan on the anchor surface
-        # (or floor / wall plane), nearest the "where" referent; shrink-
-        # to-fit is flagged, never silent. box_source=estimated_prior
-        # marks invented geometry forever.
-        if adds:
-            boxes = {n["id"]: n["geometry"]
-                     for n in graph["resolved"]["nodes"]}
+            for i, (oid, a) in enumerate(new_adds, 1):
+                nid = f"add_r{rnd}n{i}"
+                rec = {"id": nid, "round": rnd,
+                       "name": a["name"].strip().lower(),
+                       "support": support_of(oid), "anchor": oid,
+                       "anchor_name": inv_names.get(oid, oid),
+                       "relation": str(a.get("relation", "")).strip(),
+                       "where": str(a.get("where", "")).strip(),
+                       "confidence": conf_of(a.get("confidence")),
+                       "reason": str(a.get("reason", "")).strip()}
+                if size_ok(a.get("size_m")):
+                    rec["size_m"] = [round(float(v), 3)
+                                     for v in a["size_m"]]
+                adds.append(rec)
+                # fold into the working inventory
+                anc = oid if oid != "room" else "arch_floor"
+                how = rec["relation"] or "on_top"
+                inv_names[nid] = rec["name"]
+                if rec.get("size_m"):
+                    inv_size[nid] = rec["size_m"]
+                inv_parent[nid] = (f'{how} {inv_names.get(anc, anc)} '
+                                   f'({anc})')
+                inv_kids.setdefault(anc, []).append(
+                    f'{rec["name"]} ({nid}, {how})')
+                obj_rows.append(nid)
+
+            for j, s in enumerate(new_swaps, 1):
+                sid = f"swap_r{rnd}n{j}"
+                in_recs = []
+                for m, it in enumerate(s["in"], 1):
+                    ir = {"id": f"{sid}_in{m}",
+                          "name": it["name"].strip().lower()}
+                    if size_ok(it.get("size_m")):
+                        ir["size_m"] = [round(float(v), 3)
+                                        for v in it["size_m"]]
+                    in_recs.append(ir)
+                rec = {"id": sid, "round": rnd, "out": s["out"],
+                       "out_names": [inv_names.get(o_, o_)
+                                     for o_ in s["out"]],
+                       "in": in_recs,
+                       "confidence": s["confidence"],
+                       "reason": s["reason"]}
+                host_parent = inv_parent.get(s["out"][0])
+                first_in = in_recs[0]["id"]
+                # remove out items from the working inventory
+                out_children = []
+                for o_ in s["out"]:
+                    swapped_out.add(o_)
+                    if o_ in obj_rows:
+                        obj_rows.remove(o_)
+                    for kl in inv_kids.values():
+                        kl[:] = [t for t in kl if f'({o_},' not in t]
+                    # children of an out item re-hang on the first in
+                    for kid_id, ptxt in list(inv_parent.items()):
+                        if f'({o_})' in ptxt and kid_id in obj_rows:
+                            out_children.append(kid_id)
+                            inv_parent[kid_id] = (
+                                f'on_top {in_recs[0]["name"]} '
+                                f'({first_in})')
+                            inv_kids.setdefault(first_in, []).append(
+                                f'{inv_names.get(kid_id, "?")} '
+                                f'({kid_id}, on_top)')
+                rec["out_children"] = out_children
+                for ir in in_recs:
+                    inv_names[ir["id"]] = ir["name"]
+                    if ir.get("size_m"):
+                        inv_size[ir["id"]] = ir["size_m"]
+                    inv_parent[ir["id"]] = (host_parent
+                                            or "(unresolved)")
+                    obj_rows.append(ir["id"])
+                swaps.append(rec)
+
+        # ---- STEP 3: size + box (v4/v5, user design 08-02) ----------
+        # Sizes normally arrive FROM THE LOOP (the item lines carry the
+        # scene's measured sizes, so replies are scene-scaled); T_SIZE
+        # is the FALLBACK for adds that came back sizeless. Placement
+        # is pure code: free-space scan nearest the "where" referent,
+        # shrink-to-fit flagged, box_source=estimated_prior forever.
+        # Swaps: CODE validates the trade -- the in-items are packed
+        # into the out-items' combined envelope; fits -> feasible +
+        # boxes, doesn't -> flagged infeasible with the numbers.
+        if adds or swaps:
             parent_id = {}
             for o in sbL["objects"]:
                 topt = (o.get("supported_by") or [{}])[0]
                 if topt.get("supporter"):
                     parent_id[o["id"]] = topt["supporter"]
-            ref_lines = [
-                f'  {oid} "{names.get(oid, "?")}": '
-                f'{boxes[oid]["size"][0]:.2f} x {boxes[oid]["size"][2]:.2f}'
-                f' x {boxes[oid]["size"][1]:.2f}'
-                for oid in sorted(boxes)]
-            item_lines = []
-            for i, a in enumerate(adds, 1):
-                anc = a["anchor"]
-                if anc in boxes:
-                    g = boxes[anc]
-                    actx = (f'anchor {a["anchor_name"]} ({anc}) footprint '
-                            f'{g["size"][0]:.2f} x {g["size"][2]:.2f} m')
-                else:
-                    actx = f'anchor {anc} (architecture)'
-                item_lines.append(
-                    f'ITEM {i}: {a["name"]} -- {a["relation"] or "on"} '
-                    f'{actx}; where: {a["where"] or "-"}')
-            sgot = None
-            for firm in ("", FIRM_PREFIX):
-                try:
-                    out = call_claude(
-                        T_SIZE.format(firm=firm,
-                                      reference="\n".join(ref_lines),
-                                      items="\n".join(item_lines)),
-                        cdir, args.model)
-                except (RuntimeError, subprocess.TimeoutExpired) as ex:
-                    print(f"[propose_edits] sizing pass failed: {ex}")
-                    break
-                sgot = parse_array(out)
-                if sgot is not None and len(sgot) == len(adds):
-                    break
+            need_size = [a for a in adds
+                         if not size_ok(a.get("size_m"))]
+            if need_size:
+                ref_lines = [
+                    f'  {oid} "{names.get(oid, "?")}": '
+                    f'{boxes[oid]["size"][0]:.2f} x '
+                    f'{boxes[oid]["size"][2]:.2f} x '
+                    f'{boxes[oid]["size"][1]:.2f}'
+                    for oid in sorted(boxes)]
+                item_lines = []
+                for i, a in enumerate(need_size, 1):
+                    anc = a["anchor"]
+                    if anc in boxes:
+                        g = boxes[anc]
+                        actx = (f'anchor {a["anchor_name"]} ({anc}) '
+                                f'footprint {g["size"][0]:.2f} x '
+                                f'{g["size"][2]:.2f} m')
+                    else:
+                        actx = f'anchor {anc} (architecture)'
+                    item_lines.append(
+                        f'ITEM {i}: {a["name"]} -- '
+                        f'{a["relation"] or "on"} {actx}; '
+                        f'where: {a["where"] or "-"}')
                 sgot = None
+                for firm in ("", FIRM_PREFIX):
+                    try:
+                        out = call_claude(
+                            T_SIZE.format(firm=firm,
+                                          reference="\n".join(ref_lines),
+                                          items="\n".join(item_lines)),
+                            cdir, args.model)
+                    except (RuntimeError,
+                            subprocess.TimeoutExpired) as ex:
+                        print(f"[propose_edits] sizing fallback "
+                              f"failed: {ex}")
+                        break
+                    sgot = parse_array(out)
+                    if sgot is not None and len(sgot) == len(need_size):
+                        break
+                    sgot = None
+                for a, sz in zip(need_size, sgot or []):
+                    sm = sz.get("size_m") if isinstance(sz, dict) else None
+                    if size_ok(sm):
+                        a["size_m"] = [round(float(v), 3) for v in sm]
 
             shell_ids = {n["id"] for n in graph["nodes"]
                          if n["id"].startswith("arch_")}
@@ -628,7 +745,8 @@ def main():
                          shell["arch_wall_z_high"]))
             room = (xs[0] + 0.05, zs[0] + 0.05, xs[1] - 0.05, zs[1] - 0.05)
             floor_rects = [_footprint(g) for oid, g in boxes.items()
-                           if g["aabb_min"][1] < floor_y + 0.5]
+                           if g["aabb_min"][1] < floor_y + 0.5
+                           and oid not in swapped_out]
 
             def referent_of(a, placed):
                 text = (a["where"] + " " + a["reason"]).lower()
@@ -639,20 +757,62 @@ def main():
                           if p["name"] in text]
                 return max(cands)[1] if cands else None
 
-            placed = []   # add records that already got boxes (referents)
-            pboxes = {}   # add id -> box
-            for i, a in enumerate(adds):
-                a["id"] = f"add_{i+1:03d}"
-                a["box_source"] = "estimated_prior"
-                sz = (sgot or [{}] * len(adds))[i]
-                sm = sz.get("size_m") if isinstance(sz, dict) else None
-                if (not isinstance(sm, list) or len(sm) != 3
-                        or not all(isinstance(v, (int, float)) and v > 0
-                                   for v in sm)):
-                    a["placement"] = {"failed": "no size from sizing pass"}
+            placed = []   # records that already got boxes (referents)
+            pboxes = {}   # proposal id -> box
+            psup = {}     # proposal id -> support (obstacle grouping)
+
+            # swaps first: pack the in-items into the out-envelope.
+            # Feasibility = FOOTPRINT arithmetic (height left free: one
+            # tall item may replace several short ones).
+            for s in swaps:
+                envs = [boxes[o_] for o_ in s["out"] if o_ in boxes]
+                if not envs:
+                    s["feasible"] = False
                     continue
-                w, d, h = float(sm[0]), float(sm[1]), float(sm[2])
-                a["size_m"] = [round(w, 3), round(d, 3), round(h, 3)]
+                mn = [min(g["aabb_min"][i] for g in envs)
+                      for i in range(3)]
+                mx = [max(g["aabb_max"][i] for g in envs)
+                      for i in range(3)]
+                s["envelope"] = {"aabb_min": [round(v, 3) for v in mn],
+                                 "aabb_max": [round(v, 3) for v in mx]}
+                bounds = (mn[0], mn[2], mx[0], mx[2])
+                tgt = ((mn[0] + mx[0]) / 2, (mn[2] + mx[2]) / 2)
+                obst = []
+                ok = True
+                for ir in sorted(
+                        s["in"], key=lambda r: -(r["size_m"][0]
+                                                 * r["size_m"][1])
+                        if r.get("size_m") else 0):
+                    sm = ir.get("size_m")
+                    if not size_ok(sm):
+                        ir["placement"] = {"failed": "no size"}
+                        ok = False
+                        continue
+                    w, d, h = float(sm[0]), float(sm[1]), float(sm[2])
+                    spot = _find_spot(bounds, w, d, obst, tgt)
+                    if spot is None:
+                        ir["placement"] = {"failed":
+                                           "does not fit envelope"}
+                        ok = False
+                        continue
+                    x, z, fw, fd, cl = spot
+                    box = _mk_box(x, z, fw, fd, mn[1], h)
+                    ir["box"] = box
+                    ir["box_source"] = "estimated_prior"
+                    ir["placement"] = {"method": "swap_envelope",
+                                       "clamped": cl}
+                    obst.append(_footprint(box))
+                    pboxes[ir["id"]] = box
+                    placed.append({"name": ir["name"], "id": ir["id"]})
+                s["feasible"] = ok
+
+            for a in adds:
+                a["box_source"] = "estimated_prior"
+                if not size_ok(a.get("size_m")):
+                    a["placement"] = {"failed": "no size (loop + "
+                                      "fallback both empty)"}
+                    continue
+                w, d, h = (float(v) for v in a["size_m"])
                 ref = referent_of(a, placed)
                 allb = dict(boxes)
                 allb.update(pboxes)
@@ -663,9 +823,9 @@ def main():
                     g = boxes[anc]
                     bounds = _footprint(g)
                     obst = [_footprint(allb[k]) for k in allb
-                            if parent_id.get(k) == anc or
-                            (k in pboxes and adds[int(k[4:]) - 1]
-                             .get("support") == sup)]
+                            if k not in swapped_out
+                            and (parent_id.get(k) == anc
+                                 or psup.get(k) == sup)]
                     tgt = ((allb[ref]["center"][0], allb[ref]["center"][2])
                            if ref and ref in allb else
                            (g["center"][0], g["center"][2]))
@@ -701,6 +861,7 @@ def main():
                     a["placement"] = {"method": f"wall:{a['anchor']}",
                                       "referent": ref, "clamped": False}
                     pboxes[a["id"]] = box
+                    psup[a["id"]] = sup
                     placed.append(a)
                     continue
                 else:
@@ -717,6 +878,7 @@ def main():
                 a["placement"] = {"method": method, "referent": ref,
                                   "clamped": clamped}
                 pboxes[a["id"]] = box
+                psup[a["id"]] = sup
                 placed.append(a)
 
     layer = {
@@ -734,11 +896,16 @@ def main():
                                           if d.get("verdict") == "DELETE"),
                    "adds_proposed": len(adds),
                    "adds_boxed": sum(1 for a in adds if a.get("box")),
-                   "add_runs": None if args.no_llm else args.add_runs,
-                   "add_items_answered": add_answered,
+                   "swaps_proposed": len(swaps),
+                   "swaps_feasible": sum(1 for s in swaps
+                                         if s.get("feasible")),
+                   "rounds": None if args.no_llm else
+                   len(add_answered or []),
+                   "round_answered": add_answered,
                    "reopen_petitions": len(petitions)},
         "deletes": deletes,
         "adds": adds,
+        "swaps": swaps,
         "reopen_petitions": petitions,
     }
     opath = cdir / "edit_proposals.json"
@@ -758,9 +925,17 @@ def main():
                    + (", clamped" if pl.get("clamped") else "") + ")")
         else:
             geo = f'NO BOX ({pl.get("failed", "?")})'
-        print(f"    ADD {a['name']} <- {a.get('anchor')} "
-              f"({a.get('anchor_name')}) [seen {a.get('seen', '?')}, "
-              f"conf {a['confidence']}]: {geo}")
+        print(f"    ADD r{a.get('round', '?')} {a['name']} <- "
+              f"{a.get('anchor')} ({a.get('anchor_name')}) "
+              f"[conf {a['confidence']}]: {geo}")
+    for s in swaps:
+        feas = "FEASIBLE" if s.get("feasible") else "INFEASIBLE"
+        ins = ", ".join(f'{ir["name"]}'
+                        + (f' {ir["size_m"]}' if ir.get("size_m")
+                           else '') for ir in s["in"])
+        print(f"    SWAP r{s['round']} {'+'.join(s['out'])} "
+              f"({'/'.join(s['out_names'])}) -> {ins} [{feas}, "
+              f"conf {s['confidence']}]: {s['reason'][:80]}")
     for p in petitions:
         print(f"    PETITION {p['pair'][0]}+{p['pair'][1]} "
               f"({p['names'][0]}/{p['names'][1]}) [{p['confidence']}]: "
