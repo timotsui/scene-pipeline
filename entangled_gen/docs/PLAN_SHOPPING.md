@@ -65,6 +65,25 @@ shelf boards; the pillow lands on the actual mattress).
 | 5 | fit_preview.py: #1 candidates naively placed → compose/fitted_preview.glb, served as the viewer's "fitted preview" HUD layer (user: part of the output process; re-run after every shopping run) | DONE 08-02C |
 | 6 | fit loop = NEXT MODULE (not here) | — |
 
+## Facing rulebook (v4, 08-03) + generalization watch-list
+
+Evidence ladder (all geometry except tier 4): wall-mounted → thin-axis
+wall normal · wall-hugging → same, among qualifying walls · subs →
+inherit host front (host chain) · free-standing → witness observation
+(line-of-sight converted; ±45° quantized) · invented/no-front →
+near-wall/room-middle guess. Raw witness readings always recorded
+(viewer whiskers) — geometry outranks, never erases.
+
+**Scene-calibration watch-list (checked 08-03, user asked "did we
+hardcode anything non-generalizable" — no IDs/scene names anywhere,
+but three constants):**
+1. ⚠ wall-hug edge gap 0.30 m — the VALUE was calibrated on
+   bedroom_marble (true huggers ≤0.23, next walls 0.37+). RE-TEST ON
+   SCENE #2; if it wobbles, derive per scene from the snap layer's
+   measured box-error statistics instead of a constant.
+2. thin-axis ratio 1.3 (shape-based, low risk).
+3. near-wall heuristic distance 0.6 m (guesses only, lowest stakes).
+
 ## Donor code (reuse, do not rewrite)
 
 - composition/retrieve2.py: match_categories (tiered), shortlist_box
