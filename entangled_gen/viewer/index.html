@@ -1672,14 +1672,31 @@ try {
           if (p.front_dir_raw && !fitFront[p.id])
             fitFront[p.id] = p.front_dir_raw; });
       }
+      // arrow targets: real objects (graph nodes) AND proposal
+      // boxes (adds/swap-ins from the shopping layer) -- proposals
+      // get their front from the same host-inheritance/ladder record
+      const arrowTargets = [];
       for (const n of (gJ.nodes || [])) {
+        const jn = jById[n.id];
+        if (jn && jn.geometry)
+          arrowTargets.push({ id: n.id, geometry: jn.geometry,
+                              app: n.appearance });
+      }
+      for (const r of [...(shopL.items || []),
+                       ...(shopL.subs_deferred || [])]) {
+        if (r.source === 'detected' || !r.box || !r.box.aabb_min)
+          continue;
+        const [c, s] = objCS({ aabb_min: r.box.aabb_min,
+                               aabb_max: r.box.aabb_max });
+        arrowTargets.push({ id: r.id,
+                            geometry: { center: c, size: s } });
+      }
+      for (const n of arrowTargets) {
         const wd = fitFront[n.id] ||
-            (((n.appearance || {}).facing) || {}).world_dir;
+            (((n.app || {}).facing) || {}).world_dir;
         if (!wd) continue;
         if (!fitAnchorIds.has(n.id) && !fitSubIds.has(n.id)) continue;
-        const jn = jById[n.id];
-        if (!jn || !jn.geometry) continue;
-        const g = jn.geometry;
+        const g = n.geometry;
         const dir = new THREE.Vector3(wd[0], 0, wd[1]).normalize();
         const org = new THREE.Vector3(g.center[0], g.center[1],
                                       g.center[2]);
@@ -1698,8 +1715,9 @@ try {
         ar.cone.renderOrder = 204;
         fitGroup.add(ar);
         // whisker = the RAW witness observation (may differ from the
-        // decided arrow when the wall constraint overrode it)
-        const rawWd = (((n.appearance || {}).facing) || {}).world_dir;
+        // decided arrow when the wall constraint overrode it);
+        // proposals have no witness reading, so no whisker
+        const rawWd = (((n.app || {}).facing) || {}).world_dir;
         if (rawWd) {
           const rdir = new THREE.Vector3(rawWd[0], 0,
                                          rawWd[1]).normalize();
