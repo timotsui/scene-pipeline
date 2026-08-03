@@ -1378,9 +1378,11 @@ try {
           'items being shopped now (real detections + blue add boxes + ' +
           'green swap-in boxes), dim = their sub-objects (shopped per ' +
           'anchor after it fits). Everything else (swapped-out, ' +
-          'removed) is hidden. Cyan arrows = the OBSERVED front ' +
-          'direction from the witness pass (v8 facing) — the way the ' +
-          'shopped asset will face',
+          'removed) is hidden. BRIGHT cyan arrow = the front the ' +
+          'shopped asset will face (observed facing snapped to the ' +
+          'box compass); faint whisker = the raw witness observation ' +
+          '(45°-quantized: 4 camera-relative answers × 45°-step ' +
+          'camera yaws)',
       anchors: jFocusTitle,
       support: 'box colors = the supported_by module\'s decisions: ' +
           'yellow = demoted vs the crude touch rule, magenta = ' +
@@ -1664,13 +1666,29 @@ try {
         const org = new THREE.Vector3(g.center[0], g.center[1],
                                       g.center[2]);
         const len = Math.max(g.size[0], g.size[2]) / 2 + 0.30;
-        const ar = new THREE.ArrowHelper(dir, org, len, 0x00e5ff,
+        // BRIGHT arrow = the compass direction placement actually
+        // uses (raw is 45°-quantized: 4-bucket witness answer x
+        // 45°-step camera yaws); FAINT whisker = the raw observation
+        const card = Math.abs(dir.x) >= Math.abs(dir.z)
+            ? new THREE.Vector3(Math.sign(dir.x) || 1, 0, 0)
+            : new THREE.Vector3(0, 0, Math.sign(dir.z) || 1);
+        const ar = new THREE.ArrowHelper(card, org, len, 0x00e5ff,
                                          0.12, 0.07);
         ar.line.material.depthTest = false;
         ar.cone.material.depthTest = false;
         ar.line.renderOrder = 204;
         ar.cone.renderOrder = 204;
         fitGroup.add(ar);
+        const wg = new THREE.BufferGeometry();
+        const we = org.clone().addScaledVector(dir, len * 0.8);
+        wg.setAttribute('position', new THREE.BufferAttribute(
+            new Float32Array([org.x, org.y, org.z, we.x, we.y, we.z]),
+            3));
+        const wl = new THREE.LineSegments(wg,
+            new THREE.LineBasicMaterial({ color: 0x4d8899,
+                transparent: true, opacity: 0.55, depthTest: false }));
+        wl.renderOrder = 204;
+        fitGroup.add(wl);
       }
     }
     // supported_by arrows: object center -> supporter (walls/planes via
