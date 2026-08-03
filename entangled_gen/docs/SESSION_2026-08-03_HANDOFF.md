@@ -5,22 +5,30 @@ built there). Commits this session: 336af9a → 417a6b4 (facing v2–v6,
 freshness fingerprints, fit-set view + arrows). ~17 unpushed commits
 total — push is the user's.
 
-## TOMORROW (user's words): "back to shopping and test fit"
+## TOMORROW — FIRST THING (user ruling, end of 08-03):
 
-1. User reviews the CURRENT test fit:
-   `out/bedroom_marble/compose/review_shots/fit2_judge_*.png`
-   (side-by-side real vs shopped, regenerated from the final v6 GLB)
-   + the viewer (:8330, "fitted preview" checkbox + "fit set" view).
-   Remaining known sins = fit-loop checklist: ugly picks, uniform-
-   scale under-fills, collisions, 4 declared face_conflicts.
-2. Then design the FIT LOOP (whole-room rounds, typed per-item
-   verdicts, re-shop channel — sketch in compose-loop memory +
-   PLAN_SHOPPING.md). It inherits: candidates per box (shopping.json)
-   · decided fronts + face_conflict records (fitted_preview.json) ·
-   scale policy + style tiebreak still open · USER RULING: the
+**STYLE-AWARE PICKING.** Today the pick = candidate #1 by SIZE FIT
+alone (aspect + scale + upright + tiling); look & feel plays no part
+— "look and feel is just as important." Rework the candidate CHOICE
+so the first placement ONE-SHOTS as well as possible, before leaning
+on the fit loop to churn: style/looks joins the ranking (catalog
+descriptions + thumbnails + the room photos as the mood reference —
+the sandbox ruling's one remaining job), and orientation
+reachability should join too (kills the 4 face_conflicts at the
+source). Then the fit loop verifies a good first guess instead of
+repairing a blind one.
+
+Then:
+1. User reviews the test fit:
+   `out/bedroom_marble/compose/review_shots/fit2_judge_*.png` +
+   the viewer (:8330, "fitted preview" + "fit set" view). Review
+   split: wrong SIZE = scoring bug (report); wrong LOOK = the
+   style-picking work above.
+2. FIT LOOP design (whole-room rounds, typed per-item verdicts,
+   re-shop channel). Inherits: candidates per box · decided fronts +
+   face_conflict records · scale policy · USER RULING: the
    ORIENTATION LAST PASS lives here — no more per-category facing
-   rules (the pillow rule was the line; it stays, but the pattern
-   does not grow).
+   rules (the pillow rule was the line).
 
 ## What landed today (details in PLAN_SHOPPING.md + commit messages)
 
