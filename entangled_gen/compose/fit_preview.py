@@ -124,12 +124,27 @@ def main():
                  shell["arch_wall_z_high"] * r2r[2]))
     room_c = ((wx[0] + wx[1]) / 2, (wz[0] + wz[1]) / 2)
 
-    def face_dir_of(lo, hi, mount):
-        """Unit xz direction the item's front should point: off the
+    # OBSERVED facing (describe pass v8, user ruling: define forward
+    # upstream -- the room already shows which way things face). RAW
+    # world_dir -> render frame. Detected objects use this; invented
+    # adds/swap-ins keep the wall/room-middle heuristic fallback.
+    observed_face = {}
+    for jn in graph.get("judged", {}).get("nodes", []):
+        wd = ((jn.get("appearance") or {}).get("facing") or {})\
+            .get("world_dir")
+        if wd:
+            observed_face[jn["id"]] = (wd[0] * float(r2r[0]),
+                                       wd[1] * float(r2r[2]))
+
+    def face_dir_of(item_id, lo, hi, mount):
+        """Unit xz direction the item's front should point: the
+        OBSERVED direction when the witness saw one, else off the
         nearest wall when hugging one (or wall-mounted), else toward
         the room middle. Ceiling items have no facing."""
         if mount == "ceiling":
             return None
+        if item_id in observed_face:
+            return observed_face[item_id]
         cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
         walls = [(cx - wx[0], (1.0, 0.0)), (wx[1] - cx, (-1.0, 0.0)),
                  (cz - wz[0], (0.0, 1.0)), (wz[1] - cz, (0.0, -1.0))]
@@ -161,7 +176,7 @@ def main():
         lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
         insts, face_deg = place_candidate(
             mesh, c, lo, hi, r["mount"],
-            face_dir=face_dir_of(lo, hi, r["mount"]))
+            face_dir=face_dir_of(r["id"], lo, hi, r["mount"]))
         for j, inst in enumerate(insts):
             inst.apply_transform(to_raw)   # render -> raw, baked
             scene.add_geometry(inst,
@@ -171,6 +186,9 @@ def main():
                        "uid": c["uid"], "perm": c.get("perm", "xyz"),
                        "scale": c["scale"], "k": c.get("k", 1),
                        "face_yaw_deg": face_deg,
+                       "face_source": ("observed"
+                                       if r["id"] in observed_face
+                                       else "heuristic"),
                        "mount": r["mount"], "score": c["score"]})
 
     gpath = cdir / "fitted_preview.glb"

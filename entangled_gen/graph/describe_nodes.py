@@ -97,11 +97,14 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+
+r3 = paths.load_r3()   # renderer camera basis, for facing conversion
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -110,7 +113,20 @@ BATCH_SIZE = 8
 CROPS_PER_CLUSTER = 2
 TILE = 256                 # px, square cell for each crop
 # (v5 row-sheets replaced the 4-col grid; LABEL_H/SHEET_COLS retired)
-PROMPT_VERSION = "7"       # v7 (08-02): ADJACENCY VERBS ONLY -- the AC
+PROMPT_VERSION = "8"       # v8 (08-02C): FACING -- the witness reports
+                           # which way the object's FRONT points,
+                           # camera-relative, judged from the LEFTMOST
+                           # crop only (that crop's camera is known, so
+                           # code converts to a world direction; the
+                           # fit stage aligns the shopped asset's
+                           # verified +z front to it). no_front /
+                           # not_visible are first-class honest
+                           # answers. Born from the fit-preview review:
+                           # bookshelves faced the wall under the
+                           # nearest-wall heuristic; the room already
+                           # shows the truth (user: define forward
+                           # upstream, at description time).
+                           # v7 (08-02): ADJACENCY VERBS ONLY -- the AC
                            # lesson (user GT: wall-mounted; the witness
                            # said "rests flat on a wooden furniture
                            # surface" and that weight verb overrode a
@@ -181,12 +197,15 @@ COLOR_NAMES = ["red", "blue", "green", "orange", "magenta", "cyan",
                "yellow", "purple"]   # cycled if BATCH_SIZE ever exceeds 8
 
 REQUIRED_KEYS = {"id", "colors", "material", "style", "description",
-                 "support_view", "is_label"}
+                 "support_view", "facing", "is_label"}
 # support_view contact vocabulary (v6): generic surfaces only -- the
 # witness never names the supporting OBJECT, and not_visible beats a
 # plausibility guess
 SV_CONTACTS = {"floor", "horizontal_surface", "vertical_surface",
                "ceiling", "not_visible"}
+# facing vocabulary (v8): camera-relative, leftmost crop only
+FACING_VALS = {"toward_camera", "away_from_camera", "camera_left",
+               "camera_right", "no_front", "not_visible"}
 
 TEMPLATE = """\
 {firm}You are describing objects detected in a 3D indoor-scene \
@@ -205,7 +224,7 @@ from, or is mounted to -- mention that support context when (and only \
 when) the pixels actually show it.
 
 For EACH numbered item below, look at its row and return one JSON \
-object with TWO SEPARATE parts:
+object with these SEPARATE parts:
 
 1. "description": the object ITSELF only -- color, material, shape, \
 style. NEVER mention any other object, surface, or where it sits; \
@@ -234,6 +253,20 @@ cannot see any contact region, the ONLY honest answer is \
 [{{"contact": "not_visible", "detail": "..."}}] -- do NOT guess from \
 plausibility.
 
+3. "facing": judged from the LEFTMOST crop of the row ONLY -- which \
+way does the object's FRONT point? The front is the side the object \
+is used or viewed from: shelf and cabinet openings, a screen, a \
+seat's open side, drawer fronts, a door's face, the side of a bed \
+you get in from. Answer relative to that leftmost crop's camera:
+  "toward_camera"     -- the front faces the camera (you see the front)
+  "away_from_camera"  -- you are looking at the object's back
+  "camera_left"       -- the front points toward the image's left edge
+  "camera_right"      -- the front points toward the image's right edge
+  "no_front"          -- the object has no meaningful front (plant, \
+basket, rug, ball)
+  "not_visible"       -- the crop does not let you tell
+Report what the pixels show, not what would be typical for the object.
+
 "is_label": answer honestly -- do the crops actually show a "<name>" \
 as given? false if they clearly show something else.
 
@@ -244,6 +277,7 @@ one object per item, in the same order:
 "style": "a few words, e.g. modern minimal", \
 "description": "ONE sentence, the object only", \
 "support_view": [{{"contact": "...", "detail": "..."}}], \
+"facing": "<one allowed facing value>", \
 "is_label": true or false}}
 Output ONLY the fenced JSON block.
 
@@ -316,11 +350,37 @@ def cluster_crops(jn, det, crops_dir, ctx=None):
         if len(chosen) >= CROPS_PER_CLUSTER:
             break
         chosen.append(e)
-    out = []
+    out, views = [], []
     for _, _, p, mid, m in chosen:
         cp = context_crop(mid, m, *ctx) if ctx else None
         out.append(cp or p)
-    return out
+        views.append(m.get("view"))
+    return out, views
+
+
+def facing_world(frames_dir, view, answer):
+    """Camera-relative facing answer -> horizontal RAW-frame unit
+    direction [dx, dz], or None (no_front / not_visible / no sidecar).
+    Uses the pano_lift mirror-aware camera: the pano crop image is a
+    MIRROR of raw, and negating each basis row's y component makes the
+    rows map DISPLAYED image directions to true raw rays -- so
+    camera_left/right survive the mirror without hand-tuned signs."""
+    if answer not in ("toward_camera", "away_from_camera",
+                      "camera_left", "camera_right"):
+        return None
+    side_p = Path(frames_dir) / f"{view}.json"
+    if not view or not side_p.exists():
+        return None
+    side = json.loads(side_p.read_text())
+    fwd_p = np.array([float(t) for t in side["look"].split(",")])
+    c = r3.Cam([0, 0, 0], fwd_p, [0, 1, 0], float(side["fov"]), 100, 100)
+    R = c.R * np.array([1.0, -1.0, 1.0])[None, :]   # pano mirror -> raw
+    v = {"toward_camera": -R[2], "away_from_camera": R[2],
+         "camera_left": -R[0], "camera_right": R[0]}[answer]
+    n = float(np.hypot(v[0], v[2]))
+    if n < 1e-6:
+        return None
+    return [round(float(v[0] / n), 3), round(float(v[2] / n), 3)]
 
 
 def build_sheet(batch, sheet_path):
@@ -454,6 +514,8 @@ def parse_response(text, want_ids):
                         and isinstance(s.get("detail", ""), str)
                         for s in sv)):
             continue
+        if e["facing"] not in FACING_VALS:
+            continue
         good[e["id"]] = {"colors": e["colors"],
                          "material": e["material"].strip(),
                          "style": e["style"].strip(),
@@ -462,6 +524,7 @@ def parse_response(text, want_ids):
                              {"contact": s["contact"],
                               "detail": (s.get("detail") or "").strip()}
                              for s in sv],
+                         "facing": e["facing"],
                          "label_agreement": bool(e["is_label"])}
     return good
 
@@ -754,7 +817,7 @@ def main():
         ctx = (frames_dir, ctx_dir)
     todo, hits, no_crops = [], 0, []
     for jn in clusters:
-        crops = cluster_crops(jn, det, crops_dir, ctx=ctx)
+        crops, views = cluster_crops(jn, det, crops_dir, ctx=ctx)
         if not crops:
             no_crops.append(jn["id"])
             continue
@@ -765,7 +828,7 @@ def main():
             jn["appearance"] = ent["appearance"]
             hits += 1
             continue
-        todo.append((jn, ehash, crops))
+        todo.append((jn, ehash, crops, views))
 
     print(f"[appearance] {len(clusters)} non-disputed clusters "
           f"({len(skipped)} disputed skipped: {skipped}); "
@@ -782,19 +845,20 @@ def main():
     manifest = []
     for bi, batch in enumerate(batches, 1):
         sheet_path = sheets_dir / f"sheet_{bi:03d}.png"
-        row_map = build_sheet([(jn, crops) for jn, _, crops in batch],
+        row_map = build_sheet([(jn, crops) for jn, _, crops, _ in batch],
                               sheet_path)
         items = "\n".join(
             item_block(i + 1, jn, row_map[jn["id"]])
-            for i, (jn, _, _) in enumerate(batch))
+            for i, (jn, _, _, _) in enumerate(batch))
         prompt = TEMPLATE.format(firm="", sheet=sheet_path, items=items)
         prepared.append((batch, sheet_path, row_map, items))
         manifest.append({
             "sheet": str(sheet_path),
             "clusters": [{"id": jn["id"], "name": jn["name"],
                           "row": row_map[jn["id"]],
-                          "crops": [str(c) for c in crops]}
-                         for jn, _, crops in batch]})
+                          "crops": [str(c) for c in crops],
+                          "views": views}
+                         for jn, _, crops, views in batch]})
 
     (sheets_dir / "sheets_manifest.json").write_text(
         json.dumps({"prompt_version": PROMPT_VERSION,
@@ -811,7 +875,7 @@ def main():
 
     def describe(job):
         batch, sheet_path, row_map, items = job
-        want = {jn["id"] for jn, _, _ in batch}
+        want = {jn["id"] for jn, _, _, _ in batch}
         for attempt, firm in ((1, False), (2, True)):
             prompt = TEMPLATE.format(firm=FIRM_PREFIX if firm else "",
                                      sheet=sheet_path, items=items)
@@ -834,13 +898,18 @@ def main():
 
     failed = []
     for (batch, _, _, _), got in zip(prepared, results):
-        for jn, ehash, crops in batch:
+        for jn, ehash, crops, views in batch:
             v = got.get(jn["id"]) if got else None
             if v is None:
                 jn["appearance"] = None
                 jn["appearance_vlm_failed"] = True
                 failed.append(jn["id"])
                 continue
+            fv = v.pop("facing", None)
+            first_view = views[0] if views else None
+            v["facing"] = {
+                "view_relative": fv, "view": first_view,
+                "world_dir": facing_world(frames_dir, first_view, fv)}
             app = {**v, "model": args.model,
                    "date": date.today().isoformat(),
                    "prompt_version": PROMPT_VERSION,
