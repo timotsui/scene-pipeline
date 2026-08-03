@@ -22,11 +22,14 @@ PAD = 0.30          # crop padding as a fraction of the projected rect
 
 def _views_meta(sc):
     out = {}
-    for metaf in sorted(paths.views_dir(sc).glob("gpu_yaw*.json")):
-        meta = json.loads(metaf.read_text())
-        imgf = paths.views_dir(sc) / meta["file"]
-        if imgf.exists():
-            out[metaf.stem] = (meta, imgf)
+    # judge_* views close the yaw renders' ~60-deg blind zone (obj_062
+    # had no crop from gpu_yaw* alone, 2026-08-03)
+    for pat in ("gpu_yaw*.json", "judge_yaw*.json"):
+        for metaf in sorted(paths.views_dir(sc).glob(pat)):
+            meta = json.loads(metaf.read_text())
+            imgf = paths.views_dir(sc) / meta["file"]
+            if imgf.exists():
+                out[metaf.stem] = (meta, imgf)
     return out
 
 
@@ -71,6 +74,8 @@ def make_crops(sc, boxes, force=False):
                 continue
             x0 = np.clip(u[ok].min(), 0, cam.w); x1 = np.clip(u[ok].max(), 0, cam.w)
             y0 = np.clip(v[ok].min(), 0, cam.h); y1 = np.clip(v[ok].max(), 0, cam.h)
+            if x1 - x0 < 3 or y1 - y0 < 3:   # off-image / edge-on sliver
+                continue
             area = (x1 - x0) * (y1 - y0)
             if best is None or area > best[0]:
                 best = (area, stem, (u, v, z))

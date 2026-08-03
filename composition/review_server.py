@@ -137,9 +137,10 @@ main();
 </script>"""
 
 
-def serve(sc, port):
+def serve(sc, port, boxes=None):
     pkg = paths.package_dir(sc)
-    sl = json.loads((pkg / "shortlists2.json").read_text())
+    if boxes is None:
+        boxes = json.loads((pkg / "shortlists2.json").read_text())["boxes"]
     cdir = pkg / "review_crops"
 
     class H(BaseHTTPRequestHandler):
@@ -157,7 +158,7 @@ def serve(sc, port):
             elif p == "/data":
                 pf = pkg / "picks2.json"
                 picks = json.loads(pf.read_text()) if pf.exists() else {}
-                self._send(json.dumps({"scene": sc, "boxes": sl["boxes"],
+                self._send(json.dumps({"scene": sc, "boxes": boxes,
                                        "picks": picks}).encode())
             elif p.startswith("/thumb/"):
                 f = thumb_path(p.split("/")[-1])
@@ -173,8 +174,26 @@ def serve(sc, port):
         def log_message(self, *a):
             pass
 
-    print(f"[review] http://localhost:{port}  ({len(sl['boxes'])} boxes)", flush=True)
+    print(f"[review] http://localhost:{port}  ({len(boxes)} boxes)", flush=True)
     ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
+
+
+def shopping_boxes(sc):
+    """Adapt compose/shopping.json (the compose-lane shopping module,
+    2026-08-03) to this viewer's box rows. Crops are forced fresh:
+    the same obj_ ids may have older manifest-box crops on disk."""
+    sl = json.loads((paths.compose_dir(sc) / "shopping.json")
+                    .read_text(encoding="utf-8"))
+    boxes = []
+    for r in sl["items"]:
+        b = r["box"]
+        boxes.append({"id": r["id"], "label": r["name"],
+                      "size": b["size"], "aabb_min": b["aabb_min"],
+                      "aabb_max": b["aabb_max"], "mount": r["mount"],
+                      "conf": 1.0, "match_tier": r["match_tier"],
+                      "categories": r["categories"],
+                      "candidates": r["candidates"]})
+    return boxes
 
 
 if __name__ == "__main__":
@@ -182,7 +201,16 @@ if __name__ == "__main__":
     ap.add_argument("--scene", required=True)
     ap.add_argument("--port", type=int, default=8322)
     ap.add_argument("--recrop", action="store_true")
+    ap.add_argument("--shopping", action="store_true",
+                    help="serve compose/shopping.json (anchor candidates) "
+                         "instead of package/shortlists2.json")
     args = ap.parse_args()
-    sl = json.loads((paths.package_dir(args.scene) / "shortlists2.json").read_text())
-    make_crops(args.scene, sl["boxes"], force=args.recrop)
-    serve(args.scene, args.port)
+    if args.shopping:
+        boxes = shopping_boxes(args.scene)
+        make_crops(args.scene, boxes, force=True)
+        serve(args.scene, args.port, boxes)
+    else:
+        sl = json.loads((paths.package_dir(args.scene)
+                         / "shortlists2.json").read_text())
+        make_crops(args.scene, sl["boxes"], force=args.recrop)
+        serve(args.scene, args.port)
