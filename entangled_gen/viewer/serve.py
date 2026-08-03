@@ -324,6 +324,17 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), "model/gltf-binary")
             else:
                 self._send(404, b"no composed_scene2.glb; run composition/place2.py")
+        elif p == "/fitted_preview.glb":
+            # compose/fit_preview.py output: the shopping module's #1
+            # candidates naively placed (RAW frame baked in, no
+            # browser-side flip) -- the "fitted preview" HUD layer
+            f = paths.compose_dir(sc) / "fitted_preview.glb"
+            if f.exists():
+                self._send(200, f.read_bytes(), "model/gltf-binary")
+            else:
+                self._send(404, b"no fitted_preview.glb; run "
+                                b"compose/fit_preview.py --scene "
+                           + sc.encode())
         elif p == "/collider.glb":
             # Marble bundle collider, ICP-registered into the RAW frame
             # (collider_register.py) — already raw, so NO browser-side flip.

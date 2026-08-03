@@ -58,11 +58,12 @@ shelf boards; the pillow lands on the actual mattress).
 
 | # | step | state |
 |---|------|-------|
-| 1 | shopping.py: list + classify + category match + shortlists (pure code except the existing one-batch unmatched-label mapper) → compose/shopping.json | building |
-| 2 | review artifact: per-anchor candidate contact sheets (thumbnails) sent AFK-style | — |
-| 3 | user review of list + candidates | — |
-| 4 | pipeline map redraw: screening box dissolves into shopping (user approved) | — |
-| 5 | fit loop = NEXT MODULE (not here) | — |
+| 1 | shopping.py: list + classify + category match + shortlists (pure code except the existing one-batch unmatched-label mapper) → compose/shopping.json | DONE 08-02C (a9fad3e) — 32/32 anchors, 63 subs deferred |
+| 2 | review artifacts: contact sheets (AFK) + review_server.py --shopping viewer (:8322) | DONE 08-02C |
+| 3 | user review of list + candidates | contact sheets + test fit sent; verdict pending |
+| 4 | pipeline map redraw: screening box dissolves into shopping (user approved) | DONE 08-02C (4b951b6) |
+| 5 | fit_preview.py: #1 candidates naively placed → compose/fitted_preview.glb, served as the viewer's "fitted preview" HUD layer (user: part of the output process; re-run after every shopping run) | DONE 08-02C |
+| 6 | fit loop = NEXT MODULE (not here) | — |
 
 ## Donor code (reuse, do not rewrite)
 
