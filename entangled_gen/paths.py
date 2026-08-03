@@ -91,6 +91,36 @@ def manifest(sc):
     return scene_dir(sc) / "scene_manifest.json"
 
 
+def graph_fingerprint(sc):
+    """Content hashes of the two graph slices compose layers consume:
+    'geometry' (resolved boxes + names + arch planes) and 'testimony'
+    (per-node witness words: description + support_view). Compose
+    modules stamp this into their output; the viewer's staleness gate
+    compares the stamp against the CURRENT graph, so a graph rewrite
+    only stales layers whose real inputs changed. (The old mtime gate
+    staled every layer on any graph write — e.g. the additive facing
+    field, 08-02C.) Returns None if the graph doesn't exist."""
+    import hashlib
+    p = scene_dir(sc) / "scene_graph.json"
+    if not p.exists():
+        return None
+    g = _json.loads(p.read_text(encoding="utf-8"))
+    geo = sorted(
+        [(n["id"], n.get("name"),
+          n["geometry"]["aabb_min"], n["geometry"]["aabb_max"])
+         for n in g.get("resolved", {}).get("nodes", [])]
+        + [(n["id"], "arch", n["geometry"]["plane"]["value_raw"], None)
+           for n in g.get("nodes", []) if n["id"].startswith("arch_")])
+    tes = sorted(
+        (n["id"], (n.get("appearance") or {}).get("description"),
+         _json.dumps((n.get("appearance") or {}).get("support_view"),
+                     sort_keys=True))
+        for n in g.get("judged", {}).get("nodes", []))
+    h = lambda obj: hashlib.sha256(   # noqa: E731
+        _json.dumps(obj, sort_keys=True).encode()).hexdigest()[:16]
+    return {"geometry": h(geo), "testimony": h(tes)}
+
+
 def envelope_npz(sc):
     return scene_dir(sc) / "envelope.npz"
 

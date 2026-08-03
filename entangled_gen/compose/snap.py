@@ -597,6 +597,7 @@ def main():
         "scene": args.scene, "built": str(date.today()),
         "elapsed_s": round(time.time() - t0, 1),
         "generated_by": "compose/snap.py",
+        "graph_fingerprint": paths.graph_fingerprint(args.scene),
         "version": "v1-adjudicated",
         "model": None if args.no_llm else args.model,
         "note": ("PH1 v1: scripted snap PROPOSES (pass A); flagged "

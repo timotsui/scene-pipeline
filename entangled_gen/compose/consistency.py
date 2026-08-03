@@ -361,6 +361,7 @@ def main():
         "scene": args.scene, "built": str(date.today()),
         "elapsed_s": round(time.time() - t0, 1),
         "generated_by": "compose/consistency.py",
+        "graph_fingerprint": paths.graph_fingerprint(args.scene),
         "model": None if args.no_llm else args.model,
         "prompt_version": PROMPT_VERSION,
         "note": ("Per-edge consistency verdicts vs the supported_by layer. "

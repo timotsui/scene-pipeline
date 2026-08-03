@@ -196,6 +196,7 @@ def main():
     (cdir / "fitted_preview.json").write_text(json.dumps({
         "scene": args.scene, "built": str(date.today()),
         "generated_by": "compose/fit_preview.py",
+        "graph_fingerprint": paths.graph_fingerprint(args.scene),
         "note": "NAIVE #1-candidate placement (no fit loop); RAW-frame "
                 "glb for the viewer's fitted-preview layer",
         "elapsed_s": round(time.time() - t0, 1),

@@ -1156,6 +1156,7 @@ def main():
         rpath.write_text(json.dumps({
             "scene": args.scene, "built": str(date.today()),
             "generated_by": "compose/propose_edits.py",
+            "graph_fingerprint": paths.graph_fingerprint(args.scene),
             "model": args.model, "prompt_version": PROMPT_VERSION,
             "note": "LOOP OUTPUT ONLY -- pre step 3, no boxes; the "
                     "--size-only re-entry point",
@@ -1174,6 +1175,7 @@ def main():
         "scene": args.scene, "built": str(date.today()),
         "elapsed_s": round(time.time() - t0, 1),
         "generated_by": "compose/propose_edits.py",
+        "graph_fingerprint": paths.graph_fingerprint(args.scene),
         "model": None if args.no_llm else args.model,
         "prompt_version": PROMPT_VERSION,
         "note": ("S3 IN-LANE MODULE -- proposals only; adds/deletes land "

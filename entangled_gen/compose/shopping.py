@@ -204,6 +204,7 @@ def main():
         "scene": args.scene, "built": str(date.today()),
         "elapsed_s": round(time.time() - t0, 1),
         "generated_by": "compose/shopping.py",
+        "graph_fingerprint": paths.graph_fingerprint(args.scene),
         "tier": "anchors",
         "note": ("ordered candidates per ANCHOR box; the fit loop (next "
                  "module) walks each list until fit. Subs deferred per "

@@ -118,26 +118,68 @@ class H(BaseHTTPRequestHandler):
         sc = (q.get("scene") or [args.scene])[0]
         return "".join(ch for ch in sc if ch.isalnum() or ch in "_-") or args.scene
 
+    # which graph SLICES each layer actually consumes -- a layer is
+    # stale only when a slice it depends on changed (08-02C redesign:
+    # the old whole-graph mtime gate staled EVERYTHING on any graph
+    # write, e.g. the additive facing field)
+    FP_NEED = {"supported_by.json": ("geometry", "testimony"),
+               "consistency.json": ("geometry", "testimony"),
+               "snap.json": ("geometry",),
+               "edit_proposals.json": ("geometry",),
+               "shopping.json": ("geometry",)}
+    _fp_cache = {}   # scene -> (graph mtime, fingerprint)
+
+    def _graph_fp(self, sc):
+        p = paths.scene_dir(sc) / "scene_graph.json"
+        if not p.exists():
+            return None
+        mt = p.stat().st_mtime
+        ent = self._fp_cache.get(sc)
+        if ent and ent[0] == mt:
+            return ent[1]
+        fp = paths.graph_fingerprint(sc)
+        self._fp_cache[sc] = (mt, fp)
+        return fp
+
     def _compose_json(self, sc, name, run_hint):
-        """Serve a compose/ layer file with a FRESHNESS gate: compose files
-        are derived from scene_graph.json, so one older than the current
-        graph describes a graph that no longer exists. Stale -> a stub
-        {stale: true} (viewer hides that review mode + notes it); fresh ->
-        the file verbatim. Un-stales automatically when the module re-runs."""
+        """Serve a compose/ layer with a CONTENT-FINGERPRINT freshness
+        check: the layer's stamped graph_fingerprint is compared against
+        the current graph's, per the slices this layer consumes
+        (FP_NEED). Stale layers are served IN FULL with stale:true +
+        stale_hint added -- the viewer badges them instead of hiding
+        them (debugging must still see the data). Unstamped legacy
+        files fall back to the old mtime comparison."""
         f = paths.compose_dir(sc) / name
         if not f.exists():
             return self._send(404, b"no compose/" + name.encode() + b"; run "
                               + run_hint.encode() + b" --scene " + sc.encode())
-        graph = paths.scene_dir(sc) / "scene_graph.json"
-        if graph.exists() and f.stat().st_mtime < graph.stat().st_mtime:
-            stub = {"stale": True, "file": name,
-                    "built": time.strftime("%Y-%m-%d %H:%M",
-                                           time.localtime(f.stat().st_mtime)),
-                    "graph": time.strftime("%Y-%m-%d %H:%M",
-                                           time.localtime(graph.stat().st_mtime)),
-                    "hint": f"re-run {run_hint} --scene {sc}"}
-            return self._send(200, json.dumps(stub).encode(), "application/json")
-        self._send(200, f.read_bytes(), "application/json")
+        raw = f.read_bytes()
+        cur = self._graph_fp(sc)
+        why = None
+        try:
+            layer = json.loads(raw)
+        except ValueError:
+            layer = None
+        if layer is not None and cur:
+            need = self.FP_NEED.get(name, ("geometry",))
+            stamped = layer.get("graph_fingerprint")
+            if stamped:
+                changed = [k for k in need
+                           if stamped.get(k) != cur.get(k)]
+                if changed:
+                    why = "graph " + "+".join(changed) + " changed"
+            else:
+                graph = paths.scene_dir(sc) / "scene_graph.json"
+                if graph.exists() \
+                        and f.stat().st_mtime < graph.stat().st_mtime:
+                    why = "unstamped layer older than the graph"
+            if why:
+                layer["stale"] = True
+                layer["stale_hint"] = (f"{why}; re-run {run_hint} "
+                                       f"--scene {sc}")
+                return self._send(200, json.dumps(layer).encode(),
+                                  "application/json")
+        self._send(200, raw, "application/json")
 
     def do_GET(self):
         u = urlparse(self.path)

@@ -641,8 +641,15 @@ try {
   // its verdicts describe nodes that may no longer exist. Stale layers are
   // treated as not-built (review modes hidden) + listed in the HUD row.
   const staleLayers = [];
+  // 08-02C redesign: stale layers are KEPT and badged, never hidden
+  // (debugging must still see the data; the server now stales by
+  // content fingerprint, not whole-graph mtime). A legacy stub from
+  // an old server (stale flag but no data) still drops to null.
   const freshOrNull = (layer, name) => {
-    if (layer && layer.stale) { staleLayers.push(name); return null; }
+    if (layer && layer.stale) {
+      staleLayers.push(name);
+      if (!layer.generated_by) return null;   // legacy stub, no data
+    }
     return layer;
   };
   let sbL = null;
@@ -1306,16 +1313,22 @@ try {
       if ((((n.appearance || {}).facing) || {}).world_dir &&
           (fitAnchorIds.has(n.id) || fitSubIds.has(n.id))) fitArrowN++;
     });
+    const stTag = L => (L && L.stale) ? ' ⚠ stale' : '';
     const viewOpts = [];
-    if (useSb && shopL) viewOpts.push(['fit', 'fit set (to place)']);
-    if (useSb && snL) viewOpts.push(['snapped', 'snapped preview']);
-    if (useSb && epL) viewOpts.push(['edits', 'edit proposals']);
+    if (useSb && shopL)
+      viewOpts.push(['fit', 'fit set (to place)' + stTag(shopL)]);
+    if (useSb && snL)
+      viewOpts.push(['snapped', 'snapped preview' + stTag(snL)]);
+    if (useSb && epL)
+      viewOpts.push(['edits', 'edit proposals' + stTag(epL)]);
     viewOpts.push(['plain', 'plain boxes']);
     if (allViews) {
       viewOpts.push(['anchors', 'anchor tiers']);
-      if (useSb) viewOpts.push(['support', 'support review']);
-      if (useSb && csL) viewOpts.push(['consistency', 'consistency review']);
-      if (useSb && snL) viewOpts.push(['snap', 'snap review']);
+      if (useSb) viewOpts.push(['support', 'support review' + stTag(sbL)]);
+      if (useSb && csL)
+        viewOpts.push(['consistency', 'consistency review' + stTag(csL)]);
+      if (useSb && snL)
+        viewOpts.push(['snap', 'snap review' + stTag(snL)]);
     }
     const revN = { demoted: 0, multi: 0, lowconf: 0, anchor: 0, rest: 0 };
     const csN = { keep: 0, drop: 0, mixed: 0 };
@@ -1735,7 +1748,16 @@ try {
         }
       }
       const inf = $('jViewInfo');
-      if (inf) inf.innerHTML = VIEW_INFO[mode] || '';
+      if (inf) {
+        const stMap = { fit: shopL, snapped: snL, snap: snL,
+                        edits: epL, consistency: csL,
+                        support: sbL, anchors: sbL };
+        const stL = stMap[mode];
+        inf.innerHTML = (stL && stL.stale
+            ? '<span style="color:#e8b04b">⚠ STALE — ' +
+              (stL.stale_hint || 'built before the current graph') +
+              '</span> · ' : '') + (VIEW_INFO[mode] || '');
+      }
       const sel = $('jView');
       if (sel) sel.title = VIEW_TIP[mode] || '';
       jFocusApply();
