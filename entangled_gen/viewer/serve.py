@@ -324,6 +324,10 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), "model/gltf-binary")
             else:
                 self._send(404, b"no composed_scene2.glb; run composition/place2.py")
+        elif p == "/shopping.json":
+            # compose/shopping.py output (anchor candidates + deferred
+            # subs): the FIT SET -- feeds the scene-model row's fit view
+            self._compose_json(sc, "shopping.json", "compose/shopping.py")
         elif p == "/fitted_preview.glb":
             # compose/fit_preview.py output: the shopping module's #1
             # candidates naively placed (RAW frame baked in, no

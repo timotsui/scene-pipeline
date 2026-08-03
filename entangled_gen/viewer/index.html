@@ -703,6 +703,12 @@ try {
   try { epL = await (await fetch('edit_proposals.json?' + sq)).json(); }
   catch (e) { /* layer not built for this scene */ }
   epL = freshOrNull(epL, 'edits');
+  // SHOPPING layer (compose/shopping.py): the FIT SET -- what the fit
+  // loop will place (anchors now, subs per fitted anchor later).
+  let shopL = null;
+  try { shopL = await (await fetch('shopping.json?' + sq)).json(); }
+  catch (e) { /* layer not built for this scene */ }
+  shopL = freshOrNull(shopL, 'fit set');
   const epById = {};
   if (epL) (epL.deletes || []).forEach(d => epById[d.id] = d);
   const epRevCat = id => {
@@ -1287,7 +1293,21 @@ try {
     // ?allviews=1. Live set = snapped preview (best estimate), edit
     // proposals (the open gate, only when fresh), plain.
     const allViews = !!new URLSearchParams(location.search).get('allviews');
+    // FIT SET (08-02C, user: "show the graph we are trying to fit
+    // only"): the shopping layer's items = the scene state the fit
+    // loop will place. Default view when fresh.
+    const fitAnchorIds = new Set(), fitSubIds = new Set();
+    if (useSb && shopL) {
+      (shopL.items || []).forEach(r => fitAnchorIds.add(r.id));
+      (shopL.subs_deferred || []).forEach(r => fitSubIds.add(r.id));
+    }
+    let fitArrowN = 0;
+    if (useSb && shopL) (gJ.nodes || []).forEach(n => {
+      if ((((n.appearance || {}).facing) || {}).world_dir &&
+          (fitAnchorIds.has(n.id) || fitSubIds.has(n.id))) fitArrowN++;
+    });
     const viewOpts = [];
+    if (useSb && shopL) viewOpts.push(['fit', 'fit set (to place)']);
     if (useSb && snL) viewOpts.push(['snapped', 'snapped preview']);
     if (useSb && epL) viewOpts.push(['edits', 'edit proposals']);
     viewOpts.push(['plain', 'plain boxes']);
@@ -1309,6 +1329,10 @@ try {
       if (epL && (cat = epRevCat(en.jn.id))) epN[cat]++;
     }
     const VIEW_INFO = {
+      fit: '<span style="color:#9fd8ff">to place: anchors ' +
+          fitAnchorIds.size + '</span> · subs (dim) ' + fitSubIds.size +
+          ' · <span style="color:#00e5ff">front arrows ' + fitArrowN +
+          '</span> · swapped-out / removed hidden',
       anchors: 'anchors ' + jAnchN + ': <span style="color:#ffa64d">floor ' +
           jTierN.floor + '</span> · <span style="color:#44ddff">wall ' +
           jTierN.wall + '</span> · <span style="color:#c09aff">ceiling ' +
@@ -1337,6 +1361,13 @@ try {
       plain: ''
     };
     const VIEW_TIP = {
+      fit: 'ONLY the objects the fit loop will place: bright = anchor ' +
+          'items being shopped now (real detections + blue add boxes + ' +
+          'green swap-in boxes), dim = their sub-objects (shopped per ' +
+          'anchor after it fits). Everything else (swapped-out, ' +
+          'removed) is hidden. Cyan arrows = the OBSERVED front ' +
+          'direction from the witness pass (v8 facing) — the way the ' +
+          'shopped asset will face',
       anchors: jFocusTitle,
       support: 'box colors = the supported_by module\'s decisions: ' +
           'yellow = demoted vs the crude touch rule, magenta = ' +
@@ -1407,6 +1438,7 @@ try {
     };
     const jFocusApply = () => {
       const mode = jMode();
+      jApply();   // reset per-entry visibility; fit mode narrows below
       const sbOp = mode === 'anchors'
           ? { at: 0.85, aa: 0.30, dt: 0.08, da: 0.05 }
           : { at: 0.30, aa: 0.12, dt: 0.30, da: 0.12 };
@@ -1416,7 +1448,13 @@ try {
         if (!en.jn) continue;                     // arch slabs stay as-is
         const tier = tierOf(en.jn.id);
         let col, dim;
-        if (mode === 'edits') {
+        if (mode === 'fit') {
+          const isA = fitAnchorIds.has(en.jn.id);
+          const isS = fitSubIds.has(en.jn.id);
+          col = isA ? 0x9fd8ff : jOrigBase.get(en);
+          dim = !isA;
+          en.grp.visible = en.grp.visible && (isA || isS);
+        } else if (mode === 'edits') {
           const cat = epRevCat(en.jn.id);
           col = EP_REV_COL[cat] || jOrigBase.get(en);
           dim = !cat;
@@ -1577,6 +1615,51 @@ try {
         epAdds.add(sp);
       }
     }
+    // FIT SET extras: the non-graph boxes being placed (blue adds /
+    // green swap-ins from shopping.json) + cyan OBSERVED-front arrows
+    // (witness v8 facing.world_dir, RAW frame). Visible in fit view.
+    const fitGroup = new THREE.Group(); judgedGroup.add(fitGroup);
+    fitGroup.visible = false;
+    if (useSb && shopL) {
+      for (const r of (shopL.items || [])) {
+        if (r.source === 'detected' || !r.box || !r.box.aabb_min)
+          continue;
+        const [c, s] = objCS({ aabb_min: r.box.aabb_min,
+                               aabb_max: r.box.aabb_max });
+        const geo = new THREE.BoxGeometry(s[0], s[1], s[2]);
+        const col = r.source === 'swap_in' ? 0x7dffb0 : 0x7dc4ff;
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+            new THREE.LineBasicMaterial({ color: col, transparent: true,
+                opacity: 0.95, depthTest: false }));
+        edges.renderOrder = 202;
+        edges.position.set(c[0], c[1], c[2]);
+        fitGroup.add(edges);
+        const sp = wideSprite('+ ' + r.name +
+            (r.status === 'NO_MATCH' ? ' · NO MATCH' : ''),
+            r.source === 'swap_in' ? '#7dffb0' : '#7dc4ff', 0.85);
+        sp.position.set(c[0], c[1] + s[1] / 2 + 0.14, c[2]);
+        fitGroup.add(sp);
+      }
+      for (const n of (gJ.nodes || [])) {
+        const wd = (((n.appearance || {}).facing) || {}).world_dir;
+        if (!wd) continue;
+        if (!fitAnchorIds.has(n.id) && !fitSubIds.has(n.id)) continue;
+        const jn = jById[n.id];
+        if (!jn || !jn.geometry) continue;
+        const g = jn.geometry;
+        const dir = new THREE.Vector3(wd[0], 0, wd[1]).normalize();
+        const org = new THREE.Vector3(g.center[0], g.center[1],
+                                      g.center[2]);
+        const len = Math.max(g.size[0], g.size[2]) / 2 + 0.30;
+        const ar = new THREE.ArrowHelper(dir, org, len, 0x00e5ff,
+                                         0.12, 0.07);
+        ar.line.material.depthTest = false;
+        ar.cone.material.depthTest = false;
+        ar.line.renderOrder = 204;
+        ar.cone.renderOrder = 204;
+        fitGroup.add(ar);
+      }
+    }
     // supported_by arrows: object center -> supporter (walls/planes via
     // gAnchor projection). Bright = top option, faint = alternates.
     const sbArrows = new THREE.Group(); judgedGroup.add(sbArrows);
@@ -1626,6 +1709,7 @@ try {
       sbArrows.visible = mode === 'anchors' || mode === 'support';
       snGhosts.visible = mode === 'snap';
       epAdds.visible = mode === 'edits';
+      fitGroup.visible = mode === 'fit';
       for (const en of jEntries) {
         if (!en.jn) continue;
         let c = en.jn.geometry.center;
