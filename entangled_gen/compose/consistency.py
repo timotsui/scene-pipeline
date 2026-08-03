@@ -45,6 +45,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -150,6 +151,7 @@ def parse_response(text, n_items):
 
 
 def main():
+    t0 = time.time()
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=MODEL)
@@ -357,6 +359,7 @@ def main():
     drops = [oe for oe in out_edges if oe["verdict"] == "DROP"]
     layer = {
         "scene": args.scene, "built": str(date.today()),
+        "elapsed_s": round(time.time() - t0, 1),
         "generated_by": "compose/consistency.py",
         "model": None if args.no_llm else args.model,
         "prompt_version": PROMPT_VERSION,
@@ -369,7 +372,8 @@ def main():
     }
     opath = cdir / "consistency.json"
     opath.write_text(json.dumps(layer, indent=1), encoding="utf-8")
-    print(f"[consistency] wrote {opath}")
+    print(f"[consistency] wrote {opath} "
+          f"({time.time() - t0:.0f}s elapsed)")
     print(f"[consistency] edge verdicts: {json.dumps(dict(counts))}")
     print(f"[consistency] audit flags ({len(audit)}):")
     for f in audit:

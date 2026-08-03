@@ -45,6 +45,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -338,6 +339,7 @@ def snap_pass(boxes, top, planes, names, floor_h, ceil_h, holds=frozenset()):
 
 
 def main():
+    t0 = time.time()
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=MODEL)
@@ -593,6 +595,7 @@ def main():
     vc = Counter(a["verdict"] or "unjudged" for a in adjudications.values())
     layer = {
         "scene": args.scene, "built": str(date.today()),
+        "elapsed_s": round(time.time() - t0, 1),
         "generated_by": "compose/snap.py",
         "version": "v1-adjudicated",
         "model": None if args.no_llm else args.model,
@@ -617,7 +620,8 @@ def main():
     }
     opath = cdir / "snap.json"
     opath.write_text(json.dumps(layer, indent=1), encoding="utf-8")
-    print(f"[snap] wrote {opath}")
+    print(f"[snap] wrote {opath} "
+          f"({time.time() - t0:.0f}s elapsed)")
     print(f"[snap] dispositions: {json.dumps(dict(disp))}")
     print(f"[snap] verdicts: {json.dumps(dict(vc))}")
     for oid in docket:

@@ -47,6 +47,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -736,6 +737,7 @@ def parse_response(text, want):
 
 # ------------------------------------------------------------------ main
 def main():
+    t0 = time.time()
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=MODEL)
@@ -904,6 +906,7 @@ def main():
 
     layer = {
         "scene": args.scene, "built": str(date.today()),
+        "elapsed_s": round(time.time() - t0, 1),
         "generated_by": "compose/supported_by.py",
         "model": None if args.no_llm else args.model,
         "prompt_version": PROMPT_VERSION,
@@ -927,7 +930,8 @@ def main():
     }
     opath = cdir / "supported_by.json"
     opath.write_text(json.dumps(layer, indent=1), encoding="utf-8")
-    print(f"[supported_by] wrote {opath}")
+    print(f"[supported_by] wrote {opath} "
+          f"({time.time() - t0:.0f}s elapsed)")
     print(f"[supported_by] counts: {json.dumps(layer['counts'])}")
     print(f"[supported_by] delta vs crude: kept {delta['kept']}, demoted "
           f"{delta['demoted']}, added {delta['added']}")

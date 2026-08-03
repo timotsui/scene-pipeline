@@ -79,6 +79,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -332,6 +333,7 @@ def conf_of(x, default=0.0):
 
 
 def main():
+    t0 = time.time()
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=MODEL)
@@ -883,6 +885,7 @@ def main():
 
     layer = {
         "scene": args.scene, "built": str(date.today()),
+        "elapsed_s": round(time.time() - t0, 1),
         "generated_by": "compose/propose_edits.py",
         "model": None if args.no_llm else args.model,
         "prompt_version": PROMPT_VERSION,
@@ -910,7 +913,8 @@ def main():
     }
     opath = cdir / "edit_proposals.json"
     opath.write_text(json.dumps(layer, indent=1), encoding="utf-8")
-    print(f"[propose_edits] wrote {opath}")
+    print(f"[propose_edits] wrote {opath} "
+          f"({time.time() - t0:.0f}s elapsed)")
     print(f"[propose_edits] counts: {json.dumps(layer['counts'])}")
     for d in deletes:
         if d.get("verdict") == "DELETE":
