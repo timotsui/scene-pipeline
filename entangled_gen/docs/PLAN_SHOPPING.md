@@ -65,7 +65,16 @@ shelf boards; the pillow lands on the actual mattress).
 | 5 | fit_preview.py: #1 candidates naively placed → compose/fitted_preview.glb, served as the viewer's "fitted preview" HUD layer (user: part of the output process; re-run after every shopping run) | DONE 08-02C |
 | 6 | fit loop = NEXT MODULE (not here) | — |
 
-## Facing rulebook (v4, 08-03) + generalization watch-list
+## USER RULING 08-03 (end of day): orientation LAST PASS
+
+Per-category evidence rules (pillow marks the bed head) do NOT scale
+— "we can't do this for every one." The rulebook below stays as the
+cheap geometric first draft (decides 26/30 on this room for free);
+the FIT LOOP adds a final judged ORIENTATION PASS that starts from
+these decisions + the declared face_conflict records and visually
+corrects the remainder. Do not add more category rules.
+
+## Facing rulebook (v6, 08-03) + generalization watch-list
 
 Evidence ladder (all geometry except tier 4): wall-mounted → thin-axis
 wall normal · wall-hugging → same, among qualifying walls · subs →
