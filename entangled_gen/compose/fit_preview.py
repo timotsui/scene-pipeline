@@ -39,13 +39,47 @@ from assets_thor import load_asset  # noqa: E402
 from thumbs import perm_rotation  # noqa: E402
 
 
-def place_candidate(mesh, cand, lo, hi, mount):
-    """One candidate mesh -> list of posed instances filling the
-    render-frame box [lo, hi] (k tiles along cand's tile axis)."""
+def yaw_matrix(deg):
+    a = np.radians(deg)
+    c, s = np.cos(a), np.sin(a)
+    T = np.eye(4)
+    T[0, 0], T[0, 2], T[2, 0], T[2, 2] = c, s, -s, c
+    return T
+
+
+def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
+    """One candidate mesh -> (posed instances filling the render-frame
+    box [lo, hi] (k tiles along cand's tile axis), chosen facing yaw).
+
+    FACING RULE (08-03, user: bookshelves faced the wall): library
+    front convention = asset +z (verified by the user on a 32-asset
+    front-view sheet). Among the four compass yaws whose footprint
+    still fits the (sub-)box, pick the one pointing the front along
+    face_dir (unit xz: away from the nearest wall, else toward the
+    room middle)."""
     m = mesh.copy()
-    m.apply_transform(perm_rotation(cand.get("perm", "xyz")))
+    P = perm_rotation(cand.get("perm", "xyz"))
+    m.apply_transform(P)
     m.apply_scale(cand["scale"])
     k, axis = cand.get("k", 1), cand.get("axis", 0)
+    face_deg = 0
+    if face_dir is not None:
+        s0 = m.bounds[1] - m.bounds[0]
+        sub_w = (hi[0] - lo[0]) / (k if axis == 0 else 1)
+        sub_d = (hi[2] - lo[2]) / (k if axis == 2 else 1)
+        best = None
+        for deg in (0, 90, 180, 270):
+            ex, ez = (s0[0], s0[2]) if deg % 180 == 0 else (s0[2], s0[0])
+            if ex > sub_w * 1.05 or ez > sub_d * 1.05:
+                continue
+            f = yaw_matrix(deg)[:3, :3] @ P[:3, :3] @ np.array(
+                [0.0, 0.0, 1.0])
+            score = f[0] * face_dir[0] + f[2] * face_dir[1]
+            if best is None or score > best[0]:
+                best = (score, deg)
+        if best and best[1]:
+            face_deg = best[1]
+            m.apply_transform(yaw_matrix(face_deg))
     step = (hi[axis] - lo[axis]) / k
     out = []
     for i in range(k):
@@ -66,7 +100,7 @@ def place_candidate(mesh, cand, lo, hi, mount):
             t[1] = lo[1] - blo[1]
         inst.apply_translation(t)
         out.append(inst)
-    return out
+    return out, face_deg
 
 
 def main():
@@ -78,8 +112,33 @@ def main():
     cdir = paths.compose_dir(args.scene)
     sl = json.loads((cdir / "shopping.json").read_text(encoding="utf-8"))
     man = json.loads(paths.manifest(args.scene).read_text(encoding="utf-8"))
+    graph = json.loads((paths.scene_dir(args.scene) / "scene_graph.json")
+                       .read_text(encoding="utf-8"))
     r2r = np.array(man["frame"].get("raw_to_render", [1, 1, 1]),
                    np.float32)
+    shell = {n["id"]: n["geometry"]["plane"]["value_raw"]
+             for n in graph["nodes"] if n["id"].startswith("arch_")}
+    wx = sorted((shell["arch_wall_x_low"] * r2r[0],
+                 shell["arch_wall_x_high"] * r2r[0]))
+    wz = sorted((shell["arch_wall_z_low"] * r2r[2],
+                 shell["arch_wall_z_high"] * r2r[2]))
+    room_c = ((wx[0] + wx[1]) / 2, (wz[0] + wz[1]) / 2)
+
+    def face_dir_of(lo, hi, mount):
+        """Unit xz direction the item's front should point: off the
+        nearest wall when hugging one (or wall-mounted), else toward
+        the room middle. Ceiling items have no facing."""
+        if mount == "ceiling":
+            return None
+        cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
+        walls = [(cx - wx[0], (1.0, 0.0)), (wx[1] - cx, (-1.0, 0.0)),
+                 (cz - wz[0], (0.0, 1.0)), (wz[1] - cz, (0.0, -1.0))]
+        d, n = min(walls)
+        if mount == "wall" or d < 0.6:
+            return n
+        v = np.array([room_c[0] - cx, room_c[1] - cz])
+        L = float(np.hypot(v[0], v[1]))
+        return (v[0] / L, v[1] / L) if L > 1e-6 else None
     if float(np.prod(r2r)) < 0:
         print("[fit_preview] WARNING: raw_to_render has odd sign count "
               "-- render->raw would MIRROR meshes; check the frame")
@@ -100,8 +159,10 @@ def main():
         lo = np.asarray(r["box"]["aabb_min"], np.float32) * r2r
         hi = np.asarray(r["box"]["aabb_max"], np.float32) * r2r
         lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
-        for j, inst in enumerate(place_candidate(mesh, c, lo, hi,
-                                                 r["mount"])):
+        insts, face_deg = place_candidate(
+            mesh, c, lo, hi, r["mount"],
+            face_dir=face_dir_of(lo, hi, r["mount"]))
+        for j, inst in enumerate(insts):
             inst.apply_transform(to_raw)   # render -> raw, baked
             scene.add_geometry(inst,
                                node_name=f'{r["id"]}_t{j}',
@@ -109,6 +170,7 @@ def main():
         placed.append({"id": r["id"], "name": r["name"],
                        "uid": c["uid"], "perm": c.get("perm", "xyz"),
                        "scale": c["scale"], "k": c.get("k", 1),
+                       "face_yaw_deg": face_deg,
                        "mount": r["mount"], "score": c["score"]})
 
     gpath = cdir / "fitted_preview.glb"
