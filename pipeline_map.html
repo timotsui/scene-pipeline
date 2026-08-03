@@ -274,9 +274,11 @@
     <p><b>The last stage is a LOOP over two SUB-STAGES, each a chain of
     modules.</b> 3.1 SEMANTIC decides WHAT (S1 supported_by → S2
     consistency → PH1 snap (physical evidence, drawn in run order) →
-    S3 propose edits → S4 screening → S5 shopping = the cast list;
-    add / delete / replace edits re-enter at screening, where S3's
-    proposals also land); 3.2 PHYSICAL decides WHERE at mesh time
+    S3 propose edits → S4 shopping = ordered candidates per anchor →
+    S5 fit loop; SCREENING DISSOLVED 08-02/03 (sandbox ruling: no
+    truth gate — the filter is shopping's library-match step, NO_MATCH
+    → not bought); add / delete / replace edits re-enter as re-shops);
+    3.2 PHYSICAL decides WHERE at mesh time
     (PH2 collide gate → PH3 box surgery — deterministic, the LLM never
     gets to violate physics; the suspect-box work orders land in PH3).
     Loop arrows are omitted from the drawing for clarity (08-01); the
@@ -653,21 +655,24 @@
            read stays listed in its click-card reads -->
       <path class="edge e-comp" d="M392,2016 V2028" marker-end="url(#ah-comp)"/>
       <text class="elab" x="398" y="2026">state + edit proposals (edit_proposals.json)</text>
+      <!-- SCREENING DISSOLVED 08-02/03 (user ruling: sandbox — no
+           truth gate; the "filter" = the library-match step inside
+           shopping: NO_MATCH → not bought, host asset covers it) -->
       <g class="node" data-k="s2" transform="translate(276,2030)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
-        <text class="ntitle" x="14" y="17">S4 · SCREENING<tspan class="ngate"> · LATER</tspan></text>
-        <text class="nscript" x="14" y="31">compose or skip · doors / windows / curtain</text></g>
+        <text class="ntitle" x="14" y="17">S4 · SHOPPING — candidates<tspan class="nactive"> · v1 08-03</tspan></text>
+        <text class="nscript" x="14" y="31">compose/shopping.py — anchors first, subs deferred</text></g>
       <path class="edge e-comp" d="M392,2076 V2088" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2086">anchor cast — to be shopped</text>
+      <text class="elab" x="398" y="2086">shopping.json — ordered candidates per anchor box</text>
       <g class="node" data-k="s3" transform="translate(276,2090)">
         <rect class="nbox" width="232" height="58" rx="8"/>
         <rect class="b-comp" width="4" height="58" rx="2"/>
-        <text class="ntitle" x="14" y="17">S5 · SHOPPING — the cast list<tspan class="ngate"> · LATER</tspan></text>
-        <text class="nscript" x="14" y="31">shortlist → measure → thumbs → CLIP → pick</text>
-        <text class="nsub" x="14" y="45">donor: old C1–C5 · judged name + appearance + crops</text></g>
+        <text class="ntitle" x="14" y="17">S5 · FIT LOOP<tspan class="ngate"> · NEXT</tspan></text>
+        <text class="nscript" x="14" y="31">place candidate → render → judge → next, until fit</text>
+        <text class="nsub" x="14" y="45">anchors run until fit · then subs per fitted anchor</text></g>
       <path class="edge e-comp" d="M392,2148 V2170" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2164">cast list — asset + alternates per anchor</text>
+      <text class="elab" x="398" y="2164">fitted anchors — real meshes posed</text>
 
       <g class="node" data-k="ph2" transform="translate(276,2216)">
         <rect class="nbox" width="232" height="46" rx="8"/>
@@ -695,7 +700,7 @@
       <!-- step-3 loop arrows OMITTED for clarity (user 08-01); the
            re-entry contract stays in force, noted here: -->
       <text class="elab" x="24" y="2384">loop re-entry (arrows omitted for clarity):</text>
-      <text class="elab" x="24" y="2396">add·delete·replace → S4 · move·nudge → PH1</text>
+      <text class="elab" x="24" y="2396">add·delete·replace → shopping (re-shop) · move·nudge → PH1</text>
 
       <!-- OLD COMPOSE C1–C7 reference column: RETIRED from the map
            07-30 (user: "we are over that now"). Code stays on disk
@@ -1080,24 +1085,25 @@ cons: {mod:"comp", eyebrow:"3.1 SEMANTIC / S2 — CONSISTENCY · BUILT 07-26G ·
   review:[{t:"viewer :8321 — 'consistency' review mode (box colors = per-edge verdicts + click-card section) · serve.py /consistency.json",
            h:"http://localhost:8321/?scene=bedroom_marble"}],
   note:"USER GATE R2 PASSED 08-01 (provisional). Downstream module by user ruling: the nonsense judgment needs BOTH endpoints' resolved verdicts — cross-object coherence a bundled pass can't have."},
-s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SCREENING · LATER (parked design in PLAN_COMPOSE_LOOP.md)", name:"Screening — compose or skip, per anchor",
-  script:"new module (design)",
-  how:["SEMANTIC = WHAT is in the scene; the PHYSICAL sub-stage never decides what, SEMANTIC never places",
-       "Per anchor: does this object get composed at all? Where the doors/windows/curtain question lives (wall-plane objects vs architecture left alone)",
-       "Suspect-box anchors (obj_014 curtain · obj_083 plant · deep-box pictures) can be HELD BACK rather than shopped on bad geometry",
-       "Loop re-entry point: add / delete / replace edits from the judge land HERE — and S3's edit_proposals.json arrives at the same door"],
-  reads:["graph['resolved'] anchors (names, edges, provenance flags)","compose/edit_proposals.json — S3's adds/deletes to apply (once built)"],
-  writes:["anchor cast — the to-be-shopped list (file contract TBD)"],
-  note:"First real decision of the stage. Manual review for now (user)."},
-s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S5 — SHOPPING · LATER", name:"Shopping — the cast list",
-  script:"reworks the old C1–C5 machinery as donor code (retrieve2 → measure → thumbs → relevance → pick)",
-  how:["Queries with the judged canonical NAME + J6 APPEARANCE fields (colors/material/style) and the graph crops — never raw detector labels",
-       "True-size measure + orientation-aware fit + CLIP style score, unchanged donor logic",
-       "Output = the CAST LIST: chosen asset + ranked alternates per anchor",
-       "Replace edits = re-shop ONE node with the judge's complaint as feedback ('pick object after layout')"],
-  reads:["anchor cast + graph['resolved'] appearance","graph/crops/","objathor catalog"],
-  writes:["cast list (file contract TBD — successor of shortlists2/picks2)"],
-  note:"The :8322 look-only picker is the review gate for this module."},
+s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SHOPPING · v1 BUILT 08-03 (PLAN_SHOPPING.md)", name:"Shopping — ordered candidates per anchor box",
+  script:"compose/shopping.py → out/<scene>/compose/shopping.json",
+  how:["SCREENING DISSOLVED HERE (user rulings 08-02/03): sandbox — the original scene's job ended at extraction, NO truth gate against its pixels; the room photos survive only as a STYLE guide (pick time, later)",
+       "THE FILTER = THE LIBRARY MATCH: an item whose name matches no catalog category is simply not bought (door handle → NO_MATCH → the door asset covers it). About OUR library vs the proposal, never about the original scene",
+       "ANCHORS FIRST (user: limit the search tree): 32 anchor boxes shopped — real detections + boxed adds + swap-ins; 63 subs LISTED but deferred, grouped per anchor; subs shop after their anchor's real mesh is fitted (books need real shelf boards)",
+       "Candidates ordered by the donor fit score (tiered category match → orientation-aware size fit + upright penalty + tiling + mount filter); ONE batched label-mapper call for lift-noise names (rug → tiled doormat stand-ins); --no-llm degrades to honest NO_MATCH",
+       "'Comes with' checks (do beds come dressed?) PARKED until real double-blanket problems; the fit loop is the safety net"],
+  reads:["graph['resolved'] boxes verbatim","compose/edit_proposals.json (adds + feasible swaps)","compose/supported_by.json (anchor tiers)","objathor catalog (36,805 assets, 831 categories, descriptions + thumbs)"],
+  writes:["compose/shopping.json — per anchor: mount, categories, ordered candidates (uid, perm, scale, tiling, score) or NO_MATCH"],
+  note:"Review: python composition/review_server.py --scene <sc> --shopping (:8322) — real-view crop + candidate cards."},
+s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S5 — FIT LOOP · NEXT MODULE", name:"Fit loop — walk each candidate list until fit",
+  script:"next module (design next session)",
+  how:["Per anchor: place candidate #1's real mesh in the box → render → judge → accept or try the next candidate (user: 'run these until fit')",
+       "Inherits the parked policies: uniform-vs-stretch scaling, asset facing rule, style tiebreak with the room photos as mood reference",
+       "After anchors converge: sub rounds per fitted anchor (books onto real shelf levels, handles resolved by the actual door asset)",
+       "Replace edits from the judge re-enter as re-shops of ONE node ('pick object after layout')"],
+  reads:["compose/shopping.json candidates","asset meshes (assets_thor loader, yaw-canonicalized)","room shell"],
+  writes:["fitted anchor poses (file contract TBD)"],
+  note:"First test fit (naive #1 candidates, no loop) rendered 08-03 for user review."},
 ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP + BOX ADJUDICATION · v1 08-01 · v1.2 CACHE+RULINGS 08-02 · R11 OPEN", name:"Snap proposes; flagged boxes get an agent verdict",
   script:"compose/snap.py → out/<scene>/compose/snap.json · donor place2.py math folds in when real meshes arrive",
   how:["v1 (user design 08-01 late, after the curtain-thickness diagnosis): the scripted snap becomes a PROPOSAL (pass A). Clean boxes snap scripted, unchanged. FLAGGED boxes — LARGE where support involves architecture (top pick, an alternate, or the ruled-against candidate) plus every judge suspect_box pointer — form a DOCKET adjudicated by ONE batched sonnet call over a TYPED MENU: ADOPT_REFIT_AND_SNAP · SNAP_AS_IS · NO_SNAP (attribution in doubt — don't bake it in) · DEFER_TO_SURGERY. Shrink-experiment lesson honored: the agent CHOOSES, code EXECUTES — no freehand resizing",
