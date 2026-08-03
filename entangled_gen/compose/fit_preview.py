@@ -143,6 +143,31 @@ def main():
             observed_face[jn["id"]] = (wd[0] * float(r2r[0]),
                                        wd[1] * float(r2r[2]))
 
+    # PILLOW EVIDENCE (user GT 08-03: the bed lies SIDE-against the
+    # wall, so wall-hug's touching-wall=back assumption broke): a
+    # pillow sub marks its host's HEAD end along the host's long
+    # horizontal axis; front = the opposite end. Measured scene data
+    # (the pillow's recorded box), scene-agnostic, fires only when a
+    # pillow sub exists.
+    pillow_head = {}   # host id -> unit front (render frame)
+    for s in sl.get("subs_deferred", []):
+        if "pillow" not in s.get("name", "") or not s.get("box"):
+            continue
+        hb = next((it for it in sl["items"]
+                   if it["id"] == s.get("host")), None)
+        if not hb:
+            continue
+        hlo = np.asarray(hb["box"]["aabb_min"], np.float32) * r2r
+        hhi = np.asarray(hb["box"]["aabb_max"], np.float32) * r2r
+        hlo, hhi = np.minimum(hlo, hhi), np.maximum(hlo, hhi)
+        plo = np.asarray(s["box"]["aabb_min"], np.float32) * r2r
+        phi = np.asarray(s["box"]["aabb_max"], np.float32) * r2r
+        pc, hc = (plo + phi) / 2, (hlo + hhi) / 2
+        ax = 0 if (hhi[0] - hlo[0]) >= (hhi[2] - hlo[2]) else 2
+        sign = 1.0 if pc[ax] > hc[ax] else -1.0
+        pillow_head[hb["id"]] = ((-sign, 0.0) if ax == 0
+                                 else (0.0, -sign))
+
     def face_dir_of(item_id, lo, hi, mount):
         """(unit xz front direction, evidence source) -- layered by
         evidence strength (obj_096 + obj_032 lessons: witness facing
@@ -177,6 +202,8 @@ def main():
 
         if mount == "wall":
             return pick(walls)[1], "wall_constraint"
+        if item_id in pillow_head:   # measured head-end evidence
+            return pillow_head[item_id], "pillow_evidence"
         # 0.30: lift boxes run fat (obj_032 flush shelf measured a
         # 0.23 m edge gap); true huggers here are <= 0.23, the next
         # nearest walls 0.37+, so 0.30 splits them with margin
