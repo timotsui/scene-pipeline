@@ -149,17 +149,35 @@ def main():
           no_front items). Ceiling items have no facing."""
         if mount == "ceiling":
             return None, None
-        # edge gap to each wall, with the inward normal
-        walls = [(lo[0] - wx[0], (1.0, 0.0)), (wx[1] - hi[0], (-1.0, 0.0)),
-                 (lo[2] - wz[0], (0.0, 1.0)), (wz[1] - hi[2], (0.0, -1.0))]
-        d, n = min(walls)
+        # edge gap to each wall: (gap, axis, inward normal)
+        walls = [(lo[0] - wx[0], "x", (1.0, 0.0)),
+                 (wx[1] - hi[0], "x", (-1.0, 0.0)),
+                 (lo[2] - wz[0], "z", (0.0, 1.0)),
+                 (wz[1] - hi[2], "z", (0.0, -1.0))]
+        # THIN-AXIS RULE (obj_127 door / obj_043 corner-shelf lesson):
+        # a wall thing faces along its thin horizontal axis (a door
+        # slab's normal, a shelf's depth) -- near a corner the SIDE
+        # wall can be nearer by gap than the thing's own wall. Prefer
+        # thin-axis walls among the candidates; nearest gap only for
+        # near-square boxes or when no thin-axis wall qualifies.
+        sx, sz = hi[0] - lo[0], hi[2] - lo[2]
+        thin = "x" if sx * 1.3 < sz else "z" if sz * 1.3 < sx else None
+
+        def pick(cands):
+            pref = [w for w in cands if w[1] == thin] if thin else []
+            g, _, nrm = min(pref or cands)
+            return g, nrm
+
         if mount == "wall":
-            return n, "wall_constraint"
+            return pick(walls)[1], "wall_constraint"
         # 0.30: lift boxes run fat (obj_032 flush shelf measured a
         # 0.23 m edge gap); true huggers here are <= 0.23, the next
         # nearest walls 0.37+, so 0.30 splits them with margin
-        if d < 0.30:
-            return n, "wall_hug"
+        hug = [w for w in walls if w[0] < 0.30]
+        if hug:
+            return pick(hug)[1], "wall_hug"
+        d = min(walls)[0]
+        n = min(walls)[2]
         if item_id in observed_face:
             return observed_face[item_id], "observed"
         if d < 0.6:
