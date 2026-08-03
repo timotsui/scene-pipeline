@@ -126,7 +126,8 @@ class H(BaseHTTPRequestHandler):
                "consistency.json": ("geometry", "testimony"),
                "snap.json": ("geometry",),
                "edit_proposals.json": ("geometry",),
-               "shopping.json": ("geometry",)}
+               "shopping.json": ("geometry",),
+               "fitted_preview.json": ("geometry",)}
     _fp_cache = {}   # scene -> (graph mtime, fingerprint)
 
     def _graph_fp(self, sc):
@@ -366,6 +367,12 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), "model/gltf-binary")
             else:
                 self._send(404, b"no composed_scene2.glb; run composition/place2.py")
+        elif p == "/fitted_preview.json":
+            # compose/fit_preview.py record: what was placed + the
+            # DECIDED front per item (front_dir_raw) -- feeds the fit
+            # view's bright arrows
+            self._compose_json(sc, "fitted_preview.json",
+                               "compose/fit_preview.py")
         elif p == "/shopping.json":
             # compose/shopping.py output (anchor candidates + deferred
             # subs): the FIT SET -- feeds the scene-model row's fit view

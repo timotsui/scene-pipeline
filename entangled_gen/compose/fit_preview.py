@@ -137,23 +137,29 @@ def main():
                                        wd[1] * float(r2r[2]))
 
     def face_dir_of(item_id, lo, hi, mount):
-        """Unit xz direction the item's front should point: the
-        OBSERVED direction when the witness saw one, else off the
-        nearest wall when hugging one (or wall-mounted), else toward
-        the room middle. Ceiling items have no facing."""
+        """(unit xz front direction, evidence source) -- layered by
+        evidence strength (obj_096 lesson: witness facing is +-45deg
+        quantized and oblique for wall items, but a wall thing can
+        ONLY face off its wall):
+          wall-mounted -> the wall's inward normal (hard geometry)
+          else observed witness facing (line-of-sight converted)
+          else near-wall / room-middle heuristic (invented adds,
+          no_front items). Ceiling items have no facing."""
         if mount == "ceiling":
-            return None
-        if item_id in observed_face:
-            return observed_face[item_id]
+            return None, None
         cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
         walls = [(cx - wx[0], (1.0, 0.0)), (wx[1] - cx, (-1.0, 0.0)),
                  (cz - wz[0], (0.0, 1.0)), (wz[1] - cz, (0.0, -1.0))]
         d, n = min(walls)
-        if mount == "wall" or d < 0.6:
-            return n
+        if mount == "wall":
+            return n, "wall_constraint"
+        if item_id in observed_face:
+            return observed_face[item_id], "observed"
+        if d < 0.6:
+            return n, "heuristic"
         v = np.array([room_c[0] - cx, room_c[1] - cz])
         L = float(np.hypot(v[0], v[1]))
-        return (v[0] / L, v[1] / L) if L > 1e-6 else None
+        return ((v[0] / L, v[1] / L) if L > 1e-6 else None), "heuristic"
     if float(np.prod(r2r)) < 0:
         print("[fit_preview] WARNING: raw_to_render has odd sign count "
               "-- render->raw would MIRROR meshes; check the frame")
@@ -174,9 +180,9 @@ def main():
         lo = np.asarray(r["box"]["aabb_min"], np.float32) * r2r
         hi = np.asarray(r["box"]["aabb_max"], np.float32) * r2r
         lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
-        insts, face_deg = place_candidate(
-            mesh, c, lo, hi, r["mount"],
-            face_dir=face_dir_of(r["id"], lo, hi, r["mount"]))
+        fdir, fsrc = face_dir_of(r["id"], lo, hi, r["mount"])
+        insts, face_deg = place_candidate(mesh, c, lo, hi, r["mount"],
+                                          face_dir=fdir)
         for j, inst in enumerate(insts):
             inst.apply_transform(to_raw)   # render -> raw, baked
             scene.add_geometry(inst,
@@ -186,9 +192,11 @@ def main():
                        "uid": c["uid"], "perm": c.get("perm", "xyz"),
                        "scale": c["scale"], "k": c.get("k", 1),
                        "face_yaw_deg": face_deg,
-                       "face_source": ("observed"
-                                       if r["id"] in observed_face
-                                       else "heuristic"),
+                       "face_source": fsrc,
+                       "front_dir_raw": (
+                           [round(float(fdir[0] * float(r2r[0])), 3),
+                            round(float(fdir[1] * float(r2r[2])), 3)]
+                           if fdir else None),
                        "mount": r["mount"], "score": c["score"]})
 
     gpath = cdir / "fitted_preview.glb"

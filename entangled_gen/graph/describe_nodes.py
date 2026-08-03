@@ -358,25 +358,36 @@ def cluster_crops(jn, det, crops_dir, ctx=None):
     return out, views
 
 
-def facing_world(frames_dir, view, answer):
+def facing_world(frames_dir, view, answer, center=None, eye=None):
     """Camera-relative facing answer -> horizontal RAW-frame unit
     direction [dx, dz], or None (no_front / not_visible / no sidecar).
-    Uses the pano_lift mirror-aware camera: the pano crop image is a
-    MIRROR of raw, and negating each basis row's y component makes the
-    rows map DISPLAYED image directions to true raw rays -- so
-    camera_left/right survive the mirror without hand-tuned signs."""
+
+    toward/away use the LINE OF SIGHT eye -> object center, not the
+    camera's optical axis (obj_044 lesson: a 75-deg lens puts objects
+    far off-axis, and a 45-deg-yawed camera turned 'toward_camera'
+    into a diagonal). Falls back to the optical axis when center/eye
+    are unavailable. camera_left/right keep the mirror-aware camera
+    basis (the pano crop image is a MIRROR of raw; negating each
+    basis row's y maps DISPLAYED image directions to true raw rays)."""
     if answer not in ("toward_camera", "away_from_camera",
                       "camera_left", "camera_right"):
         return None
-    side_p = Path(frames_dir) / f"{view}.json"
-    if not view or not side_p.exists():
-        return None
-    side = json.loads(side_p.read_text())
-    fwd_p = np.array([float(t) for t in side["look"].split(",")])
-    c = r3.Cam([0, 0, 0], fwd_p, [0, 1, 0], float(side["fov"]), 100, 100)
-    R = c.R * np.array([1.0, -1.0, 1.0])[None, :]   # pano mirror -> raw
-    v = {"toward_camera": -R[2], "away_from_camera": R[2],
-         "camera_left": -R[0], "camera_right": R[0]}[answer]
+    v = None
+    if answer in ("toward_camera", "away_from_camera") \
+            and center is not None and eye is not None:
+        los = np.asarray(center, float) - np.asarray(eye, float)
+        v = -los if answer == "toward_camera" else los
+    if v is None:
+        side_p = Path(frames_dir) / f"{view}.json"
+        if not view or not side_p.exists():
+            return None
+        side = json.loads(side_p.read_text())
+        fwd_p = np.array([float(t) for t in side["look"].split(",")])
+        c = r3.Cam([0, 0, 0], fwd_p, [0, 1, 0], float(side["fov"]),
+                   100, 100)
+        R = c.R * np.array([1.0, -1.0, 1.0])[None, :]  # mirror -> raw
+        v = {"toward_camera": -R[2], "away_from_camera": R[2],
+             "camera_left": -R[0], "camera_right": R[0]}[answer]
     n = float(np.hypot(v[0], v[2]))
     if n < 1e-6:
         return None
@@ -810,6 +821,24 @@ def main():
     cache = (json.loads(cache_path.read_text())
              if cache_path.exists() else {"meta": {"calls": 0}, "nodes": {}})
 
+    # facing conversion inputs: the rig eye (line-of-sight base) + each
+    # cluster's resolved box center. The conversion is CODE, so it is
+    # recomputed EVERY run -- including on cache hits -- and conversion
+    # fixes apply retroactively with zero model calls.
+    res_center = {n["id"]: n["geometry"]["center"]
+                  for n in graph.get("resolved", {}).get("nodes", [])}
+    eye_raw = None
+    mp = gdir / "rig_sp0" / "pano_selfrender_meta.json"
+    if mp.exists():
+        eye_raw = json.loads(mp.read_text()).get("eye_raw")
+
+    def refresh_facing(jn):
+        f = (jn.get("appearance") or {}).get("facing")
+        if f and f.get("view_relative"):
+            f["world_dir"] = facing_world(
+                frames_dir, f.get("view"), f["view_relative"],
+                res_center.get(jn["id"]), eye_raw)
+
     ctx = None
     if not args.no_ctx:
         ctx_dir = gdir / "graph" / "crops_ctx"
@@ -826,6 +855,7 @@ def main():
         if ent and ent.get("evidence_hash") == ehash \
                 and not args.sheets_only:
             jn["appearance"] = ent["appearance"]
+            refresh_facing(jn)
             hits += 1
             continue
         todo.append((jn, ehash, crops, views))
@@ -909,7 +939,9 @@ def main():
             first_view = views[0] if views else None
             v["facing"] = {
                 "view_relative": fv, "view": first_view,
-                "world_dir": facing_world(frames_dir, first_view, fv)}
+                "world_dir": facing_world(
+                    frames_dir, first_view, fv,
+                    res_center.get(jn["id"]), eye_raw)}
             app = {**v, "model": args.model,
                    "date": date.today().isoformat(),
                    "prompt_version": PROMPT_VERSION,

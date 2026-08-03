@@ -716,6 +716,11 @@ try {
   try { shopL = await (await fetch('shopping.json?' + sq)).json(); }
   catch (e) { /* layer not built for this scene */ }
   shopL = freshOrNull(shopL, 'fit set');
+  // fit_preview record: the DECIDED front per placed anchor
+  let fitL = null;
+  try { fitL = await (await fetch('fitted_preview.json?' + sq)).json(); }
+  catch (e) { /* not built */ }
+  fitL = freshOrNull(fitL, 'fitted preview');
   const epById = {};
   if (epL) (epL.deletes || []).forEach(d => epById[d.id] = d);
   const epRevCat = id => {
@@ -1655,8 +1660,15 @@ try {
         sp.position.set(c[0], c[1] + s[1] / 2 + 0.14, c[2]);
         fitGroup.add(sp);
       }
+      // the DECIDED front per placed anchor (wall constraint >
+      // observed > heuristic, from fit_preview) beats the raw
+      // witness reading; subs fall back to the raw observation
+      const fitFront = {};
+      if (fitL) (fitL.placed || []).forEach(p => {
+        if (p.front_dir_raw) fitFront[p.id] = p.front_dir_raw; });
       for (const n of (gJ.nodes || [])) {
-        const wd = (((n.appearance || {}).facing) || {}).world_dir;
+        const wd = fitFront[n.id] ||
+            (((n.appearance || {}).facing) || {}).world_dir;
         if (!wd) continue;
         if (!fitAnchorIds.has(n.id) && !fitSubIds.has(n.id)) continue;
         const jn = jById[n.id];
@@ -1679,16 +1691,23 @@ try {
         ar.line.renderOrder = 204;
         ar.cone.renderOrder = 204;
         fitGroup.add(ar);
-        const wg = new THREE.BufferGeometry();
-        const we = org.clone().addScaledVector(dir, len * 0.8);
-        wg.setAttribute('position', new THREE.BufferAttribute(
-            new Float32Array([org.x, org.y, org.z, we.x, we.y, we.z]),
-            3));
-        const wl = new THREE.LineSegments(wg,
-            new THREE.LineBasicMaterial({ color: 0x4d8899,
-                transparent: true, opacity: 0.55, depthTest: false }));
-        wl.renderOrder = 204;
-        fitGroup.add(wl);
+        // whisker = the RAW witness observation (may differ from the
+        // decided arrow when the wall constraint overrode it)
+        const rawWd = (((n.appearance || {}).facing) || {}).world_dir;
+        if (rawWd) {
+          const rdir = new THREE.Vector3(rawWd[0], 0,
+                                         rawWd[1]).normalize();
+          const wg = new THREE.BufferGeometry();
+          const we = org.clone().addScaledVector(rdir, len * 0.8);
+          wg.setAttribute('position', new THREE.BufferAttribute(
+              new Float32Array([org.x, org.y, org.z, we.x, we.y, we.z]),
+              3));
+          const wl = new THREE.LineSegments(wg,
+              new THREE.LineBasicMaterial({ color: 0x4d8899,
+                  transparent: true, opacity: 0.55, depthTest: false }));
+          wl.renderOrder = 204;
+          fitGroup.add(wl);
+        }
       }
     }
     // supported_by arrows: object center -> supporter (walls/planes via
