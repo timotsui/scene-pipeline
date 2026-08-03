@@ -48,12 +48,20 @@ blob <-> several fragments) in roughly the same space. Adds are
 PRIORS, never observations -- nothing enters the scene state before
 screening rules on it. Fully automatic: no cache, no human picks.
 
-STEP 3, SIZE + BOX (v4/v5): S3 hands screening a COMPLETE graph
-delta. Sizes normally ride in from the loop; T_SIZE (scene-size
-reference frame) is the fallback for sizeless adds. Placement is
-pure code: free-space scan of the anchor top face / floor / wall
-plane against sibling footprints, nearest the "where" referent,
-both orientations, shrink-to-fit FLAGGED (clamped). SWAP validation
+STEP 3, SIZE + BOX (v4/v5, RELATION ROUTER 08-02): S3 hands
+screening a COMPLETE graph delta. Sizes normally ride in from the
+loop; T_SIZE (scene-size reference frame) is the fallback for
+sizeless adds. Placement is pure code, ROUTED BY THE REPLY'S
+RELATION ("window on top of the curtain" postmortem -- the anchor id
+prefix alone used to force stack-on-top): on_top -> anchor top-face
+scan; inside -> anchor interior; mounted_on/hangs_from -> the
+wall/ceiling the anchor is ATTACHED to via the support chain
+(embedded slab centered behind the anchor, height-clamped into the
+room); near -> beside the anchor on its own parent surface (wall-
+mounted host: referent top, else nearest furniture top below, else
+floor). Free-space scan against sibling footprints, nearest the
+"where" referent, both orientations, shrink-to-fit FLAGGED
+(clamped); unroutable combinations fail HONESTLY in placement. SWAP validation
 is code, not model: the in-items are PACKED into the out-items'
 combined envelope -- footprint arithmetic decides feasible /
 infeasible (height left free: one tall item may replace several
@@ -66,10 +74,17 @@ Degrade: --no-llm (or call failure) -> delete candidates written with
 status CANDIDATE (not confirmed), adds empty. Nothing fabricated.
 
 Output: out/<scene>/compose/edit_proposals.json -- PROPOSALS ONLY.
+Stage boundary (restructure 08-02): the loop's output is frozen to
+edit_proposals_raw.json BEFORE step 3, so a sizing/placement crash or
+rework never costs the model calls again. --size-only reloads that
+file (fallback: strips a previous edit_proposals.json) and re-runs
+step 3 alone. The raw file is regenerated on every full run -- a
+stage contract file, never hand-edited state.
 
 Run:
   python compose/propose_edits.py --scene bedroom_marble --no-llm  # aggregate only
   python compose/propose_edits.py --scene bedroom_marble
+  python compose/propose_edits.py --scene bedroom_marble --size-only  # step 3 only
 """
 import argparse
 import hashlib
@@ -89,7 +104,7 @@ import paths  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
-PROMPT_VERSION = "5"
+PROMPT_VERSION = "6"
 WEAK_TOP_CONF = 0.5      # top-option confidence below this = weak support
 
 SUPPORT_EDGE_TYPES = ("ON", "IN", "IN_WALL", "ATTACHED")
@@ -139,18 +154,22 @@ merged into one blob). Below: the room dimensions and every item with \
 its measured in-scene size (width x depth x height, meters -- SCENE \
 units, not exactly real-world metric) and its CONNECTIONS.
 
-For EVERY item listed (architecture included), give BOTH channels:
+For EVERY item listed (architecture included), give THREE channels:
 
-1. "adds" -- is anything OBVIOUSLY expected to be connected to THIS \
-item but absent? Use the whole room as context -- never propose \
-something that already exists elsewhere in the inventory, never decor \
-filler. Be CONSERVATIVE: most items get an empty list. Only everyday \
-items whose absence would make the composed room read as wrong. \
-Anchor each add to the item it would physically rest on or hang from \
--- not a merely associated item. Give size_m in the SAME SCENE UNITS, \
-sized consistently with the listed sizes around it.
+1. "implied" -- does THIS item's FUNCTION or PLACEMENT depend on \
+something that is absent from the room? A holder needs a thing to \
+hold, a covering needs a thing to cover, a control needs a thing it \
+controls, a display needs an input. Answer this question for every \
+item -- it is the most valuable channel. Each entry MUST include \
+"evidence": the listed fact your inference rests on, quoted or \
+closely paraphrased from the lines above.
 
-2. "swaps" -- OPTIONAL and RARE: should THIS item (possibly together \
+2. "expected" -- anything OBVIOUSLY expected to be connected to THIS \
+item by everyday convention, but absent? Never propose something that \
+already exists elsewhere in the inventory, never decor filler. Be \
+CONSERVATIVE: most items get an empty list.
+
+3. "swaps" -- OPTIONAL and RARE: should THIS item (possibly together \
 with other listed items) be RE-INTERPRETED as different object(s)? \
 Use only when a listed name/size/grouping does not make physical \
 sense: one big blob that is really several distinct objects, or \
@@ -160,17 +179,35 @@ arithmetic from the listed sizes -- the in items must plausibly \
 occupy the out items' combined footprint. Never use a swap to merely \
 rename a single item to a similar thing.
 
+HARD STAGE RULE -- bulky free-standing furniture is SWAP-ONLY. Ask: \
+could the reconstruction plausibly have MISSED this thing at this \
+spot? Something that claims a big patch of OPEN floor (wardrobe / \
+dresser / armchair scale) cannot have been invisible -- that empty \
+floor was observed. So such items may NOT appear in "implied" or \
+"expected": either they truly are not there (propose nothing) or a \
+detected item IS them, mis-read (propose a swap). Things that \
+consume no contested space ARE ordinary adds: flat wall items \
+(posters, mirrors), embedded openings (a window behind a curtain -- \
+overlapping an existing object is fine and expected), and anything \
+small or tucked away.
+
+Anchor every proposal to the item it would physically rest on or \
+hang from -- not a merely associated item. Give size_m in the SAME \
+SCENE UNITS, sized consistently with the listed sizes around it.
+
 The LAST entry is "room": a whole-room scan. Considering everything \
 above, is anything expected in a room like this that is absent and \
-did NOT fit any single item's answer? Same conservatism applies.
+did NOT fit any single item's answer? Same conservatism and the same \
+large-furniture rule apply.
 
 Return ONE fenced ```json block, a JSON ARRAY with EXACTLY one entry \
 per item, same order as listed:
-{{"id": "<item id>", "adds": [], "swaps": []}}  -- the normal case
-add entries: {{"name": "<lowercase item>", "relation": \
+{{"id": "<item id>", "implied": [], "expected": [], "swaps": []}}
+implied entries: {{"name": "<lowercase item>", "relation": \
 "on_top|inside|mounted_on|hangs_from|near", "where": "one short \
-phrase", "size_m": [width, depth, height], "confidence": 0.0-1.0, \
-"reason": "one sentence"}}
+phrase", "size_m": [width, depth, height], "evidence": "the listed \
+fact this rests on", "confidence": 0.0-1.0, "reason": "one sentence"}}
+expected entries: same shape, no "evidence" field.
 swap entries: {{"out": ["<ids of listed items to replace; the first \
 must be THIS item>"], "in": [{{"name": "<lowercase item>", "size_m": \
 [width, depth, height]}}], "confidence": 0.0-1.0, "reason": "one \
@@ -332,6 +369,386 @@ def conf_of(x, default=0.0):
         return default
 
 
+def size_ok(sm):
+    return (isinstance(sm, list) and len(sm) == 3
+            and all(isinstance(v, (int, float)) and 0 < v < 10
+                    for v in sm))
+
+
+def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
+                   cdir, model):
+    """STEP 3: size + box (v4/v5, user design 08-02) -- standalone so
+    --size-only can re-run it from a frozen loop output without
+    repaying the loop's model calls. Sizes normally ride in from the
+    loop; T_SIZE (scene-size reference frame) is the fallback for
+    sizeless adds -- the ONE model call here. Placement is pure code:
+    free-space scan of the anchor top face / floor / wall plane
+    against sibling footprints, nearest the "where" referent, both
+    orientations, shrink-to-fit FLAGGED (clamped). Swap validation:
+    in-items PACKED into the out-items' combined envelope, footprint
+    arithmetic decides feasible/infeasible. Mutates adds/swaps in
+    place; every box carries box_source="estimated_prior"."""
+    if not (adds or swaps):
+        return
+    boxes = {n["id"]: n["geometry"]
+             for n in graph["resolved"]["nodes"]}
+    shell = {n["id"]: n["geometry"]["plane"]["value_raw"]
+             for n in graph["nodes"] if n["id"].startswith("arch_")}
+    parent_id = {}
+    for o in sbL["objects"]:
+        topt = (o.get("supported_by") or [{}])[0]
+        if topt.get("supporter"):
+            parent_id[o["id"]] = topt["supporter"]
+    need_size = [a for a in adds
+                 if not size_ok(a.get("size_m"))]
+    if need_size:
+        ref_lines = [
+            f'  {oid} "{names.get(oid, "?")}": '
+            f'{boxes[oid]["size"][0]:.2f} x '
+            f'{boxes[oid]["size"][2]:.2f} x '
+            f'{boxes[oid]["size"][1]:.2f}'
+            for oid in sorted(boxes)]
+        item_lines = []
+        for i, a in enumerate(need_size, 1):
+            anc = a["anchor"]
+            if anc in boxes:
+                g = boxes[anc]
+                actx = (f'anchor {a["anchor_name"]} ({anc}) '
+                        f'footprint {g["size"][0]:.2f} x '
+                        f'{g["size"][2]:.2f} m')
+            else:
+                actx = f'anchor {anc} (architecture)'
+            item_lines.append(
+                f'ITEM {i}: {a["name"]} -- '
+                f'{a["relation"] or "on"} {actx}; '
+                f'where: {a["where"] or "-"}')
+        sgot = None
+        for firm in ("", FIRM_PREFIX):
+            try:
+                out = call_claude(
+                    T_SIZE.format(firm=firm,
+                                  reference="\n".join(ref_lines),
+                                  items="\n".join(item_lines)),
+                    cdir, model)
+            except (RuntimeError,
+                    subprocess.TimeoutExpired) as ex:
+                print(f"[propose_edits] sizing fallback "
+                      f"failed: {ex}")
+                break
+            sgot = parse_array(out)
+            if sgot is not None and len(sgot) == len(need_size):
+                break
+            sgot = None
+        for a, sz in zip(need_size, sgot or []):
+            sm = sz.get("size_m") if isinstance(sz, dict) else None
+            if size_ok(sm):
+                a["size_m"] = [round(float(v), 3) for v in sm]
+
+    shell_ids = {n["id"] for n in graph["nodes"]
+                 if n["id"].startswith("arch_")}
+    floor_y = shell["arch_floor"]
+    # UP-SIGN AWARENESS (bug found 08-02 review: every box had
+    # been placed on the anchor's underside): raw frames may be
+    # negative-y-up (bedroom_marble: floor 0.0, ceiling -2.76).
+    up = -1.0 if shell["arch_ceiling"] < floor_y else 1.0
+
+    def top_of(g):
+        """The anchor's TOP surface y in this frame."""
+        return g["aabb_min"][1] if up < 0 else g["aabb_max"][1]
+
+    def mk_up_box(x, z, w, d, base, h):
+        """Box standing ON base (its support surface),
+        extending h in the UP direction."""
+        return _mk_box(x, z, w, d,
+                       base if up > 0 else base - h, h)
+    xs = sorted((shell["arch_wall_x_low"],
+                 shell["arch_wall_x_high"]))
+    zs = sorted((shell["arch_wall_z_low"],
+                 shell["arch_wall_z_high"]))
+    room = (xs[0] + 0.05, zs[0] + 0.05, xs[1] - 0.05, zs[1] - 0.05)
+    floor_rects = [_footprint(g) for oid, g in boxes.items()
+                   if g["aabb_min"][1] < floor_y + 0.5
+                   and oid not in swapped_out]
+
+    def referent_of(a, placed):
+        text = (a["where"] + " " + a["reason"]).lower()
+        cands = [(len(nm), oid) for oid, nm in
+                 ((i_, names.get(i_, "").lower())
+                  for i_ in boxes) if nm and nm in text]
+        cands += [(len(p["name"]), p["id"]) for p in placed
+                  if p["name"] in text]
+        return max(cands)[1] if cands else None
+
+    placed = []   # records that already got boxes (referents)
+    pboxes = {}   # proposal id -> box
+    psup = {}     # proposal id -> support (obstacle grouping)
+
+    def displacement_of(box):
+        """Measured evidence for screening's could-this-have-
+        been-missed judgment: how much space the proposal
+        claims, and how much of it hides inside existing
+        objects (a window behind a curtain overlaps ~fully; a
+        wardrobe on open floor overlaps ~nothing)."""
+        mn, mx = box["aabb_min"], box["aabb_max"]
+        vol = max(1e-9, (mx[0] - mn[0]) * (mx[1] - mn[1])
+                  * (mx[2] - mn[2]))
+        ov = 0.0
+        for k, g in boxes.items():
+            if k in swapped_out:
+                continue
+            dx = (min(mx[0], g["aabb_max"][0])
+                  - max(mn[0], g["aabb_min"][0]))
+            dy = (min(mx[1], g["aabb_max"][1])
+                  - max(mn[1], g["aabb_min"][1]))
+            dz = (min(mx[2], g["aabb_max"][2])
+                  - max(mn[2], g["aabb_min"][2]))
+            if dx > 0 and dy > 0 and dz > 0:
+                ov += dx * dy * dz
+        return {"footprint_m2":
+                round((mx[0] - mn[0]) * (mx[2] - mn[2]), 3),
+                "overlap_frac": round(min(1.0, ov / vol), 2)}
+
+    # swaps first: pack the in-items into the out-envelope.
+    # Feasibility = FOOTPRINT arithmetic (height left free: one
+    # tall item may replace several short ones).
+    for s in swaps:
+        envs = [boxes[o_] for o_ in s["out"] if o_ in boxes]
+        if not envs:
+            s["feasible"] = False
+            continue
+        mn = [min(g["aabb_min"][i] for g in envs)
+              for i in range(3)]
+        mx = [max(g["aabb_max"][i] for g in envs)
+              for i in range(3)]
+        s["envelope"] = {"aabb_min": [round(v, 3) for v in mn],
+                         "aabb_max": [round(v, 3) for v in mx]}
+        bounds = (mn[0], mn[2], mx[0], mx[2])
+        tgt = ((mn[0] + mx[0]) / 2, (mn[2] + mx[2]) / 2)
+        obst = []
+        ok = True
+        for ir in sorted(
+                s["in"], key=lambda r: -(r["size_m"][0]
+                                         * r["size_m"][1])
+                if r.get("size_m") else 0):
+            sm = ir.get("size_m")
+            if not size_ok(sm):
+                ir["placement"] = {"failed": "no size"}
+                ok = False
+                continue
+            w, d, h = float(sm[0]), float(sm[1]), float(sm[2])
+            spot = _find_spot(bounds, w, d, obst, tgt)
+            if spot is None:
+                ir["placement"] = {"failed":
+                                   "does not fit envelope"}
+                ok = False
+                continue
+            x, z, fw, fd, cl = spot
+            box = mk_up_box(x, z, fw, fd,
+                            mx[1] if up < 0 else mn[1], h)
+            ir["box"] = box
+            ir["box_source"] = "estimated_prior"
+            ir["placement"] = {"method": "swap_envelope",
+                               "clamped": cl}
+            obst.append(_footprint(box))
+            pboxes[ir["id"]] = box
+            placed.append({"name": ir["name"], "id": ir["id"]})
+        s["feasible"] = ok
+
+    # RELATION ROUTER (08-02, "window on top of the curtain"
+    # postmortem): the reply's relation vocabulary -- on_top | inside |
+    # mounted_on | hangs_from | near -- picks the placement rule; the
+    # anchor id prefix alone no longer forces stack-on-top. Unresolved
+    # combinations fail HONESTLY (recorded, screening sees them).
+    def attach_surface_of(oid):
+        """The wall/ceiling this object is ultimately attached to,
+        walking the support chain (curtain hangs_from wall -> that
+        wall). None if the chain grounds out on floor/furniture."""
+        cur = oid
+        for _ in range(3):
+            cur = parent_id.get(cur)
+            if cur is None or cur == "arch_floor":
+                return None
+            if cur.startswith("arch_wall") or cur == "arch_ceiling":
+                return cur
+        return None
+
+    def nearest_top_below(anc_g, need_w, need_d):
+        """Closest furniture top under a wall-mounted host that can
+        hold the footprint (the 'remote near the AC' case)."""
+        ax, az = anc_g["center"][0], anc_g["center"][2]
+        abot = anc_g["aabb_max"][1] if up < 0 else anc_g["aabb_min"][1]
+        best = None
+        for k, g in boxes.items():
+            if k in swapped_out:
+                continue
+            if up * (abot - top_of(g)) < 0:   # top not below the host
+                continue
+            fx0, fz0, fx1, fz1 = _footprint(g)
+            if (fx1 - fx0) * (fz1 - fz0) < need_w * need_d:
+                continue
+            d2 = (g["center"][0] - ax) ** 2 + (g["center"][2] - az) ** 2
+            if best is None or d2 < best[0]:
+                best = (d2, k)
+        return best[1] if best else None
+
+    for a in adds:
+        a["box_source"] = "estimated_prior"
+        if not size_ok(a.get("size_m")):
+            a["placement"] = {"failed": "no size (loop + "
+                              "fallback both empty)"}
+            continue
+        w, d, h = (float(v) for v in a["size_m"])
+        ref = referent_of(a, placed)
+        allb = dict(boxes)
+        allb.update(pboxes)
+        rel = str(a.get("relation") or "").strip().lower()
+        anc = a["anchor"]
+        sup = a["support"]
+
+        def finish(box, method, clamped=False, group=None, note=None):
+            a["box"] = box
+            a["placement"] = {"method": method, "referent": ref,
+                              "clamped": clamped}
+            if note:
+                a["placement"]["note"] = note
+            a["displacement"] = displacement_of(box)
+            pboxes[a["id"]] = box
+            psup[a["id"]] = group
+            placed.append(a)
+
+        def fail(why, method=None):
+            a["placement"] = {"failed": why, "referent": ref}
+            if method:
+                a["placement"]["method"] = method
+
+        def ref_tgt(default):
+            return ((allb[ref]["center"][0], allb[ref]["center"][2])
+                    if ref and ref in allb else default)
+
+        def scan_top(surf, tgt=None):
+            """Free spot on surf's top face."""
+            g_ = allb[surf]
+            obst = [_footprint(allb[k]) for k in allb
+                    if k not in swapped_out
+                    and (parent_id.get(k) == surf
+                         or psup.get(k) == ("on", surf))]
+            if tgt is None:
+                tgt = ref_tgt((g_["center"][0], g_["center"][2]))
+            spot = _find_spot(_footprint(g_), w, d, obst, tgt)
+            if spot is None:
+                fail("no free spot found", f"on_top:{surf}")
+                return
+            x, z, fw, fd, cl = spot
+            finish(mk_up_box(x, z, fw, fd, top_of(g_), h),
+                   f"on_top:{surf}", cl, ("on", surf))
+
+        def scan_inside(surf):
+            """Free spot INSIDE surf, standing on its inner floor."""
+            g_ = allb[surf]
+            obst = [_footprint(allb[k]) for k in allb
+                    if k not in swapped_out
+                    and psup.get(k) == ("in", surf)]
+            spot = _find_spot(_footprint(g_), w, d, obst,
+                              (g_["center"][0], g_["center"][2]))
+            if spot is None:
+                fail("no free spot found", f"inside:{surf}")
+                return
+            x, z, fw, fd, cl = spot
+            bottom = (g_["aabb_max"][1] if up < 0
+                      else g_["aabb_min"][1])
+            finish(mk_up_box(x, z, fw, fd, bottom, h),
+                   f"inside:{surf}", cl, ("in", surf),
+                   "taller than host" if h > g_["size"][1] else None)
+
+        def scan_floor(tgt=None):
+            if tgt is None:
+                tgt = ref_tgt(((room[0] + room[2]) / 2,
+                               (room[1] + room[3]) / 2))
+            obst = floor_rects + [_footprint(b)
+                                  for b in pboxes.values()]
+            spot = _find_spot(room, w, d, obst, tgt)
+            if spot is None:
+                fail("no free spot found", "floor")
+                return
+            x, z, fw, fd, cl = spot
+            finish(mk_up_box(x, z, fw, fd, floor_y, h), "floor", cl,
+                   ("floor", None))
+
+        def wall_slab(wall, cy, other, method):
+            """Slab embedded in the wall plane, height-clamped into
+            the room (the window-through-the-ceiling fix)."""
+            t = 0.1
+            lo = min(floor_y, shell["arch_ceiling"])
+            hi = max(floor_y, shell["arch_ceiling"])
+            cy = min(hi - h / 2, max(lo + h / 2, cy))
+            if "_x_" in wall:
+                box = _mk_box(shell[wall], other, t, w, cy - h / 2, h)
+            else:
+                box = _mk_box(other, shell[wall], w, t, cy - h / 2, h)
+            finish(box, method, group=("wall", wall))
+
+        if sup == "wall" and anc in shell_ids:
+            # anchored to a wall directly: v6 behavior + height clamp
+            if ref and ref in allb:
+                rc = allb[ref]
+                cy = rc["center"][1]
+                other = rc["center"][2] if "_x_" in anc \
+                    else rc["center"][0]
+            else:
+                cy = floor_y + up * 1.4
+                other = (room[1] + room[3]) / 2 \
+                    if "_x_" in anc else (room[0] + room[2]) / 2
+            wall_slab(anc, cy, other, f"wall:{anc}")
+        elif sup == "floor":
+            scan_floor()
+        elif anc in boxes:
+            g = boxes[anc]
+            if rel in ("mounted_on", "hangs_from"):
+                surf = attach_surface_of(anc)
+                if surf == "arch_ceiling":
+                    # hang below the ceiling over the anchor
+                    cv = shell["arch_ceiling"]
+                    finish(_mk_box(g["center"][0], g["center"][2],
+                                   w, d, min(cv, cv - up * h), h),
+                           "ceiling_hang", group=("ceil", None))
+                elif surf:   # a wall: embed behind/at the anchor
+                    cy = g["center"][1]
+                    other = g["center"][2] if "_x_" in surf \
+                        else g["center"][0]
+                    wall_slab(surf, cy, other,
+                              f"wall_via:{anc}:{surf}")
+                else:
+                    fail(f"mount surface unresolved ({anc} is not "
+                         f"wall/ceiling-attached)", f"{rel}:{anc}")
+            elif rel == "inside":
+                scan_inside(anc)
+            elif rel == "near":
+                par = parent_id.get(anc)
+                if par in boxes:          # host stands on furniture
+                    scan_top(par, tgt=(g["center"][0],
+                                       g["center"][2]))
+                elif par in shell_ids and par != "arch_floor":
+                    # wall/ceiling-mounted host: referent object top,
+                    # else nearest furniture top below, else floor
+                    landing = (ref if ref and ref in boxes
+                               and ref != anc else
+                               nearest_top_below(g, w, d))
+                    if landing:
+                        scan_top(landing, tgt=(g["center"][0],
+                                               g["center"][2]))
+                    else:
+                        scan_floor(tgt=(g["center"][0],
+                                        g["center"][2]))
+                else:                     # floor-standing host
+                    scan_floor(tgt=(g["center"][0], g["center"][2]))
+            else:                         # on_top + unknown default
+                scan_top(anc)
+        else:
+            fail(f"no placement rule for {sup} "
+                 f"(relation {rel or 'none'})")
+
+
+
 def main():
     t0 = time.time()
     ap = argparse.ArgumentParser()
@@ -339,8 +756,13 @@ def main():
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--no-llm", action="store_true",
                     help="aggregate delete candidates only; no adds")
-    ap.add_argument("--max-rounds", type=int, default=6,
-                    help="loop cap; the natural stop is a dry round")
+    ap.add_argument("--size-only", action="store_true",
+                    help="skip the loop: reload edit_proposals_raw.json "
+                         "(fallback: strip edit_proposals.json) and "
+                         "re-run step 3 sizing/placement alone")
+    ap.add_argument("--max-rounds", type=int, default=3,
+                    help="loop cap (arbitrary, user 08-02); the "
+                         "natural stop is a dry round")
     args = ap.parse_args()
 
     cdir = paths.compose_dir(args.scene)
@@ -392,7 +814,40 @@ def main():
     # ---------------- LLM passes ----------------------------------------
     deletes, adds, petitions, swaps = [], [], [], []
     add_answered = None   # per-round reply coverage
-    if args.no_llm:
+    round_elapsed = None
+    swapped_out = set()
+    if args.size_only:
+        # DEV RE-ENTRY (not a pipeline path): canonical runs are one
+        # invocation; this reloads a frozen loop output to debug step 3
+        src = next((p for p in (cdir / "edit_proposals_raw.json",
+                                cdir / "edit_proposals.json")
+                    if p.exists()), None)
+        if src is None:
+            raise SystemExit("[propose_edits] --size-only: neither "
+                             "edit_proposals_raw.json nor "
+                             "edit_proposals.json exists for this scene")
+        prev = json.loads(src.read_text(encoding="utf-8"))
+        deletes = prev.get("deletes") or []
+        adds = prev.get("adds") or []
+        swaps = prev.get("swaps") or []
+        petitions = prev.get("reopen_petitions") or []
+        meta = prev.get("counts") or prev   # final vs raw layout
+        add_answered = meta.get("round_answered")
+        round_elapsed = meta.get("round_elapsed_s")
+        # strip step-3 artifacts back to pure loop output
+        for a in adds:
+            for k in ("box", "box_source", "placement", "displacement"):
+                a.pop(k, None)
+        for s in swaps:
+            for k in ("envelope", "feasible"):
+                s.pop(k, None)
+            for ir in s.get("in") or []:
+                for k in ("box", "box_source", "placement"):
+                    ir.pop(k, None)
+        swapped_out = {o_ for s in swaps for o_ in (s.get("out") or [])}
+        print(f"[propose_edits] --size-only: {len(adds)} adds + "
+              f"{len(swaps)} swaps from {src.name}; step 3 alone")
+    elif args.no_llm:
         deletes = [{"id": oid, "name": names.get(oid),
                     "signals": sigs, "status": "CANDIDATE",
                     "verdict": None}
@@ -505,11 +960,6 @@ def main():
                 return "ceiling"
             return "floor"   # arch_floor + the room-scan channel
 
-        def size_ok(sm):
-            return (isinstance(sm, list) and len(sm) == 3
-                    and all(isinstance(v, (int, float)) and 0 < v < 10
-                            for v in sm))
-
         # working inventory (display state the loop folds into; the
         # real graph is never touched)
         inv_names = dict(names)
@@ -528,9 +978,11 @@ def main():
         obj_rows = [o["id"] for o in sbL["objects"]]
         swapped_out = set()
         add_answered = []
+        round_elapsed = []
         rounds_done = 0
 
         for rnd in range(1, args.max_rounds + 1):
+            t_rnd = time.time()
             lines = [dims, "", "ITEMS (id, name, in-scene size "
                      "w x d x h m, connections):"]
             order = []
@@ -574,16 +1026,22 @@ def main():
             add_answered.append(
                 f"{sum(1 for o in order if o in by_item)}/{len(order)}")
 
+            round_text = "\n".join(lines).lower()
             new_adds, new_swaps = [], []
             for oid in order:   # anchor = list position, never the reply
                 ent = by_item.get(oid) or {}
-                for a in (ent.get("adds") or []):
-                    if not isinstance(a, dict):
-                        continue
-                    nm = a.get("name")
-                    if not isinstance(nm, str) or not nm.strip():
-                        continue
-                    new_adds.append((oid, a))
+                for ch in ("implied", "expected"):
+                    for a in (ent.get(ch) or []):
+                        if not isinstance(a, dict):
+                            continue
+                        nm = a.get("name")
+                        if not isinstance(nm, str) or not nm.strip():
+                            continue
+                        # the swap-only constraint for bulky open-space
+                        # claims is PROMPT CONTEXT the agent applies
+                        # (user 08-02: no hard-coded gate); code only
+                        # MEASURES displacement in step 3.
+                        new_adds.append((oid, ch, a))
                 for s in (ent.get("swaps") or []):
                     if not isinstance(s, dict):
                         continue
@@ -603,12 +1061,16 @@ def main():
                         "out": outs, "in": ins,
                         "confidence": conf_of(s.get("confidence")),
                         "reason": str(s.get("reason", "")).strip()})
+            round_elapsed.append(round(time.time() - t_rnd, 1))
+            print(f"[propose_edits] round {rnd}: {len(new_adds)} adds, "
+                  f"{len(new_swaps)} swaps in {round_elapsed[-1]:.0f}s "
+                  f"({len(order)} items)")
             if not new_adds and not new_swaps:
                 break   # DRY -- the loop's natural stop
 
-            for i, (oid, a) in enumerate(new_adds, 1):
+            for i, (oid, ch, a) in enumerate(new_adds, 1):
                 nid = f"add_r{rnd}n{i}"
-                rec = {"id": nid, "round": rnd,
+                rec = {"id": nid, "round": rnd, "channel": ch,
                        "name": a["name"].strip().lower(),
                        "support": support_of(oid), "anchor": oid,
                        "anchor_name": inv_names.get(oid, oid),
@@ -616,6 +1078,14 @@ def main():
                        "where": str(a.get("where", "")).strip(),
                        "confidence": conf_of(a.get("confidence")),
                        "reason": str(a.get("reason", "")).strip()}
+                if ch == "implied":
+                    ev = str(a.get("evidence", "")).strip()
+                    rec["evidence"] = ev
+                    # mechanical check only: does the quote actually
+                    # appear in this round's item lines? (paraphrases
+                    # legitimately fail -- informational, not a gate)
+                    rec["evidence_found"] = bool(
+                        ev and ev.lower() in round_text)
                 if size_ok(a.get("size_m")):
                     rec["size_m"] = [round(float(v), 3)
                                      for v in a["size_m"]]
@@ -678,210 +1148,27 @@ def main():
                     obj_rows.append(ir["id"])
                 swaps.append(rec)
 
-        # ---- STEP 3: size + box (v4/v5, user design 08-02) ----------
-        # Sizes normally arrive FROM THE LOOP (the item lines carry the
-        # scene's measured sizes, so replies are scene-scaled); T_SIZE
-        # is the FALLBACK for adds that came back sizeless. Placement
-        # is pure code: free-space scan nearest the "where" referent,
-        # shrink-to-fit flagged, box_source=estimated_prior forever.
-        # Swaps: CODE validates the trade -- the in-items are packed
-        # into the out-items' combined envelope; fits -> feasible +
-        # boxes, doesn't -> flagged infeasible with the numbers.
-        if adds or swaps:
-            parent_id = {}
-            for o in sbL["objects"]:
-                topt = (o.get("supported_by") or [{}])[0]
-                if topt.get("supporter"):
-                    parent_id[o["id"]] = topt["supporter"]
-            need_size = [a for a in adds
-                         if not size_ok(a.get("size_m"))]
-            if need_size:
-                ref_lines = [
-                    f'  {oid} "{names.get(oid, "?")}": '
-                    f'{boxes[oid]["size"][0]:.2f} x '
-                    f'{boxes[oid]["size"][2]:.2f} x '
-                    f'{boxes[oid]["size"][1]:.2f}'
-                    for oid in sorted(boxes)]
-                item_lines = []
-                for i, a in enumerate(need_size, 1):
-                    anc = a["anchor"]
-                    if anc in boxes:
-                        g = boxes[anc]
-                        actx = (f'anchor {a["anchor_name"]} ({anc}) '
-                                f'footprint {g["size"][0]:.2f} x '
-                                f'{g["size"][2]:.2f} m')
-                    else:
-                        actx = f'anchor {anc} (architecture)'
-                    item_lines.append(
-                        f'ITEM {i}: {a["name"]} -- '
-                        f'{a["relation"] or "on"} {actx}; '
-                        f'where: {a["where"] or "-"}')
-                sgot = None
-                for firm in ("", FIRM_PREFIX):
-                    try:
-                        out = call_claude(
-                            T_SIZE.format(firm=firm,
-                                          reference="\n".join(ref_lines),
-                                          items="\n".join(item_lines)),
-                            cdir, args.model)
-                    except (RuntimeError,
-                            subprocess.TimeoutExpired) as ex:
-                        print(f"[propose_edits] sizing fallback "
-                              f"failed: {ex}")
-                        break
-                    sgot = parse_array(out)
-                    if sgot is not None and len(sgot) == len(need_size):
-                        break
-                    sgot = None
-                for a, sz in zip(need_size, sgot or []):
-                    sm = sz.get("size_m") if isinstance(sz, dict) else None
-                    if size_ok(sm):
-                        a["size_m"] = [round(float(v), 3) for v in sm]
+        # freeze the loop's output BEFORE step 3: a sizing/placement
+        # crash or rework must never cost the model calls again
+        # (--size-only re-enters from this file; regenerated every
+        # full run, never hand-edited)
+        rpath = cdir / "edit_proposals_raw.json"
+        rpath.write_text(json.dumps({
+            "scene": args.scene, "built": str(date.today()),
+            "generated_by": "compose/propose_edits.py",
+            "model": args.model, "prompt_version": PROMPT_VERSION,
+            "note": "LOOP OUTPUT ONLY -- pre step 3, no boxes; the "
+                    "--size-only re-entry point",
+            "rounds": len(add_answered or []),
+            "round_answered": add_answered,
+            "round_elapsed_s": round_elapsed,
+            "deletes": deletes, "adds": adds, "swaps": swaps,
+            "reopen_petitions": petitions,
+        }, indent=1), encoding="utf-8")
+        print(f"[propose_edits] wrote {rpath} (loop output frozen)")
 
-            shell_ids = {n["id"] for n in graph["nodes"]
-                         if n["id"].startswith("arch_")}
-            floor_y = shell["arch_floor"]
-            xs = sorted((shell["arch_wall_x_low"],
-                         shell["arch_wall_x_high"]))
-            zs = sorted((shell["arch_wall_z_low"],
-                         shell["arch_wall_z_high"]))
-            room = (xs[0] + 0.05, zs[0] + 0.05, xs[1] - 0.05, zs[1] - 0.05)
-            floor_rects = [_footprint(g) for oid, g in boxes.items()
-                           if g["aabb_min"][1] < floor_y + 0.5
-                           and oid not in swapped_out]
-
-            def referent_of(a, placed):
-                text = (a["where"] + " " + a["reason"]).lower()
-                cands = [(len(nm), oid) for oid, nm in
-                         ((i_, names.get(i_, "").lower())
-                          for i_ in boxes) if nm and nm in text]
-                cands += [(len(p["name"]), p["id"]) for p in placed
-                          if p["name"] in text]
-                return max(cands)[1] if cands else None
-
-            placed = []   # records that already got boxes (referents)
-            pboxes = {}   # proposal id -> box
-            psup = {}     # proposal id -> support (obstacle grouping)
-
-            # swaps first: pack the in-items into the out-envelope.
-            # Feasibility = FOOTPRINT arithmetic (height left free: one
-            # tall item may replace several short ones).
-            for s in swaps:
-                envs = [boxes[o_] for o_ in s["out"] if o_ in boxes]
-                if not envs:
-                    s["feasible"] = False
-                    continue
-                mn = [min(g["aabb_min"][i] for g in envs)
-                      for i in range(3)]
-                mx = [max(g["aabb_max"][i] for g in envs)
-                      for i in range(3)]
-                s["envelope"] = {"aabb_min": [round(v, 3) for v in mn],
-                                 "aabb_max": [round(v, 3) for v in mx]}
-                bounds = (mn[0], mn[2], mx[0], mx[2])
-                tgt = ((mn[0] + mx[0]) / 2, (mn[2] + mx[2]) / 2)
-                obst = []
-                ok = True
-                for ir in sorted(
-                        s["in"], key=lambda r: -(r["size_m"][0]
-                                                 * r["size_m"][1])
-                        if r.get("size_m") else 0):
-                    sm = ir.get("size_m")
-                    if not size_ok(sm):
-                        ir["placement"] = {"failed": "no size"}
-                        ok = False
-                        continue
-                    w, d, h = float(sm[0]), float(sm[1]), float(sm[2])
-                    spot = _find_spot(bounds, w, d, obst, tgt)
-                    if spot is None:
-                        ir["placement"] = {"failed":
-                                           "does not fit envelope"}
-                        ok = False
-                        continue
-                    x, z, fw, fd, cl = spot
-                    box = _mk_box(x, z, fw, fd, mn[1], h)
-                    ir["box"] = box
-                    ir["box_source"] = "estimated_prior"
-                    ir["placement"] = {"method": "swap_envelope",
-                                       "clamped": cl}
-                    obst.append(_footprint(box))
-                    pboxes[ir["id"]] = box
-                    placed.append({"name": ir["name"], "id": ir["id"]})
-                s["feasible"] = ok
-
-            for a in adds:
-                a["box_source"] = "estimated_prior"
-                if not size_ok(a.get("size_m")):
-                    a["placement"] = {"failed": "no size (loop + "
-                                      "fallback both empty)"}
-                    continue
-                w, d, h = (float(v) for v in a["size_m"])
-                ref = referent_of(a, placed)
-                allb = dict(boxes)
-                allb.update(pboxes)
-                sup = a["support"]
-                spot = None
-                if sup.startswith("on:") and sup[3:] in boxes:
-                    anc = sup[3:]
-                    g = boxes[anc]
-                    bounds = _footprint(g)
-                    obst = [_footprint(allb[k]) for k in allb
-                            if k not in swapped_out
-                            and (parent_id.get(k) == anc
-                                 or psup.get(k) == sup)]
-                    tgt = ((allb[ref]["center"][0], allb[ref]["center"][2])
-                           if ref and ref in allb else
-                           (g["center"][0], g["center"][2]))
-                    spot = _find_spot(bounds, w, d, obst, tgt)
-                    ybase, method = g["aabb_max"][1], f"on_top:{anc}"
-                elif sup == "floor":
-                    tgt = ((allb[ref]["center"][0], allb[ref]["center"][2])
-                           if ref and ref in allb else
-                           ((room[0] + room[2]) / 2,
-                            (room[1] + room[3]) / 2))
-                    obst = floor_rects + [_footprint(b)
-                                          for b in pboxes.values()]
-                    spot = _find_spot(room, w, d, obst, tgt)
-                    ybase, method = floor_y, "floor"
-                elif sup == "wall" and a["anchor"] in shell_ids:
-                    plane = shell[a["anchor"]]
-                    t = 0.1   # embedded slab thickness
-                    if ref and ref in allb:
-                        rc = allb[ref]
-                        cy = rc["center"][1]
-                        other = rc["center"][2] if "_x_" in a["anchor"] \
-                            else rc["center"][0]
-                    else:
-                        cy = floor_y + 1.4
-                        other = (room[1] + room[3]) / 2 \
-                            if "_x_" in a["anchor"] else \
-                            (room[0] + room[2]) / 2
-                    if "_x_" in a["anchor"]:
-                        box = _mk_box(plane, other, t, w, cy - h / 2, h)
-                    else:
-                        box = _mk_box(other, plane, w, t, cy - h / 2, h)
-                    a["box"] = box
-                    a["placement"] = {"method": f"wall:{a['anchor']}",
-                                      "referent": ref, "clamped": False}
-                    pboxes[a["id"]] = box
-                    psup[a["id"]] = sup
-                    placed.append(a)
-                    continue
-                else:
-                    a["placement"] = {"failed":
-                                      f"no placement rule for {sup}"}
-                    continue
-                if spot is None:
-                    a["placement"] = {"failed": "no free spot found",
-                                      "method": method, "referent": ref}
-                    continue
-                x, z, fw, fd, clamped = spot
-                box = _mk_box(x, z, fw, fd, ybase, h)
-                a["box"] = box
-                a["placement"] = {"method": method, "referent": ref,
-                                  "clamped": clamped}
-                pboxes[a["id"]] = box
-                psup[a["id"]] = sup
-                placed.append(a)
+    size_and_place(adds, swaps, swapped_out, graph, sbL, names,
+                   cdir, args.model)
 
     layer = {
         "scene": args.scene, "built": str(date.today()),
@@ -905,6 +1192,8 @@ def main():
                    "rounds": None if args.no_llm else
                    len(add_answered or []),
                    "round_answered": add_answered,
+                   "round_elapsed_s": None if args.no_llm
+                   else round_elapsed,
                    "reopen_petitions": len(petitions)},
         "deletes": deletes,
         "adds": adds,
@@ -929,7 +1218,10 @@ def main():
                    + (", clamped" if pl.get("clamped") else "") + ")")
         else:
             geo = f'NO BOX ({pl.get("failed", "?")})'
-        print(f"    ADD r{a.get('round', '?')} {a['name']} <- "
+        ev = (" ev✓" if a.get("evidence_found")
+              else " ev?" if a.get("channel") == "implied" else "")
+        print(f"    ADD r{a.get('round', '?')} "
+              f"[{a.get('channel', '?')}{ev}] {a['name']} <- "
               f"{a.get('anchor')} ({a.get('anchor_name')}) "
               f"[conf {a['confidence']}]: {geo}")
     for s in swaps:
