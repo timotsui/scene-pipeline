@@ -310,7 +310,11 @@ def main():
     # rotation_check.json verdicts ONLY at HIGH confidence and non-zero
     # -- 13/31 tail answers flip between stimulus framings, so low and
     # medium non-zero verdicts are recorded as flags for the fit loop's
-    # judge, never applied. The verdict is an extra yaw about the placed
+    # judge, never applied. EXCEPTION (08-05, with the wall-legality
+    # menu): a verdict chosen from a legality-CONSTRAINED menu
+    # (mapping < 4 options) applies at any confidence -- every option
+    # offered was a legal in-wall pose, so the worst case is the wrong
+    # LEGAL flip, never a sideways door. Effort follows error cost. The verdict is an extra yaw about the placed
     # item's combined-bounds center (render frame), exactly how
     # rotation_check spun its candidate renders.
     # Verdicts are DELTAS on the preview rotation_check measured: a 0
@@ -333,12 +337,14 @@ def main():
             deg = run.get("degrees")
             if deg is None:
                 continue
+            constrained = 0 < len(run.get("mapping") or {}) < 4
             rot_verdicts[run["item"]] = {
                 "degrees": float(deg),
                 "confidence": run.get("confidence"),
                 "measured_uid": run.get("measured_uid"),
                 "measured_applied_deg": run.get("measured_applied_deg"),
-                "apply": (run.get("confidence") == "high"
+                "constrained_menu": constrained,
+                "apply": ((run.get("confidence") == "high" or constrained)
                           and abs(deg) > 1e-6)}
 
     if float(np.prod(r2r)) < 0:

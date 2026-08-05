@@ -1,13 +1,15 @@
-"""Build the ROTATION-CHECK REVIEW VIEWER (2026-08-04, pairs edition).
+"""Build the ROTATION-CHECK REVIEW VIEWER (2026-08-04; choice edition
+08-04 late, user: "show the multiple choice as well in the html").
 
-CURRENT CONTENT (user 08-04: "take out the stale results, but keep and show
-the reference image and the isolated image"): the SAME-CAMERA PAIRS gate.
-Per object with detection evidence: the reference photograph (mirror
-corrected) beside the placed object rendered ISOLATED (walls + floor kept,
-other objects removed) from THE SAME CAMERA that took the photo, plus the
-numeric box self-check (blue rendered box vs yellow detection box). No
-model answers are shown -- the two-viewpoint run's answers are superseded
-by this stimulus change and stay on disk in compose/rotation_check.json.
+CURRENT CONTENT, per object with detection evidence: the LATEST
+rotation_check.json verdict (degrees, confidence, timing, verbatim
+reason), the MULTIPLE CHOICE the judge actually saw (reference photo +
+the four cardinal candidates, its pick outlined), the "as placed |
+answer applied" sheet, and the SAME-CAMERA PAIRS gate: the reference
+photograph (mirror corrected) beside the placed object rendered
+ISOLATED (walls + floor kept, other objects removed) from THE SAME
+CAMERA that took the photo, plus the numeric box self-check (blue
+rendered box vs yellow detection box).
 
 Read-only: reads refcam_check.json + the pair PNGs, writes ONE file --
 review_shots/index.html -- with relative paths that work off disk.
@@ -59,6 +61,12 @@ img.shot{width:100%;display:block;border-radius:4px;cursor:zoom-in;
 #lb img{max-width:none}
 #lb.on{display:block}
 .legend{color:#9a9a9a;font-size:13px;margin:6px 0 16px}
+.choice{display:flex;gap:6px;margin:10px 0 4px}
+.choice figure{margin:0;flex:1;min-width:0}
+.choice figcaption{font-size:12px;color:#8a8a8a;text-align:center;
+                   margin-top:4px}
+.choice .pick img{outline:3px solid #6fdc8c;outline-offset:-3px}
+.choice .pick figcaption{color:#9dd89d;font-weight:600}
 """
 
 JS = """
@@ -124,10 +132,11 @@ def main():
              "placed object&rsquo;s own projection and must sit on the "
              "yellow one &mdash; that is the arithmetic self-check "
              "(offset/IoU below each pair), verified against the frame "
-             "conversion. The earlier two-viewpoint answers are superseded "
-             "by this stimulus change; they stay in "
-             "<code>compose\\rotation_check.json</code> but are not shown. "
-             "Click to enlarge, Esc to close.</div>")
+             "conversion. Above each pair: the 4-candidate MULTIPLE "
+             "CHOICE the judge saw (reference + 0/90/180/270&deg; from "
+             "the photo&rsquo;s camera), its pick outlined green, and "
+             "the verdict from the latest <code>rotation_check.json</code> "
+             "run. Click to enlarge, Esc to close.</div>")
 
     sm = ('<div class="summary">'
           f"<div><b>{n_ok}</b><span>pairs aligned (box check ok)"
@@ -226,6 +235,67 @@ def main():
             P.append(f'<p class="legend" style="margin:2px 0 10px">its '
                      f'stated reason (verbatim): '
                      f'&ldquo;{html.escape(str(a["why"]))}&rdquo;</p>')
+        # the multiple choice the judge actually saw: ref + the four
+        # cardinal candidates, its pick outlined
+        cdir_rc = cdir / "rotation_check"
+        chdir = cdir_rc / f"{oid}_same"
+        if a and chdir.is_dir() and (chdir / "ref.png").exists():
+            mapping = a.get("mapping") or {}
+            pick = a.get("pick")
+            cells = [f'<figure><img class="shot" loading="lazy" '
+                     f'src="../rotation_check/{oid}_same/ref.png">'
+                     f"<figcaption>reference photo</figcaption></figure>"]
+            for L in ("a", "b", "c", "d"):
+                cp = chdir / f"candidate_{L}.png"
+                if not cp.exists():
+                    continue
+                deg = mapping.get(L, "?")
+                kl = ' class="pick"' if L == pick else ""
+                mark = " &larr; PICK" if L == pick else ""
+                cells.append(
+                    f"<figure{kl}><img class=\"shot\" loading=\"lazy\" "
+                    f'src="../rotation_check/{oid}_same/candidate_{L}.png">'
+                    f"<figcaption>{L} &middot; {deg}&deg;{mark}"
+                    "</figcaption></figure>")
+            P.append('<div class="choice">' + "".join(cells) + "</div>"
+                     '<p class="cap">the call as the judge saw it &mdash; '
+                     "which candidate matches the reference? "
+                     f"&middot; ../rotation_check/{oid}_same/</p>")
+        elif a and str(a.get("mode")) == "plausible_fallback":
+            fbdir = cdir_rc / f"{oid}_camA"
+            if fbdir.is_dir() and (fbdir / "item.png").exists():
+                P.append(
+                    '<div class="choice">'
+                    f'<figure><img class="shot" loading="lazy" '
+                    f'src="../rotation_check/{oid}_camA/ctx.png">'
+                    "<figcaption>room context</figcaption></figure>"
+                    f'<figure><img class="shot" loading="lazy" '
+                    f'src="../rotation_check/{oid}_camA/item.png">'
+                    "<figcaption>as placed</figcaption></figure></div>"
+                    '<p class="cap">strict add &mdash; no reference to '
+                    "match; single plausibility ask instead of the "
+                    "4-candidate choice</p>")
+        # top view (user 08-05 "lets add the top view as well"): splat
+        # straight down, ceiling clipped | the placed object from the
+        # same overhead camera. Rendered by topdown_choice_test.py
+        # --renders-only (candidate_a = as placed). USER-view aid only:
+        # top-down as a JUDGE stimulus is annexed (PLAN_FIT_LOOP.md).
+        tddir = cdir / "topdown_check" / f"{oid}_td"
+        if (tddir / "reference.png").exists() and \
+           (tddir / "candidate_a.png").exists():
+            P.append(
+                '<div class="choice" style="max-width:900px">'
+                f'<figure><img class="shot" loading="lazy" '
+                f'src="../topdown_check/{oid}_td/reference.png">'
+                "<figcaption>top view &mdash; the real room (splat, "
+                "ceiling clipped)</figcaption></figure>"
+                f'<figure><img class="shot" loading="lazy" '
+                f'src="../topdown_check/{oid}_td/candidate_a.png">'
+                "<figcaption>top view &mdash; as placed, same camera"
+                "</figcaption></figure></div>"
+                '<p class="cap">overhead pair (user-view aid; top-down '
+                "as a judge stimulus is annexed) &middot; "
+                f"../topdown_check/{oid}_td/</p>")
         sheetp = cdir / "rotation_check" / "sheets" / f"{oid}.png"
         if a and sheetp.exists():
             sheet = f"../rotation_check/sheets/{oid}.png"

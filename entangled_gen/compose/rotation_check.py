@@ -188,6 +188,34 @@ def plausible_spins(lo, hi, box_lo, box_hi, tol=FOOT_TOL):
     return [s for s in SPINS if s in (0, 180) or swapped_ok]
 
 
+LEGAL_RATIO = 1.15   # footprint elongation below this = indeterminate
+
+
+def legal_spins(lo, hi, box_lo, box_hi, wall_attached):
+    """WALL-LEGALITY CONSTRAINT (user 08-05 "take out the strictly
+    illegal options"; born from the sideways-door incident: a HIGH-conf
+    +90 pick stood door obj_128's metre-wide face out of its 0.13 m
+    wall box). A wall-attached item must keep its THIN axis along the
+    wall normal -- and the wall normal IS the observed box's own thin
+    axis. Offer only spins whose resulting footprint honors that:
+    0/180 keep the as-placed footprint, 90/270 swap it, so which pair
+    is legal depends on how the mesh currently stands (a sideways
+    placement gets exactly {90,270} -- the menu that can fix it).
+    Distinct from the ANNEXED footprint-prune: that pruned by FIT on
+    free-standing items (bed benchmark broke); this bans PHYSICALLY
+    IMPOSSIBLE poses on wall items only. Near-square footprints (mesh
+    or box) are indeterminate -> keep all four. Box-derived, no asset
+    semantics, scene-agnostic."""
+    if not wall_attached:
+        return list(SPINS)
+    w, d = hi[0] - lo[0], hi[2] - lo[2]
+    bw, bd = box_hi[0] - box_lo[0], box_hi[2] - box_lo[2]
+    if (max(w, d) / max(min(w, d), 1e-6) < LEGAL_RATIO
+            or max(bw, bd) / max(min(bw, bd), 1e-6) < LEGAL_RATIO):
+        return list(SPINS)
+    return [0, 180] if (w < d) == (bw < bd) else [90, 270]
+
+
 P_CHOICE = """IMAGE 1 -- REFERENCE, a photograph of a REAL room. Left panel: the room
 with the "{name}" outlined in yellow; right panel: a close-up of it:
 {ref}
@@ -778,6 +806,9 @@ def main():
     placed = json.loads((cdir / "fitted_preview.json")
                         .read_text(encoding="utf-8"))["placed"]
     names = {p["id"]: p["name"] for p in placed}
+    attach = {p["id"]: (p.get("attachment")
+                        or ([p["mount"]] if p.get("mount") else []))
+              for p in placed}
     # measurement basis: verdicts are only valid for the asset they were
     # rendered against (uid) AND are DELTAS on top of whatever rotation
     # the measured preview already carried -- fit_preview composes
@@ -875,8 +906,15 @@ def main():
             # benchmark (180 high-conf -> 0 medium) while saving only ~15%.
             # The 90/270 candidates act as contrast anchors. Kept behind
             # --prune with this measurement so nobody re-invents it blind.
-            spins = (plausible_spins(lo, hi, box_lo, box_hi)
-                     if args.prune else list(SPINS))
+            # WALL LEGALITY is separate and ON by default (user 08-05):
+            # wall items only ever see poses that stand IN their wall.
+            spins = legal_spins(lo, hi, box_lo, box_hi,
+                                "wall" in (attach.get(oid) or []))
+            if len(spins) < 4:
+                print(f"[rot] {oid} wall-legality menu: {spins}")
+            if args.prune:
+                keep = plausible_spins(lo, hi, box_lo, box_hi)
+                spins = [s for s in spins if s in keep]
 
             cand = {}
             for letter, cdeg in zip(LETTERS, spins):

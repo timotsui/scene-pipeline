@@ -281,13 +281,19 @@
     truth gate — the filter is shopping's library-match step, NO_MATCH
     → not bought); add / delete / replace edits re-enter as re-shops);
     3.2 PHYSICAL decides WHERE at mesh time (PH2 fit loop — moved from
-    semantic 08-03B: with k=3 the WHAT is decided upstream, choosing
-    among 3 pre-approved candidates is a tiebreak and the loop's real
-    work is mesh placement → PH3 collide gate → PH4 box surgery —
-    deterministic, the LLM never
-    gets to violate physics; the suspect-box work orders land in PH4).
+    semantic 08-03B, MECHANICAL CORE CANON 08-04B: place → jiggle →
+    check → walk, repeated until the walk reports 0 new picks = DRY;
+    every step deterministic, ~1 min/cycle, ZERO judge calls inside
+    the loop; dry lists walk BACK to shopping, so infeasible proposals
+    die at fit time → PH2a closing rotation check, ONCE on the final
+    walked set (rule 10 — expensive, so outside the loop) = the stage
+    terminus. Deterministic throughout — the LLM never gets to violate
+    physics. PH3 collide / PH4 surgery / JUDGE RETIRED 08-04 (user):
+    collide absorbed by fit_check, surgery's jobs moved to PH1 refit +
+    walk-back, the judge's re-entry absorbed by the mechanical loop —
+    what remains of judging is dev-time review, which is not drawn.
     Loop arrows are omitted from the drawing for clarity (08-01); the
-    re-entry contract stands.
+    walk-back re-entry contract stands.
     Working set = <b>ANCHORS first</b>: anchor = any object with a
     support edge to the room shell (floor / wall / ceiling; back-to-back
     wall contact counts) — 44 of 89 on bedroom_marble (floor 16 ·
@@ -614,7 +620,7 @@
 
       <!-- sub-stage bands (new-lane width only; old column excluded) -->
       <rect x="0" y="1740" width="524" height="348" fill="var(--ink)" opacity="0.035"/>
-      <rect x="0" y="2092" width="524" height="250" fill="var(--ink)" opacity="0.035"/>
+      <rect x="0" y="2092" width="524" height="370" fill="var(--ink)" opacity="0.035"/>
       <text class="plabel pl-bus" style="font-size:15px" x="24" y="1764">3.1 SEMANTIC — WHAT (PH1 snap runs mid-lane as evidence)</text>
       <text class="elab" x="24" y="1780">each arrow = the full scene-graph state;</text>
       <text class="elab" x="24" y="1792">a module's write joins the state ·</text>
@@ -672,56 +678,80 @@
       <text class="elab" x="398" y="2086">picks.json — style-ranked TOP-3 candidates per anchor box</text>
       <text class="elab" x="398" y="2098">= THE SEMANTIC → PHYSICAL HANDOFF BATON</text>
 
-      <!-- PH2a ROTATION CHECK: own module (user 08-04 "this deserves its
-           own module") — canon v2 = 4-candidate choice vs the detection
-           photo; the fit loop consumes its verdicts -->
-      <g class="node" data-k="rotch" transform="translate(276,2102)">
+      <!-- FIT LOOP MOVED 3.1 → 3.2 (user 08-03B); WIRED AS 4 MODULES
+           08-04B (canon rules 1–14, PLAN_FIT_LOOP.md): the placeholder
+           became the mechanical loop place → jiggle → check → walk.
+           Loop-repeat + walk-back arrows omitted per the step-3 rule
+           (captions carry the contract). PH2a ROTATION CHECK moved
+           BELOW the loop (rule 10, user reorder "it is expensive"):
+           runs ONCE on the final walked set — candidate walks and
+           re-shops never re-trigger it. -->
+      <g class="node" data-k="fitp" transform="translate(276,2102)">
+        <rect class="nbox" width="232" height="52" rx="8"/>
+        <rect class="b-comp" width="4" height="52" rx="2"/>
+        <text class="ntitle" x="14" y="17">PH2·1 · PLACE<tspan class="nactive"> · CANON 08-04</tspan></text>
+        <text class="nscript" x="14" y="31">compose/fit_preview.py — walk/style pick → snapped box</text>
+        <text class="nsub" x="14" y="45">PCA cardinal snap · wall flush · dual attachment</text></g>
+      <path class="edge e-comp" d="M392,2154 V2166" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2164">fitted_preview.glb/.json — posed meshes</text>
+      <g class="node" data-k="fitd" transform="translate(276,2168)">
+        <rect class="nbox" width="232" height="52" rx="8"/>
+        <rect class="b-comp" width="4" height="52" rx="2"/>
+        <text class="ntitle" x="14" y="17">PH2·2 · JIGGLE<tspan class="nactive"> · CANON 08-04</tspan></text>
+        <text class="nscript" x="14" y="31">compose/fit_declip.py — plane-locked bounce-apart</text>
+        <text class="nsub" x="14" y="45">hug + tucked locks · applies IN PLACE to the glb</text></g>
+      <path class="edge e-comp" d="M392,2220 V2232" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2230">declipped poses (fit_declip.json)</text>
+      <g class="node" data-k="fitc" transform="translate(276,2234)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
+        <text class="ntitle" x="14" y="17">PH2·3 · CHECK<tspan class="nactive"> · CANON 08-04</tspan></text>
+        <text class="nscript" x="14" y="31">compose/fit_check.py — vertex bounds + 2 cm voxel clips</text></g>
+      <path class="edge e-comp" d="M392,2280 V2292" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2290">fit_check.json — OOB + clip pairs (report-only)</text>
+      <g class="node" data-k="fitw" transform="translate(276,2294)">
+        <rect class="nbox" width="232" height="52" rx="8"/>
+        <rect class="b-comp" width="4" height="52" rx="2"/>
+        <text class="ntitle" x="14" y="17">PH2·4 · WALK<tspan class="nactive"> · RAN TO DRY 08-04B</tspan></text>
+        <text class="nscript" x="14" y="31">compose/fit_walk.py — step down the style top-3</text>
+        <text class="nsub" x="14" y="45">0 new = DRY · all-3-dry → walk-back (fit_feedback)</text></g>
+      <!-- loop-repeat + walk-back arrows omitted per the step-3 rule;
+           the contract, in force: -->
+      <text class="elab" x="24" y="2360">fit loop (arrows omitted for clarity):</text>
+      <text class="elab" x="24" y="2372">walk → place, repeat until dry · walk-back:</text>
+      <text class="elab" x="24" y="2384">fit_feedback.json → shopping re-shop (rule 9)</text>
+      <path class="edge e-comp" d="M392,2346 V2384" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2360">fitted_preview = the DRY scene</text>
+      <text class="elab" x="398" y="2372">(0 OOB · residual = rug-class + contact grazes)</text>
+      <g class="node" data-k="rotch" transform="translate(276,2386)">
+        <rect class="nbox" width="232" height="64" rx="8"/>
+        <rect class="b-comp" width="4" height="64" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2a · ROTATION CHECK<tspan class="nactive"> · CANON v2 08-04</tspan></text>
-        <text class="nscript" x="14" y="31">compose/rotation_check.py — 4-candidate choice vs detection photo</text></g>
-      <path class="edge e-comp" d="M392,2148 V2158" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2156">rotation_check.json — per-object yaw verdicts (record only)</text>
-      <!-- FIT LOOP MOVED 3.1 → 3.2 (user 08-03B): with k=3 canon the
-           WHAT decision is upstream — choosing among 3 pre-approved
-           candidates is a tiebreak; the loop's work is mesh placement.
-           Renumbered S5 → PH2 (collide → PH3, surgery → PH4). -->
-      <g class="node" data-k="s3" transform="translate(276,2160)">
-        <rect class="nbox" width="232" height="58" rx="8"/>
-        <rect class="b-comp" width="4" height="58" rx="2"/>
-        <text class="ntitle" x="14" y="17">PH2 · FIT LOOP<tspan class="ngate"> · NEXT</tspan></text>
-        <text class="nscript" x="14" y="31">place candidate → render → judge → next of k=3</text>
-        <text class="nsub" x="14" y="45">anchors run until fit · then subs per fitted anchor</text></g>
-      <path class="edge e-comp" d="M392,2218 V2256" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2240">fitted anchors — real meshes posed</text>
+        <text class="nscript" x="14" y="31">compose/rotation_check.py — 4-candidate choice vs photo</text>
+        <text class="nsub" x="14" y="45">CLOSING PASS, outside the loop (rule 10) — runs ONCE</text>
+        <text class="nsub" x="14" y="58">on the final walked set · deltas apply via place→jiggle</text></g>
+      <path class="edge e-comp" d="M392,2450 V2472" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2458">STAGE OUTPUT — the composed scene:</text>
+      <text class="elab" x="398" y="2470">fitted_preview.glb/.json + rotation_check.json yaw deltas</text>
+      <text class="elab" x="398" y="2482">(HIGH-conf applied via one closing place→jiggle pass)</text>
 
-      <g class="node" data-k="ph2" transform="translate(276,2258)">
-        <rect class="nbox" width="232" height="46" rx="8"/>
-        <rect class="b-comp" width="4" height="46" rx="2"/>
-        <text class="ntitle" x="14" y="17">PH3 · COLLIDE GATE<tspan class="ngate"> · DESIGN</tspan></text>
-        <text class="nscript" x="14" y="31">collide.py voxel 3 cm · PER SELECTED MODEL (user)</text></g>
-      <path class="edge e-comp" d="M392,2304 V2328" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2322">legal arrangement</text>
-      <g class="node" data-k="ph3" transform="translate(276,2330)">
-        <rect class="nbox" width="232" height="46" rx="8"/>
-        <rect class="b-comp" width="4" height="46" rx="2"/>
-        <text class="ntitle" x="14" y="17">PH4 · BOX SURGERY<tspan class="ngate"> · DESIGN</tspan></text>
-        <text class="nscript" x="14" y="31">suspect-box work orders · shrink-donor lessons</text></g>
-      <path class="edge e-comp" d="M392,2376 V2400" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2394">composed state + renders</text>
-
-      <g class="node" data-k="lp3" transform="translate(276,2402)">
-        <rect class="nbox" width="232" height="58" rx="8"/>
-        <rect class="b-comp" width="4" height="58" rx="2"/>
-        <text class="ntitle" x="14" y="17">JUDGE — closes the loop<tspan class="ngate"> · MANUAL</tspan></text>
-        <text class="nscript" x="14" y="31">composed vs target splat · 7 judge views</text>
-        <text class="nsub" x="14" y="45">user reviews; VLM judge grows in later</text></g>
-      <path class="edge e-comp" d="M392,2460 V2474" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2486">edits.jsonl — append-only trace (the paper trail)</text>
-      <!-- step-3 loop arrows OMITTED for clarity (user 08-01); the
-           re-entry contract stays in force, noted here: -->
-      <text class="elab" x="24" y="2426">loop re-entry (arrows omitted for clarity):</text>
-      <text class="elab" x="24" y="2438">add·delete·replace → shopping (re-shop) · move·nudge → PH1</text>
+      <!-- PH3 COLLIDE GATE + PH4 BOX SURGERY + JUDGE: RETIRED 08-04
+           (user). PH3 absorbed by PH2·3 fit_check — the same voxel
+           check on real meshes, run every loop cycle instead of once
+           after. PH4's two jobs moved: evidence-based box correction
+           went UPSTREAM to PH1 snap's refit; mesh-time misfits are
+           CANDIDATE problems handled by walk / walk-back (the
+           wardrobe case: kill the proposal, not the box — after PH2
+           meshes are the truth, nothing consumes a post-fit box
+           edit). JUDGE was the C7-era outer loop: its typed-edit
+           re-entry (add·delete·replace → shopping · move·nudge →
+           PH1) is absorbed by the mechanical loop + walk-back, and
+           what remains of judging is dev-time review, which is not
+           drawn (07-26 rule). Judge-blessable residuals + low-conf
+           rotation flags ride in the record files (fit_check.json,
+           rotation_check.json, fit_walk.json). Donor code stays on
+           disk: collide.py, materialize_verdicts.py --shrink,
+           render_judge_views.py + loop.py journal machinery. -->
 
       <!-- OLD COMPOSE C1–C7 reference column: RETIRED from the map
            07-30 (user: "we are over that now"). Code stays on disk
@@ -1118,27 +1148,61 @@ s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SHOPPING + STYLE PICK · k=3 CAN
   reads:["graph['resolved'] boxes verbatim","compose/edit_proposals.json (adds + feasible swaps)","compose/supported_by.json (anchor tiers)","objathor catalog (36,805 assets, 831 categories, descriptions + thumbs)","pano_crops (mood sheet)"],
   writes:["compose/shopping.json — per anchor: mount, categories, native-fit-ordered candidates or NO_MATCH","compose/picks.json — style ranking + final_candidates (k=3) per anchor","compose/pick_sheets/ — mood sheet, row-sheets, per-item judge rows, prompts (review artifacts)"],
   note:"Review: python composition/review_server.py --scene <sc> --shopping (:8322) — crop + fit strip + style strip (blue bar = the kept 3) + 'what the judge saw' rows."},
-rotch: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2a — ROTATION CHECK · CANON v2 08-04 (own module — user: 'this deserves its own module')", name:"Rotation check — 4-candidate choice against the detection photo",
+fitp: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2·1 — PLACE · CANON 08-04 (PLAN_FIT_LOOP.md rules 1–5, 7, 14)", name:"Place — real meshes into the snapped boxes",
+  script:"compose/fit_preview.py → out/<scene>/compose/fitted_preview.glb/.json",
+  how:["PICK ORDER: fit_walk choices first (pick_source 'walk') → picks.json style #1 (final_candidates) → shopping size-fit #1 only as fallback — the 'viewer lag' mystery was the preview silently placing size-fit #1",
+       "FIT TARGET = SNAPPED BOX (rule 1): meshes place into snap.json's adjudicated snapped_aabb; the observed graph box is record only; invented adds/swaps keep their proposal boxes. The bed stood 84 mm in the floor before this",
+       "PCA CARDINAL SNAP (rule 3, the obj_032 lesson): min-area rotated rect over the footprint hull de-rotates axes baked crooked in-file (gated: ≥5% tighter than the AABB and >1°) — 4/31 assets straightened; obj_032's '+142% oversize' was a −31° baked rotation, an EXACT fit once straight; recorded as pca_snap_deg",
+       "ROTATION IS CARDINAL-ONLY (rule 4): long axis aligns to the box's long axis (ELONG 1.2); free small-yaw REJECTED by experiment (fit_rotate_test: its 'wins' were wall items cocked 45° — metric gaming; fit_cardinal_test: 19/20 flagged items already best-cardinal). Clipping is NOT in the rotation objective (user ruling)",
+       "MESH-FLUSH ATTACHMENT (rule 2) + DUAL ATTACHMENT (rule 14, the floating-door fix — user: 'a door belongs to both a wall and a floor'): attachment is a box-derived SET, not a single class — a wall item whose fit box reaches the floor (<0.10 m) is floor-standing, mesh bottom-aligned to the box bottom (never y-centered mid-air), y locked in the jiggle; caught all 3 doors; recorded per item as attachment",
+       "NO STRETCH (rule 5): native size absolute — a short/oversized asset is a candidate problem (walk → re-shop complaint), never a scale fix",
+       "ROTATION APPLY GATE (rule 7 + 08-05 extension): applies non-zero rotation_check verdicts ONLY when the placed asset uid matches measured_uid (verdicts never transfer across assets; basis-carry composes prior applied yaw + fresh delta) — at HIGH confidence for free-standing items, at ANY confidence when the verdict came from a legality-CONSTRAINED menu (every offered option was a legal pose; worst case = the wrong legal flip)"],
+  reads:["compose/picks.json final_candidates (k=3)","compose/fit_walk.json (walk choices)","compose/snap.json (snapped boxes)","compose/rotation_check.json (uid-gated deltas)","compose/edit_proposals.json (add/swap boxes)","asset meshes (assets_thor loader, yaw-canonicalized) · room shell"],
+  writes:["compose/fitted_preview.glb/.json — the posed scene. Declip then applies IN PLACE: re-running fit_preview drops the jiggle moves until fit_declip re-runs"],
+  note:"Viewer :8321 'fit' view — fit boxes drawn AT snapped positions."},
+fitd: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2·2 — JIGGLE DECLIP · CANON 08-04 (rules 8, 13)", name:"Jiggle — bounce-apart declip, plane-locked",
+  script:"compose/fit_declip.py — applies IN PLACE to fitted_preview.glb → fit_declip.json",
+  how:["User design, 'bounce away like a 3D game': position-based penetration resolution against a STATIC shell; moves lattice-quantized (2 cm int key-shifts, no re-voxelization inside the loop); verified after by an independent fit_check pass",
+       "PLANE CONSTRAINTS: floor/ceiling items move in the floor plane x/z; wall items move in their WALL plane (along-wall AND vertical, normal locked flush) — the curtain's ceiling poke resolved by sliding 140 mm DOWN its wall",
+       "Items MAY leave their fit box (the box seeds, it does not cage; out_of_box_mm recorded); flat items <6 cm exempt as clip participants (the rug rule)",
+       "WALL-ADJACENCY HUG LOCK (rule 13a, user-spotted in the viewer): a floor item starting within HUG_M 0.30 of a wall keeps that wall — normal axis frozen, slide-along free, corners pinned; shell push-back BYPASSES the lock (lock = 'don't leave the wall', never 'stay embedded in it')",
+       "TUCKED-ITEM EXEMPTION (rule 13b, user-spotted): the lock holds only if the witness's observed facing agrees the item BACKS the wall — observed facing TOWARD the wall (the obj_000 desk chair) = tucked furniture, jiggles free",
+       "First full run: 0 OOB; after the walk made the wall row fit (5.63 m of furniture on a 4.34 m wall before), jiggle converged in 17 rounds"],
+  reads:["compose/fitted_preview.glb/.json","room shell (static)","observed facing (tucked test)","attachment sets (dual-attachment y-locks)"],
+  writes:["fitted_preview.glb — declipped poses, IN PLACE","compose/fit_declip.json — moves + out_of_box_mm"],
+  note:"FLAGGED CONSTANTS to re-measure on scene #2: HUG 0.30, FLAT 0.06, dual-attach floor tol 0.10."},
+fitc: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2·3 — FIT CHECK · CANON 08-04 (rule 6, report-only)", name:"Check — bounds + clip report, never moves anything",
+  script:"compose/fit_check.py → compose/fit_check.json",
+  how:["Bounds: vertex-exact vs the shell planes (5 mm tol). Pairwise clip: 2 cm lattice voxels of the REAL meshes, AABB only as prune; ≤4 shared cells = contact graze, not a clip",
+       "REPORT-ONLY by contract: declip resolves, walk re-picks — this module only measures; it also serves as the independent verification pass after each declip run",
+       "Dry state 08-04B (bedroom_marble, 2 loop passes): 0 out-of-bounds; residual = rug-class pairs + ≤1.3 L contact grazes (judge-blessable)"],
+  reads:["fitted_preview.glb (declipped poses)","room shell"],
+  writes:["compose/fit_check.json — OOB list + clip pairs with volumes"],
+  note:"Viewer :8321 'fit check' view — red OOB / orange clip / red wire overlap regions · serve.py /fit_check.json."},
+fitw: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2·4 — CANDIDATE WALK + WALK-BACK · CANON 08-04 (rules 9, 11, 12) · RAN TO DRY 08-04B", name:"Walk — step down the style top-3; dry lists walk back to shopping",
+  script:"compose/fit_walk.py → fit_walk.json · compose/fit_feedback.py → fit_feedback.json",
+  how:["WALK (rule 11): finding-implicated items whose current pick overshoots MARGIN 0.15 step down their style top-3 to the best-fitting sibling (GAIN 0.02); choices accumulate in fit_walk.json and fit_preview applies them; 0 new choices = the loop is DRY",
+       "First run walked 5 items (desk 17→13%, obj_043 29→14%, obj_023 18→11%, baskets incl. 78→21%) — the 73 L desk×bookshelf collision vanished and the measured wall-row overflow resolved",
+       "DRY-LIST WALK-BACK (rules 9+12, the wardrobe autopsy): an item whose BEST candidate scores > DRY 0.65 writes a rejection shopping.py consumes on re-run — swaps revert to their out-items, adds drop entirely, detections re-shop with an honest complaint. Ran: BOTH invented swaps died (every library wardrobe failed its clamped 0.33 m swap envelope, best 71% off; wall shelf 994%) — the proposal box, not the library, was the lie; observed picture obj_017 + bookshelf obj_023 restored, shopping at 6%/11%",
+       "Infeasible proposals DIE at fit time — that is the stage doing its job. The re-pick changed 12 assets and every old rotation verdict went correctly inert (uid gate)",
+       "OPEN: obj_058 walk-past-the-style-3 policy (its 3 style picks all dry while better-fitting candidates exist deeper); flat-item (rug) pairs stay exempt — judge-blessable",
+       "DRY 0.65 = measured gap (clamped swap envelopes 9.94/0.71 vs detections ≤0.61) — flagged constant, re-measure on scene #2"],
+  reads:["compose/fit_check.json (findings)","compose/picks.json (style top-3 + fit order)","compose/shopping.json (candidate lists)"],
+  writes:["compose/fit_walk.json — accumulated walk choices (consumed by fit_preview)","compose/fit_feedback.json — rejections shopping.py consumes on re-run"],
+  note:"The loop: place → jiggle → check → walk, repeat until dry. Ran to dry in 2 passes, ~1 min/cycle, ZERO judge calls inside the loop."},
+rotch: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2a — ROTATION CHECK · CANON v2 08-04 · CLOSING PASS, OUTSIDE THE LOOP (rule 10, user reorder: 'it is expensive')", name:"Rotation check — 4-candidate choice against the detection photo",
   script:"compose/rotation_check.py → out/<scene>/compose/rotation_check.json (+ rotation_check/ stimuli & sheets, review_shots/index.html viewer)",
-  how:["ONE call per referenced object: the mirror-corrected detection photograph (the pano frame is a DEFINED left-right mirror — flipped back, box redrawn; PLAN_SELF_PANO_RIG) + FOUR SEPARATE full-size renders of the object ISOLATED in the test fit at 0/90/180/270°, all from THE PHOTO'S OWN CAMERA (sidecar → pano→raw mirror mapping → render frame; verified by the box self-check, 25/28 within px), compass rose drawn on the floor beside the object in every image → 'which candidate matches the real one?' Degrees = the pick's mapping, IN CODE — never trust model-signed degrees (the '+= CCW' convention text reads inverted vs map semantics; turns are computed from picks/named facings)",
+  how:["WALL-LEGALITY MENU (user 08-05 'take out the strictly illegal options'; the sideways-door lesson): wall-attached items only see candidates that stand IN their wall — legal pair from geometry (wall normal = the box's own thin axis; a sideways placement gets exactly {90,270}, the menu that can fix it); near-square = indeterminate, keep 4; floor items keep 4 (contrast anchors, the annexed-prune lesson). Constrained-menu verdicts apply at ANY confidence (every option legal — worst case is the wrong legal flip); free-standing keep the HIGH-only gate",
+       "POSITION (rule 10, user reorder 08-04 night): OUTSIDE the fit loop — candidate walks and re-shops do NOT re-trigger it; it runs ONCE, on the FINAL walked asset set after the loop dries, user runs/authorizes. The measured_uid gate makes the ordering safe automatically: stale verdicts are inert on new assets (uid mismatch), surviving assets keep their applied yaws (basis-carry). Proven live: the walk's re-pick changed 12 assets and every old verdict went correctly inert",
+       "ONE call per referenced object: the mirror-corrected detection photograph (the pano frame is a DEFINED left-right mirror — flipped back, box redrawn; PLAN_SELF_PANO_RIG) + FOUR SEPARATE full-size renders of the object ISOLATED in the test fit at 0/90/180/270°, all from THE PHOTO'S OWN CAMERA (sidecar → pano→raw mirror mapping → render frame; verified by the box self-check, 25/28 within px), compass rose drawn on the floor beside the object in every image → 'which candidate matches the real one?' Degrees = the pick's mapping, IN CODE — never trust model-signed degrees (the '+= CCW' convention text reads inverted vs map semantics; turns are computed from picks/named facings)",
        "WHY choice won (bed = the day's benchmark, GT 180° reconfirmed by image reading): the judge misread the isolated render's facing 6/6 under every describe variant, but COMPARISON picked the correct 180° candidate first try (79 s, 6 turns). And nothing depends on the asset's canonical front — the root cause of the day: bed asset +z = HEAD while the scene-side pillow rule defines front = FOOT, a 180° semantic gap the face_dot check cannot see. A pick that disagrees with the pose record DOUBLES AS the automatic asset-front auditor",
        "Routing is a LOOKUP, never a judgment: own detection evidence → choice vs own photo · SWAP items → choice vs the REPLACED object's photo, swap declared in the prompt (edit_proposals lineage; the swap placer packs into the out-envelope) · strict adds → plausibility direct ask (nothing to match)",
        "DROPPED ON MEASUREMENT 08-04, recorded so nobody rebuilds them: 8-tile strip (composite unreadable after the harness downscale → judge builds zoom tools, 20–29 turns, a run-killing timeout) · propose→verify (verify coin-flips its own correct answer) · direct-ask-on-render and describe-the-render (stable misperception, 6/6) · metadata-only facing (user: no reliance on asset implied presets). Stimulus rule: the judge answers in ONE LOOK or the format is wrong; one clean folder per call (it reads neighbors)",
        "Ops: calls concurrent in one wave (--jobs 12), failed call = no-answer never run-killer, reply cache is STIMULUS-KEYED (prompt + image bytes — an image-only restyle must not reuse a stale answer), per-call turns/tokens measured via --output-format json",
-       "RECORD ONLY: nothing is applied to fitted_preview — applying yaws is a separate user-gated step"],
-  reads:["compose/fitted_preview.glb/.json (the test-fit poses)","scene_graph.json evidence (view + box_2d + crop) · rig_sp0/crops sidecars (cameras) · graph/crops/","compose/edit_proposals.json (swap lineage)","room shell (walls+floor in every stimulus)"],
+       "RECORD ONLY here — verdicts are DELTAS vs the measured pose (0 = keep; record carries measured_uid + measured_applied_deg): the apply happens in fit_preview's rule-7 gate on one closing place→jiggle pass. Apply-gate proposal (awaiting user): HIGH-confidence non-zero only; low/medium non-zero = flag for the visual judge, never a silent spin — a wrong basket yaw is invisible, a confidently wrong bed yaw is the costly case"],
+  reads:["compose/fitted_preview.glb/.json (the FINAL walked poses — runs after the loop is dry)","scene_graph.json evidence (view + box_2d + crop) · rig_sp0/crops sidecars (cameras) · graph/crops/","compose/edit_proposals.json (swap lineage)","room shell (walls+floor in every stimulus)"],
   writes:["compose/rotation_check.json — per object: pick, mapping, degrees, confidence, verbatim reason, mode, measured cost","compose/rotation_check/ — per-call clean folders (ref, candidates, prompt, reply) + sheets/ + refcam/ (the box self-check pairs)"],
-  note:"Bed benchmark HIT. QUEUED library work born here: ratify per-category front semantics ('bed front = foot end'), store as a tag, flip this bed asset 180° via the fixup channel. Review page: review_shots/index.html."},
-s3: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2 — FIT LOOP · rotation check split out to PH2a 08-04 (rest of loop = design open)", name:"Fit loop — physical fitting, walk the k=3 until fit",
-  script:"next module (design open); consumes PH2a's rotation_check.json",
-  how:["ROTATION FIRST (user ruling 08-03B): every candidate is judged at its best rotation — that check is now its OWN MODULE, PH2a upstream; corrected yaws arrive as input",
-       "Per anchor: place final-candidate #1's real mesh in the box → render → judge → accept or try the next of the k=3 (user: 'run these until fit'); list dry → re-shop with complaint",
-       "Inherits the parked policies: uniform-vs-stretch scaling; facing evidence ladder feeds the pre-spin (PH2a judges the residual)",
-       "After anchors converge: sub rounds per fitted anchor (books onto real shelf levels, handles resolved by the actual door asset)",
-       "Replace edits from the judge re-enter as re-shops of ONE node ('pick object after layout')"],
-  reads:["compose/picks.json final_candidates (k=3 per anchor)","compose/rotation_check.json (PH2a yaw verdicts)","asset meshes (assets_thor loader, yaw-canonicalized)","room shell"],
-  writes:["fitted anchor poses (file contract TBD)"],
-  note:"First test fit (naive #1, no loop) rendered 08-03; PH2a's full-scene choice run is the current gate."},
+  note:"Bed benchmark HIT. QUEUED (user 08-05, approved not wired): FRONT/BACK constraint — pure-wall-attachment items (['wall'], vs doors' wall+floor) get the back side banned; ladder owns their facing, judge opinion = library-front audit flag only; will revert obj_035's 180. QUEUED library work: ratify per-category front semantics ('bed front = foot end'), store as a tag, flip this bed asset 180° via the fixup channel. Review page: review_shots/index.html (choice edition: menus, pick outlined, top views)."},
 ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP + BOX ADJUDICATION · v1 08-01 · v1.2 CACHE+RULINGS 08-02 · R11 OPEN", name:"Snap proposes; flagged boxes get an agent verdict",
   script:"compose/snap.py → out/<scene>/compose/snap.json · donor place2.py math folds in when real meshes arrive",
   how:["v1 (user design 08-01 late, after the curtain-thickness diagnosis): the scripted snap becomes a PROPOSAL (pass A). Clean boxes snap scripted, unchanged. FLAGGED boxes — LARGE where support involves architecture (top pick, an alternate, or the ruled-against candidate) plus every judge suspect_box pointer — form a DOCKET adjudicated by ONE batched sonnet call over a TYPED MENU: ADOPT_REFIT_AND_SNAP · SNAP_AS_IS · NO_SNAP (attribution in doubt — don't bake it in) · DEFER_TO_SURGERY. Shrink-experiment lesson honored: the agent CHOOSES, code EXECUTES — no freehand resizing",
@@ -1158,32 +1222,6 @@ ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP + BOX ADJUDICATION · v1 
   review:[{t:"viewer :8321 — 'snap' review mode (colors by correction size, white ghost = snapped AABB) · serve.py /snap.json",
            h:"http://localhost:8321/?scene=bedroom_marble"}],
   note:"The sandbox in action: measured walls + observed boxes = the whole physics world. Same snap contract poses real meshes after the PH2 fit loop."},
-ph2: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH3 — COLLIDE GATE · DESIGN (mesh-only, user 07-27; renumbered PH2→PH3 08-03B)", name:"Collision gate",
-  script:"donor: collide.py (solid-voxel occupancy, 3 cm pitch, RATIO_MAX 0.05)",
-  how:["USER RULING 07-27: collision is checked PER SELECTED MODEL — mesh-level, never box-vs-box (boxes drown in false contacts: every book 'collides' with its shelf, while real mesh clearance goes unmeasured)",
-       "Therefore this module waits for the PH2 fit loop to produce placed meshes; accept/reject deterministic",
-       "Rejection reasons feed back into the next loop proposal (proven pattern from loop run 3)"],
-  reads:["posed cast + placed meshes (post-shopping)"],
-  writes:["legal arrangement + collision report (viewer 'collisions' layer)"],
-  note:"Second, finer gate after snap — pure code, no model."},
-ph3: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH4 — BOX SURGERY · DESIGN (renumbered PH3→PH4 08-03B)", name:"Box surgery — the work orders land here",
-  script:"donor: materialize_verdicts.py --shrink (retired at the graph stage, by contract)",
-  how:["The graph ships boxes VERBATIM; fixing them is THIS stage's job (stage contract, user 07-26)",
-       "Work orders: obj_014 curtain / obj_109 chair / obj_023 shelf suspect boxes + open deep-box flags (obj_035/obj_096, obj_083)",
-       "Shrink-experiment lessons recorded for this module: BAD_MENU verdict distinct from KEEP · partner-box cuts on the same menu · shell wall-orientation in cut descriptions · no pattern-matchable concrete examples in templates"],
-  reads:["legal arrangement + the graph's suspect-box provenance"],
-  writes:["corrected boxes/placements (recorded as edits, contract TBD)"],
-  note:"The one place geometry may be edited — and every edit is journaled, never silent."},
-lp3: {mod:"comp", eyebrow:"STEP 3 · JUDGE — closes the loop · MANUAL FOR NOW", name:"Render + judge — close the loop",
-  script:"donor code: render_judge_views.py (7 same-standpoint views) + loop.py verify/journal machinery",
-  how:["Composed render vs target splat render, same cameras; critique proposes TYPED edits",
-       "SEMANTIC edits (add / delete / replace) re-enter S4 screening; PHYSICAL edits (move / nudge) re-enter PH1 snap",
-       "Add/delete proposal sources: render comparison vs target · the graph's own provenance flags · physics-as-evidence (an object that repeatedly fails to rest/fit is a delete candidate)",
-       "An add must DECLARE its support (floor / wall / on-anchor) — physically checkable the moment it is proposed",
-       "Known weak link from loop runs 1–4: verify sensitivity (crop-zoom or stronger judge = next lever)"],
-  reads:["composed renders + target splat renders + edit journal"],
-  writes:["append-only edit journal — doubles as Reflexion memory and the paper trace"],
-  note:"MANUAL REVIEW FOR NOW (user 07-26): the user judges renders; the VLM judge grows in after both halves stand."},
 realscan: {mod:"frozen", eyebrow:"STEP 1 · WORLD — alternative source (frozen)", name:"Real-scan leg",
   script:"01_inspect → 02_clean → 03/04 render/orbit → 05_planview · decode_sog · decompress_interiorgs · find_bedroom",
   how:["Start from a scanned real room (a capture dataset) instead of a generated one",

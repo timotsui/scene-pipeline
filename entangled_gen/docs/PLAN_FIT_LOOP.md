@@ -162,6 +162,13 @@ visual judge round vs refcam photos → obj_058-style walk-past-the-3
 policy → sub rounds (the 64 deferred subs) → PH3 collide gate at
 convergence. Map edits queued: fit_check/fit_declip/fit_walk/
 fit_feedback nodes + PH2a repositioned outside the loop.
+[08-05 UPDATE: map edits DONE (user-approved drawing; PH2a = stage
+terminus); closing rotation check RUN + applied (see CANON 08-05
+below); PH3 collide + PH4 surgery + JUDGE RETIRED from the map
+entirely (collide absorbed by fit_check, surgery → PH1 refit +
+walk-back, judging = dev-time review, not drawn). NEXT SESSION
+(user): SUB ROUNDS — the 64 deferred subs onto their fitted
+anchors' real mesh surfaces.]
 REFACTOR CANDIDATE (ratified direction, not urgent): unify the three
 attachment mechanisms (judged mount / wall+floor dual attachment /
 hug lock) into ONE box-derived attachment SET per item — every shell
@@ -242,6 +249,62 @@ describe (front/axis/NONE — the basket self-classified "none" at 9 s;
 the natural router if the tail ever matters). Rotation check CLOSED as
 a research topic; remaining decision = the apply gate, then it's just
 a stage that runs.
+
+## CANON 2026-08-05 — WALL-LEGALITY MENU (user: "take out the strictly
+## illegal options"; born from the sideways-door incident)
+
+The first closing-pass apply turned door obj_128 and picture obj_017
+SIDEWAYS: the 4-candidate menu offered wall items poses perpendicular
+to their wall, and the judge — correctly matching hinge/handle sides in
+pixels — expressed its answer as an illegal pose at HIGH confidence
+(obj_128's metre-wide face stood out of its 0.13 m-thin wall box).
+
+**Rule (rotation_check.py legal_spins, ON by default):** a
+wall-attached item (attachment set from fitted_preview — box-derived)
+only ever sees candidates that stand IN its wall. The wall normal is
+the observed box's own thin axis; 0/180 keep the as-placed footprint,
+90/270 swap it — so the legal pair depends on how the mesh currently
+stands, and a sideways placement gets exactly {90,270}, the menu that
+can fix it. Near-square footprints (mesh or box, ratio < 1.15) are
+indeterminate → keep all 4. DISTINCT from the annexed footprint-prune:
+that pruned by FIT on free-standing items (bed benchmark broke); this
+bans PHYSICALLY IMPOSSIBLE poses on wall items only — floor items keep
+their 4 contrast anchors.
+
+**Gate extension (fit_preview):** a verdict from a legality-CONSTRAINED
+menu applies at ANY confidence — every offered option is legal, so the
+worst case is the wrong legal flip, never a sideways door. Free-standing
+items keep the HIGH-only gate. (User framing: "as long as it looks
+plausible its good.")
+
+Constrained re-run (31/31, wave 376 s): the sideways pair self-corrected
+(obj_017 −90 on its 90 basis = net 0, back to original flush; obj_128
++90 on 90 = net 180, in-wall with the hinge side the judge kept
+insisting on) + obj_035 picture 180 HIGH caught by the [0,180] menu.
+obj_127's old +90 medium flag dissolved to 0 HIGH on the legal menu.
+Wall-item calls got cheap and fast (4 turns, 11–35 s — one look).
+fit_check after apply: 0 OOB, 9 residual clips (rug-class + grazes).
+Review page (build_rotq_viewer.py) now shows the multiple choice the
+judge saw (pick outlined) + a TOP-DOWN pair per object (splat
+ceiling-clipped | as placed, same overhead camera — USER-view aid only;
+top-down as a judge stimulus stays annexed below).
+
+**QUEUED NEXT (user 08-05, approved in principle, NOT yet wired —
+session wrapped first): FRONT/BACK CONSTRAINT.** "For objects on walls
+that has a clear front and back, like pictures, the back side is not
+allowed." Design settled in discussion: the discriminator is PURE-WALL
+ATTACHMENT (attachment == ['wall'] — pictures/AC/curtain) vs dual
+wall+floor (doors keep their [0,180] hinge question); for pure-wall
+items the facing ladder already places front-out, so geometry fully
+constrains the pose (= ruling 3 realized): rotation_check should skip/
+lock their calls (record-only audit at most — a non-zero judge opinion
+= library-front flag for the fixup channel, NEVER an applied spin) and
+fit_preview should ignore rotation deltas for them (ladder owns
+facing). NOTE this REVERTS obj_035's applied 180 (its back may
+currently face out — user saw it before wrapping). Known warts stated
+and accepted for now: refcam box-check MISS = position disagreement
+(placed box vs detection box, offset/IoU), and the object-framed crop
+clips the object when the box is offset.
 
 ## ANNEXED 2026-08-05 — TOP-DOWN STIMULUS, REJECTED ON MEASUREMENT
 ## (user: "ok nvm this is not a great approach. annex it")
