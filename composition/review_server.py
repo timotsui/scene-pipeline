@@ -54,16 +54,20 @@ PAGE = """<!doctype html><meta charset="utf-8"><title>retrieval inspection</titl
    box-shadow:0 0 14px rgba(63,208,106,.35)}
  .fitbadge{position:absolute;top:10px;left:10px;background:#3fd06a;color:#0c1410;
    font-weight:700;font-size:10.5px;padding:1px 7px;border-radius:9px}
+ #links a{color:#59c2ff;text-decoration:none;margin-right:10px;font-size:12px}
+ .stylenote{color:#c9a2e8;font-size:12px;margin:0 0 4px}
+ .judgerow{display:block;max-width:100%;height:110px;object-fit:contain;
+   object-position:left;border:1px solid #333;border-radius:4px;margin:2px 0 6px}
 </style>
 <header><h1 id="title"></h1><span id="prog"></span>
 <span style="color:#667">inspection only &middot; sizes = extents along x y z
-in cm (y = up) &middot; ↻90° about y = quarter-turn around the vertical axis
-&middot; ⟳ re-upped = mis-authored mesh stood upright (thumb shows corrected
-orientation) &middot; ×N = uniform rescale &middot; clip/txt = crop-vs-thumb /
-crop-vs-description similarity &middot; glowing frame = fits INSIDE the box at
-native size &middot; blue PICK = the automated C5 choice, #n = finalist rank
-(top-N)</span>
-</header><div id="rows"></div>
+in cm (y = up) &middot; NATIVE SIZE ONLY — no rescale &middot; ↻90° about y =
+quarter-turn around the vertical axis &middot; ×N tiles = side-by-side copies
+&middot; dev = worst-axis size deviation vs the box (lower = better fit)
+&middot; glowing frame + FITS = every axis within 15% &middot; boxes are loose:
+15% is the strict mark, nothing is ruled out for missing it</span>
+</header><div id="links" style="padding:6px 18px;background:#191c23;border-bottom:1px solid #2a2d36"></div>
+<div id="rows"></div>
 <script>
 const AX = {x:0, y:1, z:2};
 function fitsInside(c, boxM){
@@ -85,14 +89,14 @@ async function main(){
     const flag = b.match_tier===3 ? ' <span class="flag">UNMATCHED</span>'
                : b.match_tier==='agent' ? ' <span class="flag">agent-mapped</span>' : '';
     const pk = (DATA.picks||{})[b.id];
-    const card = (c, badge)=>{
+    const card = (c, badge, extra='')=>{
       const tile = c.k>1 ? ` ×${c.k}` : '';
       const [ax,ay,az] = c.size_cm;
       const perm = c.perm || 'xyz';
       const rot = perm==='xyz' ? '' :
         perm==='zyx' ? ' <span class="rot">↻90° about y</span>' :
         ` <span class="reup">⟳ re-upped: asset ${perm[1]} → up</span>`;
-      const fits = fitsInside(c, b.size);
+      const fits = c.fits!=null ? c.fits : fitsInside(c, b.size);
       const clip = c.clip!=null ? ` · clip ${c.clip.toFixed(3)}` : '';
       const ctxt = c.clip_txt!=null ? ` · txt ${c.clip_txt.toFixed(3)}` : '';
       const stem = perm==='xyz' ? c.uid : `${c.uid}_${perm}`;
@@ -102,21 +106,57 @@ async function main(){
         const ai = pk.alternates.findIndex(a=>a.uid===c.uid);
         if (ai >= 0) altRank = ai + 2;
       }
+      const dev = c.fits!=null ?
+        ` · <span class="${c.fits?'sc':'rot'}">dev ${(c.score*100).toFixed(0)}%</span>` : '';
+      const sc = (c.scale==null || c.scale===1) ? '' : ` · ×${c.scale.toFixed(2)}`;
       return `<div class="card${fits ? ' fits' : ''}${picked ? ' picked' : ''}${altRank ? ' alt' : ''}"
-        title="fit score ${c.score.toFixed(3)} (lower = better)">
+        title="fit = worst-axis deviation ${c.score.toFixed(3)} (lower = better)">
         ${fits ? '<span class="fitbadge">FITS</span>' : ''}
         ${picked ? '<span class="pickbadge">PICK</span>' : ''}
         ${altRank ? `<span class="altbadge">#${altRank}</span>` : ''}
         <img loading="lazy" src="thumb/${stem}">
         <div><span class="sc">${badge}</span> ${c.category}${tile}</div>
-        <div>x${ax} y${ay} z${az} cm${rot} · ×${c.scale.toFixed(2)}${clip}${ctxt}</div>
+        <div>x${ax} y${ay} z${az} cm${rot}${sc}${dev}${clip}${ctxt}${extra}</div>
         <div class="desc">${c.description}</div></div>`;
     };
-    b.candidates.forEach(c=>{ if (fitsInside(c, b.size)) nFit++; });
+    b.candidates.forEach(c=>{ if (c.fits!=null ? c.fits : fitsInside(c, b.size)) nFit++; });
     const dimCards = b.candidates.map((c,i)=>card(c, `fit #${i+1}`)).join('');
     const hasClip = b.candidates.some(c=>c.clip!=null);
     let strips = `<div class="striplabel">dimension fit</div>
                   <div class="cards">${dimCards}</div>`;
+    const tp = (DATA.textpick||{})[b.id];
+    if (tp){
+      // dev experiment strip: the TEXT+MOOD judge's single top pick --
+      // this is what the 3D viewer's fitted-preview currently holds
+      const c = b.candidates.find(c=>c.uid.startsWith(tp.uid));
+      if (c) strips = `<div class="striplabel">text-judge #1 (text+mood
+        experiment — currently placed in the 3D viewer)</div>
+        ${tp.notes ? `<div class="stylenote">text judge: ${tp.notes}</div>` : ''}
+        <div class="cards">${card(c, 'text #1')}</div>` + strips;
+    }
+    const rr = (DATA.rerank||{})[b.id];
+    if (rr && rr.length){
+      // style strip (compose/pick.py): the looks judge's own order,
+      // SEPARATE from fit -- each card cites its fit rank for contrast
+      const cardsArr = rr.map((p,i)=>{
+        const ft = p.fit_rank!=null ? ` · fit #${p.fit_rank+1}` : '';
+        return card(p, `style #${i+1}`, ft);
+      });
+      // final shortlist rule (user 08-03B): shopping ends at the style
+      // top 3 -- blue divider separates the kept 3 from the rest
+      const styleCards = cardsArr.length > 3
+        ? cardsArr.slice(0,3).join('')
+          + '<div style="flex:0 0 3px;background:#59c2ff;border-radius:2px"></div>'
+          + cardsArr.slice(3).join('')
+        : cardsArr.join('');
+      const sn = (DATA.style||{})[b.id];
+      strips = `<div class="striplabel">style order — ${DATA.rerank_src||''}</div>
+        ${sn ? `<div class="stylenote">style judge: ${sn}</div>` : ''}
+        <div class="striplabel">what the judge saw (numbers = its candidate ids)</div>
+        <img class="judgerow" loading="lazy" src="picksheet/row_${b.id}.png"
+             onerror="this.previousElementSibling.remove();this.remove()">
+        <div class="cards">${styleCards}</div>` + strips;
+    }
     if (hasClip){
       const byClip = b.candidates.slice()
         .sort((p,q)=>(q.clip??-9)-(p.clip??-9));
@@ -132,12 +172,54 @@ async function main(){
   }
   document.getElementById('prog').textContent =
     DATA.boxes.length + ' boxes · ' + nFit + ' in-bounds candidates';
+  const L = document.getElementById('links');
+  if (DATA.sheets){
+    let h = `<a href="picksheet/${DATA.sheets.mood}" target="_blank">mood sheet</a>`;
+    DATA.sheets.batches.forEach((s,i)=>{
+      h += `<a href="picksheet/${s.sheet}" target="_blank">sheet ${i}</a>`;
+    });
+    DATA.sheets.batches.forEach((s,i)=>{
+      h += `<a href="picksheet/${s.prompt}" target="_blank">prompt ${i}</a>`;
+    });
+    L.innerHTML = '<span style="color:#7f87a0">pick review artifacts:</span> ' + h;
+  } else L.style.display = 'none';
 }
 main();
 </script>"""
 
 
-def serve(sc, port, boxes=None):
+def pick_extras(compose_dir):
+    """Live-read the pick stage's outputs (compose/pick.py) for the
+    shopping viewer: picks.json once the style-judged run exists, plus
+    the sheets manifest for the review links. Read per request so a
+    pick.py re-run shows on browser reload -- never served stale.
+    (Orientation is NOT part of the pick -- separate later step, user
+    ruling 08-03.)"""
+    sdir = compose_dir / "pick_sheets"
+    out = {}
+    pj = compose_dir / "picks.json"
+    if pj.exists():
+        d = json.loads(pj.read_text(encoding="utf-8"))
+        out["rerank"] = {it["id"]: it["style_ranked"]
+                         for it in d["items"] if it.get("style_ranked")}
+        out["style"] = {it["id"]: it["style_notes"] for it in d["items"]
+                        if it.get("style_notes")}
+        out["rerank_src"] = ("STYLE ONLY (looks judge; separate from "
+                             "fit, not blended) — left of the blue bar "
+                             "= the FINAL k=3 shortlist")
+    tx = sdir / "text_mood_results.json"
+    if tx.exists():   # dev experiment: text+mood judge's #1 per item
+        d = json.loads(tx.read_text(encoding="utf-8"))
+        out["textpick"] = {r["id"]: {"uid": r["top1"]["uid"],
+                                     "notes": r.get("notes", "")}
+                           for r in d["rows"]}
+    sm = sdir / "sheets_manifest.json"
+    if sm.exists():
+        out["sheets"] = json.loads(sm.read_text(encoding="utf-8"))
+    return out
+
+
+def serve(sc, port, boxes=None, pick_dir=None):
     pkg = paths.package_dir(sc)
     if boxes is None:
         boxes = json.loads((pkg / "shortlists2.json").read_text())["boxes"]
@@ -158,8 +240,9 @@ def serve(sc, port, boxes=None):
             elif p == "/data":
                 pf = pkg / "picks2.json"
                 picks = json.loads(pf.read_text()) if pf.exists() else {}
+                extra = pick_extras(pick_dir) if pick_dir else {}
                 self._send(json.dumps({"scene": sc, "boxes": boxes,
-                                       "picks": picks}).encode())
+                                       "picks": picks, **extra}).encode())
             elif p.startswith("/thumb/"):
                 f = thumb_path(p.split("/")[-1])
                 self._send(f.read_bytes(), "image/png") if f.exists() \
@@ -168,6 +251,18 @@ def serve(sc, port, boxes=None):
                 f = cdir / f'{p.split("/")[-1]}.png'
                 self._send(f.read_bytes(), "image/png") if f.exists() \
                     else self.send_error(404)
+            elif p.startswith("/picksheet/") and pick_dir:
+                name = p.split("/")[-1]
+                sdir = (pick_dir / "pick_sheets").resolve()
+                f = sdir / name
+                if f.exists() and f.resolve().parent == sdir:
+                    ct = ("image/png" if name.endswith(".png")
+                          else "application/json"
+                          if name.endswith(".json")
+                          else "text/plain; charset=utf-8")
+                    self._send(f.read_bytes(), ct)
+                else:
+                    self.send_error(404)
             else:
                 self.send_error(404)
 
@@ -208,7 +303,8 @@ if __name__ == "__main__":
     if args.shopping:
         boxes = shopping_boxes(args.scene)
         make_crops(args.scene, boxes, force=True)
-        serve(args.scene, args.port, boxes)
+        serve(args.scene, args.port, boxes,
+              pick_dir=paths.compose_dir(args.scene))
     else:
         sl = json.loads((paths.package_dir(args.scene)
                          / "shortlists2.json").read_text())

@@ -236,8 +236,63 @@ highPts.visible = !$('clipCeil').checked;
 // Real sorted alpha-blended gaussians, lazy-loaded from /splat.ply on first
 // toggle. Lives inside worldGroup, so display-rot + all overlays apply
 // unchanged; coords stay RAW frame (same file the dots came from).
-// Ceiling clip is dots-only (no per-gaussian clipping in the lib).
+// Ceiling clip applies to BOTH layers since 2026-08-05 (see patchSplatClip).
 let splatLayer = null, splatLoading = false;
+
+// ---- per-gaussian ceiling clip (2026-08-05) ----
+// The lib exposes no clipping API and three's clippingPlanes don't reach a
+// hand-rolled ShaderMaterial, so we string-patch its splat vertex shader in
+// onBeforeCompile. The cut is the SAME TEST the dots use (see the idxLow /
+// idxHigh split above): drop a gaussian whose CENTER sits within CLIP_MARGIN
+// of the ceiling. Both layers read the same raw-frame ceilY/upSign, so the
+// two cuts are the same plane — toggling hi-fi must not move the ceiling.
+// Discard idiom (off-screen gl_Position) is the lib's own, copied from its
+// scene-visibility and frustum-cull early-outs.
+// NOTE: this patches a VENDORED build. If either anchor stops matching after
+// a lib update, we fail loud and fall back to no hi-fi clip rather than
+// silently rendering an unclipped ceiling.
+const CLIP_MARGIN = 0.25;                        // m below ceiling; mirrors the dots
+const CLIP_ANCHOR = 'vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));';
+const CLIP_PREC   = 'precision highp float;';    // uniform decls go after this
+const CLIP_OFF    = 1e9;                         // threshold that never triggers
+let clipPatchBroken = false;
+function patchSplatClip() {
+  const mat = splatLayer && splatLayer.splatMesh && splatLayer.splatMesh.material;
+  // the mesh rebuilds its material during progressive load, so this is called
+  // every frame and re-patches whatever material is currently mounted
+  if (!mat || mat.userData.ceilClip || clipPatchBroken) return;
+  const src = mat.vertexShader || '';
+  if (src.indexOf(CLIP_ANCHOR) < 0 || src.indexOf(CLIP_PREC) < 0) {
+    clipPatchBroken = true;
+    console.error('[clip] splat shader anchors not found — vendored ' +
+                  'gaussian-splats-3d changed; hi-fi ceiling clip disabled');
+    $('hifiNote').textContent = ' ⚠ hi-fi ceiling clip UNAVAILABLE (shader ' +
+                               'patch failed — see console); dots clip only';
+    return;
+  }
+  mat.uniforms.uCeilY  = { value: ceilY };
+  mat.uniforms.uUpSign = { value: upSign };
+  mat.uniforms.uClipT  = { value: CLIP_OFF };
+  mat.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader
+      .replace(CLIP_PREC, CLIP_PREC +
+        '\nuniform float uCeilY;\nuniform float uUpSign;\nuniform float uClipT;')
+      .replace(CLIP_ANCHOR, CLIP_ANCHOR +
+        '\n            if ((splatCenter.y - uCeilY) * uUpSign >= uClipT) {' +
+        '\n                gl_Position = vec4(0.0, 0.0, 2.0, 1.0);' +
+        '\n                return;' +
+        '\n            }');
+  };
+  mat.userData.ceilClip = true;
+  mat.needsUpdate = true;   // re-acquires the program; three nulls uniformsList
+  applyHifiClip();
+}
+function applyHifiClip() {
+  const mat = splatLayer && splatLayer.splatMesh && splatLayer.splatMesh.material;
+  if (!mat || !mat.userData.ceilClip) return;
+  mat.uniforms.uClipT.value = $('clipCeil').checked ? -CLIP_MARGIN : CLIP_OFF;
+  mat.uniformsNeedUpdate = true;
+}
 // master splat visibility: the "splat" checkbox hides BOTH the dots and the
 // hi-fi layer (grid/boxes/composed stay), so furniture can be judged clean
 function applySplatVis() {
@@ -252,7 +307,7 @@ $('showSplat').onchange = () => {
   // splat defaults OFF at load, so the hi-fi layer lazy-loads on first show
   if ($('showSplat').checked && $('hifi').checked && !splatLayer) enableHifi(true);
 };
-$('clipCeil').onchange = applySplatVis;
+$('clipCeil').onchange = () => { applySplatVis(); applyHifiClip(); };
 async function enableHifi(on) {
   const note = $('hifiNote');
   if (!on) {
@@ -281,9 +336,10 @@ async function enableHifi(on) {
       format: GaussianSplats3D.SceneFormat.Ply,
     });
     worldGroup.add(splatLayer);
+    patchSplatClip();          // before the first render of this layer
     applySplatVis();
     note.textContent = '';
-    msg('hi-fi splats on (dots hidden; ceiling clip is dots-only)');
+    msg('hi-fi splats on (dots hidden; ceiling clip applies to both)');
   } catch (err) {
     console.error('splat load failed', err);
     note.textContent = ' splat FAILED: ' + (err && err.message ? err.message : err) + ' — back to dots';
@@ -721,6 +777,12 @@ try {
   try { fitL = await (await fetch('fitted_preview.json?' + sq)).json(); }
   catch (e) { /* not built */ }
   fitL = freshOrNull(fitL, 'fitted preview');
+  // fit_check layer (compose/fit_check.py): deterministic bounds+clip
+  // report over the placed preview meshes
+  let fcL = null;
+  try { fcL = await (await fetch('fit_check.json?' + sq)).json(); }
+  catch (e) { /* not built */ }
+  fcL = freshOrNull(fcL, 'fit check');
   const epById = {};
   if (epL) (epL.deletes || []).forEach(d => epById[d.id] = d);
   const epRevCat = id => {
@@ -1318,10 +1380,22 @@ try {
       if ((((n.appearance || {}).facing) || {}).world_dir &&
           (fitAnchorIds.has(n.id) || fitSubIds.has(n.id))) fitArrowN++;
     });
+    // fit-check finding categories: out-of-bounds beats clipping when both
+    const fcOob = new Set(), fcClip = new Map();   // id -> worst litres
+    if (fcL) {
+      (fcL.items || []).forEach(it => {
+        if ((it.bounds || []).length) fcOob.add(it.id); });
+      (fcL.clips || []).forEach(p => {
+        for (const id of [p.a, p.b])
+          fcClip.set(id, Math.max(fcClip.get(id) || 0, p.overlap_l || 0));
+      });
+    }
     const stTag = L => (L && L.stale) ? ' ⚠ stale' : '';
     const viewOpts = [];
     if (useSb && shopL)
       viewOpts.push(['fit', 'fit set (to place)' + stTag(shopL)]);
+    if (useSb && fcL)
+      viewOpts.push(['check', 'fit check' + stTag(fcL)]);
     if (useSb && snL)
       viewOpts.push(['snapped', 'snapped preview' + stTag(snL)]);
     if (useSb && epL)
@@ -1350,7 +1424,13 @@ try {
       fit: '<span style="color:#9fd8ff">to place: anchors ' +
           fitAnchorIds.size + '</span> · subs (dim) ' + fitSubIds.size +
           ' · <span style="color:#00e5ff">front arrows ' + fitArrowN +
-          '</span> · swapped-out / removed hidden',
+          '</span> · boxes AT snapped fit-target positions · ' +
+          'swapped-out / removed hidden',
+      check: (fcL ? '<span style="color:#ff4444">out of bounds ' +
+          fcOob.size + '</span> · <span style="color:#ffa020">clipping ' +
+          fcClip.size + '</span> · pairs ' +
+          ((fcL.clips || []).length) +
+          ' · red wire = overlap regions' : ''),
       anchors: 'anchors ' + jAnchN + ': <span style="color:#ffa64d">floor ' +
           jTierN.floor + '</span> · <span style="color:#44ddff">wall ' +
           jTierN.wall + '</span> · <span style="color:#c09aff">ceiling ' +
@@ -1379,7 +1459,9 @@ try {
       plain: ''
     };
     const VIEW_TIP = {
-      fit: 'ONLY the objects the fit loop will place: bright = anchor ' +
+      fit: 'ONLY the objects the fit loop will place, drawn AT their ' +
+          'SNAPPED fit-target positions (compose/snap.json — the box ' +
+          'fit_preview actually places into): bright = anchor ' +
           'items being shopped now (real detections + blue add boxes + ' +
           'green swap-in boxes), dim = their sub-objects (shopped per ' +
           'anchor after it fits). Everything else (swapped-out, ' +
@@ -1388,6 +1470,14 @@ try {
           'box compass); faint whisker = the raw witness observation ' +
           '(45°-quantized: 4 camera-relative answers × 45°-step ' +
           'camera yaws)',
+      check: 'compose/fit_check.py findings on the PLACED MESHES ' +
+          '(deterministic, report-only): red = mesh outside the shell ' +
+          '(wall/floor/ceiling penetration > 5 mm), orange = ' +
+          'interpenetrating another mesh (2 cm lattice; touching ' +
+          'passes), dim = physically clean. Red wireframes = the ' +
+          'AABB overlap region of each clipping pair. Boxes drawn at ' +
+          'snapped fit-target positions; tick "fitted preview" to see ' +
+          'the meshes themselves',
       anchors: jFocusTitle,
       support: 'box colors = the supported_by module\'s decisions: ' +
           'yellow = demoted vs the crude touch rule, magenta = ' +
@@ -1474,6 +1564,10 @@ try {
           col = isA ? 0x9fd8ff : jOrigBase.get(en);
           dim = !isA;
           en.grp.visible = en.grp.visible && (isA || isS);
+        } else if (mode === 'check') {
+          const oob = fcOob.has(en.jn.id), cl = fcClip.has(en.jn.id);
+          col = oob ? 0xff4444 : cl ? 0xffa020 : jOrigBase.get(en);
+          dim = !oob && !cl;
         } else if (mode === 'edits') {
           const cat = epRevCat(en.jn.id);
           col = EP_REV_COL[cat] || jOrigBase.get(en);
@@ -1519,6 +1613,23 @@ try {
     // visible while snap review mode is on.
     const snGhosts = new THREE.Group(); judgedGroup.add(snGhosts);
     snGhosts.visible = false;
+    // fit-check overlap regions: red wire box per clipping pair (AABB
+    // intersection, raw frame from fit_check.json); check mode only
+    const fcGhosts = new THREE.Group(); judgedGroup.add(fcGhosts);
+    fcGhosts.visible = false;
+    if (fcL) for (const p of (fcL.clips || [])) {
+      const b = p.overlap_box_raw;
+      if (!b) continue;
+      const c = [0, 1, 2].map(i => (b.mn[i] + b.mx[i]) / 2);
+      const s = [0, 1, 2].map(i => Math.max(0.01, b.mx[i] - b.mn[i]));
+      const geo = new THREE.BoxGeometry(s[0], s[1], s[2]);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+          new THREE.LineBasicMaterial({ color: 0xff4444,
+              transparent: true, opacity: 0.9, depthTest: false }));
+      edges.renderOrder = 202;
+      edges.position.set(c[0], c[1], c[2]);
+      fcGhosts.add(edges);
+    }
     if (useSb && snL) {
       for (const o of (snL.objects || [])) {
         const jn = jById[o.id];
@@ -1782,13 +1893,17 @@ try {
       const mode = jMode();
       sbArrows.visible = mode === 'anchors' || mode === 'support';
       snGhosts.visible = mode === 'snap';
+      fcGhosts.visible = mode === 'check';
       epAdds.visible = mode === 'edits';
-      fitGroup.visible = mode === 'fit';
+      fitGroup.visible = mode === 'fit' || mode === 'check';
       for (const en of jEntries) {
         if (!en.jn) continue;
         let c = en.jn.geometry.center;
         let f = null;   // per-axis scale factors (refit size / graph size)
-        const sn = mode === 'snapped' && snL && snById[en.jn.id];
+        // 'fit'/'check' show boxes AT snapped positions too (user 08-04:
+        // the snapped box IS the fit target — fit_preview places into it)
+        const sn = (mode === 'snapped' || mode === 'fit' ||
+                    mode === 'check') && snL && snById[en.jn.id];
         if (sn && sn.snapped_aabb) {
           const a = sn.snapped_aabb;
           c = [(a.mn[0] + a.mx[0]) / 2, (a.mn[1] + a.mx[1]) / 2,
@@ -1810,7 +1925,7 @@ try {
       }
       const inf = $('jViewInfo');
       if (inf) {
-        const stMap = { fit: shopL, snapped: snL, snap: snL,
+        const stMap = { fit: shopL, check: fcL, snapped: snL, snap: snL,
                         edits: epL, consistency: csL,
                         support: sbL, anchors: sbL };
         const stL = stMap[mode];
@@ -2740,7 +2855,11 @@ function flyStep() {
   controls.target.add(mv);
 }
 
-renderer.setAnimationLoop(() => { flyStep(); controls.update(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(() => {
+  flyStep(); controls.update();
+  patchSplatClip();   // cheap no-op once patched; re-arms after a mesh rebuild
+  renderer.render(scene, camera);
+});
 </script>
 </body>
 </html>

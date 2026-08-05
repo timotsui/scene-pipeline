@@ -68,7 +68,7 @@ import paths  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
-CONCURRENCY = 3
+CONCURRENCY = 8   # 3 until 2026-08-04; compute is cloud-side, local lanes are couriers (user ruling; measured 2.5x at 6 lanes, contention not crash risk)
 CROPS_PER_NODE = 2
 VERDICTS = ("SAME", "DISTINCT")
 PROMPT_VERSION = "2"       # bump on ANY prompt change -- salted into the

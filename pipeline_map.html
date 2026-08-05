@@ -274,13 +274,18 @@
     <p><b>The last stage is a LOOP over two SUB-STAGES, each a chain of
     modules.</b> 3.1 SEMANTIC decides WHAT (S1 supported_by → S2
     consistency → PH1 snap (physical evidence, drawn in run order) →
-    S3 propose edits → S4 shopping = ordered candidates per anchor →
-    S5 fit loop; SCREENING DISSOLVED 08-02/03 (sandbox ruling: no
+    S3 propose edits → S4 shopping + style pick = native-size fit
+    candidates, image style judge ranks the top 8, TOP 3 ship per
+    anchor — the k=3 canon 08-03B, and the SEMANTIC→PHYSICAL handoff
+    baton; SCREENING DISSOLVED 08-02/03 (sandbox ruling: no
     truth gate — the filter is shopping's library-match step, NO_MATCH
     → not bought); add / delete / replace edits re-enter as re-shops);
-    3.2 PHYSICAL decides WHERE at mesh time
-    (PH2 collide gate → PH3 box surgery — deterministic, the LLM never
-    gets to violate physics; the suspect-box work orders land in PH3).
+    3.2 PHYSICAL decides WHERE at mesh time (PH2 fit loop — moved from
+    semantic 08-03B: with k=3 the WHAT is decided upstream, choosing
+    among 3 pre-approved candidates is a tiebreak and the loop's real
+    work is mesh placement → PH3 collide gate → PH4 box surgery —
+    deterministic, the LLM never
+    gets to violate physics; the suspect-box work orders land in PH4).
     Loop arrows are omitted from the drawing for clarity (08-01); the
     re-entry contract stands.
     Working set = <b>ANCHORS first</b>: anchor = any object with a
@@ -318,7 +323,7 @@
     <div class="phase-h"><span class="phase-n">DATAFLOW</span>
       <span class="phase-t">1 WORLD → 2 ANALYSIS (observe · detect · lift · place) → 3 COMPOSE+LOOP · one canonical lane + side references</span></div>
     <div class="phase-body">
-    <svg class="pipe" viewBox="0 0 800 2464" role="img"
+    <svg class="pipe" viewBox="0 0 800 2510" role="img"
          aria-label="scene-pipeline dataflow graph">
       <defs>
         <marker id="ah-eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
@@ -603,18 +608,18 @@
            ANCHORS first (arch-supported objects); dependents follow.
            The old C1–C7 chain is RETIRED from the map (07-30); its
            donor code stays on disk, lessons in S4_SHOPPING_DESIGN_NOTES. -->
-      <text class="plabel pl-comp" x="8" y="1734">STEP 3 · COMPOSE + LOOP — SUB-STAGES 3.1 SEMANTIC · 3.2 PHYSICAL (DESIGN 07-26)</text>
+      <text class="plabel pl-comp" x="8" y="1734">STEP 3 · COMPOSE + LOOP — SUB-STAGES 3.1 SEMANTIC · 3.2 PHYSICAL (DESIGN 07-26 · FIT LOOP → PHYSICAL 08-03B)</text>
       <path class="edge e-eg" d="M392,1664 V1746" marker-end="url(#ah-eg)"/>
       <text class="elab" x="398" y="1708">scene-graph state — all layers (resolved = canonical; sandbox rides inside)</text>
 
       <!-- sub-stage bands (new-lane width only; old column excluded) -->
-      <rect x="0" y="1740" width="524" height="416" fill="var(--ink)" opacity="0.035"/>
-      <rect x="0" y="2184" width="524" height="158" fill="var(--ink)" opacity="0.035"/>
+      <rect x="0" y="1740" width="524" height="348" fill="var(--ink)" opacity="0.035"/>
+      <rect x="0" y="2092" width="524" height="250" fill="var(--ink)" opacity="0.035"/>
       <text class="plabel pl-bus" style="font-size:15px" x="24" y="1764">3.1 SEMANTIC — WHAT (PH1 snap runs mid-lane as evidence)</text>
       <text class="elab" x="24" y="1780">each arrow = the full scene-graph state;</text>
       <text class="elab" x="24" y="1792">a module's write joins the state ·</text>
       <text class="elab" x="24" y="1804">upstream rerun ⇒ downstream layers stale</text>
-      <text class="plabel pl-bus" style="font-size:15px" x="24" y="2208">3.2 PHYSICAL — WHERE, LEGALLY (mesh-time)</text>
+      <text class="plabel pl-bus" style="font-size:15px" x="24" y="2112">3.2 PHYSICAL — WHERE, LEGALLY (mesh-time)</text>
 
       <g class="node" data-k="lp0" transform="translate(276,1748)">
         <rect class="nbox" width="232" height="58" rx="8"/>
@@ -661,46 +666,62 @@
       <g class="node" data-k="s2" transform="translate(276,2030)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
-        <text class="ntitle" x="14" y="17">S4 · SHOPPING — candidates<tspan class="nactive"> · v1 08-03</tspan></text>
-        <text class="nscript" x="14" y="31">compose/shopping.py — anchors first, subs deferred</text></g>
-      <path class="edge e-comp" d="M392,2076 V2088" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2086">shopping.json — ordered candidates per anchor box</text>
-      <g class="node" data-k="s3" transform="translate(276,2090)">
+        <text class="ntitle" x="14" y="17">S4 · SHOPPING + STYLE PICK<tspan class="nactive"> · k=3 CANON 08-03B</tspan></text>
+        <text class="nscript" x="14" y="31">compose/shopping.py + pick.py — native size · image judge</text></g>
+      <path class="edge e-comp" d="M392,2076 V2100" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2086">picks.json — style-ranked TOP-3 candidates per anchor box</text>
+      <text class="elab" x="398" y="2098">= THE SEMANTIC → PHYSICAL HANDOFF BATON</text>
+
+      <!-- PH2a ROTATION CHECK: own module (user 08-04 "this deserves its
+           own module") — canon v2 = 4-candidate choice vs the detection
+           photo; the fit loop consumes its verdicts -->
+      <g class="node" data-k="rotch" transform="translate(276,2102)">
+        <rect class="nbox" width="232" height="46" rx="8"/>
+        <rect class="b-comp" width="4" height="46" rx="2"/>
+        <text class="ntitle" x="14" y="17">PH2a · ROTATION CHECK<tspan class="nactive"> · CANON v2 08-04</tspan></text>
+        <text class="nscript" x="14" y="31">compose/rotation_check.py — 4-candidate choice vs detection photo</text></g>
+      <path class="edge e-comp" d="M392,2148 V2158" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2156">rotation_check.json — per-object yaw verdicts (record only)</text>
+      <!-- FIT LOOP MOVED 3.1 → 3.2 (user 08-03B): with k=3 canon the
+           WHAT decision is upstream — choosing among 3 pre-approved
+           candidates is a tiebreak; the loop's work is mesh placement.
+           Renumbered S5 → PH2 (collide → PH3, surgery → PH4). -->
+      <g class="node" data-k="s3" transform="translate(276,2160)">
         <rect class="nbox" width="232" height="58" rx="8"/>
         <rect class="b-comp" width="4" height="58" rx="2"/>
-        <text class="ntitle" x="14" y="17">S5 · FIT LOOP<tspan class="ngate"> · NEXT</tspan></text>
-        <text class="nscript" x="14" y="31">place candidate → render → judge → next, until fit</text>
+        <text class="ntitle" x="14" y="17">PH2 · FIT LOOP<tspan class="ngate"> · NEXT</tspan></text>
+        <text class="nscript" x="14" y="31">place candidate → render → judge → next of k=3</text>
         <text class="nsub" x="14" y="45">anchors run until fit · then subs per fitted anchor</text></g>
-      <path class="edge e-comp" d="M392,2148 V2170" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2164">fitted anchors — real meshes posed</text>
+      <path class="edge e-comp" d="M392,2218 V2256" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2240">fitted anchors — real meshes posed</text>
 
-      <g class="node" data-k="ph2" transform="translate(276,2216)">
+      <g class="node" data-k="ph2" transform="translate(276,2258)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
-        <text class="ntitle" x="14" y="17">PH2 · COLLIDE GATE<tspan class="ngate"> · DESIGN</tspan></text>
+        <text class="ntitle" x="14" y="17">PH3 · COLLIDE GATE<tspan class="ngate"> · DESIGN</tspan></text>
         <text class="nscript" x="14" y="31">collide.py voxel 3 cm · PER SELECTED MODEL (user)</text></g>
-      <path class="edge e-comp" d="M392,2262 V2286" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2280">legal arrangement</text>
-      <g class="node" data-k="ph3" transform="translate(276,2288)">
+      <path class="edge e-comp" d="M392,2304 V2328" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2322">legal arrangement</text>
+      <g class="node" data-k="ph3" transform="translate(276,2330)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
-        <text class="ntitle" x="14" y="17">PH3 · BOX SURGERY<tspan class="ngate"> · DESIGN</tspan></text>
+        <text class="ntitle" x="14" y="17">PH4 · BOX SURGERY<tspan class="ngate"> · DESIGN</tspan></text>
         <text class="nscript" x="14" y="31">suspect-box work orders · shrink-donor lessons</text></g>
-      <path class="edge e-comp" d="M392,2334 V2358" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2352">composed state + renders</text>
+      <path class="edge e-comp" d="M392,2376 V2400" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2394">composed state + renders</text>
 
-      <g class="node" data-k="lp3" transform="translate(276,2360)">
+      <g class="node" data-k="lp3" transform="translate(276,2402)">
         <rect class="nbox" width="232" height="58" rx="8"/>
         <rect class="b-comp" width="4" height="58" rx="2"/>
         <text class="ntitle" x="14" y="17">JUDGE — closes the loop<tspan class="ngate"> · MANUAL</tspan></text>
         <text class="nscript" x="14" y="31">composed vs target splat · 7 judge views</text>
         <text class="nsub" x="14" y="45">user reviews; VLM judge grows in later</text></g>
-      <path class="edge e-comp" d="M392,2418 V2432" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2444">edits.jsonl — append-only trace (the paper trail)</text>
+      <path class="edge e-comp" d="M392,2460 V2474" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2486">edits.jsonl — append-only trace (the paper trail)</text>
       <!-- step-3 loop arrows OMITTED for clarity (user 08-01); the
            re-entry contract stays in force, noted here: -->
-      <text class="elab" x="24" y="2384">loop re-entry (arrows omitted for clarity):</text>
-      <text class="elab" x="24" y="2396">add·delete·replace → shopping (re-shop) · move·nudge → PH1</text>
+      <text class="elab" x="24" y="2426">loop re-entry (arrows omitted for clarity):</text>
+      <text class="elab" x="24" y="2438">add·delete·replace → shopping (re-shop) · move·nudge → PH1</text>
 
       <!-- OLD COMPOSE C1–C7 reference column: RETIRED from the map
            07-30 (user: "we are over that now"). Code stays on disk
@@ -1085,25 +1106,39 @@ cons: {mod:"comp", eyebrow:"3.1 SEMANTIC / S2 — CONSISTENCY · BUILT 07-26G ·
   review:[{t:"viewer :8321 — 'consistency' review mode (box colors = per-edge verdicts + click-card section) · serve.py /consistency.json",
            h:"http://localhost:8321/?scene=bedroom_marble"}],
   note:"USER GATE R2 PASSED 08-01 (provisional). Downstream module by user ruling: the nonsense judgment needs BOTH endpoints' resolved verdicts — cross-object coherence a bundled pass can't have."},
-s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SHOPPING · v1 BUILT 08-03 (PLAN_SHOPPING.md)", name:"Shopping — ordered candidates per anchor box",
-  script:"compose/shopping.py → out/<scene>/compose/shopping.json",
-  how:["SCREENING DISSOLVED HERE (user rulings 08-02/03): sandbox — the original scene's job ended at extraction, NO truth gate against its pixels; the room photos survive only as a STYLE guide (pick time, later)",
+s2: {mod:"comp", eyebrow:"3.1 SEMANTIC / S4 — SHOPPING + STYLE PICK · k=3 CANON 08-03B (PLAN_SHOPPING.md)", name:"Shopping + style pick — the top-3 candidates per anchor box",
+  script:"compose/shopping.py → shopping.json · compose/pick.py → picks.json (final_candidates)",
+  how:["SCREENING DISSOLVED HERE (user rulings 08-02/03): sandbox — the original scene's job ended at extraction, NO truth gate against its pixels; the room photos survive only as the style judge's mood reference",
        "THE FILTER = THE LIBRARY MATCH: an item whose name matches no catalog category is simply not bought (door handle → NO_MATCH → the door asset covers it). About OUR library vs the proposal, never about the original scene",
-       "ANCHORS FIRST (user: limit the search tree): 32 anchor boxes shopped — real detections + boxed adds + swap-ins; 63 subs LISTED but deferred, grouped per anchor; subs shop after their anchor's real mesh is fitted (books need real shelf boards)",
-       "Candidates ordered by the donor fit score (tiered category match → orientation-aware size fit + upright penalty + tiling + mount filter); ONE batched label-mapper call for lift-noise names (rug → tiled doormat stand-ins); --no-llm degrades to honest NO_MATCH",
+       "ANCHORS FIRST (user: limit the search tree): 31 anchor boxes shopped — real detections + boxed adds + swap-ins; 64 subs LISTED but deferred, grouped per anchor; subs shop after their anchor's real mesh is fitted (books need real shelf boards)",
+       "FIT = NATIVE SIZE ONLY (user 08-03B: no rescale — products are what they are): score = worst-axis |native/box − 1| over vertical-axis rotations × 1-3 tiling, SYMMETRIC (too big not assumed worse); ≤15% on every axis = the strict 'fits' mark, NOT a cutoff (boxes are loose) — the whole list ranks most→least fit; ONE batched label-mapper call for lift-noise names",
+       "STYLE JUDGE (pick.py, IMAGE judge CANON — user 08-03B: catalog descriptions are gestalt-blind, the barn-door case; text+mood experiment archived in PLAN_SHOPPING 7a): top-8 fit candidates per item on gap-separated numbered row-sheets (v2, mega-panel lesson) + mood sheet (4 level pano crops) + graph testimony; ranks by look & feel ONLY; 8 calls / ~3.6 min / 31 items; honest UNJUDGED degrade",
+       "OUTPUT = final_candidates: the style judge's TOP 3 per box (user: 'k=3 candidates for each object box'); fit order and style order both kept for audit, NOT blended (combine policy open); ORIENTATION deliberately NOT scored here — its own later step (prototype finding in PLAN_SHOPPING row 8)",
        "'Comes with' checks (do beds come dressed?) PARKED until real double-blanket problems; the fit loop is the safety net"],
-  reads:["graph['resolved'] boxes verbatim","compose/edit_proposals.json (adds + feasible swaps)","compose/supported_by.json (anchor tiers)","objathor catalog (36,805 assets, 831 categories, descriptions + thumbs)"],
-  writes:["compose/shopping.json — per anchor: mount, categories, ordered candidates (uid, perm, scale, tiling, score) or NO_MATCH"],
-  note:"Review: python composition/review_server.py --scene <sc> --shopping (:8322) — real-view crop + candidate cards."},
-s3: {mod:"comp", eyebrow:"3.1 SEMANTIC / S5 — FIT LOOP · NEXT MODULE", name:"Fit loop — walk each candidate list until fit",
-  script:"next module (design next session)",
-  how:["Per anchor: place candidate #1's real mesh in the box → render → judge → accept or try the next candidate (user: 'run these until fit')",
-       "Inherits the parked policies: uniform-vs-stretch scaling, asset facing rule, style tiebreak with the room photos as mood reference",
+  reads:["graph['resolved'] boxes verbatim","compose/edit_proposals.json (adds + feasible swaps)","compose/supported_by.json (anchor tiers)","objathor catalog (36,805 assets, 831 categories, descriptions + thumbs)","pano_crops (mood sheet)"],
+  writes:["compose/shopping.json — per anchor: mount, categories, native-fit-ordered candidates or NO_MATCH","compose/picks.json — style ranking + final_candidates (k=3) per anchor","compose/pick_sheets/ — mood sheet, row-sheets, per-item judge rows, prompts (review artifacts)"],
+  note:"Review: python composition/review_server.py --scene <sc> --shopping (:8322) — crop + fit strip + style strip (blue bar = the kept 3) + 'what the judge saw' rows."},
+rotch: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2a — ROTATION CHECK · CANON v2 08-04 (own module — user: 'this deserves its own module')", name:"Rotation check — 4-candidate choice against the detection photo",
+  script:"compose/rotation_check.py → out/<scene>/compose/rotation_check.json (+ rotation_check/ stimuli & sheets, review_shots/index.html viewer)",
+  how:["ONE call per referenced object: the mirror-corrected detection photograph (the pano frame is a DEFINED left-right mirror — flipped back, box redrawn; PLAN_SELF_PANO_RIG) + FOUR SEPARATE full-size renders of the object ISOLATED in the test fit at 0/90/180/270°, all from THE PHOTO'S OWN CAMERA (sidecar → pano→raw mirror mapping → render frame; verified by the box self-check, 25/28 within px), compass rose drawn on the floor beside the object in every image → 'which candidate matches the real one?' Degrees = the pick's mapping, IN CODE — never trust model-signed degrees (the '+= CCW' convention text reads inverted vs map semantics; turns are computed from picks/named facings)",
+       "WHY choice won (bed = the day's benchmark, GT 180° reconfirmed by image reading): the judge misread the isolated render's facing 6/6 under every describe variant, but COMPARISON picked the correct 180° candidate first try (79 s, 6 turns). And nothing depends on the asset's canonical front — the root cause of the day: bed asset +z = HEAD while the scene-side pillow rule defines front = FOOT, a 180° semantic gap the face_dot check cannot see. A pick that disagrees with the pose record DOUBLES AS the automatic asset-front auditor",
+       "Routing is a LOOKUP, never a judgment: own detection evidence → choice vs own photo · SWAP items → choice vs the REPLACED object's photo, swap declared in the prompt (edit_proposals lineage; the swap placer packs into the out-envelope) · strict adds → plausibility direct ask (nothing to match)",
+       "DROPPED ON MEASUREMENT 08-04, recorded so nobody rebuilds them: 8-tile strip (composite unreadable after the harness downscale → judge builds zoom tools, 20–29 turns, a run-killing timeout) · propose→verify (verify coin-flips its own correct answer) · direct-ask-on-render and describe-the-render (stable misperception, 6/6) · metadata-only facing (user: no reliance on asset implied presets). Stimulus rule: the judge answers in ONE LOOK or the format is wrong; one clean folder per call (it reads neighbors)",
+       "Ops: calls concurrent in one wave (--jobs 12), failed call = no-answer never run-killer, reply cache is STIMULUS-KEYED (prompt + image bytes — an image-only restyle must not reuse a stale answer), per-call turns/tokens measured via --output-format json",
+       "RECORD ONLY: nothing is applied to fitted_preview — applying yaws is a separate user-gated step"],
+  reads:["compose/fitted_preview.glb/.json (the test-fit poses)","scene_graph.json evidence (view + box_2d + crop) · rig_sp0/crops sidecars (cameras) · graph/crops/","compose/edit_proposals.json (swap lineage)","room shell (walls+floor in every stimulus)"],
+  writes:["compose/rotation_check.json — per object: pick, mapping, degrees, confidence, verbatim reason, mode, measured cost","compose/rotation_check/ — per-call clean folders (ref, candidates, prompt, reply) + sheets/ + refcam/ (the box self-check pairs)"],
+  note:"Bed benchmark HIT. QUEUED library work born here: ratify per-category front semantics ('bed front = foot end'), store as a tag, flip this bed asset 180° via the fixup channel. Review page: review_shots/index.html."},
+s3: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2 — FIT LOOP · rotation check split out to PH2a 08-04 (rest of loop = design open)", name:"Fit loop — physical fitting, walk the k=3 until fit",
+  script:"next module (design open); consumes PH2a's rotation_check.json",
+  how:["ROTATION FIRST (user ruling 08-03B): every candidate is judged at its best rotation — that check is now its OWN MODULE, PH2a upstream; corrected yaws arrive as input",
+       "Per anchor: place final-candidate #1's real mesh in the box → render → judge → accept or try the next of the k=3 (user: 'run these until fit'); list dry → re-shop with complaint",
+       "Inherits the parked policies: uniform-vs-stretch scaling; facing evidence ladder feeds the pre-spin (PH2a judges the residual)",
        "After anchors converge: sub rounds per fitted anchor (books onto real shelf levels, handles resolved by the actual door asset)",
        "Replace edits from the judge re-enter as re-shops of ONE node ('pick object after layout')"],
-  reads:["compose/shopping.json candidates","asset meshes (assets_thor loader, yaw-canonicalized)","room shell"],
+  reads:["compose/picks.json final_candidates (k=3 per anchor)","compose/rotation_check.json (PH2a yaw verdicts)","asset meshes (assets_thor loader, yaw-canonicalized)","room shell"],
   writes:["fitted anchor poses (file contract TBD)"],
-  note:"First test fit (naive #1 candidates, no loop) rendered 08-03 for user review."},
+  note:"First test fit (naive #1, no loop) rendered 08-03; PH2a's full-scene choice run is the current gate."},
 ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP + BOX ADJUDICATION · v1 08-01 · v1.2 CACHE+RULINGS 08-02 · R11 OPEN", name:"Snap proposes; flagged boxes get an agent verdict",
   script:"compose/snap.py → out/<scene>/compose/snap.json · donor place2.py math folds in when real meshes arrive",
   how:["v1 (user design 08-01 late, after the curtain-thickness diagnosis): the scripted snap becomes a PROPOSAL (pass A). Clean boxes snap scripted, unchanged. FLAGGED boxes — LARGE where support involves architecture (top pick, an alternate, or the ruled-against candidate) plus every judge suspect_box pointer — form a DOCKET adjudicated by ONE batched sonnet call over a TYPED MENU: ADOPT_REFIT_AND_SNAP · SNAP_AS_IS · NO_SNAP (attribution in doubt — don't bake it in) · DEFER_TO_SURGERY. Shrink-experiment lesson honored: the agent CHOOSES, code EXECUTES — no freehand resizing",
@@ -1122,16 +1157,16 @@ ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP + BOX ADJUDICATION · v1 
   writes:["compose/snap.json — corrections + refits + verdicts + snapped boxes (ANALYZER layer; graph verbatim)"],
   review:[{t:"viewer :8321 — 'snap' review mode (colors by correction size, white ghost = snapped AABB) · serve.py /snap.json",
            h:"http://localhost:8321/?scene=bedroom_marble"}],
-  note:"The sandbox in action: measured walls + observed boxes = the whole physics world. Same snap contract poses real meshes after S5 shopping."},
-ph2: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2 — COLLIDE GATE · DESIGN (mesh-only, user 07-27)", name:"Collision gate",
+  note:"The sandbox in action: measured walls + observed boxes = the whole physics world. Same snap contract poses real meshes after the PH2 fit loop."},
+ph2: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH3 — COLLIDE GATE · DESIGN (mesh-only, user 07-27; renumbered PH2→PH3 08-03B)", name:"Collision gate",
   script:"donor: collide.py (solid-voxel occupancy, 3 cm pitch, RATIO_MAX 0.05)",
   how:["USER RULING 07-27: collision is checked PER SELECTED MODEL — mesh-level, never box-vs-box (boxes drown in false contacts: every book 'collides' with its shelf, while real mesh clearance goes unmeasured)",
-       "Therefore this module waits for S5 shopping to produce placed meshes; accept/reject deterministic",
+       "Therefore this module waits for the PH2 fit loop to produce placed meshes; accept/reject deterministic",
        "Rejection reasons feed back into the next loop proposal (proven pattern from loop run 3)"],
   reads:["posed cast + placed meshes (post-shopping)"],
   writes:["legal arrangement + collision report (viewer 'collisions' layer)"],
   note:"Second, finer gate after snap — pure code, no model."},
-ph3: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH3 — BOX SURGERY · DESIGN", name:"Box surgery — the work orders land here",
+ph3: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH4 — BOX SURGERY · DESIGN (renumbered PH3→PH4 08-03B)", name:"Box surgery — the work orders land here",
   script:"donor: materialize_verdicts.py --shrink (retired at the graph stage, by contract)",
   how:["The graph ships boxes VERBATIM; fixing them is THIS stage's job (stage contract, user 07-26)",
        "Work orders: obj_014 curtain / obj_109 chair / obj_023 shelf suspect boxes + open deep-box flags (obj_035/obj_096, obj_083)",

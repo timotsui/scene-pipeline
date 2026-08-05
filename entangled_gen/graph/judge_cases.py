@@ -76,7 +76,7 @@ import paths  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
-CONCURRENCY = 3
+CONCURRENCY = 8   # 3 until 2026-08-04; compute is cloud-side, local lanes are couriers (user ruling; measured 2.5x at 6 lanes, contention not crash risk)
 CROPS_EXIST = 3           # crops per disputed node
 CROPS_RENAME = 2
 CROPS_REEX = 2            # per object, per re-examine case

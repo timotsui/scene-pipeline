@@ -1,7 +1,8 @@
 """
 FIT PREVIEW (part of the shopping output process, 2026-08-03): place
-every anchor's #1 candidate mesh from compose/shopping.json into its
-box -- perm rotation + uniform scale + tiling, bottom-aligned (wall
+every anchor's picked mesh -- compose/picks.json style #1 when the pick
+stage has run (user 08-03B: final_candidates = THE shopping output),
+else compose/shopping.json size-fit #1 -- into its box -- perm rotation + uniform scale + tiling, bottom-aligned (wall
 items y-centered, ceiling items top-aligned) -- and write the result
 as a RAW-frame GLB the scene viewer serves as its "fitted preview"
 layer (viewer/serve.py /fitted_preview.glb, checkbox in the HUD).
@@ -47,6 +48,48 @@ def yaw_matrix(deg):
     return T
 
 
+def yaw_about(center, deg):
+    # same convention as rotation_check.py (+90 maps +z to +x)
+    R = yaw_matrix(deg)
+    T1 = np.eye(4); T1[:3, 3] = -np.asarray(center)
+    T2 = np.eye(4); T2[:3, 3] = np.asarray(center)
+    return T2 @ R @ T1
+
+
+def footprint_cardinal_angle(m):
+    """PCA CARDINAL SNAP (user 08-04, the obj_032 lesson): yaw (deg, to
+    APPLY) that brings the mesh's TRUE footprint axes onto the room
+    cardinals. ~1/3 of library meshes are baked mis-rotated inside
+    their canonical frame, which inflates the AABB and fakes oversize
+    verdicts. Min-area rotated rectangle over the footprint hull
+    (rotating calipers); 0.0 when the oriented rectangle is not
+    meaningfully tighter than the AABB (round / already-cardinal
+    shapes must not be touched)."""
+    pts = np.asarray(m.vertices[:, [0, 2]], np.float64)
+    try:
+        from scipy.spatial import ConvexHull
+        pts = pts[ConvexHull(pts).vertices]
+    except Exception:
+        pass
+    aabb_area = float(np.ptp(pts[:, 0]) * np.ptp(pts[:, 1]))
+    best = None
+    n = len(pts)
+    for i in range(n):
+        e = pts[(i + 1) % n] - pts[i]
+        L = float(np.hypot(e[0], e[1]))
+        if L < 1e-9:
+            continue
+        c, s = e[0] / L, e[1] / L
+        q = pts @ np.array([[c, -s], [s, c]])   # yaw_matrix(theta) in 2D
+        area = float(np.ptp(q[:, 0]) * np.ptp(q[:, 1]))
+        if best is None or area < best[0]:
+            best = (area, float(np.degrees(np.arctan2(s, c))))
+    if best is None or best[0] > 0.95 * aabb_area:
+        return 0.0
+    ang = ((best[1] + 45.0) % 90.0) - 45.0
+    return float(ang) if abs(ang) > 1.0 else 0.0
+
+
 def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
     """One candidate mesh -> (posed instances filling the render-frame
     box [lo, hi] (k tiles along cand's tile axis), chosen facing yaw).
@@ -61,6 +104,12 @@ def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
     P = perm_rotation(cand.get("perm", "xyz"))
     m.apply_transform(P)
     m.apply_scale(cand["scale"])
+    # de-rotate crooked-in-file geometry to cardinal BEFORE any
+    # footprint or facing logic reads the bounds
+    pca_deg = footprint_cardinal_angle(m)
+    if pca_deg:
+        b0 = m.bounds
+        m.apply_transform(yaw_about((b0[0] + b0[1]) / 2, pca_deg))
     k, axis = cand.get("k", 1), cand.get("axis", 0)
     face_deg, face_dot = 0, None
     if face_dir is not None:
@@ -107,7 +156,7 @@ def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
             t[1] = lo[1] - blo[1]
         inst.apply_translation(t)
         out.append(inst)
-    return out, face_deg, face_dot
+    return out, face_deg, face_dot, pca_deg
 
 
 def main():
@@ -118,6 +167,28 @@ def main():
 
     cdir = paths.compose_dir(args.scene)
     sl = json.loads((cdir / "shopping.json").read_text(encoding="utf-8"))
+    # STYLE PICKS (user 08-03B: picks.json final_candidates = THE shopping
+    # output the fit loop walks). The preview places the style #1 when the
+    # pick stage has run; shopping's size-fit #1 is only the fallback for
+    # items the pick stage didn't cover.
+    style_pick = {}
+    picks_p = cdir / "picks.json"
+    if picks_p.exists():
+        pk = json.loads(picks_p.read_text(encoding="utf-8"))
+        for it in pk.get("items", []):
+            fc = it.get("final_candidates") or []
+            if fc:
+                style_pick[it["id"]] = fc[0]
+    # CANDIDATE WALK overrides (compose/fit_walk.py): the fit loop's
+    # verdict beats the style #1 when the pick overshoots its box
+    walked = set()
+    walk_p = cdir / "fit_walk.json"
+    if walk_p.exists():
+        wj = json.loads(walk_p.read_text(encoding="utf-8"))
+        for iid, ch in (wj.get("choices") or {}).items():
+            if ch.get("candidate"):
+                style_pick[iid] = ch["candidate"]
+                walked.add(iid)
     man = json.loads(paths.manifest(args.scene).read_text(encoding="utf-8"))
     graph = json.loads((paths.scene_dir(args.scene) / "scene_graph.json")
                        .read_text(encoding="utf-8"))
@@ -220,6 +291,56 @@ def main():
         v = np.array([room_c[0] - cx, room_c[1] - cz])
         L = float(np.hypot(v[0], v[1]))
         return ((v[0] / L, v[1] / L) if L > 1e-6 else None), "heuristic"
+    # FIT TARGET = SNAPPED BOX (user ruling 08-04): meshes fit into the
+    # PH1-adjudicated snapped positions, not the observed graph boxes --
+    # the observed box is the record, the snapped box is where a real
+    # thing can physically stand (the bed's observed box sat 84 mm into
+    # the floor). Invented adds/swaps have no snap record and keep their
+    # proposal boxes.
+    snap_box, snap_disp = {}, {}
+    sp = cdir / "snap.json"
+    if sp.exists():
+        snj = json.loads(sp.read_text(encoding="utf-8"))
+        for o in snj.get("objects", []):
+            if o.get("snapped_aabb"):
+                snap_box[o["id"]] = o["snapped_aabb"]
+                snap_disp[o["id"]] = o.get("disposition")
+
+    # ROTATION APPLY GATE (user-approved 08-04, PLAN_FIT_LOOP.md): apply
+    # rotation_check.json verdicts ONLY at HIGH confidence and non-zero
+    # -- 13/31 tail answers flip between stimulus framings, so low and
+    # medium non-zero verdicts are recorded as flags for the fit loop's
+    # judge, never applied. The verdict is an extra yaw about the placed
+    # item's combined-bounds center (render frame), exactly how
+    # rotation_check spun its candidate renders.
+    # Verdicts are DELTAS on the preview rotation_check measured: a 0
+    # verdict on a corrected object means KEEP the correction. The
+    # carried basis comes from the record's measured_applied_deg;
+    # records from before that field fall back to the prior
+    # fitted_preview.json on disk (= the preview that was measured).
+    prior_applied = {}
+    fp_path = cdir / "fitted_preview.json"
+    if fp_path.exists():
+        for p in json.loads(fp_path.read_text(
+                encoding="utf-8")).get("placed", []):
+            prior_applied[p["id"]] = (p.get("uid"),
+                                      p.get("rotcheck_applied_deg", 0.0))
+    rot_verdicts = {}
+    rc_path = cdir / "rotation_check.json"
+    if rc_path.exists():
+        rc = json.loads(rc_path.read_text(encoding="utf-8"))
+        for run in rc.get("runs", []):
+            deg = run.get("degrees")
+            if deg is None:
+                continue
+            rot_verdicts[run["item"]] = {
+                "degrees": float(deg),
+                "confidence": run.get("confidence"),
+                "measured_uid": run.get("measured_uid"),
+                "measured_applied_deg": run.get("measured_applied_deg"),
+                "apply": (run.get("confidence") == "high"
+                          and abs(deg) > 1e-6)}
+
     if float(np.prod(r2r)) < 0:
         print("[fit_preview] WARNING: raw_to_render has odd sign count "
               "-- render->raw would MIRROR meshes; check the frame")
@@ -229,22 +350,80 @@ def main():
     placed, failed = [], []
     fdir_by = {}   # item id -> decided front (render frame)
     for r in sl["items"]:
-        if not r.get("candidates"):
+        c = style_pick.get(r["id"]) or (r["candidates"][0]
+                                        if r.get("candidates") else None)
+        if not c:
             continue
-        c = r["candidates"][0]
         try:
             mesh = load_asset(c["uid"])
         except Exception as ex:
             failed.append({"id": r["id"], "uid": c["uid"],
                            "error": str(ex)[:200]})
             continue
-        lo = np.asarray(r["box"]["aabb_min"], np.float32) * r2r
-        hi = np.asarray(r["box"]["aabb_max"], np.float32) * r2r
+        sb = snap_box.get(r["id"])
+        raw_lo = sb["mn"] if sb else r["box"]["aabb_min"]
+        raw_hi = sb["mx"] if sb else r["box"]["aabb_max"]
+        lo = np.asarray(raw_lo, np.float32) * r2r
+        hi = np.asarray(raw_hi, np.float32) * r2r
         lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
         fdir, fsrc = face_dir_of(r["id"], lo, hi, r["mount"])
         fdir_by[r["id"]] = fdir
-        insts, face_deg, face_dot = place_candidate(
+        insts, face_deg, face_dot, pca_deg = place_candidate(
             mesh, c, lo, hi, r["mount"], face_dir=fdir)
+        rv = rot_verdicts.get(r["id"])
+        # basis + delta, only when measured on THIS asset -- a verdict
+        # corrects one mesh's canonical-front quirk (the bed lesson)
+        # and does not transfer to a different pick
+        uid_ok = bool(rv and rv.get("measured_uid") == c["uid"])
+        base_deg = 0.0
+        if uid_ok:
+            base_deg = rv.get("measured_applied_deg")
+            if base_deg is None:   # pre-field record: prior preview
+                pu = prior_applied.get(r["id"])
+                base_deg = (pu[1] if pu and pu[0] == c["uid"] else 0.0)
+        rot_deg = (base_deg
+                   + (rv["degrees"] if uid_ok and rv["apply"] else 0.0)
+                   ) % 360.0
+        if rot_deg:
+            allb = np.vstack([i.bounds for i in insts])
+            ctr = (allb.min(axis=0) + allb.max(axis=0)) / 2
+            spin = yaw_about(ctr, rot_deg)
+            for inst in insts:
+                inst.apply_transform(spin)
+        # MESH-FLUSH SNAP (user 08-04): the ACTUAL mesh back face must
+        # touch the wall plane -- box alignment leaves an air gap
+        # whenever the asset is thinner than its box. fdir for wall
+        # mounts is exactly the chosen wall's inward normal, so the
+        # push direction and plane are already decided. After the spin,
+        # so final bounds are used.
+        flush_push = None
+        if r["mount"] == "wall" and fdir is not None:
+            allb = np.vstack([i.bounds for i in insts])
+            mlo, mhi = allb.min(axis=0), allb.max(axis=0)
+            d = np.zeros(3)
+            if abs(fdir[0]) >= abs(fdir[1]):
+                d[0] = (wx[0] - mlo[0]) if fdir[0] > 0 else (wx[1] - mhi[0])
+            else:
+                d[2] = (wz[0] - mlo[2]) if fdir[1] > 0 else (wz[1] - mhi[2])
+            if abs(d[0]) + abs(d[2]) > 1e-4:
+                for inst in insts:
+                    inst.apply_translation(d)
+            flush_push = round(float(d[0] + d[2]), 3)
+        # DUAL ATTACHMENT (user 08-04: "a door belongs to both a wall
+        # and a floor"): a wall item whose FIT BOX reaches the floor
+        # is floor-standing -- bottom-align the mesh (the box bottom =
+        # the floor where snap agreed), never center it mid-air. The
+        # attachment set is box-derived, no categories.
+        attach = [r["mount"]]
+        fy = shell["arch_floor"] * r2r[1]
+        if (r["mount"] == "wall"
+                and lo[1] - fy < 0.10):
+            allb = np.vstack([i.bounds for i in insts])
+            dy = lo[1] - allb[:, 1].min()
+            if abs(dy) > 1e-4:
+                for inst in insts:
+                    inst.apply_translation([0.0, dy, 0.0])
+            attach.append("floor")
         for j, inst in enumerate(insts):
             inst.apply_transform(to_raw)   # render -> raw, baked
             scene.add_geometry(inst,
@@ -266,6 +445,26 @@ def main():
                            [round(float(fdir[0] * float(r2r[0])), 3),
                             round(float(fdir[1] * float(r2r[2])), 3)]
                            if fdir else None),
+                       "rotcheck_applied_deg": round(rot_deg, 1),
+                       "rotcheck_flag": (
+                           {"degrees": rv["degrees"],
+                            "confidence": rv["confidence"],
+                            "measured_uid": rv.get("measured_uid")}
+                           if rv and abs(rv["degrees"]) > 1e-6
+                           and not (uid_ok and rv["apply"]) else None),
+                       "pick_source": ("walk" if r["id"] in walked
+                                       else "style_pick"
+                                       if r["id"] in style_pick
+                                       else "size_fit"),
+                       "fit_box": {"aabb_min": list(raw_lo),
+                                   "aabb_max": list(raw_hi)},
+                       "snap_disposition": snap_disp.get(r["id"]),
+                       # signed metres the mesh moved to touch its wall
+                       "wall_flush_push_m": flush_push,
+                       # crooked-asset correction applied (deg, 0 = none)
+                       "pca_snap_deg": round(pca_deg, 1),
+                       # box-derived attachment set (wall+floor = door)
+                       "attachment": attach,
                        "mount": r["mount"], "score": c["score"]})
 
     # SUB FACING = HOST INHERITANCE (obj_032 lesson: things in/on a
@@ -298,12 +497,18 @@ def main():
         "generated_by": "compose/fit_preview.py",
         "graph_fingerprint": paths.graph_fingerprint(args.scene),
         "note": "NAIVE #1-candidate placement (no fit loop); RAW-frame "
-                "glb for the viewer's fitted-preview layer",
+                "glb for the viewer's fitted-preview layer; "
+                "rotation_check HIGH-confidence verdicts applied "
+                "(rotcheck_applied_deg), lower-confidence non-zero "
+                "verdicts flagged (rotcheck_flag)",
         "elapsed_s": round(time.time() - t0, 1),
         "placed": placed, "subs_front": subs_front, "failed": failed,
     }, indent=1), encoding="utf-8")
+    napp = sum(1 for p in placed if p["rotcheck_applied_deg"])
+    nflag = sum(1 for p in placed if p["rotcheck_flag"])
     print(f"[fit_preview] wrote {gpath} "
           f"({gpath.stat().st_size / 1e6:.1f} MB, {len(placed)} items, "
+          f"{napp} rotations applied, {nflag} flagged, "
           f"{len(failed)} failed, {time.time() - t0:.0f}s)")
 
 

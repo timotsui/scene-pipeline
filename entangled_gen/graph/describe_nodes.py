@@ -108,7 +108,7 @@ r3 = paths.load_r3()   # renderer camera basis, for facing conversion
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
-CONCURRENCY = 3
+CONCURRENCY = 8   # 3 until 2026-08-04; compute is cloud-side, local lanes are couriers (user ruling; measured 2.5x at 6 lanes, contention not crash risk)
 BATCH_SIZE = 8
 CROPS_PER_CLUSTER = 2
 TILE = 256                 # px, square cell for each crop

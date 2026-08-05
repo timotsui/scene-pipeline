@@ -70,7 +70,7 @@ import paths  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
-CONCURRENCY = 3
+CONCURRENCY = 8   # 3 until 2026-08-04; compute is cloud-side, local lanes are couriers (user ruling; measured 2.5x at 6 lanes, contention not crash risk)
 CROPS_PER_NODE = 3
 RELATIONS = ("ON", "IN_WALL", "ATTACHED", "NEAR")
 HINT2REL = {"support": "ON", "floor": "ON", "wall": "IN_WALL",

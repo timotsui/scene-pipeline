@@ -14,11 +14,19 @@ catalog category is not bought (status NO_MATCH -- e.g. a door handle
 when the library has no such category; the door asset covers it).
 Nothing is checked against the original scene pixels (sandbox ruling).
 
-Reuses composition/retrieve2.py: tiered category match, orientation-
-aware size-fit shortlist (aspect residual + |log scale| + upright
-penalty + tiling), mount filter, and ONE batched label-mapper call for
-names with no lexical category match (--no-llm skips it: those items
-become NO_MATCH honestly).
+FIT = NATIVE SIZE ONLY (user rulings 08-03B): no rescale -- a product
+is judged at the size it really is. Configs tried: the two rotations
+about the VERTICAL axis (nothing gets tipped over) x 1..3 side-by-side
+copies along the box's long horizontal axis. Deviation per axis =
+|native/box - 1|, SYMMETRIC (too big is NOT assumed worse); the fit
+metric = the WORST axis. Boxes are known-loose: <= 15% on every axis
+earns the strict "fits" mark, but nothing is ruled out for missing it
+-- the whole list ranks most-fit to least-fit.
+
+Reuses composition/retrieve2.py for the catalog + tiered category
+match + mount filter + the ONE batched label-mapper call for names
+with no lexical category match (--no-llm skips it: those items become
+NO_MATCH honestly).
 
 Output: out/<scene>/compose/shopping.json (candidates ordered best
 first, boxes verbatim from the scene state).
@@ -34,6 +42,8 @@ import time
 from datetime import date
 from pathlib import Path
 
+import numpy as np
+
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
@@ -44,6 +54,9 @@ import retrieve2  # noqa: E402
 TOP_N = 24
 WALLISH = ("mounted_on", "hangs_from", "embedded_in")
 ARCH_CLASS_WORDS = ("door", "window", "curtain")
+FIT_TOL = 0.15               # strict "fits" mark, NOT a cutoff
+YAW_PERMS = ("xyz", "zyx")   # rotation about the vertical axis ONLY
+MAX_TILES = 3
 
 
 def mount_of_support(supporter, how):
@@ -54,28 +67,52 @@ def mount_of_support(supporter, how):
     return "floor"
 
 
+def native_fit(box_size, size_cm):
+    """NO RESCALE (user ruling 08-03B): the product is judged at its
+    natural size. Configs = the two vertical-axis rotations x 1..3
+    side-by-side copies along the box's long horizontal axis.
+    Per-axis deviation = |native/box - 1|, SYMMETRIC -- shopping holds
+    no too-big-is-worse assumption; the fit metric = the WORST axis
+    (lower = better, ties prefer fewer tiles). fits = every axis
+    within FIT_TOL."""
+    b0 = np.asarray(box_size, np.float64)
+    a0 = np.asarray(size_cm, np.float64) / 100.0
+    if b0.shape != (3,) or (b0 <= 0).any() or (a0 <= 0).any():
+        return None
+    best = None
+    for k in range(1, MAX_TILES + 1):
+        s = b0.copy()
+        axis = 0 if s[0] >= s[2] else 2
+        s[axis] = s[axis] / k
+        for perm in YAW_PERMS:
+            a = a0[[retrieve2._AX[c] for c in perm]]
+            dev = float(np.max(np.abs(a / s - 1.0)))
+            if best is None or (dev, k) < (best[0], best[1]):
+                best = (dev, k, axis, perm)
+    dev, k, axis, perm = best
+    return {"score": round(dev, 3), "k": k, "axis": axis,
+            "perm": perm, "scale": 1.0, "fits": dev <= FIT_TOL}
+
+
 def shortlist(name, box_size, mount, cats):
-    if mount == "ceiling":
-        # _mount_ok knows onWall/onFloor only; prefer onCeiling if the
-        # catalog carries the flag, else rank the whole category pool
-        rows = []
-        for cat in cats:
-            pool = retrieve2.by_category()[cat]
+    rows = []
+    for cat in cats:
+        pool = retrieve2.by_category()[cat]
+        if mount == "ceiling":
+            # _mount_ok knows onWall/onFloor only; prefer onCeiling if
+            # the catalog carries the flag, else the whole pool
             pool = [a for a in pool if a.get("onCeiling")] or pool
-            for a in pool:
-                sc, k, axis, perm, scale, resid, ls = \
-                    retrieve2.best_fit_config(box_size, a)
-                rows.append({"uid": a["uid"], "category": a["category"],
-                             "description": a["description"],
-                             "size_cm": a["size_yup_cm"],
-                             "score": round(sc, 3), "k": k, "axis": axis,
-                             "perm": perm, "scale": round(scale, 3),
-                             "aspect_resid": round(resid, 3),
-                             "log_scale": round(ls, 3)})
-        rows.sort(key=lambda r: r["score"])
-        return rows[:TOP_N]
-    return retrieve2.shortlist_box({"size": box_size}, mount, cats,
-                                   n=TOP_N)
+        else:
+            pool = [a for a in pool if retrieve2._mount_ok(a, mount)]
+        for a in pool:
+            cfg = native_fit(box_size, a["size_yup_cm"])
+            if cfg is None:
+                continue
+            rows.append({"uid": a["uid"], "category": a["category"],
+                         "description": a["description"],
+                         "size_cm": a["size_yup_cm"], **cfg})
+    rows.sort(key=lambda r: (r["score"], r["k"]))
+    return rows[:TOP_N]
 
 
 def main():
@@ -109,7 +146,20 @@ def main():
             return oid
         return anchor_root(sup[0], depth + 1)
 
-    swapped_out = {o for s in ep["swaps"] if s.get("feasible")
+    # FIT WALK-BACK (canon rule 9): dry-list verdicts from the fit
+    # stage override proposal feasibility -- a rejected swap's
+    # out-items come back into the fit set, rejected adds vanish
+    fb_p = cdir / "fit_feedback.json"
+    fb = (json.loads(fb_p.read_text(encoding="utf-8"))
+          if fb_p.exists() else {})
+    rej_swaps = set(fb.get("rejected_swaps", {}))
+    rej_adds = set(fb.get("rejected_adds", {}))
+    if rej_swaps or rej_adds:
+        print(f"[shopping] fit walk-back: {sorted(rej_swaps)} reverted,"
+              f" {sorted(rej_adds)} dropped")
+
+    swapped_out = {o for s in ep["swaps"]
+                   if s.get("feasible") and s["id"] not in rej_swaps
                    for o in s["out"]}
 
     # ---- collect items: (id, name, box, tier, mount/host, source) ----
@@ -129,7 +179,7 @@ def main():
             subs.append(rec)
 
     for a in ep["adds"]:
-        if not a.get("box"):
+        if not a.get("box") or a["id"] in rej_adds:
             continue
         rec = {"id": a["id"], "name": a["name"], "source": "add",
                "box": a["box"]}
@@ -143,7 +193,7 @@ def main():
             subs.append(rec)
 
     for s in ep["swaps"]:
-        if not s.get("feasible"):
+        if not s.get("feasible") or s["id"] in rej_swaps:
             continue
         first_out = s["out"][0]
         sup, how = top_sup.get(first_out, ("arch_floor", ""))
@@ -206,10 +256,14 @@ def main():
         "generated_by": "compose/shopping.py",
         "graph_fingerprint": paths.graph_fingerprint(args.scene),
         "tier": "anchors",
-        "note": ("ordered candidates per ANCHOR box; the fit loop (next "
-                 "module) walks each list until fit. Subs deferred per "
-                 "anchor. NO_MATCH = not bought, host asset covers it. "
-                 "Boxes verbatim from graph/edit_proposals."),
+        "note": ("ordered candidates per ANCHOR box, NATIVE SIZE ONLY "
+                 "(no rescale, user 08-03B): score = worst-axis "
+                 "|native/box - 1| over vertical-axis rotations x "
+                 "tiling; fits = every axis within 15% (strict mark, "
+                 "not a cutoff). The fit loop (next module) walks each "
+                 "list until fit. Subs deferred per anchor. NO_MATCH = "
+                 "not bought, host asset covers it. Boxes verbatim "
+                 "from graph/edit_proposals."),
         "counts": {
             "anchors": len(items),
             "with_candidates": sum(1 for r in items
@@ -232,9 +286,13 @@ def main():
         if r["status"] == "NO_MATCH":
             print(head + " -> NO MATCH (not bought)")
             continue
-        print(head + f' -> {len(r["candidates"])} candidates')
+        nf = sum(1 for c in r["candidates"] if c.get("fits"))
+        print(head + f' -> {len(r["candidates"])} candidates, '
+                     f'{nf} within {FIT_TOL:.0%}')
         for c in r["candidates"][:3]:
-            print(f'        {c["score"]:6.3f} x{c["k"]} {c["category"]:<20.20s}'
+            print(f'        dev {c["score"]:6.3f}'
+                  f'{" FITS" if c.get("fits") else "     "}'
+                  f' x{c["k"]} {c["category"]:<20.20s}'
                   f' {c["description"][:60]}')
     for r in subs[:200]:
         print(f'    SUB {r["id"]} "{r["name"]}" on {r["host"]} '

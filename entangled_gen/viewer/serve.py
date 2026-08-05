@@ -127,7 +127,8 @@ class H(BaseHTTPRequestHandler):
                "snap.json": ("geometry",),
                "edit_proposals.json": ("geometry",),
                "shopping.json": ("geometry",),
-               "fitted_preview.json": ("geometry",)}
+               "fitted_preview.json": ("geometry",),
+               "fit_check.json": ("geometry",)}
     _fp_cache = {}   # scene -> (graph mtime, fingerprint)
 
     def _graph_fp(self, sc):
@@ -373,6 +374,13 @@ class H(BaseHTTPRequestHandler):
             # view's bright arrows
             self._compose_json(sc, "fitted_preview.json",
                                "compose/fit_preview.py")
+        elif p == "/fit_check.json":
+            # compose/fit_check.py output (deterministic bounds+clip
+            # report over the placed preview) -- feeds the scene-model
+            # row's fit-check view (red OOB / orange clips + overlap
+            # region wireframes)
+            self._compose_json(sc, "fit_check.json",
+                               "compose/fit_check.py")
         elif p == "/shopping.json":
             # compose/shopping.py output (anchor candidates + deferred
             # subs): the FIT SET -- feeds the scene-model row's fit view
