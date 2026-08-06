@@ -396,6 +396,18 @@ class H(BaseHTTPRequestHandler):
                 self._send(404, b"no fitted_preview.glb; run "
                                 b"compose/fit_preview.py --scene "
                            + sc.encode())
+        elif p == "/subs_preview.glb":
+            # sub rounds: every anchor's best sub GLB merged (cp7
+            # host-aware > cp6 jiggled > cp5 raw; RAW frame like
+            # fitted_preview.glb — no browser-side flip). Built by
+            # experiments/build_subs_preview.py.
+            f = paths.compose_dir(sc) / "subs_preview.glb"
+            if f.exists():
+                self._send(200, f.read_bytes(), "model/gltf-binary")
+            else:
+                self._send(404, b"no subs_preview.glb; run "
+                                b"experiments/build_subs_preview.py "
+                                b"--scene " + sc.encode())
         elif p == "/collider.glb":
             # Marble bundle collider, ICP-registered into the RAW frame
             # (collider_register.py) — already raw, so NO browser-side flip.

@@ -340,4 +340,297 @@ Format per entry:
   end-to-end by the drawn pipeline: record → J1∥J5 → J2 → J3 → J4 once
   → J6 once → ship.**
 
+## 2026-08-05C — SUB ROUNDS CP1: seed transform (isolated, obj_043)
+
+- **What:** the 8 deferred subs' placement seeds — observed anchor→sub
+  offsets re-expressed on the fitted obj_043 pose (user ruling: same
+  relative position, large margin later). Deterministic; no judge.
+- **Why:** the anchor moved during fitting (declip −0.06 x, floor-snap
+  +0.154 y raw; yaw 0), so raw observed positions are stale by exactly
+  that transform. CP1 is the foundation every later CP builds on.
+- **Look for (page: compose/sub_experiment/cp1/index.html):** green
+  seed boxes sitting on/inside the real shelf in both views at the
+  same spots the orange observed boxes occupy (move was small —
+  near-overlap = PASS); heights spread over distinct boards (0.79 →
+  2.11 m, basket on top); no seed off the shelf or mid-air between
+  boards.
+- **Found on the way (real, kept in the script):** fitted_preview
+  fit_box is RAW-frame (byte-identical x/z to the observed box) while
+  declip_move_m is RENDER-frame — verified against the GLB mesh, which
+  is the placed truth. And shot.py silently renders EMPTY above
+  1024 px (1024 fine, 1050 blank) — RES pinned 1024 + a blank-render
+  size guard added.
+- **Provisional verdict (mechanics only, not the visuals):** PASS —
+  delta matches the GLB exactly; offsets all within the shelf
+  footprint. USER GATE OPEN.
+
+## 2026-08-05C — SUB ROUNDS CP2: board extraction (isolated, obj_043)
+
+- **What:** the fitted stand-in mesh's REAL support surfaces — upward
+  faces height-clustered into boards (height, footprint, headroom).
+  Pure geometry, no judge.
+- **Why:** this is the reason the subs were deferred: books need
+  actual boards, not the anchor's outer box.
+- **Look for (page: compose/sub_experiment/cp2/index.html):** 6
+  rectangles (B0..B5, 0.05→1.77 m, ~0.34 m spacing) drawn AT board
+  height over the real shelf photo. Sensible count/spacing/extent?
+  Any real board missed, any phantom? Rectangles are the STAND-IN's
+  boards — offset vs the real shelf's board lines = retrieval
+  fidelity to weigh, not an extraction bug.
+- **Provisional verdict (mechanics only):** PASS — sub observed
+  heights (0.79/1.13/1.46/1.79) each sit ~4 cm above a board
+  (B2..B5); the 2.11 m basket rides above the top surface. USER GATE
+  OPEN.
+
+## 2026-08-05C — SUB ROUNDS CP3: board assignment + seed clamp
+
+- **What:** each CP1 seed assigned to its nearest CP2 board (bottom
+  snapped on, footprint clamped inside, too-tall/too-wide flags
+  recorded not resolved). Pure geometry, no judge.
+- **Why:** the placement round needs a legal start on a real surface;
+  this is the step that turns "roughly there" into "on THIS board".
+- **Look for (page: compose/sub_experiment/cp3/index.html):** every
+  light-blue start box standing ON a board in the front view (no
+  floating, no wrong level); top-down: nothing outside its board
+  rect. Red = flagged (none this run).
+- **Provisional verdict (mechanics only):** PASS — 8/8 assigned to
+  B2..B5 reproducing the observed per-level pairing; snaps ≤ 0.14 m,
+  clamps ≤ 46 mm, zero flags. USER GATE OPEN.
+
+## 2026-08-05C — SUB ROUNDS CP4: cheap-by-class retrieval
+
+- **What:** top-1 asset per sub by category match + native-size fit
+  (anchors' shopping machinery reused verbatim), NO judge calls —
+  user ruling; weak matches flagged, never silently shipped.
+- **Why:** effort follows error cost — a wrong-ish book spine costs
+  nothing visually; judge spend is reserved for distinctive items.
+- **Look for (page: compose/sub_experiment/cp4/index.html):** is each
+  thumbnail the right KIND of thing at a believable size for its box?
+  Only an UNFLAGGED wrong pick fails the gate (flags = already
+  marked for a later judged pass; none this run).
+- **Provisional verdict (mechanics only):** PASS — 8/8 tier-0 exact
+  category, worst-axis fit 0.12–0.25, zero flags. Book boxes are
+  rows → picks carry k=2/3 copies for CP5 to honor. USER GATE OPEN.
+
+## 2026-08-05C — SUB ROUNDS CP5: raw placement on boards
+
+- **What:** the CP4 assets actually standing on their CP3 boards —
+  place_candidate reused verbatim (perm, host-inherited facing, k
+  tiles, bottom-on-board), PCA snap OFF (user: raw first), no
+  jiggle/declip; overlaps recorded not resolved.
+- **Why:** see what untreated assets do before spending any
+  correction machinery on them.
+- **Look for (page: compose/sub_experiment/cp5/index.html):** books/
+  basket ON their boards, spines out, roughly where the real ones
+  are (front + composed + top-down). Tilt/crookedness is the
+  expected raw-asset mess. 1 same-board overlap pair in the table.
+- **Provisional verdict (mechanics only):** PASS — 8/8 placed, rows
+  tile the right axis, bottoms on boards. CAVEAT for the next lever:
+  the canon PCA snap corrects YAW only — the books' visible LEAN is
+  baked roll/pitch in-file and needs a different fixup (or different
+  assets via the recorded runner-ups). USER GATE OPEN.
+
+## 2026-08-05C — SUB ROUNDS CP5b: the align trick
+
+- **What:** align_upright() — OBB axes snapped to nearest world axes
+  per asset (minimal rotation) before placement; canon PCA stays on.
+  Fixes the baked roll/pitch lean the yaw-only PCA cannot.
+- **Why:** the raw pass showed the library books lie/lean in-file
+  (user-confirmed); scene-agnostic geometric fix, no judge.
+- **Look for (page: compose/sub_experiment/cp5_align/index.html,
+  raw|align side-by-side):** books now standing upright on their
+  boards, spines out; nothing that flipped to lying-down (the
+  near-45° ambiguity — three assets applied 45.5° and could snap
+  either way in general).
+- **Provisional verdict (mechanics only):** PASS — applied angles
+  2.3–45.5°, all 8 upright in-render, face dot 1.0 across the board.
+  USER GATE OPEN.
+
+## 2026-08-05C — SUB ROUNDS: align-before-shop + final pass
+
+- **What:** user insight applied — the align trick changes an
+  asset's AABB, so shopping must fit on ALIGNED sizes: top-12
+  catalog candidates re-measured post-alignment (cached per uid),
+  re-ranked; placement rerun on the new picks.
+- **Why:** a leaning asset's catalog AABB overstates footprint and
+  understates height → wrong fit scores and wrong k multipliers.
+- **Look for:** cp4_aligned/index.html — 4/8 picks CHANGED (tagged
+  with what cp4 had); cp5_final/index.html — the final shelf. Same
+  gate as before: right kind of thing, upright, on its board.
+- **Provisional verdict (mechanics only):** PASS — the 45.5° leaner
+  was dropped from every slot (its AABB lied the most), best fit
+  improved 0.231→0.082, placed uids verified equal to the picks,
+  8/8 upright. USER GATE OPEN.
+
+## 2026-08-05C — SUB ROUNDS: level-1 fleet (all 15 anchors)
+
+- **What:** the canonized recursion (SR0–SR7) run over every anchor
+  with deferred subs — seeds → boards → assignment → aligned shop →
+  aligned place, per anchor, serial (GPU pacing).
+- **Why:** the obj_043 gates ratified the machinery; this is the
+  same machinery at fleet scale, deterministic, 0 judge calls.
+- **Look for (page: compose/sub_experiment/index.html):** per-anchor
+  final front shot — things standing on real surfaces where the real
+  ones are. Warnings are records, not errors: NO_BOARD skip (ceiling
+  light), pick flags, overlap counts.
+- **Provisional verdict (mechanics only):** PASS with known debt —
+  56/64 placed · 6 level-2 riders correctly deferred (hosts first) ·
+  1 no-board skip · 77 same-board overlap pairs concentrated in the
+  crowded shelves (obj_022 = 28 subs) = the quantified case for the
+  missing sub-jiggle. One fleet bug found+fixed (empty-GLB export on
+  a nothing-placeable anchor). USER GATE OPEN.
+
+## 2026-08-05C — SR4b: the host-covers-it rule (door-handle autopsy)
+
+- **What:** user asked what obj_006's 1 sub was → autopsy: invented
+  "door handle" add tier-1 matched category "door" and BOUGHT A
+  WHOLE DOOR (fit 18.28, POOR_FIT-flagged) to stand on the door's
+  molding ledge. Fix wired: sub category == host category →
+  HOST_COVERS, no buy (shopping.py's anchor-tier header rule,
+  applied to the cheap path).
+- **Why not tier-0-only:** the fleet data killed that idea — tier-1
+  "computer monitor"→monitor and "framed picture"→picture are
+  CORRECT; host-covers-it discriminates exactly.
+- **Look for (overview page, obj_006/127/128 rows):** door subs now
+  HOST_COVERS with no placement; monitor + picture picks unchanged.
+- **Provisional verdict (mechanics only):** PASS — 3/3 handles
+  dropped, 0 collateral. USER GATE OPEN (rides the fleet gate).
+
+## 2026-08-05C — SR4c: sub dry-list = anchor rule 9, same loop
+
+- **What:** user ruling ("our goal is to use the same loop"): the
+  anchors' all-3-dry rule re-enters at sub tier — shortlist runners
+  are the walk; best of the WHOLE shortlist over DRY 0.65 → adds
+  drop entirely, detections drop with a recorded complaint (library
+  gap; no re-shop exists — the full category pool was already
+  searched).
+- **Look for (overview, obj_017 row):** obj_059 "small glass
+  decorative" now DRY, unplaced, complaint recorded ("no glass
+  within 0.65 of [0.05, 0.09, 0.03] m", best was 0.931). The
+  borderline obj_013 picture (0.538) correctly SURVIVES with its
+  POOR_FIT flag.
+- **Provisional verdict (mechanics only):** PASS — 1 firing, 0
+  collateral; constants shared with the anchor tier, nothing new
+  invented. USER GATE OPEN (rides the fleet gate).
+
+## 2026-08-05C — SR4b-v: host-covers verification, rung 1
+
+- **What:** HOST_COVERS verdicts now VERIFY against the host's
+  placed asset — rung 1 = part word in the catalog description
+  (free, code-only); silent description → UNVERIFIED flag queuing
+  the rung-2 thumbnail judge (uid × part cache). Rung 3 (part
+  verified missing → face-mount on the host) recorded as open.
+- **Look for (overview, door rows):** all 3 handle firings
+  verified_text — matched 'handle' in "brown wooden door with
+  silver handle" / "fruitwood ... with brass handles". Zero
+  UNVERIFIED this scene.
+- **Provisional verdict (mechanics only):** PASS — the assumption
+  SR4b made is now evidence for every current firing. USER GATE
+  OPEN (rides the fleet gate).
+
+## 2026-08-05C — SR3b + SR4b-v2 + SR4d (the obj_014 window autopsy)
+
+- **What:** user pulled the thread on obj_014's sub → the invented
+  in-wall window was standing on a curtain fold. Three rules wired:
+  SR3b attachment-class gate (in-wall observed box → wall channel,
+  never boards; OBSERVED box tested, not the seed — the curtain's
+  wall-flush had dragged the seed 1 cm past the threshold) ·
+  SR4b-v2 rung-2 thumbnail judge (autonomous, cached; the curtain
+  asset judged NOT to include a window, HIGH — so the window stays a
+  live WALL_CHANNEL need) · SR4d sub-brings-host (the window pick
+  "with green curtain" would duplicate the host — prefer clean
+  candidates).
+- **Note (judge vs user eyeball):** user saw "a window" in the
+  render; the judge says the ASSET has none — likely the real
+  scene's window in the splat behind the ghosted curtain. If the
+  asset thumbnail disagrees on inspection, that is a rung-2 prompt
+  defect to chase.
+- **Look for (overview, obj_014 row):** window unplaced, flags
+  NOT_A_BOARD_RIDER + WALL_CHANNEL, judge verdict in the record.
+  Fleet re-run applying SR4d everywhere in progress.
+- **Provisional verdict (mechanics only):** PASS — the gates fire in
+  order, every decision carries evidence. USER GATE OPEN.
+
+## 2026-08-05C — SR8: sub-jiggle + the capacity finding
+
+- **What:** cp6 — fit_declip at depth 1, final form = per-board 1D
+  legalization (deterministic two-pass sweep; bounce-apart tried and
+  replaced after it oscillated and created an overlap). Boards whose
+  contents exceed their span are OVER_CAPACITY: untouched, recorded
+  with need vs span.
+- **The finding:** the fleet's 77 overlap pairs are ~all
+  OVER-CAPACITY, not jitter — e.g. obj_022 board 6: 6.37 m of items
+  on a 1.5 m board. Height collapse: short stand-ins push several
+  observed shelf levels onto one board. Jiggle is the wrong tool by
+  measurement; SR9 (capacity-aware redistribution, walk-class) is
+  queued.
+- **Look for (per-anchor cp6 pages, overview links):** legalized
+  boards clean (before|after fronts), over-capacity tables honest,
+  nothing shoved off an edge, wide-exempt untouched.
+- **Provisional verdict (mechanics only):** PASS as machinery,
+  and the machinery's real product today is the MEASUREMENT that
+  redistribution, not jiggle, is the next lever. USER GATE OPEN.
+
+## 2026-08-05C — SR9: capacity triage (tile-drop → spill → kill)
+
+- **What:** the no-converge cure, run BEFORE legalization: k-tiled
+  rows shed copies first (user: "we don't have to kill the entire
+  box"), then height-collapse victims spill to the nearest-height
+  board with room, kills only when nothing has room (none fired).
+- **Look for (per-anchor cp6 pages + overview):** shelves readable
+  again — obj_022 67→3, obj_032 9→0, obj_043 1→0. Tile drops (32,
+  each freed length listed), spills (14, dy recorded — books DID
+  change shelf level; judge whether that reads acceptably vs the
+  photo), zero kills. Residual = one B4 triple, wide+tall flagged
+  since CP3 (walk-down material).
+- **Provisional verdict (mechanics only):** PASS — 77→3 with no
+  content killed; every departure from the observation is a recorded
+  decision. USER GATE OPEN.
+
+## 2026-08-06 — SUB ROUNDS CP7: host-aware walk-downs (obj_022)
+
+- **What:** experiments/sub_round_cp7.py — the host mesh joins the
+  sub physics (user: "this is not jiggling with the host object
+  itself"). Underside-boards (flipped-normal plank bottoms, 44–48 mm
+  below a full board) detected → kept as compartment CEILINGS, their
+  squatters re-seated up; too-tall items walk their cp4 runners
+  (trial-placed native, align trick) → 4 walked, 7 TOO_TALL_DRY kept;
+  per-board FREE INTERVALS measured on fit_check's 2 cm voxel
+  lattice (dividers/panels subtracted; access test for doored
+  compartments) become pseudo-boards for SR9/SR8; cross-level pairs
+  + ceiling protrusions + host clips now counted (cp6 counted
+  same-board only).
+- **Findings on the way:** B1 is dividers, not doors (mesh evidence;
+  front coverage 0.11) — three cubbies; short intervals flipped
+  their long axis to the board depth (the obj_030 wrong-cubby clip)
+  → axis pinned via force_ax.
+- **Numbers:** cross-level 28→7 · protrusions 9→4 · host clips 13→3 ·
+  residual = the B4 trio (too-tall, runners dry, wide-exempt,
+  over-capacity) + one 2 mm graze. COST: 4 kills on B3 (obj_018/042/
+  049/050, "no board has room") — the stand-in-under-capacity
+  complaint, anchor-walk feedback material.
+- **Verdict:** USER PASS ("great. this is better").
+
+## 2026-08-06 — CP7 fleet: host-aware pass over all 15 anchors
+
+- **What:** cp7 run per anchor (serial, paced); overview rebuilt
+  with cp7 shots/links. Fixes on the way: mattress-relief threshold
+  (Y_BLOCK_MIN 0.10 — obj_008's pillow was killed by duvet folds
+  read as obstacles; ⚠ flagged constant) + walked-then-killed guard
+  + idle/empty-scene guards.
+- **Look for (overview: sub_experiment/index.html):** obj_022 as
+  already gated; obj_032 — 2 re-seated, cross-level 7→0, host 6→3,
+  but protrusions 3→4 (re-seating SURFACES violations that were
+  hidden inside planks; 4 dry = library gap); obj_008 — pillow
+  survives, 1 relief-contact clip; obj_043 host 3→0; the 8
+  idle/quiet anchors unchanged.
+- **Provisional verdict (mechanics only):** PASS — every residual
+  is recorded and traces to too-tall dry items or stand-in
+  under-capacity, none to the machinery.
+- **Verdict:** USER PASS + CANONIZED as SR10–SR12 ("i think this is
+  great. lets cannonize all this"); viewer subs layer added same
+  session (user: "great, show in 3d viewer" → /subs_preview.glb +
+  "subs" checkbox, server restarted PID 24668). Nits deferred to
+  next session (user).
+
 _(further entries appended as artifacts land)_

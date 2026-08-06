@@ -37,6 +37,7 @@
        <label><input type="checkbox" id="hifi" checked> hi-fi splats</label>
        <label title="collider_registered.glb — the Marble bundle's collider MESH, ICP-registered into the RAW frame (collider_register.py). Not boxes: the actual mesh surface, for judging mesh↔splat alignment"><input type="checkbox" id="showColl"> collider mesh</label>
        <label title="compose/fitted_preview.glb — the shopping module's #1 candidates naively placed in their boxes (compose/fit_preview.py; no fit loop yet). Textured real assets, RAW frame baked in"><input type="checkbox" id="showFit"> fitted preview</label>
+       <label title="compose/subs_preview.glb — the sub rounds' placed sub-objects, every anchor's best pass merged (cp7 host-aware > cp6 jiggled > cp5 raw; experiments/build_subs_preview.py). RAW frame baked in, same convention as fitted preview"><input type="checkbox" id="showSubs"> subs</label>
        <label title="THE CANONICAL VIEW — the resolved scene graph (graph[resolved], stage-2 handoff: 82 clusters, boxes verbatim) with the compose-stage layers on top when fresh: anchor tint from each object's TOP supported_by option, green support arrows, review modes (supported_by / consistency / snap). Stale compose layers auto-hide (⚠ note in the row). ?audit=1 = pre-edit judged audit. Click a box = its card"><input type="checkbox" id="showJudged"> scene model (resolved · canonical)</label>
        <span id="hifiNote" class="dim"></span></div>
   <details class="dim" title="audit layers — superseded as views, kept for evidence: decisions on record in pipeline_map.html; files on disk, nothing deleted. (Composed/collisions/analyzer-cams layers + the superseded box-source manifests were cleared from the HUD 08-01 — serve routes + files remain.)">
@@ -2317,6 +2318,36 @@ $('showFit').onchange = async e => {
         ' — run compose/fit_preview.py');
     e.target.checked = false;
     fitGroup.visible = false;
+  }
+};
+
+// ---------------- subs preview (sub rounds, best pass per anchor) ----
+// same conventions as the fitted preview: RAW frame baked into the
+// glb, unlit materials (lit PBR renders black here).
+const subsGroup = new THREE.Group(); worldGroup.add(subsGroup);
+subsGroup.visible = false;
+let subsLoaded = false;
+$('showSubs').onchange = async e => {
+  subsGroup.visible = e.target.checked;
+  if (!e.target.checked || subsLoaded) return;
+  try {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    const gltf = await new GLTFLoader().loadAsync('subs_preview.glb?' + sq);
+    gltf.scene.traverse(o => {
+      if (o.isMesh) {
+        const map = o.material && o.material.map;
+        o.material = new THREE.MeshBasicMaterial(
+          map ? { map } : { color: 0xc9b89f });
+      }
+    });
+    subsGroup.add(gltf.scene);
+    subsLoaded = true;
+    msg('subs loaded (sub rounds, best pass per anchor)');
+  } catch (err) {
+    msg('subs unavailable: ' + err.message +
+        ' — run experiments/build_subs_preview.py');
+    e.target.checked = false;
+    subsGroup.visible = false;
   }
 };
 

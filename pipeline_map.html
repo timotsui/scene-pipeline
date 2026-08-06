@@ -329,7 +329,7 @@
     <div class="phase-h"><span class="phase-n">DATAFLOW</span>
       <span class="phase-t">1 WORLD → 2 ANALYSIS (observe · detect · lift · place) → 3 COMPOSE+LOOP · one canonical lane + side references</span></div>
     <div class="phase-body">
-    <svg class="pipe" viewBox="0 0 800 2510" role="img"
+    <svg class="pipe" viewBox="0 0 800 2640" role="img"
          aria-label="scene-pipeline dataflow graph">
       <defs>
         <marker id="ah-eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
@@ -734,6 +734,32 @@
       <text class="elab" x="398" y="2458">STAGE OUTPUT — the composed scene:</text>
       <text class="elab" x="398" y="2470">fitted_preview.glb/.json + rotation_check.json yaw deltas</text>
       <text class="elab" x="398" y="2482">(HIGH-conf applied via one closing place→jiggle pass)</text>
+
+      <!-- PH2r SUPPORT RECURSION added 08-05C (user: "this seems like
+           a loop... technically we can keep looping for sub sub
+           objects"): sub rounds are NOT a new stage — the fit loop
+           re-enters one support level down with re-bound parameters
+           (fitted surfaces = the new shell, deferred subs = the new
+           items; hosts before riders). Drawn as ONE node, honest
+           status EXPERIMENT: level 1 ran end-to-end on one anchor
+           (obj_043, 5 user-gated checkpoints, PLAN_SUB_ROUNDS.md
+           canon SR0–SR7); jiggle/check/walk are NOT yet wired at
+           depth >= 1. Re-entry arrow omitted per the step-3 rule —
+           the caption carries the loop contract. Graduates to canon
+           nodes when the code moves out of experiments/. -->
+      <g class="node" data-k="subr" transform="translate(276,2496)">
+        <rect class="nbox" width="232" height="64" rx="8"/>
+        <rect class="b-comp" width="4" height="64" rx="2"/>
+        <text class="ntitle" x="14" y="17">PH2r · SUPPORT RECURSION<tspan class="nactive"> · EXP 08-05C</tspan></text>
+        <text class="nscript" x="14" y="31">experiments/sub_round_cp1..5.py — seeds → boards →</text>
+        <text class="nsub" x="14" y="45">assign → aligned shop → place · canon SR0–SR7</text>
+        <text class="nsub" x="14" y="58">re-enters the fit loop per support level, until no subs</text></g>
+      <text class="elab" x="24" y="2520">recursion (arrow omitted per the step-3 rule):</text>
+      <text class="elab" x="24" y="2532">fitted level-N surfaces = level-N+1 shell ·</text>
+      <text class="elab" x="24" y="2544">deferred subs = items · hosts before riders</text>
+      <path class="edge e-comp" d="M392,2560 V2582" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2570">sub_experiment/&lt;anchor&gt;/cp5_final — placed subs</text>
+      <text class="elab" x="398" y="2582">(level 1, one anchor; NOT yet merged into fitted_preview)</text>
 
       <!-- PH3 COLLIDE GATE + PH4 BOX SURGERY + JUDGE: RETIRED 08-04
            (user). PH3 absorbed by PH2·3 fit_check — the same voxel
@@ -1203,6 +1229,20 @@ rotch: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2a — ROTATION CHECK · CANON v2 
   reads:["compose/fitted_preview.glb/.json (the FINAL walked poses — runs after the loop is dry)","scene_graph.json evidence (view + box_2d + crop) · rig_sp0/crops sidecars (cameras) · graph/crops/","compose/edit_proposals.json (swap lineage)","room shell (walls+floor in every stimulus)"],
   writes:["compose/rotation_check.json — per object: pick, mapping, degrees, confidence, verbatim reason, mode, measured cost","compose/rotation_check/ — per-call clean folders (ref, candidates, prompt, reply) + sheets/ + refcam/ (the box self-check pairs)"],
   note:"Bed benchmark HIT. QUEUED (user 08-05, approved not wired): FRONT/BACK constraint — pure-wall-attachment items (['wall'], vs doors' wall+floor) get the back side banned; ladder owns their facing, judge opinion = library-front audit flag only; will revert obj_035's 180. QUEUED library work: ratify per-category front semantics ('bed front = foot end'), store as a tag, flip this bed asset 180° via the fixup channel. Review page: review_shots/index.html (choice edition: menus, pick outlined, top views)."},
+
+subr: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2r — SUPPORT RECURSION · CANON SR0–SR7 08-05C · EXPERIMENT (one anchor end-to-end)", name:"Sub rounds — the fit loop re-entered one support level down",
+  script:"experiments/sub_round_cp1.py … cp5.py → out/<scene>/compose/sub_experiment/ (cp1..cp5, cp4_aligned, cp5_final — one review page per checkpoint)",
+  how:["SR0 THE RECURSION (user: 'this seems like a loop... technically we can keep looping for sub sub objects'): NOT a new stage — PH2 re-enters with re-bound parameters: level-N fitted meshes' support surfaces = level-N+1's shell, deferred subs = the items; hosts before riders (a sub whose host is unfitted defers a level — plant obj_003 rides basket obj_012 rides shelf obj_022); recurse until no level has deferred items",
+       "SR1 SEED IN THE FITTED FRAME (user ruling, session start): the search STARTS at the observed anchor→sub offset re-expressed on the fitted pose (declip + floor-snap folded in — verified against the GLB; applied spins rotate offsets about the anchor center); large margin belongs to the search, not the seed. FRAME LAW measured on the way: fitted_preview fit_box = RAW frame, declip_move_m = RENDER frame, the GLB is the placed truth (first run's silent 3.4 m error)",
+       "SR2 SURFACES FROM THE FITTED MESH: 'floor' generalizes to board extraction — upward faces (normal_y > 0.65) height-clustered (gap 35 mm, patches < 0.02 m² dropped) → boards with height + footprint + headroom (obj_043: 6 boards, top surface included). No usable surface → NO_BOARD, skipped honestly, never forced",
+       "SR3 ASSIGNMENT + CLAMP: bottom snapped to the nearest board by seed bottom, footprint clamped inside the board rect; too-tall/too-wide FLAGGED not resolved (obj_043: 8/8, zero flags, reproduced the observed per-level pairing). SR3b ATTACHMENT-CLASS GATE (the window-on-curtain-fold case): a sub whose OBSERVED box sits in a wall (thin axis = wall normal, center within 0.12 m) is arch-class, never a board rider → wall channel (observed box = the placement; channel unwired). Observed box, NOT the seed — the curtain's wall-flush dragged the seeded window 1 cm past the threshold",
+       "SR4 RETRIEVAL EFFORT FOLLOWS ERROR COST (user via question): subs default CHEAP BY CLASS — top-1 category + native-size fit, 0 judge calls, weak matches flagged for a later judged pass; style-judged k=3 stays the anchor-tier mode. Book boxes are ROWS → picks carry k=2/3 side-by-side copies. SR4b HOST COVERS IT (the door-handle autopsy: 'door handle' tier-1-matched 'door' and bought a WHOLE DOOR to stand on the door's molding ledge): sub category == host category → the host asset already includes it, HOST_COVERS, never buy — killed 3 handle buys, spared the correct tier-1 matches (monitor, framed picture) a blanket tier-0 rule would have destroyed. VERIFICATION LADDER (SR4b-v): rung 1 wired — part word in the host's placed-asset description = verified ('door with silver handle'; silence ≠ absence) · rung 2 WIRED 08-05C — silent description → one-look thumbnail judge (sonnet, uid × part cache, autonomous, no user pins): first firing judged the curtain asset includes NO window (HIGH) → the window stays a live WALL_CHANNEL need · rung 3 open — verified missing → face-mount on the host, attachment class unbuilt. SR4d SUB BRINGS HOST ('White window ... and green curtain'): candidates whose description mentions the HOST's category would duplicate it — prefer clean candidates, all-bringers keep the list + flag. SR4c DRY LIST = anchor rule 9, SAME loop (user: 'our goal is to use the same loop'): runners ARE the walk; best of the whole shortlist over DRY 0.65 (the anchors' constant) → adds drop, detections drop with a recorded library-gap complaint (first firing: a 5 cm glass trinket, best 0.93)",
+       "SR5 THE ALIGN TRICK (cp5 --align): OBB axes snapped to the nearest world axes per asset — the minimal rotation standing a tilted asset upright; fixes baked roll/pitch lean the yaw-only PCA cardinal snap cannot. Known ambiguity ~45° (three assets at 45.5° landed upright; a harder lean would snap lying-down — tiebreak-by-box-aspect queued if it bites)",
+       "SR6 ALIGN BEFORE SHOP (user insight: 'the bounding box is changed! so the multiplier is different'): fit scores AND k multipliers computed on the ALIGNED AABB — top-12 catalog candidates re-measured post-alignment, cached per uid (aligned_size_cache.json = the seed of a catalog column). Proven: 4/8 picks changed, the 45.5° leaner dropped from every slot, obj_048 fit 0.231→0.082",
+       "SR7 PLACEMENT = place_candidate VERBATIM: host-inherited facing, k tiles filling the row, bottom-on-board; placed uids verified equal to the picks"],
+  reads:["compose/fitted_preview.glb/.json (the fitted anchors — the level's truth)","compose/shopping.json subs_deferred (64: name, observed box, host, anchor)","compose/snap.json lineage via cp records · objathor catalog + _fixups"],
+  writes:["compose/sub_experiment/<cp>/ — seeds.json · boards.json · assignment.json · picks.json · placements.json + subs_preview.glb (raw frame), one index.html review page per checkpoint","compose/sub_experiment/aligned_size_cache.json — uid → aligned size + angle (grows toward a catalog column)"],
+  note:"EXPERIMENT status: level 1 ran end-to-end on obj_043 (5 user-gated checkpoints), then FLEET over all 15 anchors (08-05C: 50 placed · 3 host-covered-verified · 3 WALL_CHANNEL · 6 level-2 deferred · 1 no-board · 1 no-match). SR8 SUB-JIGGLE wired (per-board 1D legalization; bounce-apart tried and replaced — it oscillates) + SR9 CAPACITY TRIAGE before it (tile-drop → spill → kill; born from THE CAPACITY FINDING: the 77 overlap pairs were ~all over-capacity — short stand-ins collapse several observed shelf levels onto one board, obj_022 board 6 held 6.37 m of items on 1.5 m). FLEET: 77 → 3 overlap pairs via 32 tile drops + 14 spills + 0 kills; residual = one wide+tall-flagged B4 triple (walk-down material). NOT YET: runner walk-downs for flagged items · wall channel + rung-3 face-mount · level-2 riders · merge into fitted_preview · graduation out of experiments/. Accepted warts: shoe-looking basket/book assets (SR4's flag hook is the lever). Plan doc: PLAN_SUB_ROUNDS.md; review log 08-05C; handoff SESSION_2026-08-05C_HANDOFF.md; fleet overview: out/<scene>/compose/sub_experiment/index.html."},
 ph1: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH1 — SNAP + BOX ADJUDICATION · v1 08-01 · v1.2 CACHE+RULINGS 08-02 · R11 OPEN", name:"Snap proposes; flagged boxes get an agent verdict",
   script:"compose/snap.py → out/<scene>/compose/snap.json · donor place2.py math folds in when real meshes arrive",
   how:["v1 (user design 08-01 late, after the curtain-thickness diagnosis): the scripted snap becomes a PROPOSAL (pass A). Clean boxes snap scripted, unchanged. FLAGGED boxes — LARGE where support involves architecture (top pick, an alternate, or the ruled-against candidate) plus every judge suspect_box pointer — form a DOCKET adjudicated by ONE batched sonnet call over a TYPED MENU: ADOPT_REFIT_AND_SNAP · SNAP_AS_IS · NO_SNAP (attribution in doubt — don't bake it in) · DEFER_TO_SURGERY. Shrink-experiment lesson honored: the agent CHOOSES, code EXECUTES — no freehand resizing",
