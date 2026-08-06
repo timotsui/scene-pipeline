@@ -132,9 +132,11 @@ def main():
             masks = masks.squeeze(1).numpy().astype(bool)
             overlay_masks(img, list(masks)).save(out / f"{name}_masks.png")
             np.save(out / f"{name}_masks.npy", masks)
+        # persist after every view — a hard power cut loses at most the
+        # in-flight view, never the completed ones (08-06 crash lesson)
+        (out / "detections.json").write_text(json.dumps(all_dets, indent=2))
         time.sleep(a.pace)
 
-    (out / "detections.json").write_text(json.dumps(all_dets, indent=2))
     print(f"[segb] wrote {out / 'detections.json'}", flush=True)
     if unmapped:
         print(f"[segb] labels with no canonical mapping (dropped): "

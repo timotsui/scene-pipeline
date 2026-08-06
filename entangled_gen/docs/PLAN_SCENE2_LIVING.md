@@ -245,6 +245,23 @@ batched for the user)
 - NEXT after P3: pano_lift → pano_recenter → manifest_filter, then the
   SIZE NORMALIZATION design lands with real lifted object sizes.
 
+## CRASH + RECOVERY (2026-08-06 01:18 → 01:5x)
+
+- Machine HARD-POWERED-OFF at ~01:18:50 during seg view 20/20 — the known
+  power-delivery fault ([[laptop-gpu-crash]]): kernel-power 41, bugcheck 0,
+  no button, no WHEA, power vanished mid-inference 96 s into the burst.
+  --pace 2 was on → pacing reduces but does NOT prevent.
+- Damage audit: 19/20 views' masks intact (valid NPY/PNG headers, no NTFS
+  zero-fill) BUT detections.json was end-of-run-write only → all 19 views'
+  label/box records died with the process.
+- FIX APPLIED + VERIFIED: `nvidia-smi -lgc 0,1500` (admin; `-pl` OEM-locked).
+  Full 20-view seg re-run under the lock: peak 93.8 W / 1500 MHz / 65°C
+  (vs ~190 W spikes), clean. ⚠ Lock resets on reboot — re-apply before GPU
+  stages. Seg stage now COMPLETE (20/20 + full detections.json).
+- SOURCE FIX (user-approved): seg_batched.py now rewrites detections.json
+  after every view (crash loses ≤ the in-flight view). Scene-agnostic.
+- Crash-surviving work committed: 2080c98 (vocab fixes + plan doc).
+
 ## PROGRESS LOG
 
 - 2026-08-05 23:0x — plan written; scene picked (484c93f0); bundle
