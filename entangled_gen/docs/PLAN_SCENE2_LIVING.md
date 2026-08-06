@@ -47,13 +47,13 @@ scene-agnostically, never with a living-room special case.
 | 4 | Detect | detection overlays | ✅ ran (crash → capped re-run, 20/20) · ⏸ AT GATE (R-S2-4) |
 | 5 | Lift | boxes projected into RGB views (NOT plan views) | ✅ ran (18/20 cams, 75 obj) · ⏸ AT GATE (R-S2-5) |
 | 6 | Merge / recenter | merged manifest overlay | ✅ ran (65 obj → f30 66) · ⏸ AT GATE (R-S2-6/7) |
-| 7 | Room shell | room_shell_audit.png + collider deltas | ☐ |
-| 8 | Graph record + judge passes | graph_review.html | ☐ |
-| 9 | S1–S4 shopping | shortlist/pick pages | ☐ |
-| 10 | PH1 snap | fitted preview | ☐ |
-| 11 | PH2 fit loop + PH2a | loop report | ☐ |
-| 12 | Sub rounds (sub_round_all.py) — CHECK CP2 BOARD RECTS EARLY (yaw) | sub-round fleet review | ☐ |
-| 13 | build_subs_preview.py — full fleet | subs preview 15-point check | ☐ |
+| 7 | Room shell | room_shell_audit.png + collider deltas | ✅ ran (extent-clip fix; 4 walls 5–20mm) · ⏸ AT GATE (R-S2-11, W3 open-boundary ruling) |
+| 8 | Graph record + judge passes | graph_review.html | ✅ ran (100→51, all self-checks PASS) · ⏸ AT GATE (R-S2-12) |
+| 9 | S1–S4 shopping | shortlist/pick pages | ✅ ran (33 anchors, 0 NO_MATCH) · ⏸ AT GATE (R-S2-13/14) |
+| 10 | PH1 snap | fitted preview | ✅ ran (sofa refit 8/9 views) · ⏸ AT GATE (R-S2-13) |
+| 11 | PH2 fit loop + PH2a | loop report | ✅ DRY r4; rotation recorded, 0 applied · ⏸ AT GATE (R-S2-15) |
+| 12 | Sub rounds (sub_round_all.py) | sub-round fleet review | ✅ ran (12 subs — THIN, see R-S2-16) · ⏸ AT GATE |
+| 13 | build_subs_preview.py — full fleet | subs preview 15-point check | ✅ ran · ⏸ AT GATE (R-S2-16) |
 
 ## WATCH LIST (from the 08-07 handoff, all still live)
 
@@ -321,3 +321,16 @@ batched for the user)
   bad CurrentDirectory — viewer lives under entangled_gen\viewer).
   ⏸ REVIEW BATCH R-S2-3..7 handed to user. NEXT: size-normalization
   design with real lifted sizes (needs user), then graph record.
+- 2026-08-06 02:0x–03:0x — OVERNIGHT AUTONOMOUS RUN (user authorized
+  "run it to the end", asleep): threshold deviation corrected (canonical
+  0.20/topk40), TV hand-tune reverted → generic LLM synonym pass
+  (vocab_build), full redo P3→P6, then shell → G1/G2 → J0–J7 →
+  S1/S2/PH1 all clean (details + provisional verdicts in REVIEW_LOG
+  R-S2-8..13; per-module times in stage_timings.csv). THREE source
+  fixes committed 22d855d (recenter stale-shot fingerprint gate,
+  paths.frame_block fallback + full intake frame block, room_shell
+  extent clip — bedroom regression bit-identical). Compose chain
+  S3→shopping→pick→PH2 loop→rotation→sub rounds running via
+  scratchpad\overnight_chain.ps1 → out\living_marble\overnight_run.log.
+  ⚠ OPEN for user: W3 open-boundary ruling (R-S2-11), TV-refuted
+  finding (R-S2-9), size-normalization design (untouched, needs user).

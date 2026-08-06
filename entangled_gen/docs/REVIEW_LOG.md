@@ -728,3 +728,70 @@ _(further entries appended as artifacts land)_
 - **Look for:** nothing visual - zero drops means recenter's evidence-based kills already did the cleaning on this scene.
 - **PROVISIONAL (Claude):** PASS (trivial pass-through).
 - **USER VERDICT:**
+
+## R-S2-8 - OVERNIGHT RE-RUN supersedes R-S2-3..7 (canonical 0.20 + synonym pass)
+- **What / path:** the afternoon run had MY threshold deviation (seg at default 0.35, not the canonical 0.20/topk40). Overnight redo, blind vocab (user stopped the TV-motivated hand-tune; the generic LLM detector-phrasing pass replaced it and produced tv/couch/drapes/overhead-light/photo/artwork/houseplant with zero scene knowledge). Timings for every module: `out\living_marble\stage_timings.csv`.
+- **Why:** canon compliance + the automation-rule correction, in one run.
+- **Look for:** nothing separately - the stages below are the review surface.
+- **USER VERDICT:**
+
+## R-S2-9 - P3/P4/P5 redo (seg 630 raw dets -> lift 124 obj -> recenter 105 -> f30 94)
+- **What / path:** `seg_batched20\` overlays (20 views, canonical floor); `scene_manifest_pano2c.json` (124 obj; cams 18/20 - same two up-40 FAILs); recenter: 59 shots, 24 refinements, 19 refuted-with-photo (`rig_sp0\rcc\` + `targets.json`, delta layer `scene_manifest_pano_rcdelta.json`); filter -> 94 (`_rc_f30.json`; 2 drops were retake-confirmed = the known filter-overrules-verifier caveat).
+- **Why:** the permissive floor is the design: 3.7x the raw detections, cleaned by evidence downstream.
+- **Look for:** viewer pano-track layers; the 19 refutation photos; **TV story: detected in 6 views (television x3 objects), but the 2 low-score TV objects were REFUTED by their verify shots - the glossy-screen finding now has a full evidence trail** (detection can name it; verification can't re-find it; reflections still win). Wordpiece artifact "##apes" (from "drapes") made 2 phantom objects - both killed by verification; canonicalize hardening = queued source fix.
+- **PROVISIONAL (Claude):** PASS on numbers; the TV + ##apes items are FINDINGS, deliberately not patched mid-test.
+- **USER VERDICT:**
+
+## R-S2-10 - SOURCE FIX: recenter stale-shot cache (bug found live overnight)
+- **What / path:** first re-run produced 40/59 corr~0 cam FAILs + 16 FALSE refutations - rc2_NN shots are cached BY INDEX; a changed manifest re-aims index NN at a different object (stale image + fresh camera). Fix: content fingerprint of the target list gates the cache (`pano_recenter.py`, commit 22d855d); same fingerprint = crash-resume, else wipe shots + shot-seg. Second run = the healthy numbers in R-S2-9.
+- **Why:** fires on ANY scene the moment recenter re-runs after upstream changes - scene-agnostic by construction.
+- **Look for:** the fix's cleared-files log line in `overnight_run.log` lineage; REVIEW: agree the first-run refutations were artifacts (they included obj_100/obj_107 televisions AND 6 legit objects).
+- **USER VERDICT:**
+
+## R-S2-11 - Room shell W1 on an OPEN-PLAN scene (+ extent-clip source fix)
+- **What / path:** `room_shell.json` + `room_shell_audit.png`. First fit was garbage (floor -10.4, a 25-point "wall" at -6.8): open-plan floater gaussians outside the room dragged the midpoint splits. Fix at source: clip to the frame block's robust extents before histogramming (audit path already did) - **bedroom regression bit-identical** (commit 22d855d). Second fit: floor -1.056 / ceil +1.079 (the 2.2 m short room), 4 walls all collider-agreed 5-20 mm.
+- **Why:** the shell feeds graph architecture nodes + snap planes + declip sandbox.
+- **Look for:** **W3-class DESIGN QUESTION, not patched: z_low -2.492 is the collider's artificial CAP plane (the open end CP1 flagged), now recorded as a wall; there is also real splat space beyond x_low (audit bound -2.9 vs wall -1.86).** Consequence: room dims stop at the caps; anything beyond reads IN_WALL. Needs your ruling on what an open boundary IS.
+- **PROVISIONAL (Claude):** numbers PASS for a box-room approximation; open-boundary semantics = user decision.
+- **USER VERDICT:**
+
+## R-S2-12 - Graph record + full judge chain (G1..J7): 100 nodes -> 51 shipped
+- **What / path:** `scene_graph.json` (record -> judged -> resolved); appearance sheets `graph\appearance_sheets\`; case sheets for the 8 rejections. Chain: G2 self-checks PASS; J0 nominated 16 semantic pairs; J1 64/64 (0 unresolved); J2 merge PASS (16-name queue); J3 16/16 named; J4 disputed all 7 wall-sized "picture" artifacts + obj_004; J6 REJECTED all 8, renamed tray+vent, 51/51 described; J7 shipped 51 nodes / 130 edges, 3 suspect-box work orders.
+- **Why:** graph[resolved] is THE canonical handoff - box quality + identity verdicts bound everything in compose.
+- **Look for:** J1 gems worth eyeballing: hedge-through-the-glass ruled DISTINCT from the door; sheer vs heavy curtain layers kept DISTINCT; the synonym-label lighting families merged (the map-back fix in 22d855d will pre-merge these next scene - tonight the judges absorbed it, by design). J4's existence disputes all landed on physics reasons.
+- **PROVISIONAL (Claude):** PASS - every self-check green, zero unresolved verdicts.
+- **USER VERDICT:**
+
+## R-S2-13 - Compose S1/S2/PH1 (support truth -> consistency -> snap)
+- **What / path:** `compose\supported_by.json` (51/51 resolved, 0 needs_review, 10 crude-rule demotions); `compose\consistency.json` (drops all box-noise adjudications); `compose\snap.json` (43 snapped; sofa obj_018 refit z 2.88->1.25 m on 8/9 view agreement = a suspect-box work order RESOLVED; 8 large corrections all pillows->sofas = advisory per the dependent-placement contract).
+- **Why:** the support truth is what placement builds on; snap fixes anchors, not dependents.
+- **Look for:** the sofa refit (biggest single geometry change of the night) in the viewer; the S2 drop list reads.
+- **PROVISIONAL (Claude):** PASS-leaning; the sofa refit is the one item worth your one-look.
+- **USER VERDICT:**
+
+## R-S2-14 - S3 edits + S4 shopping/pick (living)
+- **What / path:** `compose\edit_proposals.json` (0 deletes / 8 adds / 4 swaps / 2 reopen petitions); `compose\shopping.json` + `picks.json` (33 anchors shopped, 0 NO_MATCH); pick sheets `compose\pick_sheets\`.
+- **Why:** proposals-only layer + the library filter; adds enter only via placement.
+- **Look for:** pick sheets (the mood-sheet style ranking); the 4 swaps' in-assets - swap_r2n1_in1 "floor-to-ceiling window" placed with fit_box reaching x=6.32 (1.77 m out of box, declip moved it 3.12 m) = SUSPECT, and swap_r1n1_in1 framed picture wall-push 1.67 m = SUSPECT. The adds are small wall fixtures (light switches) - sane.
+- **PROVISIONAL (Claude):** shopping/picks PASS; two of four swaps look geometrically broken - review before trusting the swap channel on this scene.
+- **USER VERDICT:**
+
+## R-S2-15 - PH2 fit loop -> DRY (4 rounds) + rotation pass + closing place
+- **What / path:** `compose\fitted_preview.glb/.json` (33 placed, all k=1); loop timings in `stage_timings.csv`; final `fit_check.json`: **14 clips, 0 out-of-bounds**; `fit_walk.json` 5 complaints (re-shop food, QUEUED as on bedroom); `compose\rotation_check.json` + `rotation_check\` sheets - verdicts recorded, **0 applied** (no HIGH-confidence free-standing verdict passed the rule-7 gate; door 90-degree low-conf + window 90-degree medium-conf flags carried on the placements).
+- **Why:** the posed scene = the fleet's truth; clips list = the honesty ledger.
+- **Look for:** viewer fitted-preview layer one-look; the 14 clips (several involve the suspect swaps and the sofa pair obj_086/obj_093 - the J4 reexamine pair that shipped as a work order); big declip moves: obj_008 door 1.78 m, obj_018 sofa 1.4 m out_of_box.
+- **PROVISIONAL (Claude):** MIXED - core anchors look sane (TV wall-flush at 76 mm out-of-box, tables/shelves ~100-300 mm), but the swap-channel items and the two-sofa corner are the clip hotspots. Bedroom comparison: 15/15 clean there vs 14 clips here - most trace to swaps + the unresolved sofa pair, honest work orders either way.
+- **USER VERDICT:**
+
+## R-S2-16 - Sub-round fleet + subs preview (thin on this scene)
+- **What / path:** `compose\sub_experiment\index.html` (fleet overview) + per-anchor cp7 pages; `compose\subs_preview.glb`. Totals: 11 cp7-active anchors, **12 sub items placed** (1 swap, 3 dry, 1 tile drop, 3 spills, 0 reseats/relocations).
+- **Why:** hosts-before-riders; the level's truth is the fitted GLB.
+- **Look for:** the overview page; NOTE the thinness vs bedroom's 37 subs - upstream cause visible in R-S2-9: recenter attached **0 children** on living (15 raw child candidates, all deduped away). Under-enrichment on this scene type = a real finding (short room -> enrichment shots fail cams? correlate with the ceiling-shot FAIL cluster).
+- **PROVISIONAL (Claude):** fleet mechanics PASS; the empty child layer is the scene-2 generality finding to chase, at the source, in a design session.
+- **USER VERDICT:**
+
+## R-S2-17 - Overnight run ledger (times, cost, open items)
+- **What / path:** `stage_timings.csv` (every module, wall-clock); `overnight_run.log` (raw console); commits 22d855d + 4903b26 (9-file frame-block fallback). GPU: entire night under the 1500 MHz clock lock, no crash; watchdog log `out\logs\gpu_watch.csv`.
+- Chain totals: sensing redo ~8 min - graph+judges ~11 min - S1..PH1 ~7.5 min - S3/S4 ~12.5 min - fit loop+rotation+closing ~10 min - sub fleet ~9 min. END-TO-END (detect -> subs preview) ~58 min wall-clock on this hardware.
+- **OPEN ITEMS FOR YOU (decisions, not tasks):** (1) W3 open-boundary ruling (R-S2-11); (2) swap-channel geometry (R-S2-14/15); (3) empty child layer (R-S2-16); (4) size-normalization design - untouched, awaits you; (5) the TV finding is now a full arc: synonym-detected -> 2 weak boxes refuted -> best box PLACED wall-flush (obj_013) - eyeball it in the viewer.
+- **USER VERDICT:**
