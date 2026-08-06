@@ -688,3 +688,8 @@ _(further entries appended as artifacts land)_
 - **Look for:** upright, same handedness as Marble's pano (landmark left-right ORDER matches), furniture nameable in crops. 180-degree front/back start-direction offset vs Marble = cosmetic (yaw origin choice).
 - **PROVISIONAL (Claude): PASS - high confidence** on frame grounds (signs + floor now proven by the settled contract; user viewed the near-identical +0.531 render and objected only to the start-direction offset). 8 mm eye change cannot alter content.
 - **USER VERDICT:**
+
+## R-S2-2 - FINAL frame design: bundle frame pipeline-wide (supersedes R-S2-0/1 artifacts)
+- **What / path:** rebuilt living_marble (intake -r 180,0,0 un-rotate, collider byte-copy, A2 pano); viewer + cp1_pano_gate_v2.jpg
+- **Why:** the frame contract every stage consumes; one convention pipeline-wide (bedroom class = Marble bundle frame).
+- **USER VERDICT: PASS 2026-08-06 ("bro this is good. excellent") - viewer + pano both. CP0+CP1 closed.**

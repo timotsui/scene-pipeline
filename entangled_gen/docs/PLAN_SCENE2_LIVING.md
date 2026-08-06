@@ -197,6 +197,35 @@ reproduced blind by the module: floor −1.077, ceiling +1.105, eye
 +0.523, pano re-stitched by the module chain. Scene #3 intake = write
 bundle_path.txt, run frame_bootstrap.py, done.
 
+## FINAL FRAME DESIGN — BUNDLE FRAME PIPELINE-WIDE (2026-08-06, user-directed)
+
+Supersedes the earlier "canonical = converter output" intake. The full
+causal story (user-driven forensics): the 07-07 manual bedroom download
+was a DEPRECATED Marble encode (same world re-downloaded in the harvest
+sweep = different bytes: fracBits 10→12, origin floor→eye, orientation
+flipped — Marble re-exported platform-wide ~mid-July; all 318 harvest
+worlds are one uniform encode, header-sweep verified). Within every
+bundle, spz==collider (one frame, y-down). The pipeline's tuned frame
+(old bedroom ply) equals that bundle frame class.
+
+DESIGN (user: "do the same as bedroom" / "trust the downloads"):
+- intake (frame_bootstrap.py): `splat-transform <spz> -r 180,0,0
+  gen_raw.ply` — the -r UNDOES the converter's hidden rot180-about-x, so
+  the ply == bundle frame exactly. Collider = byte-copy (T identity).
+  floor/ceiling from collider bounds (floor_y > ceiling_y, y-down).
+  Verified on living: ply floor slab +1.07 warm/wood (R-B +0.229 vs pano
+  floor sig +0.227), ceiling -1.07 bright (+0.129 vs +0.121).
+- pano_stitch: single A2 convention again (sign-class branch deleted);
+  frame source = sweep manifest else frame_bootstrap.json (same schema).
+- viewer: rz=180 default for ALL scenes again (special case deleted);
+  serve.py /meta.json feeds pre-manifest floor/ceiling from
+  frame_bootstrap.json. Raw page + collider cache-buster kept.
+- Regenerated blind: intake → prep_scene → pano (eye -0.523). Axes layer
+  now reads like bedroom's (+y down) BY DESIGN.
+- Queued: bedroom_harvest regression (d113b1c8 = same world, current
+  encode; old bedroom_marble = grandfathered reference archive).
+  ⏸ USER CHECK pending: viewer + pano composite (cp1_pano_gate_v2.jpg).
+
 ## PROGRESS LOG
 
 - 2026-08-05 23:0x — plan written; scene picked (484c93f0); bundle

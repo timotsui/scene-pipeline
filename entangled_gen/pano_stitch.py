@@ -47,26 +47,26 @@ def main():
     outd = sd / "rig_sp0"
     outd.mkdir(exist_ok=True)
 
-    # Frame info source: legacy sweep manifest (bedroom-era scenes, keeps
-    # them bit-identical) -> frame_bootstrap.json (fresh scenes; written by
-    # frame_bootstrap.py from the bundle collider + pano, 2026-08-06 —
-    # scene #2 exposed that a fresh scene has NO manifest yet).
+    # Frame info source: legacy sweep manifest (bedroom-era scenes) ->
+    # frame_bootstrap.json (fresh scenes, written by the intake module).
+    # Both speak the SAME convention since 2026-08-06: the bundle frame
+    # (y-down) — intake un-rotates the spz->ply converter's frame change,
+    # so there is exactly one pano mapping pipeline-wide (A2 below).
     legacy = sd / "scene_manifest_sweep.json"
     boot = sd / "frame_bootstrap.json"
     if legacy.exists():
         fr = json.loads(legacy.read_text())["frame"]
-        signs = np.array([1.0, -1.0, 1.0])      # the A2 readability mirror
     elif boot.exists():
         fr = json.loads(boot.read_text())
-        signs = np.array(fr["pano_to_raw_signs"], np.float64)
     else:
         raise SystemExit("[stitch] no frame info: run frame_bootstrap.py "
                          "--scene first (fresh scene), or provide the "
                          "legacy sweep manifest")
+    signs = np.array([1.0, -1.0, 1.0])          # the A2 readability mirror
     floor_y = fr["floor_y"]
     up_sign = -1 if fr["up"][1] < 0 else 1
     eye = [0.0, floor_y + up_sign * EYE_H, 0.0]
-    print(f"[stitch] eye {eye}  pano_to_raw signs {signs.tolist()}", flush=True)
+    print(f"[stitch] eye {eye}", flush=True)
 
     # ---------- render the 6 faces (GPU, WSL, resumable) ----------
     tf = outd / "faces_targets.json"

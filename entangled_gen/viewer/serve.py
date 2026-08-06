@@ -213,11 +213,17 @@ class H(BaseHTTPRequestHandler):
             meta = json.loads(f.read_text())
             meta["scene"] = sc
             manf = paths.manifest(sc)
+            boot = paths.scene_dir(sc) / "frame_bootstrap.json"
             if manf.exists():
                 man = json.loads(manf.read_text())
                 meta["floor_y"] = man["frame"]["floor_y"]
                 meta["ceiling_y"] = man["frame"]["ceiling_y"]
-                meta["raw_to_render"] = man["frame"].get("raw_to_render")
+            elif boot.exists():
+                # pre-lift scenes: the intake module's frame record (same
+                # convention — bundle frame, y-down — since 2026-08-06)
+                fb = json.loads(boot.read_text())
+                meta["floor_y"] = fb["floor_y"]
+                meta["ceiling_y"] = fb["ceiling_y"]
             # (gpu_yaw photo-pose harvesting removed 2026-07-25 — yaw track
             # retired; startup pose is now derived from floor_y client-side)
             self._send(200, json.dumps(meta).encode(), "application/json")
