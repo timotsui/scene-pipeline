@@ -40,13 +40,13 @@ scene-agnostically, never with a living-room special case.
 
 | CP | Stage (pipeline_map order) | Gate stimulus | Status |
 |----|---------------------------|---------------|--------|
-| 0 | Setup: spz→ply (splat-transform, same as bedroom), bundle_path.txt, prep_scene.py → viewer dropdown | scene in viewer :8321 — first one-look (ALSO covers the pending decluttered-HUD eyeball) | ⏸ AT GATE |
-| 1 | Pano self-render (funnel stage 1, recentered) | pano strip | ⏸ AT GATE (cp1_pano_gate.jpg sent; ran clean, eye +0.531, signs -x+y+z) |
-| 2 | Crop rig (funnel stage 2, f30) | crop contact sheet | ☐ |
-| 3 | Vocab (from prompt.txt) | vocab list | ☐ |
-| 4 | Detect | detection overlays | ☐ |
-| 5 | Lift | boxes projected into RGB views (NOT plan views) | ☐ |
-| 6 | Merge / recenter | merged manifest overlay | ☐ |
+| 0 | Setup: spz→ply (splat-transform, same as bedroom), bundle_path.txt, prep_scene.py → viewer dropdown | scene in viewer :8321 — first one-look (ALSO covers the pending decluttered-HUD eyeball) | ✅ USER PASS 08-06 (R-S2-0/2) |
+| 1 | Pano self-render (funnel stage 1, recentered) | pano strip | ✅ USER PASS 08-06 (R-S2-2) |
+| 2 | Crop rig (funnel stage 2, f30) | crop contact sheet | ✅ ran · ⏸ AT GATE (R-S2-3) |
+| 3 | Vocab (from prompt.txt) | vocab list | ✅ ran, 2 source fixes · ⏸ AT GATE (R-S2-3) |
+| 4 | Detect | detection overlays | ✅ ran (crash → capped re-run, 20/20) · ⏸ AT GATE (R-S2-4) |
+| 5 | Lift | boxes projected into RGB views (NOT plan views) | ✅ ran (18/20 cams, 75 obj) · ⏸ AT GATE (R-S2-5) |
+| 6 | Merge / recenter | merged manifest overlay | ✅ ran (65 obj → f30 66) · ⏸ AT GATE (R-S2-6/7) |
 | 7 | Room shell | room_shell_audit.png + collider deltas | ☐ |
 | 8 | Graph record + judge passes | graph_review.html | ☐ |
 | 9 | S1–S4 shopping | shortlist/pick pages | ☐ |
@@ -308,3 +308,16 @@ batched for the user)
   [-1,-1,1] → rz=180 (regression-identical); living meta pre-manifest →
   rz=0, floor -1.087 / ceil +1.110 from extents. ⏸ CP0 GATE re-handed:
   upright check + MIRROR check vs pano_rgb_0 + HUD declutter eyeball.
+- 2026-08-06 01:18 — MACHINE CRASH during seg view 20/20 (see CRASH +
+  RECOVERY section). Session died with it.
+- 2026-08-06 02:xx — recovery session: clock lock applied+verified,
+  seg re-run complete (20/20), seg_batched per-view persistence fix
+  (2b88ee2), then user "go": P4 lift (18/20 cams, 171 dets → 75 obj)
+  → P5 recenter (10 refuted-with-photo, 14 refined, 1 child → 65 obj;
+  9/38 shot-cams FAILED, clustered ceiling-light/up-aimed — short-
+  ceiling suspect, flagged R-S2-6) → P6 filter (66 kept / 0 dropped)
+  → pano_track_diffs deltas. Whole chain peaked 84.8 W / 1500 MHz.
+  Viewer relaunched via CIM Win32_Process (pid 26280; gotcha: rc 8 =
+  bad CurrentDirectory — viewer lives under entangled_gen\viewer).
+  ⏸ REVIEW BATCH R-S2-3..7 handed to user. NEXT: size-normalization
+  design with real lifted sizes (needs user), then graph record.

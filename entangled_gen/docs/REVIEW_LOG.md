@@ -693,3 +693,38 @@ _(further entries appended as artifacts land)_
 - **What / path:** rebuilt living_marble (intake -r 180,0,0 un-rotate, collider byte-copy, A2 pano); viewer + cp1_pano_gate_v2.jpg
 - **Why:** the frame contract every stage consumes; one convention pipeline-wide (bedroom class = Marble bundle frame).
 - **USER VERDICT: PASS 2026-08-06 ("bro this is good. excellent") - viewer + pano both. CP0+CP1 closed.**
+
+## R-S2-3 - P2 crop rig + P3 vocab (living)
+- **What / path:** crops `out\living_marble\rig_sp0\crops\` (20 webp + camera sidecars); vocab `out\living_marble\vocab.json` (23 gdino query terms; concreteness-pass drops recorded in the file)
+- **Why:** crops are the only pixels detection ever sees; vocab is the only vocabulary it may name.
+- **Look for:** crops upright + furniture nameable; vocab has no abstractions (the "elegance/warmth" leak class) and nothing obviously missing for a living room.
+- **PROVISIONAL (Claude):** PASS on mechanics (20/20 crops, both vocab source fixes verified in output: pano leg non-empty, door present).
+- **USER VERDICT:**
+
+## R-S2-4 - P3 seg_batched (crash + capped re-run; full 20 views)
+- **What / path:** `out\living_marble\rig_sp0\seg_batched20\` - per-view `*_boxes.png` / `*_masks.png` + `detections.json` (all 20 views, single post-crash run under the 1500 MHz clock lock)
+- **Why:** every 3D object in the record originates as one of these detections; nothing else enters the pipeline.
+- **Look for:** boxes sit on real objects with sane labels; up-40 views nearly empty is EXPECTED (ceiling); no fabricated repeats.
+- **PROVISIONAL (Claude):** PASS on numbers (171 detections lift-worthy downstream; label mix reads like a living room). Crash forensics + fix: PLAN_SCENE2_LIVING.md "CRASH + RECOVERY".
+- **USER VERDICT:**
+
+## R-S2-5 - P4 pano_lift (verified cameras, robust merge)
+- **What / path:** `out\living_marble\scene_manifest_pano2c.json` (+`_gated`, kept 75/75); console: cams verified 18/20 (FAILs = the two up-40 views y000_pp40 corr 0.124, y270_pp40 0.091 - their detections excluded by the house rule), 171 dets -> 75 objects, floor-ish gap median +0.033
+- **Why:** the first 3D manifest - box quality here bounds everything downstream.
+- **Look for:** viewer `localhost:8321/?scene=living_marble` pano-track layer: boxes ON furniture, no floaters/through-floor.
+- **PROVISIONAL (Claude):** PASS-leaning on numbers (floor-gap stats match bedroom's healthy profile); the 2 cam FAILs are both ceiling-aimed - consistent with the short-ceiling scene property, watch it recur.
+- **USER VERDICT:**
+
+## R-S2-6 - P5 recenter (complete / verify / enrich) - THE CANONICAL MANIFEST
+- **What / path:** `out\living_marble\scene_manifest_pano2c_rc.json` (65 objects + 1 book child); shots + per-target purpose/corr/confirmed: `out\living_marble\rig_sp0\rcc\` + `targets.json`; delta layer `scene_manifest_pano_rcdelta.json` (10 refuted + 14 pre-refinement boxes); skipped too-wide: 2 curtains (119/102 deg - cylindrical-strip customers)
+- **Why:** the design thesis stage - every deletion must have a photograph behind it; this manifest feeds the room graph verbatim.
+- **Look for:** (1) each refuted drop's shot really shows no such object (obj_034/035/037/049/050/052/055/070/072/073); (2) refinement deltas shrink toward the truth, not away.
+- **PROVISIONAL (Claude):** MIXED - refutation rate (10 of 17 verify targets) matches bedroom's profile (42/57), BUT 9/38 shot cameras FAILED mechanical verify, clustered on ceiling lights / lighting fixtures / floor lamp -> those targets stayed UNVERIFIED-KEPT. Short-ceiling scene property suspected; possible generality issue to fix at source if it recurs at the graph judge passes.
+- **USER VERDICT:**
+
+## R-S2-7 - P6 score filter
+- **What / path:** `out\living_marble\scene_manifest_pano2c_rc_f30.json` - keep 66 / drop 0 at thr 0.30 (bedroom dropped 6 of 108)
+- **Why:** the adopted feed for the graph record.
+- **Look for:** nothing visual - zero drops means recenter's evidence-based kills already did the cleaning on this scene.
+- **PROVISIONAL (Claude):** PASS (trivial pass-through).
+- **USER VERDICT:**
