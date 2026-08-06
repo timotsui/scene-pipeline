@@ -199,9 +199,13 @@ def main():
                       "re-run"}
 
     if a.measure_only or not ok or abs(k - 1.0) < 1e-9:
-        (sdir / "scene_scale.json").write_text(
-            json.dumps(record, indent=1))
-        print(f"[scale] measure-only record -> scene_scale.json")
+        # a measure on an ALREADY-normalized scene is a verification —
+        # it must never clobber the apply's evidence record
+        outname = ("scene_scale_verify.json"
+                   if boot and boot.get("scale_applied")
+                   else "scene_scale.json")
+        (sdir / outname).write_text(json.dumps(record, indent=1))
+        print(f"[scale] measure-only record -> {outname}")
         return
 
     if boot and boot.get("scale_applied"):
