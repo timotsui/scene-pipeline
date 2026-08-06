@@ -31,6 +31,17 @@ r3 = paths.load_r3()
 EDGE_TOL = 3.0          # px from the frame border that flags a clipped edge
 CONTAIN_MERGE = 0.50    # containment fraction that merges (partial-in-whole)
 MERGE_IOU = 0.20
+# whole-frame degenerate guard (2026-08-06, living scene #2): image-denoting
+# query words ("photo") make the detector box the ENTIRE crop — that is the
+# view, not an object observation. Measured separation: degenerates 0.99-1.0
+# of frame vs <=~0.50 for every legitimate class.
+FRAME_COVER_MAX = 0.95
+# nearest-sufficient-cluster depth selection (2026-08-06): masks always hold
+# see-through pixels (between chair legs, window glass, silhouette rim) whose
+# depth is the BACKGROUND; a spread-scaled trim widens with the bleed instead
+# of cutting it. Depths gap-split into clusters; background sits past a gap.
+DEPTH_GAP = 0.40        # m of empty ray = cluster boundary (contiguous keeps)
+CLUSTER_FRAC = 0.25     # min mask fraction for a cluster to count as the object
 BOUND_NAMES = ["xlo", "xhi", "ylo", "yhi", "zlo", "zhi"]
 
 PALETTE = [(230, 60, 60), (60, 130, 230), (60, 190, 90), (240, 160, 40),
@@ -145,6 +156,10 @@ def lift_frame(xyz, cam, dets, masks, view="", vocab=None, keep_pts=True,
     for det, mask in zip(dets, masks):
         if det["score"] < min_score:
             continue
+        bx = det["box"]
+        if ((bx["xmax"] - bx["xmin"]) >= FRAME_COVER_MAX * cam.w
+                and (bx["ymax"] - bx["ymin"]) >= FRAME_COVER_MAX * cam.h):
+            continue        # whole-frame degenerate (see FRAME_COVER_MAX)
         if vocab is not None:
             label = canonicalize(det["label"], vocab)
             if not label or label in SKIP_LABELS:
@@ -156,6 +171,22 @@ def lift_frame(xyz, cam, dets, masks, view="", vocab=None, keep_pts=True,
             continue
         vs, us = np.nonzero(valid)
         ds = depth[vs, us]
+        order = np.argsort(ds)
+        sd = ds[order]
+        cuts = np.nonzero(np.diff(sd) > DEPTH_GAP)[0]
+        bounds = [0, *(cuts + 1), len(sd)]
+        need = max(MIN_MASK_PX, int(CLUSTER_FRAC * len(sd)))
+        pick = max(range(len(bounds) - 1),
+                   key=lambda k: bounds[k + 1] - bounds[k])
+        for k in range(len(bounds) - 1):        # nearest wins over biggest
+            if bounds[k + 1] - bounds[k] >= need:
+                pick = k
+                break
+        sel = order[bounds[pick]:bounds[pick + 1]]
+        us, vs, ds = us[sel], vs[sel], ds[sel]
+        # within-cluster spread trim = the pre-2026-08-06 rule; on gap-free
+        # masks the cluster is the whole distribution, so behavior (and the
+        # bedroom regression) reduces to the old code exactly
         med = np.median(ds)
         iqr = np.subtract(*np.percentile(ds, [75, 25]))
         keep = np.abs(ds - med) <= max(0.4, 2.0 * iqr)

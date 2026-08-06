@@ -60,11 +60,23 @@ Output ONLY the kept terms as a comma-separated list on a single line, nothing e
 # LLM judgment applied to EVERY term, never a curated list, no scene
 # knowledge. Alternatives ride the query set in different batches (the
 # round-robin) and map back to their canonical term via vocab.json.
-SYNONYM_PROMPT = """You write alternative query words for an open-vocabulary object detector. Detectors respond to common caption words; formal terms can fail where casual ones fire. For each term below, give up to 2 alternative words/phrases a photo captioner would commonly use for the SAME type of object in an indoor photo (e.g. a formal term's everyday word, or a very common variant). Skip terms that need no alternative. NEVER output a broader category, a part, or a different object — only true same-object alternative names.
+SYNONYM_PROMPT = """You write alternative query words for an open-vocabulary object detector. Detectors respond to common caption words; formal terms can fail where casual ones fire. For each term below, give up to 2 alternative words/phrases a photo captioner would commonly use for the SAME type of object in an indoor photo (e.g. a formal term's everyday word, or a very common variant). Skip terms that need no alternative. NEVER output a broader category, a part, or a different object — only true same-object alternative names. NEVER output a word that could be read as denoting the image itself rather than an object in it (e.g. "photo", "image", "shot", "view", "scene" — such queries make the detector box the whole frame); prefer an unambiguous compound instead ("picture frame", not "photo").
 
 {terms}
 
 Output ONLY lines of the form "term: alt1, alt2" for terms that have alternatives, nothing else."""
+
+# Query-side screen (2026-08-06, living scene #2): a query word that can
+# denote the PHOTOGRAPH ITSELF ("photo" -> the detector boxed the entire
+# crop, 20/31 degenerate detections) is removed from the DETECTOR QUERIES
+# only — canonical vocab and label-mapping keep it, so any detector output
+# still canonicalizes. Same doctrine as the concreteness pass: cheap LLM
+# judgment over every term, never a curated list. Degrades conservatively:
+# judge unavailable -> queries unchanged (the lift's whole-frame guard is
+# the second line of defense).
+IMAGE_WORD_PROMPT = """An open-vocabulary object detector is given query words and finds matching regions in an indoor photo. A query word that can be read as denoting the PHOTOGRAPH ITSELF rather than an object inside the room (like "photo", "image", "picture", "view") makes the detector box the entire image. From this list, output ONLY the terms with that failure mode, as a comma-separated list on a single line. If none, output exactly NONE.
+
+{terms}"""
 
 
 # ---------------- VLM bridge (claude.exe, same contract as describe_nodes) --
@@ -251,6 +263,22 @@ def main():
     q_terms = expand_terms(final)
     q_terms += [s for s in llm_syn if s not in q_terms]
 
+    # ---- image-denoting-word screen over the FINAL query list ----
+    query_dropped = []
+    if q_terms and not args.skip_vlm:
+        try:
+            raw = call_claude(IMAGE_WORD_PROMPT.format(terms=", ".join(q_terms)), sdir)
+            last = [ln.strip() for ln in raw.splitlines() if ln.strip()][-1]
+            if last.strip().upper() != "NONE":
+                flagged = {t.strip().lower() for t in last.split(",") if t.strip()}
+                query_dropped = [t for t in q_terms if t in flagged]
+                q_terms = [t for t in q_terms if t not in flagged]
+            vlm_calls += 1
+            print(f"[vlm] image-word screen dropped from queries: "
+                  f"{query_dropped or '-'}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[vlm] image-word screen unavailable ({e}) — queries unchanged")
+
     out = {
         "scene": sc,
         "sources": {"prompt_raw": prompt_terms, "pano_raw": pano_terms,
@@ -259,7 +287,8 @@ def main():
         "canonical": {t: prov[t] for t in final},
         "diff": {"image_only (generator improvisation)": image_only,
                  "prompt_only (asked for, check if generated)": prompt_only,
-                 "dropped_abstract (concreteness pass)": dropped_abstract},
+                 "dropped_abstract (concreteness pass)": dropped_abstract,
+                 "query_dropped_image_words (image-word screen)": query_dropped},
         "synonyms": llm_syn,
         "queries": {
             "gdino": ". ".join(q_terms) + ".",

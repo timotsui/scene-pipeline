@@ -808,4 +808,4 @@ _(further entries appended as artifacts land)_
 - **The numbers:** N1 measured **s=0.698** (n=25, rel-MAD 0.106; independently reproduces yesterday's 0.699) and applied it to ply + collider + frame + ALL manifests + lift pool + pano eye; **blind post-apply verify = 1.000 exactly** (`scene_scale_verify.json`). Doors: 2.14 m. Room: 3.13 m tall. f30: 82 objects. Record: 88 nodes / 335 edges, self-checks PASS, judged=False (judges NOT yet run - the record is the handoff under review).
 - **Look for:** viewer `localhost:8321/?scene=living_marble` - boxes on furniture in the true-meter room; `scene_scale.json` evidence table; the record's SAME_CANDIDATE queue sanity.
 - **PROVISIONAL (Claude):** PASS - every self-check green, verify closed at 1.000, provenance gapless.
-- **USER VERDICT:**
+- **USER VERDICT:** (2026-08-06) SCALE PASS - "the scale is right". NEW FINDING: some boxes outrageously large in the 3D viewer; user suspects the lift. Investigation open before judges run.

@@ -294,6 +294,46 @@ USER-ORDERED clean state ("as if you just finished normalization"):
   multiplies for scene #3+; living got its meters via the archived
   re-entry path) + measure-from-graph[resolved] refinement.
 
+## R-S2-19 VERDICT + THE BIG-BOX FORENSICS (2026-08-06, post-clear session)
+
+USER VERDICT on R-S2-19: **scale PASS**; new finding — outrageously large
+boxes in the viewer, user suspected the lift/collider. Forensics (scripts in
+scratchpad: lift_offender_forensics.py, shell_overrun_check.py,
+picture_degeneracy_check.py) found THREE stacked defects, no collider
+involvement (lift is splat z-buffer; collider unused in lift):
+
+1. **BUG A — degenerate meta-word detections (DOMINANT, NEW).** The LLM
+   synonym pass expanded "picture" → "photo"; GroundingDINO reads "photo"
+   as *the photograph itself* and boxes the WHOLE CROP: 31 "picture" dets,
+   mean 65% of frame, 20/31 >50%, degenerate members at 0.99–1.00 vs ≤~50%
+   for every legit class. obj_102/111/112/113/114 (+ obj_084's monster
+   member, obj_042's bad member) are camera frustums, not objects — user
+   identified them as "ceiling"/"wall"/mystery. Chain: pano VLM said
+   "picture frame" (correct) → canonicalized to bare "picture" → synonym
+   pass emitted photo/artwork → detector degeneracy. Raw-label split:
+   photo=20, picture frame=10 (the real wall picture), picture=1.
+2. **BUG B — through-glass depth bleed.** Offenders poke up to ~7 m beyond
+   the raw x_hi (window/curtain) wall — Marble generates content beyond the
+   glass; masks on window/curtain/door include see-through pixels; the
+   med±max(0.4, 2×IQR) trim is self-defeating on bimodal depth (bleed
+   inflates IQR inflates band). obj_011 window, obj_060 door, obj_051
+   curtain, obj_090 (small 2D sliver, 7.1 m lift). obj_102 pokes the
+   OPPOSITE wall (mirror-reflection family).
+3. **BUG C — fusion outlier amplification.** obj_042: 6/7 members agree on
+   a real 1.8×1.0 m picture flat on z_hi wall; 1 whole-frame member drags
+   q=0.05 percentile fusion (interpolates toward the extreme at small n)
+   → 3.5 m deep box. Median/MAD-style member rejection would have saved it.
+
+CANDIDATE FIXES (all scene-agnostic, NOT applied — awaiting user ruling +
+doctrine call): A1 whole-frame detection guard at lift admission (box ≥~95%
+of frame = not an observation; degenerates sit at 0.99–1.0, huge margin);
+A2 extend the vocab phrasing LLM pass to reject image-denoting terms
+("could this word denote the image itself?" — same pattern as concreteness
+pass); A3 stop shortening concrete multi-word terms (picture frame →
+picture lost the disambiguator); B mode-selection depth (dominant nearest
+cluster) replacing the IQR band; C member-level MAD outlier rejection in
+group_box. Bedroom regression required for any of these.
+
 ## PROGRESS LOG
 
 - 2026-08-05 23:0x — plan written; scene picked (484c93f0); bundle
