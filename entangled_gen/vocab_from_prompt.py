@@ -78,6 +78,11 @@ def canonicalize(label, vocab=None, synonyms=None):
     longest known term contained in the label. `synonyms` = per-scene
     {alternative: canonical} from vocab_build's detector-phrasing pass."""
     label = label.strip().lower()
+    # BERT-wordpiece repair (2026-08-06): GroundingDINO reports matched
+    # wordpieces, not words — "set ##tee" or a lone "##tee" for "settee".
+    # Rejoin marked pieces first; a bare shard falls through to the
+    # contained-in-term fallback at the bottom.
+    label = label.replace(" ##", "").replace("##", "")
     syn = synonyms or {}
     if label in syn:
         return syn[label]
@@ -91,6 +96,16 @@ def canonicalize(label, vocab=None, synonyms=None):
         if term in label and len(term) > len(best):
             best = term
     if not best:
+        # shard fallback: a tokenizer fragment ("tee" from settee, "she"
+        # from shelving, "conditioner" from air conditioner) is CONTAINED
+        # IN a known term rather than containing one. Map only when every
+        # containing term agrees on one canonical — ambiguity keeps the
+        # raw label (caller drops unmapped labels loudly).
+        if len(label) >= 3:
+            cands = {syn.get(t) or NORMALIZE.get(t, t)
+                     for t in known if label in t}
+            if len(cands) == 1:
+                return cands.pop()
         return label
     return syn.get(best) or NORMALIZE.get(best, best)
 

@@ -71,6 +71,26 @@ def edge_trust(box, cam):
     return trust, len(edges) > 0
 
 
+MAD_BOUND_M = 0.40      # member-bound outlier gate: |v - median| beyond
+MAD_BOUND_K = 3.0       # max(0.40 m, 3*MAD) with n>=4 votes = one member's
+#                         bleed, not a completion of partial views
+#                         (2026-08-06 fix C: a single bleeding member could
+#                         still own a face — q=0.05 INTERPOLATES from the
+#                         extreme at small n: obj_042 z, obj_053 plant)
+
+
+def _mad_keep(vals):
+    """Drop bound votes that sit implausibly far from the member consensus.
+    Only with n>=4 (below that a median is not a consensus)."""
+    if len(vals) < 4:
+        return vals
+    med = float(np.median(vals))
+    mad = float(np.median(np.abs(np.asarray(vals) - med)))
+    thr = max(MAD_BOUND_M, MAD_BOUND_K * mad)
+    kept = [v for v in vals if abs(v - med) <= thr]
+    return kept or vals
+
+
 def group_box(members, q=0.0):
     """Per-axis fused bounds: each bound comes from members that measured it
     un-clipped; falls back to all members (flagged weak) if none did.
@@ -79,7 +99,9 @@ def group_box(members, q=0.0):
     max-statistic — box volume inflates with member count (corr(log n, log
     inflation) = +0.84 on the G3 pool; 21+ members -> median 4.2x). q=0.1
     -> soft quantile (10th pct of los / 90th of his): still completes
-    partial views, but one bleeding mask can no longer own a face."""
+    partial views, but one bleeding mask can no longer own a face.
+    MAD gate (_mad_keep) runs before the quantile: a far-outlier vote is a
+    bleed, and a quantile only dilutes it instead of removing it."""
     lo = np.empty(3); hi = np.empty(3)
     weak = []
     for ax in range(3):
@@ -89,6 +111,8 @@ def group_box(members, q=0.0):
             los = [m["lo"][ax] for m in members]; weak.append(BOUND_NAMES[2 * ax])
         if not his:
             his = [m["hi"][ax] for m in members]; weak.append(BOUND_NAMES[2 * ax + 1])
+        los = _mad_keep(los)
+        his = _mad_keep(his)
         if q > 0:
             lo[ax] = np.percentile(los, 100 * q)
             hi[ax] = np.percentile(his, 100 * (1 - q))

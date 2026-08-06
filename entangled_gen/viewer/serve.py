@@ -40,6 +40,9 @@ def box_sources(sc):
     re-enable; all files remain on disk."""
     sd = paths.scene_dir(sc)
     _ = sd  # kept for the commented registry below
+    # (2026-08-06: the temporary directional-prior A/B pair lived here for
+    # the user eyeball — RULED same day, prior promoted, entries removed.
+    # The index.html boxSources host rows stay for the next A/B.)
     return []
     #     # ---- current: the pano-track funnel, upstream -> downstream ----
     #     # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->

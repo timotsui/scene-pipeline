@@ -66,6 +66,11 @@
        <label title="the resolved graph's typed CONTACT edges (ON / IN / IN_WALL / ATTACHED / NEAR / INTERPENETRATES) drawn globally — SUPERSEDED as the support view by the supported_by field (07-26G, user: contacts stay as EVIDENCE). Clicking a box in the main-row graph always shows its own evidence edges regardless of this toggle"><input type="checkbox" id="showRawEdges"> graph contact edges (superseded)</label>
     </div>
   </details>
+  <!-- box-source host rows, re-added 2026-08-06 for the directional-prior
+       A/B eyeball (cleared 08-01 when the registry emptied; renders nothing
+       when serve.py's registry is empty) -->
+  <div><span id="boxSources"></span></div>
+  <div class="dim"><span id="boxSourcesArch"></span></div>
   <div id="graphRow" style="display:none"></div>
   <div id="judgedRow" style="display:none"></div>
   <div><button id="capBtn">capture (C)</button>

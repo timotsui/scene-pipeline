@@ -244,6 +244,28 @@ Originals kept as `*_prescale.*`; second apply REFUSED via
 (evidence table + decision). Queued: measure from `graph[resolved]`
 instead of f30 (fragments pollute the median; resolved gave 0.74).
 
+## 2b · Directional prior — term bearings (USER IDEA, PROMOTED 2026-08-06)
+
+`pano_bearings.py --scene <sc>` runs between vocab and detect: ONE VLM call
+on `rig_sp0/pano_selfrender.png` locates each canonical term horizontally
+(equirect: azimuth = (xfrac − 0.5)·360; the self-render is in the A2 yaw
+frame the crops are cut in, so bearings compare to crop yaws with NO
+offset — the bundle pano is deliberately not used, its x-origin is
+Marble's). Contract file: `rig_sp0/vocab_bearings.json`
+(`{bearings_deg: {term: [deg,…]}}` + unlocated list + raw reply).
+
+`seg_batched.py --bearings <file>` then filters each view's query terms:
+a term whose canonical has bearings is searched only in views within
+±90° of one; UNLOCATED terms stay in every view (the prior narrows only
+on positive location evidence — VLM misses degrade to the old global
+behavior, never to blindness). Synonyms follow their canonical term.
+
+A/B verified on living (pano2d vs pano2c, user-confirmed): kills
+wrong-side phantoms (weak mislabels merging into fake objects) and
+sharpens survivors (shorter per-view prompts score higher, the 07-26
+batching effect). KNOWN LIMIT: direction cannot separate two candidates
+along the same ray — same-bearing depth phantoms remain the judges' job.
+
 ## Scene-graph stages — record, then judge (formalized 2026-07-26)
 
 All graph stages read and write ONE file, `OUT/<scene>/scene_graph.json`

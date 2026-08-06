@@ -405,10 +405,17 @@
         <text class="ntitle" x="14" y="17">2v · word list</text>
         <text class="nscript" x="14" y="31">vocab_build.py — prompt ∪ VLM look</text>
         <text class="nsub" x="14" y="44">claude.exe haiku · pano + level frames</text></g>
+      <g class="node" data-k="vbear" transform="translate(276,368)">
+        <rect class="nbox" width="232" height="48" rx="8"/>
+        <rect class="b-eg" width="4" height="48" rx="2"/>
+        <text class="ntitle" x="14" y="17">2b · term bearings</text>
+        <text class="nscript" x="14" y="31">pano_bearings.py — VLM locate pass</text>
+        <text class="nsub" x="14" y="44">azimuth per located term · unlocated stay global</text></g>
       <path class="edge e-eg" d="M124,236 V298" marker-end="url(#ah-eg)"/>
       <text class="elab" x="130" y="272">pano_selfrender.png + _meta.json</text>
       <path class="edge e-eg" d="M240,216 H300 V298" marker-end="url(#ah-eg)"/>
       <text class="elab" x="306" y="272">pano (VLM look-pass)</text>
+      <path class="edge e-eg" d="M340,348 V366" marker-end="url(#ah-eg)"/>
 
       <!-- side tool: ext. splat_analyzer — REFERENCE ONLY (dimmed), steps kept
            band-aligned with the canonical lane to show the correspondence -->
@@ -455,15 +462,15 @@
       <!-- ===== 2.2 DETECT ===== -->
       <path class="edge e-eg" d="M124,340 V424" marker-end="url(#ah-eg)"/>
       <text class="elab" x="130" y="396">rig crops + cam sidecars</text>
-      <path class="edge e-eg" d="M340,348 V408 H262 V424" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="346" y="386">vocab.json → batched queries</text>
+      <path class="edge e-eg" d="M340,416 V424" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="346" y="422">queries + bearings → per-view term sets</text>
 
       <g class="node" data-k="segb" transform="translate(110,426)">
         <rect class="nbox" width="300" height="48" rx="8"/>
         <rect class="b-eg" width="4" height="48" rx="2"/>
         <text class="ntitle" x="14" y="17">P3 · batched detect + segment</text>
         <text class="nscript" x="14" y="31">seg_batched.py — GroundingDINO + SAM</text>
-        <text class="nsub" x="14" y="44">6 prompts × ~5 terms · thr 0.20 · cross-batch NMS</text></g>
+        <text class="nsub" x="14" y="44">per-view terms (±90° prior) · ~5-term batches · thr 0.20 · NMS</text></g>
       <path class="edge e-eg" d="M410,456 H455 V934" marker-end="url(#ah-eg)"/>
       <text class="elab" x="461" y="486">detections + masks — evidence pointers</text>
 
@@ -890,22 +897,32 @@ vb: {mod:"eg", eyebrow:"2v · 2.1 OBSERVE — word list · ADOPTED 07-25", name:
   writes:["vocab.json — canonical terms + provenance + queries.gdino / queries.owlv2"],
   review:[{t:"…/out/bedroom_marble/vocab.json (27 terms: 22 prompt · 13 pano · 9 frames)",
            h:"file:///D:/T/Documents/GeorgiaTech/Summer2026/CS-8903-OVM/week7/entangled_gen/out/bedroom_marble/vocab.json"}],
-  note:"Known gaps: containment near-dupes (chair/office chair, mat/yoga mat) await a reverse-containment merge; one canonicalization artifact observed ('conditioner' from 'air conditioner' token split). The firing-term lesson (07-26): detectors respond to specific words — 'painting' fires where 'picture' doesn't — so expansion synonyms stay in the query set, just never in the same batch."},
+  note:"Known gaps: containment near-dupes (chair/office chair, mat/yoga mat) await a reverse-containment merge. The firing-term lesson (07-26): detectors respond to specific words — 'painting' fires where 'picture' doesn't — so expansion synonyms stay in the query set, just never in the same batch. 08-06 additions: IMAGE-WORD SCREEN — a term readable as the photograph itself ('photo' boxed the ENTIRE crop, 20/31 degenerate dets on living) is dropped from detector queries only (canonical vocab + label mapping keep it); synonym prompt bans such alternatives at generation. Wordpiece shards ('conditioner' from 'air conditioner') now repair in canonicalize."},
+vbear: {mod:"eg", eyebrow:"2b · 2.1 OBSERVE — term bearings · PROMOTED 08-06", name:"Directional prior — where is each word",
+  script:"pano_bearings.py — one VLM locate call on the self-rendered pano",
+  how:["The self-rendered pano is equirect under the A2 convention — the SAME yaw frame the rig crops are cut in, so horizontal position converts to azimuth with no offset: az = (xfrac − 0.5)·360",
+       "One VLM call: for each canonical term, the horizontal center of every visible instance as a fraction of image width (multiple instances = multiple bearings)",
+       "Terms the VLM cannot locate get NO bearing and are searched globally downstream — the prior only narrows on positive location evidence, never blinds by default"],
+  reads:["vocab.json canonical terms","rig_sp0/pano_selfrender.png"],
+  writes:["rig_sp0/vocab_bearings.json — {term: [azimuth°, …]} + unlocated list + raw reply"],
+  note:"USER IDEA 08-06, A/B-verified same day (pano2d vs pano2c): all four eyeballed phantoms killed (sofa@table, coffee-table@table + desk twin, two 4 m mislabeled 'chairs'); real sofa improved to a compact box at higher score (shorter per-view prompts score higher — the 07-26 batching effect compounding). LIMIT: direction cannot separate two candidates along the same ray (the table-zone depth phantom) — that stays the judges' job. Bundle pano deliberately NOT used (unknown x-origin)."},
 segb: {mod:"eg", eyebrow:"P3 · 2.2 DETECT — batched vocab · thr 0.20", name:"Batched detect + segment",
-  script:"seg_batched.py — GroundingDINO + SAM, vocab split into ~5-term batches",
+  script:"seg_batched.py --bearings rig_sp0/vocab_bearings.json — GroundingDINO + SAM, per-view terms in ~5-term batches",
   how:["MEASURED (07-26): GroundingDINO's confidence drops with prompt length — a 30-term query scored the picture wall at 0.35–0.37, a 3-term query at 0.37–0.48. So: never hand the detector the whole list",
-       "Run one detection pass per small batch (6 batches of ~5 terms); synonyms deliberately land in DIFFERENT batches so they never compete inside a prompt",
-       "Canonicalize labels, then same-label cross-batch overlap dedup (NMS)",
+       "DIRECTIONAL PRIOR (08-06): each view's term set is filtered first — a term with located bearings is only searched in views within ±90° of one; unlocated terms stay in every view; synonyms follow their canonical term",
+       "Run one detection pass per small batch (~5 terms); synonyms deliberately land in DIFFERENT batches so they never compete inside a prompt",
+       "Canonicalize labels (incl. BERT-wordpiece repair: 'set ##tee'→settee→sofa, lone shards map back iff one canonical contains them), then same-label cross-batch overlap dedup (NMS)",
        "Threshold 0.20 — permissive on purpose: the recenter verifier downstream does the gatekeeping, not the threshold",
        "SAM turns every surviving box into an exact pixel mask"],
-  reads:["rig_sp0/crops/*.webp","vocab.json queries.gdino"],
+  reads:["rig_sp0/crops/*.webp","vocab.json queries.gdino","rig_sp0/vocab_bearings.json (per-view term filter)"],
   writes:["rig_sp0/seg_batched20/detections.json (canonical labels)","<view>_masks.npy (same order)","overlay pngs"],
   note:"Result on the rig crops: 233 → 325 detections vs the mega-prompt run; picture 46 → 95 at higher mean score; rug appeared at all. Open question: batch composition (a few strong classes softened slightly — which words share a list matters, not just count)."},
 plift: {mod:"eg", eyebrow:"P4 · 2.3 LIFT — verified cameras, no gate", name:"Verified-camera mask lift + robust merge",
   script:"pano_lift.py --seg-dir seg_batched20 --min-score 0.20 --gate-peak 0.20",
   how:["Every crop camera is converted to the raw frame through the DEFINED pano mapping and mechanically verified (mini-G1: z-buffer render vs the crop, corr must clear 0.25 — house rule for every frame crossing)",
-       "For each mask: per-pixel splat z-buffer depth → 3D points → outlier-trimmed box, with per-axis edge trust (a frame-clipped detection distrusts only the bound its cut edge points at)",
-       "Merge same-label overlapping boxes with ROBUST per-axis fusion (5th/95th quantile of trusted bounds — measured 07-26: raw union inflates with view count, corr +0.84)",
+       "WHOLE-FRAME GUARD (08-06): a detection covering ≥95% of the crop is the view, not an object (image-denoting query words make the detector box the entire frame) — skipped before lifting",
+       "For each mask: per-pixel splat z-buffer depth → NEAREST sufficient depth cluster (gap 0.40 m, ≥25% mask support — masks always hold see-through pixels whose depth is the background; a spread-scaled trim widens with the bleed) → old spread trim within the cluster → 3D points → box, with per-axis edge trust",
+       "Merge same-label overlapping boxes with ROBUST per-axis fusion: MAD gate on bound votes (n≥4: |v−median| ≤ max(0.4 m, 3·MAD) — one bleeding member can no longer own a face, 08-06) then 5th/95th quantile of trusted bounds (raw union inflates with view count, corr +0.84, 07-26)",
        "NO confidence gate (dropped 07-26): at the 0.20 floor the merge passes everything; filtering is the recenter round's job"],
   reads:["seg_batched20/ detections + masks","rig_sp0/crops sidecars + pano meta (exact cameras)","gen_raw.ply"],
   writes:["scene_manifest_pano2c.json (ungated merge)","rig_sp0/lift_poolc.json (per-detection pool: the recenter round's input)"],
