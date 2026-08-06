@@ -48,6 +48,13 @@ def main():
     ap.add_argument("--box-thr", type=float, default=0.35)
     ap.add_argument("--topk", type=int, default=TOPK)
     ap.add_argument("--pace", type=float, default=2.0)
+    ap.add_argument("--bearings", default="",
+                    help="vocab_bearings.json (pano_bearings.py): per-view "
+                         "query filter — a term whose canonical has located "
+                         "bearings is only searched in views within "
+                         "--bearing-window deg of one; unlocated terms stay "
+                         "global (directional prior, side-branch 2026-08-06)")
+    ap.add_argument("--bearing-window", type=float, default=90.0)
     a = ap.parse_args()
 
     vj = json.loads((paths.scene_dir(a.scene) / "vocab.json")
@@ -55,14 +62,38 @@ def main():
     canon = list(vj["canonical"])
     syn = vj.get("synonyms", {})   # detector-phrasing alternatives -> canonical
     terms = [t.strip() for t in vj["queries"]["gdino"].split(".") if t.strip()]
-    # round-robin so a concept's synonyms (appended at the list's end by the
-    # vocab expansion) land in different batches
-    n_b = (len(terms) + BATCH - 1) // BATCH
-    batches = [terms[i::n_b] for i in range(n_b)]
-    print(f"[segb] {len(terms)} terms -> {n_b} batches of ~{BATCH}:", flush=True)
-    for bt in batches:
-        print(f"  {'. '.join(bt)}.", flush=True)
 
+    bearings = {}
+    if a.bearings:
+        bearings = json.loads(Path(a.bearings).read_text(
+            encoding="utf-8"))["bearings_deg"]
+        print(f"[segb] directional prior: {len(bearings)} located terms, "
+              f"window +/-{a.bearing_window} deg", flush=True)
+
+    def view_yaw(vp):
+        side = json.loads((vp.parent / f"{vp.stem}.json").read_text())
+        fx, _fy, fz = (float(t) for t in side["look"].split(","))
+        import math
+        return math.degrees(math.atan2(fx, fz)) % 360.0
+
+    def terms_for(yaw):
+        if not bearings:
+            return terms
+        keep = []
+        for t in terms:
+            degs = bearings.get(canonicalize(t, canon, syn) or t)
+            if not degs or any(min(abs(yaw - d), 360 - abs(yaw - d))
+                               <= a.bearing_window for d in degs):
+                keep.append(t)
+        return keep
+
+    def make_batches(vterms):
+        # round-robin so a concept's synonyms (appended at the list's end by
+        # the vocab expansion) land in different batches
+        n_b = (len(vterms) + BATCH - 1) // BATCH
+        return [vterms[i::n_b] for i in range(n_b)]
+
+    print(f"[segb] {len(terms)} query terms", flush=True)
     views = sorted(Path(a.views_dir).glob(a.glob))
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -83,8 +114,14 @@ def main():
     for vp in views:
         name = vp.stem
         img = Image.open(vp).convert("RGB")
+        vterms = terms_for(view_yaw(vp)) if bearings else terms
+        if bearings:
+            gone = sorted(set(terms) - set(vterms))
+            print(f"[segb] {name}: yaw {view_yaw(vp):.0f} -> {len(vterms)} "
+                  f"terms (prior removed: {', '.join(gone) or '-'})",
+                  flush=True)
         raw = []
-        for bt in batches:
+        for bt in make_batches(vterms):
             prompt = ". ".join(bt) + "."
             inputs = gd_proc(images=img, text=prompt,
                              return_tensors="pt").to(dev)
