@@ -16,7 +16,7 @@ Run:  python pano_recenter.py --scene bedroom_marble
 Out:  rig_sp0/rc/rc2_*.webp+.json, rig_sp0/rc_seg/, and
       scene_manifest_pano2_rc.json (objects + children).
 """
-import argparse, json, math, subprocess, sys
+import argparse, hashlib, json, math, shutil, subprocess, sys
 from pathlib import Path
 import numpy as np
 from PIL import Image
@@ -111,6 +111,30 @@ def main():
           f"{sum(1 for t in targets if 'verification' in t['purposes'])} verification, "
           f"{sum(1 for t in targets if 'enrichment' in t['purposes'])} enrichment); "
           f"skipped too-wide: {skipped_wide or 'none'}", flush=True)
+
+    # ---------------- stale-shot gate (content fingerprint) ----------------
+    # rc2_NN names are run-order indices: a changed manifest re-aims index NN
+    # at a DIFFERENT object, so shots/detections cached by a previous run are
+    # silently wrong (08-06 living: 40/59 corr≈0 cam FAILs + 16 false
+    # refutations on the first re-run). The cache is valid only for an
+    # identical target list — same fingerprint = crash-resume; anything else
+    # (including unknown provenance) wipes shots + shot-seg.
+    fp = hashlib.sha1(json.dumps(
+        [[t["obj"], t["purposes"], t["fov"], t["fwd_p"]] for t in targets]
+    ).encode()).hexdigest()
+    fpf = rcdir / "shots_fingerprint.txt"
+    if (any(rcdir.glob("rc2_*.webp"))
+            and (not fpf.exists() or fpf.read_text().strip() != fp)):
+        n = 0
+        for p in list(rcdir.glob("rc2_*")):
+            p.unlink()
+            n += 1
+        rcseg_gate = rig / f"rc{sfx}_seg"
+        if rcseg_gate.exists():
+            shutil.rmtree(rcseg_gate)
+        print(f"[sp4] target list changed — cleared {n} stale shot files + "
+              f"{rcseg_gate.name}/", flush=True)
+    fpf.write_text(fp)
 
     # ---------------- shots: CPU resample from the pano ----------------
     Image.MAX_IMAGE_PIXELS = None

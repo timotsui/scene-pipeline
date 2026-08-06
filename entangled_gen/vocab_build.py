@@ -53,6 +53,19 @@ CONCRETE_PROMPT = """From this list of terms mined from a room-description promp
 
 Output ONLY the kept terms as a comma-separated list on a single line, nothing else."""
 
+# Detector-friendly phrasing pass (2026-08-06): open-vocab detectors respond
+# to common caption words — formal terms can fail where casual ones fire
+# ("painting" fires where "picture" doesn't, 07-26; a formal-only term can
+# miss its object entirely). Same doctrine as the concreteness pass: cheap
+# LLM judgment applied to EVERY term, never a curated list, no scene
+# knowledge. Alternatives ride the query set in different batches (the
+# round-robin) and map back to their canonical term via vocab.json.
+SYNONYM_PROMPT = """You write alternative query words for an open-vocabulary object detector. Detectors respond to common caption words; formal terms can fail where casual ones fire. For each term below, give up to 2 alternative words/phrases a photo captioner would commonly use for the SAME type of object in an indoor photo (e.g. a formal term's everyday word, or a very common variant). Skip terms that need no alternative. NEVER output a broader category, a part, or a different object — only true same-object alternative names.
+
+{terms}
+
+Output ONLY lines of the form "term: alt1, alt2" for terms that have alternatives, nothing else."""
+
 
 # ---------------- VLM bridge (claude.exe, same contract as describe_nodes) --
 
@@ -212,6 +225,32 @@ def main():
     image_only = [t for t, s in prov.items() if "prompt" not in s and s != ["staple"]]
     prompt_only = [t for t, s in prov.items() if s == ["prompt"]]
 
+    # ---- detector-friendly phrasing pass (generic, every term) ----
+    # Degrades conservatively: judge unavailable -> no alternatives.
+    llm_syn = {}
+    if final and not args.skip_vlm:
+        try:
+            raw = call_claude(SYNONYM_PROMPT.format(terms=", ".join(final)), sdir)
+            for ln in raw.splitlines():
+                if ":" not in ln:
+                    continue
+                term, alts = ln.split(":", 1)
+                term = term.strip().lower().lstrip("-• ").strip('"')
+                if term not in prov:
+                    continue
+                for alt in [a.strip().lower() for a in alts.split(",") if a.strip()]:
+                    if (alt and alt not in prov and alt not in STOP
+                            and alt not in llm_syn and len(alt.split()) <= 4):
+                        llm_syn[alt] = term
+            vlm_calls += 1
+            print(f"[vlm] detector synonyms ({len(llm_syn)}): "
+                  + (", ".join(f"{a}->{t}" for a, t in llm_syn.items()) or "-"))
+        except Exception as e:  # noqa: BLE001
+            print(f"[vlm] synonym pass unavailable ({e}) — none added")
+
+    q_terms = expand_terms(final)
+    q_terms += [s for s in llm_syn if s not in q_terms]
+
     out = {
         "scene": sc,
         "sources": {"prompt_raw": prompt_terms, "pano_raw": pano_terms,
@@ -221,9 +260,10 @@ def main():
         "diff": {"image_only (generator improvisation)": image_only,
                  "prompt_only (asked for, check if generated)": prompt_only,
                  "dropped_abstract (concreteness pass)": dropped_abstract},
+        "synonyms": llm_syn,
         "queries": {
-            "gdino": ". ".join(expand_terms(final)) + ".",
-            "owlv2": ", ".join(expand_terms(final)),
+            "gdino": ". ".join(q_terms) + ".",
+            "owlv2": ", ".join(q_terms),
         },
         "meta": {"model": MODEL, "vlm_calls": vlm_calls,
                  "images": images_used,

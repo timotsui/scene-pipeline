@@ -94,14 +94,26 @@ def main():
     # y-down: floor is the HIGH y bound, ceiling the LOW one (floor_y >
     # ceiling_y numerically — same pattern as the bedroom manifest record)
     floor_y, ceil_y = float(m_hi[1]), float(m_lo[1])
+    # Full legacy-frame-block schema so every downstream legacy read
+    # (room_shell, envelope, ...) falls back to this file with no schema
+    # branch. raw_to_render is the bundle-frame-class CONSTANT (rot180-
+    # about-z), defined by the frame contract, never estimated; extents are
+    # the splat's robust percentiles (the legacy block's convention).
+    e_p1 = np.percentile(xyz, 1, axis=0).round(3)
+    e_p99 = np.percentile(xyz, 99, axis=0).round(3)
     (sd / "frame_bootstrap.json").write_text(json.dumps(
         {"scene": sc, "source": "scene intake (frame_bootstrap.py)",
+         "space": "raw",
          "up": [0.0, -1.0, 0.0],
          "floor_y": round(floor_y, 3), "ceiling_y": round(ceil_y, 3),
+         "extent_p1": e_p1.tolist(), "extent_p99": e_p99.tolist(),
+         "raw_to_render": [-1.0, -1.0, 1.0],
          "note": "BUNDLE frame == pipeline frame (y-down, physical up = "
                  "-y). floor/ceiling from collider bounds (skirt-level, "
                  "~3 cm outside true surfaces — fine for camera "
-                 "placement; room_shell measures true surfaces later)."},
+                 "placement; room_shell measures true surfaces later). "
+                 "raw_to_render = toolchain constant (frame contract), "
+                 "not calibrated."},
         indent=1))
     print(f"[intake] {sc}: floor {floor_y:.3f} > ceiling {ceil_y:.3f} "
           f"(y-down)  collider = byte-copy  [OK]", flush=True)

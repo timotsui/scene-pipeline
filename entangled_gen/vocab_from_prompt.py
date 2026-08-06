@@ -72,21 +72,27 @@ def expand_terms(terms):
     return out
 
 
-def canonicalize(label, vocab=None):
+def canonicalize(label, vocab=None, synonyms=None):
     """Detected label -> canonical vocab term. GroundingDINO can emit token
     concatenations ("picture frame photo", "side table desk") — match the
-    longest known term contained in the label."""
+    longest known term contained in the label. `synonyms` = per-scene
+    {alternative: canonical} from vocab_build's detector-phrasing pass."""
     label = label.strip().lower()
+    syn = synonyms or {}
+    if label in syn:
+        return syn[label]
     if label in NORMALIZE:
         return NORMALIZE[label]
-    known = set(NORMALIZE) | (set(vocab) if vocab else set())
+    known = set(NORMALIZE) | set(syn) | (set(vocab) if vocab else set())
     if label in known:
         return NORMALIZE.get(label, label)
     best = ""
     for term in known:
         if term in label and len(term) > len(best):
             best = term
-    return NORMALIZE.get(best, best) if best else label
+    if not best:
+        return label
+    return syn.get(best) or NORMALIZE.get(best, best)
 
 
 def _spacy_nlp():

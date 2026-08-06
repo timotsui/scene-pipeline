@@ -91,6 +91,22 @@ def manifest(sc):
     return scene_dir(sc) / "scene_manifest.json"
 
 
+def frame_block(sc):
+    """The scene's frame record: legacy sweep manifest (bedroom-era) ->
+    frame_bootstrap.json (fresh scenes; same schema since 2026-08-06 —
+    intake writes the full block incl. raw_to_render + extents)."""
+    import json
+    legacy = manifest(sc)
+    if legacy.exists():
+        return json.loads(legacy.read_text())["frame"]
+    boot = scene_dir(sc) / "frame_bootstrap.json"
+    if boot.exists():
+        return json.loads(boot.read_text())
+    raise SystemExit(f"[paths] no frame info for {sc}: run "
+                     f"frame_bootstrap.py --scene {sc} (fresh scene), or "
+                     f"provide the legacy sweep manifest")
+
+
 def graph_fingerprint(sc):
     """Content hashes of the two graph slices compose layers consume:
     'geometry' (resolved boxes + names + arch planes) and 'testimony'

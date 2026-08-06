@@ -199,6 +199,23 @@ def side_candidates(vals, lo, hi, outer_is_low):
 
 
 def fit_shell(scene, fr, pts, r2r):
+    # Clip to the frame's robust extents (+SEARCH margin) before ANY
+    # histogramming. Generated splats leak floater gaussians through
+    # openings (living_marble 08-06: sky/ground points 10+ m outside the
+    # room dragged the floor/ceiling midpoint split to -9.5 — the fitter
+    # called the real floor "ceiling" and a floater cluster "floor").
+    # The audit path already clips this way; the extents come from the
+    # frame block, no new estimation. Closed rooms (bedroom) are a no-op.
+    r2r_a = np.asarray(r2r, dtype=np.float64)
+    ext_lo = np.minimum(np.array(fr["extent_p1"]) * r2r_a,
+                        np.array(fr["extent_p99"]) * r2r_a) - SEARCH
+    ext_hi = np.maximum(np.array(fr["extent_p1"]) * r2r_a,
+                        np.array(fr["extent_p99"]) * r2r_a) + SEARCH
+    n_all = len(pts)
+    pts = pts[np.all((pts >= ext_lo) & (pts <= ext_hi), axis=1)]
+    if n_all - len(pts):
+        print(f"[shell] extent clip: {n_all - len(pts):,} of {n_all:,} "
+              f"points outside robust extents dropped", flush=True)
     floor_m, ceil_m = measure_floor_ceiling(pts)
     # top-height map over plan cells
     x, y, z = pts[:, 0], pts[:, 1], pts[:, 2]
@@ -305,7 +322,7 @@ def main():
     a = ap.parse_args()
     if not a.audit:
         sd = paths.scene_dir(a.scene)
-        fr = json.loads(paths.manifest(a.scene).read_text())["frame"]
+        fr = paths.frame_block(a.scene)
         pts, r2r = load_upright_points(a.scene, fr)
         shell = fit_shell(a.scene, fr, pts, r2r)
         sy = r2r[1]
@@ -337,7 +354,7 @@ def main():
                   f"parallels {len(w['parallel_surfaces'])}")
         return
     sd = paths.scene_dir(a.scene)
-    fr = json.loads(paths.manifest(a.scene).read_text())["frame"]
+    fr = paths.frame_block(a.scene)
     pts, r2r = load_upright_points(a.scene, fr)
 
     floor_u = fr["floor_y"] * r2r[1]

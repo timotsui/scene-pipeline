@@ -53,6 +53,7 @@ def main():
     vj = json.loads((paths.scene_dir(a.scene) / "vocab.json")
                     .read_text(encoding="utf-8"))
     canon = list(vj["canonical"])
+    syn = vj.get("synonyms", {})   # detector-phrasing alternatives -> canonical
     terms = [t.strip() for t in vj["queries"]["gdino"].split(".") if t.strip()]
     # round-robin so a concept's synonyms (appended at the list's end by the
     # vocab expansion) land in different batches
@@ -96,7 +97,7 @@ def main():
                       else res["labels"])
             for score, label, box in zip(res["scores"], labels, res["boxes"]):
                 x0, y0, x1, y1 = [float(v) for v in box]
-                lab = canonicalize(str(label), canon) or ""
+                lab = canonicalize(str(label), canon, syn) or ""
                 if not lab:
                     unmapped.add(str(label))
                     continue
