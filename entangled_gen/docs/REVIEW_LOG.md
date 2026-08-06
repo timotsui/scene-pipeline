@@ -795,3 +795,9 @@ _(further entries appended as artifacts land)_
 - Chain totals: sensing redo ~8 min - graph+judges ~11 min - S1..PH1 ~7.5 min - S3/S4 ~12.5 min - fit loop+rotation+closing ~10 min - sub fleet ~9 min. END-TO-END (detect -> subs preview) ~58 min wall-clock on this hardware.
 - **OPEN ITEMS FOR YOU (decisions, not tasks):** (1) W3 open-boundary ruling (R-S2-11); (2) swap-channel geometry (R-S2-14/15); (3) empty child layer (R-S2-16); (4) size-normalization design - untouched, awaits you; (5) the TV finding is now a full arc: synonym-detected -> 2 weak boxes refuted -> best box PLACED wall-flush (obj_013) - eyeball it in the viewer.
 - **USER VERDICT:**
+
+## R-S2-18 - SIZE NORMALIZATION designed + applied (scene_scale.py, NEW STAGE)
+- **What / path:** `scene_scale.py` (measure via LLM class-size priors -> rescale ply/collider/frame ONCE); evidence `out\living_marble\scene_scale.json` (s=0.699, n=31, rel-MAD 0.097); originals kept as `*_prescale.*`. Design settled with user: rescale-once + LLM priors (both recommended options taken). Known caveat: f30-manifest source includes pre-judge fragments (hand-check on graph[resolved] gave 0.74); ceiling lands at 3.12 m.
+- **Why:** Marble export scale varies per world (bedroom ~1.0, living 0.70); all constants are meters-tuned and shopping fits at native size - an off-scale scene poisons everything. Two-pass protocol: measure at raw scale -> normalize -> re-run in true meters.
+- **USER VERDICT: PASS 2026-08-06 ("this normalization is correct") - viewer one-look of the rescaled scene; proceed to the normalized re-run.**
+- Queued refinement (not blocking): move the measurement input to graph[resolved] (fragments merged, artifacts removed) once the two-pass order is drawn on the map.
