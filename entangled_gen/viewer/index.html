@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>live placement viewer</title>
+<title>scene-pipeline viewer</title>
 <style>
   body { margin: 0; background: #14141a; color: #ddd; font: 12px monospace; overflow: hidden; }
   .panel { position: fixed; background: rgba(0,0,0,.6); padding: 8px 10px;
@@ -25,21 +25,40 @@
 </head>
 <body>
 <div id="hud" class="panel">
-  <div><b>live placement viewer</b> — scene: <select id="scSel"></select></div>
+  <div><b>scene-pipeline viewer</b> — scene: <select id="scSel"></select></div>
   <div class="dim">drag orbit · wheel zoom · right-drag pan · WASD move, E/Q (or R/F)
        up/down, Shift fast · click = inspect smallest box under cursor,
        click again = cycle overlapping boxes</div>
   <div><label><input type="checkbox" id="showSplat"> splat</label>
        <label><input type="checkbox" id="clipCeil" checked> clip ceiling</label>
-       <label><input type="checkbox" id="showClr" checked> clearance</label>
-       <label title="rig-origin markers: RAW-frame axis triad (red +x / green +y / blue +z) + the red origin sphere"><input type="checkbox" id="showAxes"> axes</label>
-       <label title="stock reference human (CesiumMan, Khronos glTF sample assets, CC-BY 4.0 Cesium) uniform-scaled to 1.75 m standing on the floor at the rig origin — eyeball scale reference for the metric-normalization question"><input type="checkbox" id="showHuman"> human 1.75 m</label>
        <label><input type="checkbox" id="hifi" checked> hi-fi splats</label>
-       <label title="collider_registered.glb — the Marble bundle's collider MESH, ICP-registered into the RAW frame (collider_register.py). Not boxes: the actual mesh surface, for judging mesh↔splat alignment"><input type="checkbox" id="showColl"> collider mesh</label>
        <label title="compose/fitted_preview.glb — the shopping module's #1 candidates naively placed in their boxes (compose/fit_preview.py; no fit loop yet). Textured real assets, RAW frame baked in"><input type="checkbox" id="showFit"> fitted preview</label>
        <label title="compose/subs_preview.glb — the sub rounds' placed sub-objects, every anchor's best pass merged (cp7 host-aware > cp6 jiggled > cp5 raw; experiments/build_subs_preview.py). RAW frame baked in, same convention as fitted preview"><input type="checkbox" id="showSubs"> subs</label>
        <label title="THE CANONICAL VIEW — the resolved scene graph (graph[resolved], stage-2 handoff: 82 clusters, boxes verbatim) with the compose-stage layers on top when fresh: anchor tint from each object's TOP supported_by option, green support arrows, review modes (supported_by / consistency / snap). Stale compose layers auto-hide (⚠ note in the row). ?audit=1 = pre-edit judged audit. Click a box = its card"><input type="checkbox" id="showJudged"> scene model (resolved · canonical)</label>
        <span id="hifiNote" class="dim"></span></div>
+  <details class="dim" title="occasional tools — settled-question layers and power inputs, kept working but out of the default view (declutter 2026-08-07)">
+    <summary>tools / advanced</summary>
+    <div style="margin:4px 0 0 12px">
+       <label title="rig-origin markers: RAW-frame axis triad (red +x / green +y / blue +z) + the red origin sphere"><input type="checkbox" id="showAxes"> axes</label>
+       <label title="stock reference human (CesiumMan, Khronos glTF sample assets, CC-BY 4.0 Cesium) uniform-scaled to 1.75 m standing on the floor at the rig origin — the metric-normalization question, settled 08-02B (no world rescale)"><input type="checkbox" id="showHuman"> human 1.75 m</label>
+       <label title="collider_registered.glb — the Marble bundle's collider MESH, ICP-registered into the RAW frame (collider_register.py). Alignment verified; kept for spot checks"><input type="checkbox" id="showColl"> collider mesh</label>
+       <label title="envelope-era floor-clearance grid (envelope ruled OUT of the compose stage 07-26; kept for spot checks)"><input type="checkbox" id="showClr"> clearance</label>
+       <button id="placeBtn" title="live-placement-era interactive editor — superseded by the compose chain">place (P)</button>
+       <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
+            y <input type="number" id="ry" value="0" step="90" style="width:52px">
+            z <input type="number" id="rz" value="180" step="90" style="width:52px">
+            <span class="dim">display only — coords stay RAW ply frame; z=180 = upright
+            (user-verified vs SuperSplat, 2026-07-05)</span></div>
+       <div>cam: x <input type="number" id="cx" step="0.1" style="width:52px">
+            y <input type="number" id="cy" step="0.1" style="width:52px">
+            z <input type="number" id="cz" step="0.1" style="width:52px">
+            → x <input type="number" id="tx" step="0.1" style="width:52px">
+            y <input type="number" id="ty" step="0.1" style="width:52px">
+            z <input type="number" id="tz" step="0.1" style="width:52px">
+            fov <input type="number" id="cfov" step="5" style="width:44px">
+            <span class="dim">live · type to set · same frame as ?cam/?target</span></div>
+    </div>
+  </details>
   <details class="dim" title="audit layers — superseded as views, kept for evidence: decisions on record in pipeline_map.html; files on disk, nothing deleted. (Composed/collisions/analyzer-cams layers + the superseded box-source manifests were cleared from the HUD 08-01 — serve routes + files remain.)">
     <summary>audit / archive</summary>
     <div style="margin:4px 0 0 12px">
@@ -49,21 +68,7 @@
   </details>
   <div id="graphRow" style="display:none"></div>
   <div id="judgedRow" style="display:none"></div>
-  <div>display rot (°): x <input type="number" id="rx" value="0" step="90" style="width:52px">
-       y <input type="number" id="ry" value="0" step="90" style="width:52px">
-       z <input type="number" id="rz" value="180" step="90" style="width:52px">
-       <span class="dim">display only — coords stay RAW ply frame; z=180 = upright
-       (user-verified vs SuperSplat, 2026-07-05)</span></div>
-  <div>cam: x <input type="number" id="cx" step="0.1" style="width:52px">
-       y <input type="number" id="cy" step="0.1" style="width:52px">
-       z <input type="number" id="cz" step="0.1" style="width:52px">
-       → x <input type="number" id="tx" step="0.1" style="width:52px">
-       y <input type="number" id="ty" step="0.1" style="width:52px">
-       z <input type="number" id="tz" step="0.1" style="width:52px">
-       fov <input type="number" id="cfov" step="5" style="width:44px">
-       <span class="dim">live · type to set · same frame as ?cam/?target</span></div>
   <div><button id="capBtn">capture (C)</button>
-       <button id="placeBtn">place (P)</button>
        <button id="measBtn">measure (M)</button>
        <button id="bmBtn">bookmark (B)</button><span id="msg"></span></div>
   <div>find: <input id="search" placeholder="obj_065 · toy · lamp"
@@ -475,6 +480,7 @@ try {
   plane.rotation.x = -Math.PI / 2;
   plane.position.set(x0 + nx * cell / 2, floorY + 0.012, z0 + nz * cell / 2);
   worldGroup.add(plane);
+  plane.visible = $('showClr').checked;   // default OFF since 08-07
   $('showClr').onchange = e => plane.visible = e.target.checked;
 } catch (e) { console.warn('no clearance grid', e); }
 
