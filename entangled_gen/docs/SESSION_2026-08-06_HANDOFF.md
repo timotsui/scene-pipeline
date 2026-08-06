@@ -120,6 +120,7 @@ the anchor-loop five are already flagged in PLAN_FIT_LOOP):**
   cp7/ for all 15 (8 with placements_walked.json + subs_walked.glb +
   front.png, 7 idle stubs) · sub_experiment/index.html (overview,
   cp7 shots) · subs_preview.glb (19.7 MB merged layer).
-- **ALL UNCOMMITTED** — this session's files AND the whole 08-05C
-  backlog (commit = user's call). Scene-pipeline commits as
-  Timotsui <timotsuihc@gmail.com>; push is the user's.
+- **COMMITTED as 9a74f84** ("Sub rounds SR0-SR12: support recursion
+  fleet + host physics canon + viewer subs layer", 16 files — this
+  session AND the whole 08-05C backlog, one coherent changeset).
+  Tree clean. PUSH = user's job (settings deny git push here).
