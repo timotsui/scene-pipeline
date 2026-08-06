@@ -451,7 +451,7 @@ def main():
     a = ap.parse_args()
 
     cdir = paths.compose_dir(a.scene)
-    man = json.loads(paths.manifest(a.scene).read_text(encoding="utf-8"))
+    man = {"frame": paths.frame_block(a.scene)}
     floor_r = float(man["frame"]["floor_y"]) * -1.0
     r2r = np.asarray(man["frame"].get("raw_to_render", [1, 1, 1]),
                      np.float64)

@@ -189,7 +189,7 @@ def main():
             if ch.get("candidate"):
                 style_pick[iid] = ch["candidate"]
                 walked.add(iid)
-    man = json.loads(paths.manifest(args.scene).read_text(encoding="utf-8"))
+    man = {"frame": paths.frame_block(args.scene)}
     graph = json.loads((paths.scene_dir(args.scene) / "scene_graph.json")
                        .read_text(encoding="utf-8"))
     r2r = np.array(man["frame"].get("raw_to_render", [1, 1, 1]),

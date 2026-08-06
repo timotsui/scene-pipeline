@@ -547,7 +547,7 @@ def call_measured(prompt, cwd, model, timeout):
 # --------------------------------------------------------------------------
 def load_scene(scene):
     cdir = paths.compose_dir(scene)
-    man = json.loads(paths.manifest(scene).read_text(encoding="utf-8"))
+    man = {"frame": paths.frame_block(scene)}
     graph = json.loads((paths.scene_dir(scene) / "scene_graph.json")
                        .read_text(encoding="utf-8"))
     r2r = np.array(man["frame"].get("raw_to_render", [1, 1, 1]), np.float32)
