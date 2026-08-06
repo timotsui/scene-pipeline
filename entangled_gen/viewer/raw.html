@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- RAW BUNDLE VIEW (2026-08-06). Ground truth page: renders the Marble
+     download's splats.spz + collider.glb EXACTLY as shipped — streamed
+     straight out of the bundle folder (bundle_path.txt), no conversion,
+     no copies, no display rotation, no pipeline code in the path.
+     Open: /raw?scene=<scene>. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>raw bundle view</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #14141a; }
+  #hud { position: fixed; top: 8px; left: 8px; color: #ddd;
+         font: 12px/1.5 system-ui; background: #000a; padding: 8px 10px;
+         border-radius: 6px; max-width: 560px; }
+  #hud code { color: #9ecbff; }
+</style>
+</head>
+<body>
+<div id="hud">loading…</div>
+<script type="importmap">
+{ "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/",
+    "gaussian-splats-3d": "./vendor/gaussian-splats-3d.module.js"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const scene_ = new URLSearchParams(location.search).get('scene') || 'living_marble';
+const q = 'scene=' + scene_ + '&v=' + Date.now();
+const hud = document.getElementById('hud');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x14141a);
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.05, 100);
+camera.position.set(0, 0, -0.2);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 1.5);
+controls.update();
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// splat: the .spz straight from the bundle (the lib decodes spz natively)
+const GaussianSplats3D = await import('gaussian-splats-3d');
+const splat = new GaussianSplats3D.DropInViewer({
+  sharedMemoryForWorkers: false,
+  gpuAcceleratedSort: false,
+  freeIntermediateSplatData: true,
+});
+scene.add(splat);
+const loads = [
+  splat.addSplatScene('bundle_splats.spz?' + q, {
+    showLoadingUI: false,
+    progressiveLoad: true,
+    splatAlphaRemovalThreshold: 5,
+    format: GaussianSplats3D.SceneFormat.Spz,   // query defeats sniffing
+  }).then(() => 'splat ok'),
+  // mesh: the .glb straight from the bundle, unlit wireframe so the splat
+  // stays visible through it (PBR renders black here — no light rig)
+  new GLTFLoader().loadAsync('bundle_collider.glb?' + q).then(g => {
+    g.scene.traverse(o => {
+      if (o.isMesh) o.material = new THREE.MeshBasicMaterial(
+        { color: 0xff8c00, wireframe: true, transparent: true, opacity: 0.55 });
+    });
+    scene.add(g.scene);
+    return 'mesh ok';
+  }),
+];
+Promise.allSettled(loads).then(rs => {
+  hud.innerHTML = '<b>RAW BUNDLE VIEW — nothing applied, no rotation, ' +
+    'files exactly as downloaded</b><br>' +
+    'scene: <code>' + scene_ + '</code><br>' +
+    rs.map(r => r.status === 'fulfilled' ? r.value : 'FAILED: ' + r.reason)
+      .join(' · ') +
+    '<br>splat = <code>bundle/splats.spz</code> · orange wireframe = ' +
+    '<code>bundle/collider.glb</code><br>drag = orbit · wheel = zoom';
+});
+
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+</script>
+</body>
+</html>

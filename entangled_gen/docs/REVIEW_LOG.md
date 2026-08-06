@@ -674,3 +674,17 @@ Format per entry:
   judge-pass territory).
 
 _(further entries appended as artifacts land)_
+
+## R-S2-0 - SCENE #2 living_marble: intake frame contract (CP0 + frame saga)
+- **What / path:** viewer `localhost:8321/?scene=living_marble` (splat + rotated collider); raw page `/raw?scene=living_marble` (bundle as shipped); module `entangled_gen/frame_bootstrap.py`; evidence trail in `docs/PLAN_SCENE2_LIVING.md`
+- **Why:** gates the whole scene-2 run - every stage consumes the pipeline frame this intake defines (trust bundle + splat-transform rot180x constant, zero estimation).
+- **Look for:** room right-side-up, orange mesh lying ON the splat, no mirror.
+- **PROVISIONAL (Claude):** n/a - user reviewed live.
+- **USER VERDICT: PASS 2026-08-06 ("this is correctly aligned and rotated")**
+
+## R-S2-1 - CP1 pano self-render (module-reproduced)
+- **What / path:** `out\living_marble\rig_sp0\pano_selfrender.png` (8192x4096, eye +0.523, signs -x+y+z); gate composite vs Marble pano: scratchpad `cp1_pano_gate.jpg` (that composite showed the earlier eye +0.531 render; current pano re-stitched blind by the module chain, eye moved 8 mm)
+- **Why:** the canonical pano - all detection crops are resamples of it.
+- **Look for:** upright, same handedness as Marble's pano (landmark left-right ORDER matches), furniture nameable in crops. 180-degree front/back start-direction offset vs Marble = cosmetic (yaw origin choice).
+- **PROVISIONAL (Claude): PASS - high confidence** on frame grounds (signs + floor now proven by the settled contract; user viewed the near-identical +0.531 render and objected only to the start-direction offset). 8 mm eye change cannot alter content.
+- **USER VERDICT:**

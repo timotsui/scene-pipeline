@@ -217,9 +217,26 @@ class H(BaseHTTPRequestHandler):
                 man = json.loads(manf.read_text())
                 meta["floor_y"] = man["frame"]["floor_y"]
                 meta["ceiling_y"] = man["frame"]["ceiling_y"]
+                meta["raw_to_render"] = man["frame"].get("raw_to_render")
             # (gpu_yaw photo-pose harvesting removed 2026-07-25 — yaw track
             # retired; startup pose is now derived from floor_y client-side)
             self._send(200, json.dumps(meta).encode(), "application/json")
+        elif p == "/raw":
+            # ground-truth page: the Marble bundle exactly as shipped
+            self._send(200, (HERE / "raw.html").read_bytes(), "text/html")
+        elif p in ("/bundle_splats.spz", "/bundle_collider.glb"):
+            # stream RAW BUNDLE FILES (no conversion, no copy) for raw.html
+            bp = paths.scene_dir(sc) / "bundle_path.txt"
+            if not bp.exists():
+                return self._send(404, b"no bundle_path.txt for this scene")
+            bundle = Path(bp.read_text().strip())
+            pat = "*.spz" if p.endswith(".spz") else "*collider*.glb"
+            hits = sorted(bundle.glob(pat))
+            if not hits:
+                return self._send(404, f"no {pat} in bundle".encode())
+            ctype = ("application/octet-stream" if p.endswith(".spz")
+                     else "model/gltf-binary")
+            self._send(200, hits[0].read_bytes(), ctype)
         elif p == "/manifest.json":
             # ?man=<variant> serves scene_manifest_<variant>.json (e.g. the
             # week8 pano-lift manifests) without touching the default one

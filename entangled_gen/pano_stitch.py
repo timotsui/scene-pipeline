@@ -47,11 +47,26 @@ def main():
     outd = sd / "rig_sp0"
     outd.mkdir(exist_ok=True)
 
-    man = json.loads((sd / "scene_manifest_sweep.json").read_text())
-    floor_y = man["frame"]["floor_y"]
-    up_sign = -1 if man["frame"]["up"][1] < 0 else 1
+    # Frame info source: legacy sweep manifest (bedroom-era scenes, keeps
+    # them bit-identical) -> frame_bootstrap.json (fresh scenes; written by
+    # frame_bootstrap.py from the bundle collider + pano, 2026-08-06 —
+    # scene #2 exposed that a fresh scene has NO manifest yet).
+    legacy = sd / "scene_manifest_sweep.json"
+    boot = sd / "frame_bootstrap.json"
+    if legacy.exists():
+        fr = json.loads(legacy.read_text())["frame"]
+        signs = np.array([1.0, -1.0, 1.0])      # the A2 readability mirror
+    elif boot.exists():
+        fr = json.loads(boot.read_text())
+        signs = np.array(fr["pano_to_raw_signs"], np.float64)
+    else:
+        raise SystemExit("[stitch] no frame info: run frame_bootstrap.py "
+                         "--scene first (fresh scene), or provide the "
+                         "legacy sweep manifest")
+    floor_y = fr["floor_y"]
+    up_sign = -1 if fr["up"][1] < 0 else 1
     eye = [0.0, floor_y + up_sign * EYE_H, 0.0]
-    print(f"[stitch] eye {eye}", flush=True)
+    print(f"[stitch] eye {eye}  pano_to_raw signs {signs.tolist()}", flush=True)
 
     # ---------- render the 6 faces (GPU, WSL, resumable) ----------
     tf = outd / "faces_targets.json"
@@ -99,7 +114,10 @@ def main():
     phi = (0.5 - vv / PANO_H) * np.pi
     d_p = np.stack([np.cos(phi) * np.sin(theta), np.sin(phi),
                     np.cos(phi) * np.cos(theta)], axis=-1).reshape(-1, 3)
-    d_raw = d_p * np.array([1.0, -1.0, 1.0])
+    # sign class per scene vintage: y-down raws mirror y (the original A2
+    # convention), y-up raws mirror x — either way det=-1, the readability
+    # mirror, and the meta records which (crops/lift invert the same signs)
+    d_raw = d_p * signs
 
     axes = {n: np.array(d, float) for n, d in FACES}
     comp = np.stack([d_raw @ axes[n] for n, _ in FACES], axis=1)
@@ -129,10 +147,12 @@ def main():
     print(f"[stitch] wrote {pf} ({PANO_W}x{PANO_H})", flush=True)
     (outd / "pano_selfrender_meta.json").write_text(json.dumps(
         {"scene": sc, "eye_raw": eye, "eye_height_m": EYE_H,
-         "pano_to_raw": "d_raw = (x_p, -y_p, z_p) + eye offset — MIRROR-Y "
-                        "of raw, Marble-pano-style, DEFINED (not estimated; "
-                        "no scale, no registration). Mirror is required for "
-                        "the flat image to read un-flipped (user 2026-07-26)",
+         "pano_to_raw_signs": signs.tolist(),
+         "pano_to_raw": "d_raw = signs * d_p + eye offset — improper "
+                        "(det -1) by DESIGN, the readability mirror (user "
+                        "2026-07-26): mirror-y for y-down raws (A2), "
+                        "mirror-x for y-up raws (frame_bootstrap vintage). "
+                        "DEFINED not estimated; no scale, no registration",
          "convention": "crop_pano A2: +y up, center=+Z, theta toward +X",
          "width": PANO_W, "height": PANO_H,
          "px_per_deg_equator": round(PANO_W / 360.0, 1),
