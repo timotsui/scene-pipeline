@@ -92,6 +92,58 @@ def measure(man, priors):
     return rows
 
 
+def scale_derived_state(sdir, k):
+    """Multiply every meter-bearing DERIVED artifact of the scene state
+    (the state-transform half of the user's 08-06 ruling): all pano-track
+    manifests, the lift pool, the recorded pano eye. 2D pixel boxes and
+    view lists are scale-free and untouched."""
+    scaled = []
+
+    def _obj(o):
+        for key in ("aabb_min", "aabb_max", "center", "size"):
+            if key in o and o[key] is not None:
+                o[key] = [round(v * k, 4) for v in o[key]]
+
+    for f in sorted(sdir.glob("scene_manifest_pano*.json")):
+        man = json.loads(f.read_text(encoding="utf-8"))
+        fr = man.get("frame")
+        if fr:
+            for key in ("floor_y", "ceiling_y"):
+                if key in fr:
+                    fr[key] = round(fr[key] * k, 4)
+            for key in ("extent_p1", "extent_p99"):
+                if key in fr:
+                    fr[key] = [round(v * k, 4) for v in fr[key]]
+        for sec in ("objects", "refuted", "filtered_out"):
+            for o in man.get(sec) or []:
+                _obj(o)
+        man["scale_note"] = f"scene_scale.py multiplied by k={k:.4f}"
+        f.write_text(json.dumps(man, indent=1))
+        scaled.append(f.name)
+
+    for f in sorted((sdir / "rig_sp0").glob("lift_pool*.json")):
+        pool = json.loads(f.read_text(encoding="utf-8"))
+        if "floor_y" in pool:
+            pool["floor_y"] = round(pool["floor_y"] * k, 4)
+        for p in pool.get("pool", []):
+            for key in ("lo", "hi"):        # 3D bounds; p["box"] is 2D px
+                if key in p and p[key] is not None:
+                    p[key] = [round(v * k, 4) for v in p[key]]
+        f.write_text(json.dumps(pool))
+        scaled.append(f.name)
+
+    mf = sdir / "rig_sp0" / "pano_selfrender_meta.json"
+    if mf.exists():
+        meta = json.loads(mf.read_text(encoding="utf-8"))
+        meta["eye_raw"] = [round(v * k, 6) for v in meta["eye_raw"]]
+        meta["eye_note"] = ("eye scaled by scene_scale.py — the standpoint "
+                            "is part of the scene state; eye_height_m no "
+                            "longer literal")
+        mf.write_text(json.dumps(meta, indent=2))
+        scaled.append(mf.name)
+    return scaled
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
@@ -182,6 +234,9 @@ def main():
     mesh.export(coll_f)
     print(f"[scale] collider rescaled (bounds now "
           f"{np.round(mesh.bounds, 2).tolist()})")
+
+    derived = scale_derived_state(sdir, k)
+    print(f"[scale] derived state rescaled: {', '.join(derived)}")
 
     for key in ("floor_y", "ceiling_y"):
         boot[key] = round(boot[key] * k, 3)

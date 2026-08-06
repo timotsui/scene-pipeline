@@ -69,7 +69,26 @@ def main():
     print(f"[stitch] eye {eye}", flush=True)
 
     # ---------- render the 6 faces (GPU, WSL, resumable) ----------
+    # Face cache is valid ONLY for this exact camera + frame + ply state —
+    # stale faces silently re-stitched with a fresh eye are wrong-camera
+    # pixels (08-06: pre-normalization faces reused after the scene was
+    # rescaled poisoned a whole sensing pass). Same content-fingerprint
+    # gate as pano_recenter's shot cache: mismatch = wipe + re-render;
+    # match = crash-resume.
+    import hashlib
+    ply_st = paths.ply(sc).stat()
+    fp = hashlib.sha1(json.dumps(
+        [eye, fr["floor_y"], fr.get("ceiling_y"), FACE_RES, FACE_FOV,
+         ply_st.st_size, int(ply_st.st_mtime)]).encode()).hexdigest()
+    fpf = outd / "faces_fingerprint.txt"
     tf = outd / "faces_targets.json"
+    have = [outd / f"{n}.png" for n, _ in FACES if (outd / f"{n}.png").exists()]
+    if have and (not fpf.exists() or fpf.read_text().strip() != fp):
+        for p in have + ([tf] if tf.exists() else []):
+            p.unlink()
+        print(f"[stitch] camera/scene state changed — cleared "
+              f"{len(have)} stale face renders", flush=True)
+    fpf.write_text(fp)
     if not tf.exists():
         targets = [{"name": n, "label": n, "eye": eye,
                     "aim": [eye[0] + d[0], eye[1] + d[1], eye[2] + d[2]],
