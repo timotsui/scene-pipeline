@@ -262,7 +262,16 @@ batched for the user)
   after every view (crash loses ≤ the in-flight view). Scene-agnostic.
 - Crash-surviving work committed: 2080c98 (vocab fixes + plan doc).
 
-## ⭐ STATE CHECKPOINT — N1 NORMALIZATION DONE, CLEAN HANDOFF (2026-08-06 ~14:30)
+## ⭐⭐ SESSION WRAP (2026-08-06 ~14:30) — CLEAN RUN AT GATE, CONTEXT CLEARED
+
+Superseding note for the checkpoint below: after it, the user ordered a
+FULL clean rebuild (stale-face poisoning found in the 13:3x sensing —
+see pano_stitch fix). Final state = R-S2-19: clean run bundle→record,
+s=0.698 + blind verify 1.000, record 88 nodes AT USER GATE. Judges not
+run. NEXT SESSION: read SESSION_2026-08-08_HANDOFF.md, get the record
+verdict, run judges → compose in true meters, continue debugging.
+
+## STATE CHECKPOINT (superseded by the wrap above) — N1 NORMALIZATION DONE, CLEAN HANDOFF (2026-08-06 ~14:30)
 
 USER-ORDERED clean state ("as if you just finished normalization"):
 - **Scene state on disk = normalized (s=0.699, ×1.431) and coherent:**
