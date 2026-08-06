@@ -47,6 +47,12 @@ Rules:
 - one entry per TYPE (one "book" even if many books are visible)
 - output ONLY the comma-separated list on a single line, nothing else"""
 
+CONCRETE_PROMPT = """From this list of terms mined from a room-description prompt, keep ONLY the ones that name a concrete physical OBJECT or FIXTURE one could point at in a room (furniture, appliances, decor, openings like door/window). Drop abstractions (elegance, warmth, focus), materials, styles, qualities, effects, and spatial/scene words (view, line, color palette).
+
+{terms}
+
+Output ONLY the kept terms as a comma-separated list on a single line, nothing else."""
+
 
 # ---------------- VLM bridge (claude.exe, same contract as describe_nodes) --
 
@@ -116,7 +122,9 @@ def find_pano(scene):
         return None
     p = Path(bp.read_text().strip())
     bundle_dir = p if p.is_dir() else p.parent
-    panos = sorted(bundle_dir.glob("*_pano.png")) + sorted(bundle_dir.glob("*pano*.jpg"))
+    # old manual bundles: "<title>_pano.png"; harvest bundles: pano_rgb_0.png
+    panos = (sorted(bundle_dir.glob("*pano*.png"))
+             + sorted(bundle_dir.glob("*pano*.jpg")))
     return panos[0] if panos else None
 
 
@@ -177,6 +185,21 @@ def main():
 
     # ---- combine: canonical union with provenance ----
     A = funnel(prompt_terms, known)
+    # Concreteness pass on the PROMPT leg only (2026-08-06, scene #2:
+    # flowery prompts leak abstractions — "elegance", "warmth", "sense" —
+    # through the noun funnel; doctrine fix = cheap LLM judgment, never a
+    # curated list). Image legs skip it: a VLM only names what it sees.
+    # Degrades conservatively: judge unavailable -> keep everything.
+    dropped_abstract = []
+    if A and not args.skip_vlm:
+        try:
+            raw = call_claude(CONCRETE_PROMPT.format(terms=", ".join(A)), sdir)
+            keep = set(parse_list(raw))
+            dropped_abstract = [t for t in A if t not in keep]
+            A = [t for t in A if t in keep]
+            print(f"[vlm] concreteness: kept {len(A)}  dropped {dropped_abstract}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[vlm] concreteness pass unavailable ({e}) — keeping all")
     P = funnel(pano_terms, known)
     F = funnel(frame_terms, known)
     prov = {}
@@ -196,7 +219,8 @@ def main():
                     "prompt": A, "pano": P, "frames": F},
         "canonical": {t: prov[t] for t in final},
         "diff": {"image_only (generator improvisation)": image_only,
-                 "prompt_only (asked for, check if generated)": prompt_only},
+                 "prompt_only (asked for, check if generated)": prompt_only,
+                 "dropped_abstract (concreteness pass)": dropped_abstract},
         "queries": {
             "gdino": ". ".join(expand_terms(final)) + ".",
             "owlv2": ", ".join(expand_terms(final)),

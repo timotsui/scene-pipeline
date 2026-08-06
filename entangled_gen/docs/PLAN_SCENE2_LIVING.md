@@ -226,6 +226,25 @@ DESIGN (user: "do the same as bedroom" / "trust the downloads"):
   encode; old bedroom_marble = grandfathered reference archive).
   ⏸ USER CHECK pending: viewer + pano composite (cp1_pano_gate_v2.jpg).
 
+## RUN TO NORMALIZATION (2026-08-06 morning, user: "run untill we can
+do the size normalization" — stages run back-to-back, review artifacts
+batched for the user)
+
+- CP2 crop rig: 20 crops ✓ (crop_pano.py, pure CPU).
+- CP3 vocab: TWO SOURCE FIXES first —
+  1. find_pano glob missed harvest naming (pano_rgb_0.png vs the old
+     "<title>_pano.png") → VLM observation leg silently empty on every
+     harvest scene. Glob broadened (both vintages).
+  2. Flowery prompts leak abstractions ("elegance","warmth","sense")
+     through the noun funnel → new CONCRETENESS PASS (one haiku call,
+     doctrine-compliant: LLM judgment not curated list; degrades
+     conservatively; drops recorded in vocab.json diff).
+  Result: 20 concrete terms (10 prompt + 15 pano; door ✓ = future
+  normalization anchor; figurine/vase/basket = pano improvisations).
+- P3 seg_batched (GPU) launched in background (task brqcu0qsc).
+- NEXT after P3: pano_lift → pano_recenter → manifest_filter, then the
+  SIZE NORMALIZATION design lands with real lifted object sizes.
+
 ## PROGRESS LOG
 
 - 2026-08-05 23:0x — plan written; scene picked (484c93f0); bundle
