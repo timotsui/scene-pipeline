@@ -513,8 +513,18 @@
         <text class="nscript" x="14" y="31">manifest_filter.py --thr 0.30</text>
         <text class="nsub" x="14" y="45">f30 ADOPTED (108 → 102) · dedup RETIRED 07-26</text>
         <text class="nsub" x="14" y="58">duplicates stay — merging = a judge verdict</text></g>
-      <path class="edge e-eg" d="M124,816 V934" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="130" y="908">…_rc_f30.json (102)</text>
+      <path class="edge e-eg" d="M124,816 V842" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="836">…_rc_f30.json — the measure input</text>
+      <g class="node" data-k="nscale" transform="translate(8,844)">
+        <rect class="nbox" width="232" height="64" rx="8"/>
+        <rect class="b-eg" width="4" height="64" rx="2"/>
+        <text class="ntitle" x="14" y="17">N1 · scene scale — normalize
+          <tspan class="nactive"> · BUILT 08-06</tspan></text>
+        <text class="nscript" x="14" y="31">scene_scale.py — LLM class priors, once</text>
+        <text class="nsub" x="14" y="45">s = median(observed/typical) · degrade→1.0</text>
+        <text class="nsub" x="14" y="58">rescales the WHOLE scene state in place</text></g>
+      <path class="edge e-eg" d="M124,908 V934" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="130" y="928">scene state now in TRUE METERS</text>
       <path class="edge e-eg" d="M240,784 H340 V934" marker-end="url(#ah-eg)"/>
       <text class="elab" x="346" y="804">f30 manifest → record (verbatim)</text>
 
@@ -923,6 +933,17 @@ post: {mod:"eg", eyebrow:"P6 · 2.3 LIFT — post-process · dedup retired 07-26
   review:[{t:"viewer :8321 — 'pano · stage 2 · f30' vs the 'graph record' layer",
            h:"http://localhost:8321/?scene=bedroom_marble"}],
   note:"The R9 finding behind all of this: obj_007+obj_057 (lamp + ceiling light, IoU 0.75, box at ceiling height) is one fixture, but naming it — and even MERGING it — needs eyes and context, which live in the graph's judge pass. The record keeps both boxes and states the relationship with numbers."},
+nscale: {mod:"eg", eyebrow:"N1 · NORMALIZE — measured meters · BUILT 08-06", name:"Scene scale — normalize the state, once",
+  script:"scene_scale.py --scene <sc> [--measure-only] [--fresh]",
+  how:["Marble's export scale VARIES per world (bedroom ~1.0; living measured 0.699 — both doors 1.50 m, chairs/sofas/lamp all ~0.74 of typical). Everything downstream is meters-tuned and shopping fits at native size, so an off-scale scene poisons all of it",
+       "One cached LLM call (vocab_build pattern — judgment, never a curated table) returns per detected class: the most standardized axis, typical_m, and tight/loose reliability; only tight classes measure",
+       "s = robust median of observed/typical over confident objects; DEGRADE CONSERVATIVELY to s=1.0 (loud warning) when n < 5 or rel-MAD > 0.15",
+       "STATE TRANSFORM, not a re-run (user ruling 08-06): apply k=1/s to every meter-bearing artifact of the scene state and hand the baton forward — ply (xyz + log-scales), collider, frame block, ALL pano-track manifests, the lift pool, the recorded pano eye. Pixels (pano/crops/masks) and words (vocab) carry no meters and stay",
+       "Upstream P1–P5 are NOT re-run: seg is scale-free pixels, lift/recenter outputs are linear in scale (multiplying is exact); the pano camera's absolute 1.6 m eye is the one forfeited nicety — standpoint is a parameter, revisit separately",
+       "Originals kept as *_prescale.*; a second apply is REFUSED (frame block scale_applied guard)"],
+  reads:["scene_manifest_pano2c_rc_f30.json (lifted sizes, raw scale)","frame_bootstrap.json","gen_raw.ply + collider_registered.glb + all pano-track manifests + lift_pool<sfx>.json + pano_selfrender_meta.json (apply)"],
+  writes:["scene_scale.json — evidence table (per-object obs/typical/ratio) + decision","the scene state, rescaled in place: ply · collider · frame block · manifests · lift pool · pano eye","*_prescale.* — untouched originals"],
+  note:"USER PASS 08-06 (living_marble s=0.699, n=31, rel-MAD 0.097; 'this normalization is correct'); state-transform design user-ruled same day after the P1-re-entry experiment measured 0.846 wide-spread on re-detected fragments — re-sensing injects variance, multiplying verified boxes is exact. QUEUED refinement: measure from graph[resolved] instead of f30 (fragments pollute the manifest-level median; resolved-layer hand-check gave 0.74)."},
 asp: {mod:"t3", eyebrow:"SIDE TOOL · a2 — reference only", name:"Sample standpoints",
   script:"splat_analyzer render_cameras.py — WSL tool outside this repo; whole chain runs as ONE run_local.py call",
   how:["Throw random candidate positions inside the room's robust bounding box",

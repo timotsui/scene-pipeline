@@ -216,6 +216,34 @@ numeric screen.
 Keep methods side-by-side (folder per method), never edit a working method in
 place to become another.
 
+## N1 · Scene scale — measured normalization (BUILT 2026-08-06, USER PASS)
+
+Marble's export scale varies per world (bedroom ~1.0; living measured
+0.699). `scene_scale.py --scene <sc>` runs AFTER manifest_filter, once per
+scene: one cached LLM call gives per-class typical size + tight/loose
+reliability (never a curated table); s = robust median of observed/typical
+over confident tight-class objects; DEGRADES to s=1.0 (loud) when n < 5
+or rel-MAD > 0.15.
+
+**Apply = a STATE TRANSFORM, not a re-run (user ruling 08-06).** k = 1/s
+multiplies every meter-bearing artifact of the scene state in place, then
+the single pass simply continues at the shell:
+`gen_raw.ply` (xyz ×k, log-scales +ln k) · `collider_registered.glb` ·
+frame block floor/ceiling/extents · ALL pano-track manifests
+(`scene_manifest_pano2c*.json`: aabb/center/size/floor fields) ·
+`rig_sp0/lift_pool<sfx>.json` · `pano_selfrender_meta.json` eye.
+Pixels (pano/crops/masks/shots) and words (vocab) carry no meters and are
+untouched — P1–P5 are NEVER re-run (seg is scale-free; lift/recenter
+outputs are linear, multiplying verified boxes is exact; re-detecting
+injects variance — the P1-re-entry experiment measured 0.846 wide-spread
+on re-detected fragments). Forfeited nicety: the pano eye is no longer an
+absolute 1.6 m (standpoint is a parameter).
+
+Originals kept as `*_prescale.*`; second apply REFUSED via
+`frame_bootstrap.json: scale_applied`. Contract file: `scene_scale.json`
+(evidence table + decision). Queued: measure from `graph[resolved]`
+instead of f30 (fragments pollute the median; resolved gave 0.74).
+
 ## Scene-graph stages — record, then judge (formalized 2026-07-26)
 
 All graph stages read and write ONE file, `OUT/<scene>/scene_graph.json`

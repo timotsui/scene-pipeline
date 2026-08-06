@@ -262,6 +262,29 @@ batched for the user)
   after every view (crash loses ≤ the in-flight view). Scene-agnostic.
 - Crash-surviving work committed: 2080c98 (vocab fixes + plan doc).
 
+## ⭐ STATE CHECKPOINT — N1 NORMALIZATION DONE, CLEAN HANDOFF (2026-08-06 ~14:30)
+
+USER-ORDERED clean state ("as if you just finished normalization"):
+- **Scene state on disk = normalized (s=0.699, ×1.431) and coherent:**
+  ply + collider + frame block (scale_applied guard set) + pano (eye
+  −0.059 = true 1.6 m) + crops + seg + manifests (f30: 64 obj, floor
+  1.556) + lift pool + diffs + scene_scale.json evidence. Originals =
+  `*_prescale.*`. Audit verified floor/pool/graph-frame agreement.
+- **Archived (MOVED, not deleted)** →
+  `archive_2026-08-06_pre_normalization/`: `compose_prescale_era/`
+  (the whole pre-norm compose run incl. fitted/subs previews) and
+  `postN1_partial_chain/` (shell + envelope + scene_graph.json with
+  20 partial J1 verdicts from the killed P1-re-entry run).
+- **KEPT: all judge caches** (graph/*_cache.json) — the redo of
+  J0/J1 verdicts re-hits them where stimuli match.
+- **PROTOCOL RULING (user):** N1 = STATE TRANSFORM — multiply the
+  meter-bearing state, never re-run P1–P5 (map card + PIPELINE.md N1
+  updated; the P1-re-entry experiment is archived evidence).
+- **RESUME POINT: room shell** → envelope → G1 … (the drawn order).
+- Still queued: scene_scale.py apply-extension (manifest/pool/eye
+  multiplies for scene #3+; living got its meters via the archived
+  re-entry path) + measure-from-graph[resolved] refinement.
+
 ## PROGRESS LOG
 
 - 2026-08-05 23:0x — plan written; scene picked (484c93f0); bundle
