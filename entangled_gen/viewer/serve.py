@@ -39,11 +39,25 @@ def box_sources(sc):
     below is superseded audit. Entries kept commented for one-line
     re-enable; all files remain on disk."""
     sd = paths.scene_dir(sc)
-    _ = sd  # kept for the commented registry below
     # (2026-08-06: the temporary directional-prior A/B pair lived here for
-    # the user eyeball — RULED same day, prior promoted, entries removed.
-    # The index.html boxSources host rows stay for the next A/B.)
-    return []
+    # the user eyeball — RULED same day, prior promoted, entries removed.)
+    # 2026-08-06 TEMPORARY streak-surgery previews (R-S2-22 gate): remove
+    # both when ruled.
+    return [
+        ("parallax_carved", "parallax retake · carved (preview)", "current",
+         sd / "scene_manifest_parallax_preview.json", "#65ff8f",
+         "PREVIEW — experiments/parallax_retake.py: per-node side view "
+         "from a second standpoint; original ray axis carved, then the "
+         "original masks' points refiltered through the established depth "
+         "slab (all axes re-derived). Uncarved nodes keep the record box "
+         "(flagged) and are absent from this layer"),
+        ("support_clipped", "support clip · preview", "current",
+         sd / "scene_manifest_supportclip_preview.json", "#ffb84d",
+         "PREVIEW — compose/support_clip.py: ON nodes cut at their "
+         "supporter surface + footprint. NOTE: current ON edges are "
+         "streak-poisoned (book ON floor) — real wiring runs AFTER the "
+         "parallax carve"),
+    ]
     #     # ---- current: the pano-track funnel, upstream -> downstream ----
     #     # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->
     #     # stage 3 = geometry dedup + GRAPH RECORD (the "graph record"
