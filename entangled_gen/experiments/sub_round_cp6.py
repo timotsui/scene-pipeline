@@ -324,7 +324,10 @@ def main():
     pl = json.loads((sdir / "cp5_final" / "placements.json")
                     .read_text("utf-8"))
     brec = json.loads((sdir / "cp2" / "boards.json").read_text("utf-8"))
-    boards = brec["boards"]
+    # SR10 at the source (user 08-07): underside boards are plank
+    # CEILINGS — never triage/spill targets (cp6 was re-introducing
+    # riders onto them after cp3 stopped seeding there)
+    boards = [b for b in brec["boards"] if "underside_of" not in b]
     placed = [r for r in pl["subs"] if r["status"] == "PLACED"]
 
     odir = sdir / "cp6"

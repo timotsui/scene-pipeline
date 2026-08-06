@@ -48,7 +48,7 @@ sys.path.insert(0, str(EG / "compose"))
 import paths                                     # noqa: E402
 sys.path.insert(0, str(paths.REPO_ROOT / "composition"))
 import retrieve2                                 # noqa: E402
-from shopping import shortlist, native_fit       # noqa: E402
+from shopping import shortlist, native_fit, ROWABLE_CATS  # noqa: E402
 
 POOR_FIT = 0.5      # worst-axis deviation above this -> flag
 DRY_SUB = 0.65      # SR4c = anchor rule 9 at depth N (SAME loop, same
@@ -284,7 +284,8 @@ def main():
                 ai = acache.get(c["uid"]) or {}
                 if "size_cm" not in ai:
                     continue
-                cfg = native_fit(size, ai["size_cm"])
+                cfg = native_fit(size, ai["size_cm"],
+                                 rowable=c["category"] in ROWABLE_CATS)
                 if cfg is None:
                     continue
                 rr.append({**c, **cfg, "size_cm": ai["size_cm"],

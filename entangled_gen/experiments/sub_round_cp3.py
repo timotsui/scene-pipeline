@@ -130,6 +130,11 @@ def main():
     seeds = json.loads((sdir / "cp1" / "seeds.json").read_text("utf-8"))
     brec = json.loads((sdir / "cp2" / "boards.json").read_text("utf-8"))
     boards = brec["boards"]
+    # SR10 at the source (user 08-07): an underside board is a plank
+    # CEILING, never an assignment target — its rider would sit inside
+    # the plank's thickness. clearance_m still reads off the full list,
+    # so headroom stays measured to the true ceiling.
+    standing = [b for b in boards if "underside_of" not in b]
     if seeds["anchor"] != a.anchor or brec["anchor"] != a.anchor:
         raise SystemExit("cp1/cp2 records are for a different anchor")
 
@@ -182,7 +187,7 @@ def main():
                                        {"lo": slo_r.round(3).tolist(),
                                         "hi": shi_r.round(3).tolist()}}})
             continue
-        if not boards:
+        if not standing:
             # SR2 honesty: no usable surface on this anchor — record,
             # never force (door/picture anchors land here)
             rows.append({"id": s["id"], "name": s["name"],
@@ -195,7 +200,7 @@ def main():
         shi = np.maximum(lo * r2r, hi * r2r)
         sz = shi - slo
 
-        b = min(boards, key=lambda b: abs(slo[1] - b["y"]))
+        b = min(standing, key=lambda b: abs(slo[1] - b["y"]))
         # y snap: bottom ON the board
         dy = b["y"] - slo[1]
         # xz clamp into the board rect (footprint-aware)

@@ -202,6 +202,7 @@ def pseudo_boards(standing, ceiling, hpts, fdir):
             pb["board"] = b["board"] * 100
             pb[key] = [b[key][0], b[key][0]]        # zero usable span
             pb["force_ax"] = ax
+            pb["ceil_y"] = ceiling.get(b["board"])
             plist.append(pb)
             continue
         for i, (rlo, rhi) in enumerate(runs):
@@ -209,6 +210,7 @@ def pseudo_boards(standing, ceiling, hpts, fdir):
             pb["board"] = b["board"] * 100 + i
             pb[key] = [rlo, rhi]
             pb["force_ax"] = ax     # a short interval must NOT flip
+            pb["ceil_y"] = ceiling.get(b["board"])
             plist.append(pb)        # its long axis to the board depth
     return plist, recs
 
@@ -299,6 +301,10 @@ def triage_fa(items, boards, asg):
                     continue
                 cg = by_board.setdefault(cb["board"], [])
                 axc = _ax_of(cb)
+                cy = cb.get("ceil_y")           # SR12b: a spill target
+                if (cy is not None              # must fit HEIGHT too
+                        and ev["sz"][1] > (cy - cb["y"]) - SLACK):
+                    continue
                 if (demand(cg + [ev], axc) <= usable(cb)
                         and ev["sz"][0] <= (cb["x"][1] - cb["x"][0])
                         and ev["sz"][2] <= (cb["z"][1] - cb["z"][0])):
@@ -530,7 +536,8 @@ def main():
             it["board"] = real
 
     # ---- step 2: WALK-DOWNS for items over their headroom
-    swaps, dry = [], []
+    swaps, dry, relocations = [], [], []
+    obs_h = {r["id"]: r.get("seed_bottom_y") for r in asg}
     new_meshes = {}          # id -> render-frame instance meshes
     for it in items:
         if it["board"] not in brect:
@@ -576,10 +583,49 @@ def main():
                 new_meshes[it["id"]] = insts
                 done = True
                 break
+        if done:
+            continue
+        # SR12b HEIGHT-AWARE RELOCATION (the obj_022 board-4 books —
+        # user 08-07: they stayed and stabbed the plank while the top
+        # surface sat empty): no runner fits under THIS ceiling, so
+        # before declaring dry, move the item rigidly to the nearest-
+        # observed-height standing board whose HEADROOM and footprint
+        # fit. Length crowding stays SR9's job (triage runs next with
+        # height-aware spills). Runner swaps keep precedence — this
+        # is the last rung before TOO_TALL_DRY.
+        obs = obs_h.get(it["id"])
+        home = it["board"]
+        for cb in sorted((b for b in standing if b["board"] != home),
+                         key=lambda b: abs(b["y"] - (obs or b["y"]))):
+            hr_t = headroom_of(cb, ceiling)
+            if hr_t is not None and it["sz"][1] > hr_t - SLACK:
+                continue
+            if (it["sz"][0] > cb["x"][1] - cb["x"][0] - 2 * cp6.INSET
+                    or it["sz"][2] > cb["z"][1] - cb["z"][0]
+                    - 2 * cp6.INSET):
+                continue
+            dy = cb["y"] - it["lo"][1]
+            cp6._shift(it, 1, dy)
+            for axi, key in ((0, "x"), (2, "z")):
+                half = it["sz"][axi] / 2
+                lo_e, hi_e = (cb[key][0] + cp6.INSET,
+                              cb[key][1] - cp6.INSET)
+                dv = float(np.clip(it["c"][axi], lo_e + half,
+                                   hi_e - half) - it["c"][axi])
+                cp6._shift(it, axi, cp6.q(dv))
+            relocations.append({"id": it["id"], "from_board": home,
+                                "to_board": cb["board"],
+                                "dy_m": round(float(dy), 3),
+                                "headroom_m": (None if hr_t is None
+                                               else round(hr_t, 3))})
+            it["board"] = cb["board"]
+            done = True
+            break
         if not done:
             dry.append({"id": it["id"], "board": it["board"],
                         "why": "TOO_TALL_DRY — no runner fits under "
-                               f"{hr:.3f} m headroom",
+                               f"{hr:.3f} m headroom and no board "
+                               "clears the height",
                         "height_m": round(float(it["sz"][1]), 3)})
 
     # ---- step 3: intervals become the boards; SR9 triage + SR8
@@ -621,7 +667,8 @@ def main():
                                               - brect[p]["y"], 3)}
                               for p, r in sorted(phantom_of.items())],
            "free_space": interval_recs,
-           "reseats": reseats, "swaps": swaps, "dry": dry,
+           "reseats": reseats, "swaps": swaps,
+           "relocations": relocations, "dry": dry,
            "tile_drops": tile_drops, "spills": spills, "kills": kills,
            "over_capacity_boards": over_cap,
            "host_clips_before": clips_before,

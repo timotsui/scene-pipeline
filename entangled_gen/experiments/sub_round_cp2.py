@@ -49,6 +49,8 @@ UP_DOT = 0.65       # min normal_y for "upward-facing"
 GAP = 0.035         # m; height gap starting a new cluster
 MIN_AREA = 0.02     # m^2; drop smaller patches
 MIN_SPAN = 0.12     # m; drop clusters narrower than this in x AND z
+PLANK_MAX = 0.06    # m; max underside-to-top gap read as one plank
+UNDERSIDE_AREA_FRAC = 0.3   # underside face area << the top face's
 
 BOARD_COLORS = [(63, 191, 111), (255, 157, 61), (74, 144, 217),
                 (217, 119, 74), (191, 63, 127), (170, 170, 60),
@@ -160,6 +162,21 @@ def extract_boards(meshes):
         b["board"] = i
         b["clearance_m"] = (round(boards[i + 1]["y"] - b["y"], 3)
                             if i + 1 < len(boards) else None)
+    # SR10 AT THE SOURCE (user 08-07: "the upper board facing down was
+    # extracted as level. so objects placed there will collide with
+    # the thickness of the board"): a sparse cluster 0..PLANK_MAX
+    # below a much larger one is that plank's UNDERSIDE — flipped
+    # normals let the bottom face through the up filter. It is a
+    # CEILING, not a level: kept in the record (clearance/headroom
+    # reads off it correctly) but marked so assignment (cp3) never
+    # seats anything on it. cp7's re-seat stays as the safety net.
+    for p in boards:
+        for r in boards:
+            if (0.0 < r["y"] - p["y"] <= PLANK_MAX
+                    and p["area_m2"] < UNDERSIDE_AREA_FRAC
+                    * r["area_m2"]):
+                p["underside_of"] = r["board"]
+                break
     return boards
 
 
@@ -200,7 +217,10 @@ def main():
            "floor_render_y": floor_r,
            "params": {"up_dot": UP_DOT, "gap_m": GAP,
                       "min_area_m2": MIN_AREA, "min_span_m": MIN_SPAN},
-           "n_boards": len(boards), "boards": boards}
+           "n_boards": len(boards),
+           "n_standing": sum(1 for b in boards
+                             if "underside_of" not in b),
+           "boards": boards}
     for b in boards:
         b["height_above_floor"] = round(b["y"] - floor_r, 3)
     (odir / "boards.json").write_text(json.dumps(rec, indent=1),
@@ -262,8 +282,9 @@ def main():
                 uv = proj(pose, fv, RES,
                           [(b["x"][0], b["y"], (b["z"][0] + b["z"][1]) / 2)])
                 if uv[0]:
-                    dr.text((uv[0][0] - 26, uv[0][1] - 8), f"B{b['board']}",
-                            fill=c)
+                    lab = (f"B{b['board']}·ceil" if "underside_of" in b
+                           else f"B{b['board']}")
+                    dr.text((uv[0][0] - 26, uv[0][1] - 8), lab, fill=c)
             img.save(odir / f"{name}{variant}.png")
 
     build_page(odir, rec)
@@ -344,7 +365,8 @@ document.addEventListener('keydown',e=>{
              '<div><img src="topdown_asset.png"><p class="cap"><b>TOP-DOWN '
              '+ ASSET</b> — same, stand-in ghosted</p></div>'
              '</div>')
-    h.append('<table><tr><th>board</th><th>height above floor</th>'
+    h.append('<table><tr><th>board</th><th>role</th>'
+             '<th>height above floor</th>'
              '<th>headroom to next</th><th>footprint x</th>'
              '<th>footprint z</th><th>area</th></tr>')
     for b in rec["boards"]:
@@ -352,7 +374,10 @@ document.addEventListener('keydown',e=>{
         sw = (f'<i class="sw" style="background:rgb{c}"></i>')
         clr = (f'{b["clearance_m"]:.3f} m' if b["clearance_m"] is not None
                else "&mdash; (top)")
+        role = (f'CEILING &mdash; underside of B{b["underside_of"]}'
+                if "underside_of" in b else "level")
         h.append(f'<tr><td>{sw}B{b["board"]}</td>'
+                 f'<td>{role}</td>'
                  f'<td class="mono">{b["height_above_floor"]:.3f} m</td>'
                  f'<td class="mono">{clr}</td>'
                  f'<td class="mono">{b["x"][0]:.2f} .. {b["x"][1]:.2f}</td>'

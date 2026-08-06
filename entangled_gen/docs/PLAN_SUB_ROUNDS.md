@@ -123,9 +123,11 @@ Level-N parameterization, each gate-ratified on obj_043 (8 subs):
 - **SR7 — PLACEMENT = place_candidate VERBATIM.** Host-inherited
   facing, k tiles filling the row, bottom-on-board. Sub-level
   jiggle = SR8, capacity triage = SR9 (both wired 08-05C late),
-  host physics = SR10–SR12 (canonized 08-06); still open: the wall
-  channel, level-2 riders, merge into fitted_preview, graduation
-  out of experiments/.
+  host physics = SR10–SR12 (canonized 08-06), relocation + source
+  classification + tiling gate = SR12b/SR10-src/rowable (08-07);
+  still open: the wall channel, level-2 riders, merge into
+  fitted_preview, graduation out of experiments/, the multiplicity
+  judge (graph stage).
 
 ## CANON 2026-08-06 — HOST PHYSICS (user: "i think this is great.
 ## lets cannonize all this"; code = experiments/sub_round_cp7.py,
@@ -178,6 +180,71 @@ Level-N parameterization, each gate-ratified on obj_043 (8 subs):
   machinery. Viewer: "subs" layer = /subs_preview.glb, merged best
   pass per anchor (experiments/build_subs_preview.py — re-run
   after any sub-round pass; no stale stamp yet).
+
+## CANON 2026-08-07 — NITS SESSION (user-gated on obj_022 + the
+## obj_039 desk; fleet re-run 15/15 clean)
+
+- **SR12b — HEIGHT-AWARE RELOCATION.** Two holes closed: (a) SR9
+  spill targets never checked HEADROOM (pseudo-boards now carry
+  ceil_y; a target must clear the item's height minus SLACK);
+  (b) the SR12 walk-down only tried runners on the SAME board — it
+  gains a last rung before TOO_TALL_DRY: move the item RIGIDLY to
+  the nearest-observed-height standing board that fits both height
+  and footprint (nearest-|y − seed| order, spill's own idiom).
+  Length crowding stays SR9's job, which runs right after — walk
+  fixes HEIGHT, triage fixes LENGTH. The motivating case: obj_022's
+  board-4 books (0.204–0.241 m vs 0.142 m headroom) stabbed the
+  plank above while the shelf top sat empty with 1.48 m free.
+  TOO_TALL_DRY now genuinely means "no board clears the height."
+- **SR10 AT THE SOURCE.** (user: "the upper board facing down was
+  extracted as level. so objects placed there will collide with the
+  thickness of the board") cp2 classifies undersides AT EXTRACTION
+  — same rule as cp7's classifier (sparse, 0–PLANK_MAX below a
+  larger board), recorded as underside_of in boards.json, drawn
+  ·ceil on the overlay, role column on the review page. cp3
+  assigns to STANDING boards only; cp6's triage/spill targets are
+  standing-only too (it was re-introducing riders onto ceilings
+  after cp3 stopped seeding there). cp7's re-seat survives as the
+  safety net — it ran 0 times on the fixed chain. clearance_m
+  still reads over the FULL list, so headroom keeps measuring to
+  the true ceiling.
+- **ROWABLE TILING GATE.** (user: one detected desk lamp had
+  become 3 tiled lamps, one monitor twins — "we do want to take
+  care of the tile stuff"; asset-library QUALITY ruled out of the
+  paper's scope) k>1 tiling is the BOOK-ROW convention and
+  fabricates objects everywhere else. shopping.native_fit gains
+  rowable=; ROWABLE_CATS = (book, books) — both call sites
+  (shortlist + cp4's aligned re-rank) pass the candidate's
+  category. Singular categories place ONE copy at native size; the
+  unfilled span is an honest fit deviation, not a license to
+  duplicate. Bonus proof: the k=1 re-rank flipped obj_005's pick
+  from the sci-fi "monitor arm" to a real monitor.
+- **QUEUED — THE MULTIPLICITY JUDGE (graph stage; replaces the
+  whitelist).** "One wide object or several narrow ones?" is a
+  PIXEL question detect/lift cannot answer (detection individuates
+  only what it can spatially separate; lift is pure geometry). Add
+  a one-look judged attribute on each node's detection crop — "one
+  instance or a row of identical ones (~how many)?" — recorded as
+  multiplicity: single | row(~k), default SINGLE when unjudged
+  (never fabricate without a pixel witness). Shopping consumes it
+  as the k ceiling; ROWABLE_CATS dies. Piggyback candidate: the
+  naming judge's crop call. **TWO SOURCES OF k (user 08-07): the
+  pixel count above, AND modular composability — one very large
+  shelf is ONE object yet two shelf units side by side legitimately
+  stand in for it (two lamps never read as one lamp). That second
+  call is COMMON SENSE AT PICK TIME, not pixels: when no single
+  asset fills a large box, the k-tile config stays a CANDIDATE and
+  the image style judge (who already sees rendered candidate sheets
+  vs the room) rules whether the tiled composition reads as the
+  observed object. Judge sees, code counts — no whitelist on
+  either side.**
+- **Fleet result (08-07, all three fixes):** 15/15 anchors clean;
+  totals 2 relief-scale host clips (obj_008, obj_023) · 0
+  cross-level · 0 protrusions · 0 dry · 8 kills (7 = the obj_022
+  under-capacity complaints, walk-back food for the queued anchor
+  re-shop). obj_039 desk: lamp relocated 4→5 onto the desktop,
+  single lamp, single monitor. User: "any imperfections is fine
+  now, it's good enough."
 
 ## Module contract (draft)
 

@@ -57,6 +57,12 @@ ARCH_CLASS_WORDS = ("door", "window", "curtain")
 FIT_TOL = 0.15               # strict "fits" mark, NOT a cutoff
 YAW_PERMS = ("xyz", "zyx")   # rotation about the vertical axis ONLY
 MAX_TILES = 3
+ROWABLE_CATS = ("book", "books")
+# ^ categories allowed to tile k>1. The k-row convention (fill the
+#   observed span with side-by-side copies) reads RIGHT for books and
+#   FABRICATES objects everywhere else — one detected desk lamp became
+#   3 tiled lamps, one monitor became twins (user 08-07, obj_039).
+#   Grows into a catalog "rowable" tag when more row classes appear.
 
 
 def mount_of_support(supporter, how):
@@ -67,10 +73,13 @@ def mount_of_support(supporter, how):
     return "floor"
 
 
-def native_fit(box_size, size_cm):
+def native_fit(box_size, size_cm, rowable=True):
     """NO RESCALE (user ruling 08-03B): the product is judged at its
     natural size. Configs = the two vertical-axis rotations x 1..3
-    side-by-side copies along the box's long horizontal axis.
+    side-by-side copies along the box's long horizontal axis
+    (rowable=False pins k=1: singular categories place ONE copy —
+    the unfilled span is an honest fit deviation, not a reason to
+    fabricate duplicates).
     Per-axis deviation = |native/box - 1|, SYMMETRIC -- shopping holds
     no too-big-is-worse assumption; the fit metric = the WORST axis
     (lower = better, ties prefer fewer tiles). fits = every axis
@@ -80,7 +89,7 @@ def native_fit(box_size, size_cm):
     if b0.shape != (3,) or (b0 <= 0).any() or (a0 <= 0).any():
         return None
     best = None
-    for k in range(1, MAX_TILES + 1):
+    for k in range(1, (MAX_TILES if rowable else 1) + 1):
         s = b0.copy()
         axis = 0 if s[0] >= s[2] else 2
         s[axis] = s[axis] / k
@@ -105,7 +114,8 @@ def shortlist(name, box_size, mount, cats):
         else:
             pool = [a for a in pool if retrieve2._mount_ok(a, mount)]
         for a in pool:
-            cfg = native_fit(box_size, a["size_yup_cm"])
+            cfg = native_fit(box_size, a["size_yup_cm"],
+                             rowable=cat in ROWABLE_CATS)
             if cfg is None:
                 continue
             rows.append({"uid": a["uid"], "category": a["category"],

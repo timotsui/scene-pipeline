@@ -633,4 +633,44 @@ Format per entry:
   "subs" checkbox, server restarted PID 24668). Nits deferred to
   next session (user).
 
+## 2026-08-07 — NITS: SR12b relocation + SR10 at the source + the
+## rowable tiling gate (obj_022 shelf, obj_039 desk)
+
+- **What:** three scene-agnostic fixes from the nits walk, each
+  user-spotted in the 3D viewer / renders. (1) **SR12b
+  HEIGHT-AWARE RELOCATION** (sub_round_cp7.py): SR9 spill targets
+  must clear headroom (pseudo-boards carry ceil_y), and the walk-
+  down gains a last rung before TOO_TALL_DRY — rigid move to the
+  nearest-observed-height standing board that fits height AND
+  footprint (the board-4 books stabbed the plank above while the
+  shelf top sat empty). (2) **SR10 AT THE SOURCE** (user: "the
+  upper board facing down was extracted as level"): cp2 classifies
+  undersides at extraction (underside_of in boards.json, ·ceil on
+  the overlay, role column on the page); cp3 assigns and cp6
+  spills to STANDING boards only; cp7's re-seat stays as a safety
+  net and ran 0 times on the re-run — the classification holds
+  through the chain. (3) **ROWABLE TILING GATE** (shopping.py
+  ROWABLE_CATS = book/books; native_fit(rowable=)): k>1 tiling is
+  the book-row convention and was FABRICATING objects — one
+  detected desk lamp became 3 tiled lamps, one monitor became
+  twins (obj_039). Singular categories now place ONE copy at
+  native size; the unfilled span is an honest fit deviation.
+- **Look for:** obj_022 — 0 clips / 0 cross-level / 0 protrusions,
+  13 placed, 7 kills (honest under-capacity complaints, walk-back
+  food for the queued anchor re-shop); obj_039 desk — lamp
+  relocated board 4→5 (the desktop), k=1 single tripod lamp, and
+  the k=1 re-rank flipped the monitor pick from the sci-fi arm to
+  a real monitor. Fleet: 15/15 clean, totals 2 relief-scale clips
+  (obj_008, obj_023) · 0 xlvl · 0 prot · 0 dry · 8 kills.
+- **Verdict:** USER PASS ("good shit… any imperfections is fine
+  now, it's good enough"); tiling-gate direction user-ruled
+  ("we do want to take care of the tile stuff"; library asset
+  QUALITY explicitly out of scope for the paper). QUEUED with user
+  agreement: **multiplicity judge** at the graph stage — per-object
+  crop question "one instance or a row (~how many)?" recorded as a
+  node attribute, consumed by shopping as the k ceiling, replacing
+  the category whitelist (detect/lift individuates only what it
+  can spatially separate; per-object pixel interpretation is
+  judge-pass territory).
+
 _(further entries appended as artifacts land)_
