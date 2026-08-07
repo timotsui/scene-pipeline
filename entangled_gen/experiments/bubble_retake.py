@@ -200,18 +200,26 @@ def main():
         det = gd_proc.post_process_grounded_object_detection(
             outputs, inputs["input_ids"], threshold=DET_THR,
             text_threshold=0.25, target_sizes=[img.size[::-1]])[0]
-        best, best_ov = None, 0.0
+        # among detections overlapping the projected box, take the HIGHEST
+        # SCORE — the crop is already centered+zoomed on the target, and
+        # overlap-maximizing picks whatever big region hides inside the
+        # projected STREAK box (the table beat the book). Whole-frame
+        # degenerates excluded (same rule as the lift guard).
+        best = None
         for score, box in zip(det["scores"], det["boxes"]):
             b = [float(x) for x in box]
+            if (b[2] - b[0]) >= 0.95 * RES and (b[3] - b[1]) >= 0.95 * RES:
+                continue
             ix0, iy0 = max(b[0], pb[0]), max(b[1], pb[1])
             ix1, iy1 = min(b[2], pb[2]), min(b[3], pb[3])
             inter = max(0, ix1 - ix0) * max(0, iy1 - iy0)
             area = (b[2] - b[0]) * (b[3] - b[1]) + 1e-9
-            if inter / area > best_ov:
-                best_ov = inter / area
+            if inter / area < 0.3:
+                continue
+            if best is None or float(score) > best["score"]:
                 best = {"score": float(score), "box": {
                     "xmin": b[0], "ymin": b[1], "xmax": b[2], "ymax": b[3]}}
-        if best is None or best_ov < 0.3:
+        if best is None:
             return None, None, "no_redetect"
         boxes = [[[best["box"]["xmin"], best["box"]["ymin"],
                    best["box"]["xmax"], best["box"]["ymax"]]]]
@@ -222,15 +230,31 @@ def main():
             souts.pred_masks.cpu(), sinp["original_sizes"].cpu(),
             sinp["reshaped_input_sizes"].cpu())[0].squeeze(1).numpy()[0] > 0
         lifted = lift_frame(xyz, cam, [dict(best, label=p_node["name"])],
-                            mask[None], view=name, keep_pts=False,
+                            mask[None], view=name, keep_pts=True,
                             min_score=DET_THR)
         if not lifted:
             return None, None, "lift_empty"
-        slo = np.array(lifted[0]["lo"]) - PAD
-        shi = np.array(lifted[0]["hi"]) + PAD
-        ax_ray = 0 if abs(d_raw[0]) >= abs(d_raw[2]) else 2
-        slo[ax_ray], shi[ax_ray] = -1e9, 1e9     # release the ray axis
-        return slo, shi, f"ok({best['score']:.2f})"
+        # ORIENTED lateral band (2026-08-06, third iteration): a side view
+        # is trustworthy along the horizontal direction PERPENDICULAR to
+        # its own ray — axis-aligned prisms fail when rays are diagonal
+        # (both bubbles saw the book along -z, both axis-prisms released z,
+        # streak survived), and vertical constraints from partial side
+        # detections crush boxes (seat-slice sofa). So each view yields one
+        # scalar band: project the side box onto l = perp(ray, horizontal);
+        # refilter keeps points whose l-projection is inside the band.
+        r = d_raw.copy()
+        r[1] = 0
+        r /= np.linalg.norm(r)
+        lvec = np.array([r[2], 0.0, -r[0]])
+        # band from the side view's ACTUAL lifted points, not its AABB —
+        # an axis-aligned box around a diagonal streak is fat in every
+        # direction, so its corners overstate the lateral width; the
+        # points themselves are tight perpendicular to the ray
+        proj = lifted[0]["pts"] @ lvec
+        band = {"l": lvec.tolist(),
+                "lo": float(np.percentile(proj, 2) - PAD),
+                "hi": float(np.percentile(proj, 98) + PAD)}
+        return band, None, f"ok({best['score']:.2f})"
 
     results = []
     for n in nodes:
@@ -240,10 +264,10 @@ def main():
                           "aabb_max": geo["aabb_max"]}, "views": {}}
         prisms = []
         for rig in rigs:
-            plo, phi, why = side_view(rig, n)
+            band, _unused, why = side_view(rig, n)
             rec["views"][rig["name"]] = why
-            if plo is not None:
-                prisms.append((plo, phi))
+            if band is not None:
+                prisms.append(band)
         if not prisms:
             rec["status"] = "kept"
             results.append(rec)
@@ -256,8 +280,9 @@ def main():
             results.append(rec)
             continue
         keep = np.ones(len(P), bool)
-        for plo, phi in prisms:
-            keep &= np.all((P >= plo) & (P <= phi), axis=1)
+        for band in prisms:
+            proj = P @ np.array(band["l"])
+            keep &= (proj >= band["lo"]) & (proj <= band["hi"])
         if keep.sum() < 50:
             rec["status"] = "kept_empty_overlap"
             results.append(rec)
