@@ -44,6 +44,17 @@ def box_sources(sc):
     # 2026-08-06 TEMPORARY streak-surgery previews (R-S2-22 gate): remove
     # both when ruled.
     return [
+        ("slicevote", "slice-vote carve (R-S2-29 user PASS)", "current",
+         sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
+         "Slice-vote carve run 3 (2026-08-06 night, user PASS R-S2-29; "
+         "cyan to match the cone map's arm box): per resolved node — "
+         "top-box prism slice, view-tunnel context cards (full scene "
+         "minus the camera→slice hole), 6-voter election gate 3, "
+         "own-mask arm assignment. Ceiling-mounted and wall-flush "
+         "objects keep the resolved box (kept_ceiling / kept_wall); "
+         ">8× growth ships the original (outlier guard). Per-box "
+         "status + doubt flags ride in each object's flags field. "
+         "Preview manifest — not yet wired into the canonical runner"),
         ("parallax_carved", "parallax retake · carved (preview)", "current",
          sd / "scene_manifest_parallax_preview.json", "#65ff8f",
          "PREVIEW — experiments/parallax_retake.py: per-node side view "

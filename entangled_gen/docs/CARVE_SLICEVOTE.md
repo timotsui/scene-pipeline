@@ -114,3 +114,59 @@ asset per group at the canonical size) NOT done.
 7. Per-view detection instability on marginally-different renders
    (obj_028's card1: 2,281 → 26,308 claims from a slightly different
    slice render) — the old parked item, now measured.
+
+---
+
+# UPDATE 2026-08-07 (the four-run night, R-S2-26..30): USER-PASSED DESIGN
+
+The "untested promotion" above is now HISTORY — the stage was hardened
+over four whole-scene living runs in one night, each folding in user
+rulings from reviewing the previous, and USER-PASSED (R-S2-29 "i think
+this is good", R-S2-30 "awesome"). Bedroom regression WAIVED by user
+08-06. Still NOT wired into the canonical runner; viewer serves the
+preview as the "slicevote" box-source layer (cyan). NOTHING COMMITTED.
+
+## Design deltas over the original promotion (all user-ruled)
+
+1. **VIEW TUNNEL cards** (run 2): cards render the FULL scene minus a
+   carved hole — gaussians in the camera cone, nearer than the slice,
+   not slice members. Replaced black isolation: on black the detector
+   inflates the object to the whole blob (and run 1's ceiling lights
+   exploded ×288–×5027). Card re-detect is gated to the slice's screen
+   footprint so backdrop same-class objects can't be picked.
+2. **Geometric exemptions** (runs 2-3): kept_ceiling (top ≤0.35 m from
+   shell ceiling + bottom in upper half of room) and kept_wall (≤0.20 m
+   from a shell wall plane + ≤0.30 m thin along its normal). Flat
+   objects have no side silhouette; wall-flush ones have no plan
+   footprint so the top detection can't even start ("anything can be a
+   picture" — obj_002 ×369). Resolved box ships verbatim, status
+   recorded. Living: 7 ceiling + 8 wall (incl. 2 to sanity-check:
+   obj_017_c00 magazine, obj_022 plant).
+3. **Outlier guard** (run 3): shipping box > 8× original volume →
+   original ships (kept_outlier), vote box recorded as doubt. Fired 0
+   times on living once exemptions existed — pure backstop now.
+4. **Detection escalation ladder** (run 4): object-height context cards
+   → (≥3 of 4 unproductive) eye-height context cards as EXTRA voters →
+   (election empty) isolation retry on black → (still empty) original
+   box. Eye-height rationale: Marble splats are biased toward eye-height
+   capture. Proven immediately: obj_004 book 0/4 → 4/4 detections,
+   final box 0.40×0.08×0.47 m. rule.tiers records the path per object.
+
+## Final living numbers (run 4)
+
+45 objects: 28 carved_arm / 2 carved / 8 kept_wall / 7 kept_ceiling,
+zero kept-by-failure. (Count is 45 vs the earlier 44: exemptions catch
+an object that previously died silently at the <100-dot skip.)
+
+## Where things stand / next
+
+- R-S2-30 lists carried opens: thin boxes (obj_010/020/041), the two
+  surprise wall exemptions, sofa L → multiplicity judge (unbuilt),
+  same-product verdicts (never run).
+- NEXT (user 08-07): run the carved output ALONG THE PIPELINE — doubts
+  into the record via the description pass, the two judge passes, then
+  S1/compose consuming scene_manifest_slicevote_preview.json, then
+  runner wiring + map promotion (draw the node solid).
+- Ops gotchas: PYTHONUTF8=1 when redirecting stdout (cp1252 vs ≥);
+  transient votectx plys are big (~250 MB × 4/object) but self-delete;
+  a full living run ≈ 15-20 min under the 1500 MHz clock lock.

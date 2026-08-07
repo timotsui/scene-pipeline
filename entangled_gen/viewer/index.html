@@ -2221,6 +2221,19 @@ try {
              gEsc(jn.existence_verdict.verdict) + ' (conf ' +
              gNum(jn.existence_verdict.confidence) + '): ' +
              gEsc(jn.existence_verdict.reason) + '</div>';
+      // carve block (08-07, record_carve_doubts --apply): slice-vote
+      // status + typed doubts ride the card; judges read these, the
+      // card just shows them
+      const jcv = ((gj.carve || {}).nodes || {})[jn.id];
+      if (jcv) {
+        h += '<div class="dim">carve: ' + gEsc(jcv.status || '?') +
+             ((jcv.tiers || []).length > 1
+                 ? ' · tiers ' + gEsc(jcv.tiers.join(' → ')) : '') +
+             (jcv.slice ? ' · ' + gEsc(jcv.slice) : '') + '</div>';
+        for (const d of (jcv.doubts || []))
+          h += '<div style="color:#ffb74d">⚠ carve doubt: ' +
+               gEsc(d.text || d.kind) + '</div>';
+      }
       // partner link (08-01): any object/arch id mentioned in the card is
       // clickable -- selects it like a box click + flies the camera there
       const jLink = (id, txt) => jEntryById[id]

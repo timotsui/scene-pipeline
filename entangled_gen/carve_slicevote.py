@@ -1,37 +1,63 @@
-"""SLICE-VOTE CARVE — the box-repair stage (USER-DESIGNED 2026-08-06,
-the cone-map session; promoted from scratchpad the same night).
+"""SLICE-VOTE CARVE — the box-repair stage (USER-DESIGNED 2026-08-06
+cone-map session; hardened over 4 whole-scene living runs 08-06/07,
+REVIEW_LOG R-S2-26..30, all USER-PASSED).
 
-⚠ STATUS: UNTESTED PROMOTION. Judged on 8 living-room objects (2 sofas +
-6 chairs) by the user during the design session; NO bedroom regression
-run yet; NOT wired into the canonical runner; NOT on the pipeline map
-(that promotion is user-gated). Outputs are PREVIEW manifests only.
+STATUS: user-passed on living_marble (R-S2-29 + R-S2-30); bedroom
+regression WAIVED by user 08-06. NOT yet wired into the canonical
+runner — map promotion pending. Output stays a PREVIEW manifest until
+wiring. Served in the viewer as the "slicevote" box-source layer.
 
 Per resolved graph node:
-1. SLICE (candidates): PRIMARY = top-box vertical prism — GroundingDINO
-   box on the cached WSL top/ctop plan render (prior-location-gated),
-   corners cast across the OBJECT's height band (prior top -0.3m .. the
-   floor; ceiling-to-floor casting smears the tilted beam sideways),
-   world margin min(30%, 0.35 m)/side, cut full height below ceiling.
-   FALLBACK (no top detection) = original-box wedge: the sp0 detection
-   boxes' horizontal extent, capped margin, full height.
-2. RENDER: the slice's gaussians written as a subset .ply, rendered by
-   the REAL WSL gsplat renderer from 4 near-cardinal cameras.
-3. VOTE (6-voter election): the 4 cardinals (GDINO+SAM on the isolated
-   renders) + the TOP view's mask + the ORIGINAL standpoint (union of
-   its member masks = ONE voter). A dot is kept at >=3 votes (user
-   gate); anchored cluster wins, others culled (recorded).
-4. ARM ASSIGNMENT (UNTESTED, user option-2): multi-node structures
-   (L-sectional) share one vote cluster; each node keeps the vote
-   survivors ITS OWN original masks vouch for, so sibling nodes get
-   their own arms instead of the whole L. Falls back to the cluster
-   box when sp0 coverage is too thin (junk-member-mask guard).
+0. EXEMPTIONS (geometric, never label lists): ceiling-mounted (top
+   within 0.35 m of the shell ceiling + bottom in the upper half of
+   the room) -> kept_ceiling; wall-flush (within 0.20 m of a shell
+   wall plane + < 0.30 m thin along its normal) -> kept_wall;
+   floor-flush (bottom within 0.20 m of the shell floor + < 0.30 m
+   tall) -> kept_floor (user ruling 2026-08-07: rugs/mats are the
+   wall-flush disease rotated to the floor — protected structurally,
+   no class names). All keep the resolved box verbatim — flat objects
+   have no side silhouette and their slices degenerate.
+0b. SHELL ELECTORATE FILTER (user ruling 2026-08-07, the L-notch floor
+   finding): a dot lying on a measured shell plane (floor/wall/ceiling
+   within SHELL_EPS) is STRUCTURE and cannot be ELECTED as an object
+   member — claims are ray volumes with no depth test, so notch/gap
+   floor dots collect claims from cameras whose rays end on the object
+   behind them. Renders/claims unchanged (caches stay valid); the
+   filter zeroes those dots' votes at tally time. Exempt (kept_*)
+   objects never vote, so flat-on-shell objects are unaffected.
+1. SLICE: PRIMARY = top-box vertical prism — GroundingDINO box on the
+   cached WSL top/ctop plan render (prior-location-gated), corners
+   cast across the OBJECT's height band, margin min(30%, 0.35 m)/side.
+   FALLBACK (no top detection) = original-box wedge, capped margin.
+2. RENDER + DETECT, escalation ladder (user design 08-07):
+   TIER 1  4 near-cardinal VIEW-TUNNEL cards at object height (full
+           scene minus the camera->slice hole; occluders culled,
+           context intact; re-detect gated to the slice's screen box);
+   TIER 2  if >=3 of 4 cards unproductive (<50 claimed dots): add 4
+           EYE-HEIGHT cardinal tunnel cards as extra voters (Marble is
+           biased toward eye-height capture — proven on obj_004 book:
+           0/4 at object height, 4/4 at eye height);
+   TIER 3  election still empty: isolation retry (slice alone on
+           black) with the cards re-detected;
+   TIER 4  original box ships, status 'kept' (recorded, never silent).
+3. VOTE: cards + TOP view's mask + ORIGINAL standpoint (member-mask
+   union = ONE voter); dot kept at >=3 votes (gate degrades only when
+   fewer voters exist); anchored cluster wins, culled ones recorded.
+4. ARM ASSIGNMENT (user option-2): each node keeps the vote survivors
+   ITS OWN original masks vouch for (L-sectional split); cluster-box
+   fallback when sp0 coverage is thin; <50%-volume flag -> judge.
+5. OUTLIER GUARD (user rule): shipping box > OUTLIER_K x original
+   volume -> original ships (kept_outlier), vote box recorded as doubt.
 
 Outputs (per scene): scene_manifest_slicevote_preview.json,
-pool_retake/slicevote_report.json, pool_retake/conemap.json (the
-viewer's cone-map layer), conemap_obj_*.png figures, cone_map.html.
+pool_retake/slicevote_report.json (rule.tiers records escalation),
+pool_retake/conemap.json (viewer cone-map layer), conemap_obj_*.png,
+cone_map.html.
 
-Run:  python carve_slicevote.py --scene living_marble
-      [--only obj_004,...] [--gate 3] [--res 768]
+Run:  PYTHONUTF8=1 HF_HUB_OFFLINE=1 python carve_slicevote.py
+      --scene living_marble [--only obj_004,...] [--gate 3] [--res 768]
+      (PYTHONUTF8 required when stdout is redirected — cp1252 chokes
+      on the vote glyphs)
 """
 import argparse
 import json
@@ -72,6 +98,9 @@ WALL_PAD = 0.30
 EMPTY_R = 0.30
 EMPTY_MAX = 1500
 DIL_ISO = 8
+OUTLIER_K = 8.0
+SHELL_EPS = 0.03   # m — shell electorate filter (user 2026-08-07, in the
+                   # approved 2-3 cm band; shell is collider-agreed 5-36mm)
 
 sd = paths.scene_dir(SCENE)
 rdir = sd / "pool_retake"
@@ -352,6 +381,10 @@ from matplotlib.patches import Rectangle  # noqa: E402
 
 VIEW_COLORS = {"card0": "#e41a1c", "card1": "#377eb8",
                "card2": "#4daf4a", "card3": "#984ea3",
+               "eyecard0": "#ff9e9e", "eyecard1": "#9ecfff",
+               "eyecard2": "#a8e6b0", "eyecard3": "#d9a8e8",
+               "iso0": "#b01214", "iso1": "#2a5f8f",
+               "iso2": "#3a8a41", "iso3": "#763f80",
                "top": "#ff7f00", "sp0-original": "#888888",
                "slice": "#ffffff"}
 
@@ -369,6 +402,7 @@ def draw_box(ax, lo, hi, ax0, ax1, color, ls, lw, label=None, flip1=False):
 # ================= per-object: slice -> render -> detect -> vote =======
 rows_html = []
 cm_objects = []
+kept_exempt = []
 for n in nodes:
     nid, name = n["id"], n["name"]
     geo = n["geometry"]
@@ -377,6 +411,75 @@ for n in nodes:
     corners = np.array([[x, y, z] for x in (lo0[0], hi0[0])
                         for y in (lo0[1], hi0[1]) for z in (lo0[2], hi0[2])])
     print(f"[carve] {nid} {name}", flush=True)
+
+    # CEILING EXEMPTION (user ruling 2026-08-06 after R-S2-27): a flat
+    # ceiling-mounted object has no side silhouette for the cardinals,
+    # and the floor-anchored height band slices the whole room column
+    # beneath it (the x288-x5027 blowups). Geometric test only — hangs
+    # from the ceiling plane AND stays in the upper half of the room
+    # (y-down frame: CEIL < FLOOR) — never a label list.
+    room_h = FLOOR - CEIL
+    if (lo0[1] - CEIL) < 0.35 and (hi0[1] - CEIL) < 0.5 * room_h:
+        print("[carve]  ceiling-mounted — carve exempt, resolved box "
+              "kept verbatim", flush=True)
+        kept_exempt.append({
+            "id": nid, "name": name, "nviews_vote": 0,
+            "status": "kept_ceiling",
+            "boxes": {"original":
+                      {"lo": [round(float(v), 3) for v in lo0],
+                       "hi": [round(float(v), 3) for v in hi0]}},
+            "rule": {"kept": "ceiling-mounted — carve exempt "
+                             "(geometric: top within 0.35 m of the "
+                             "shell ceiling, bottom in the upper half "
+                             "of the room)"}})
+        continue
+
+    # WALL-FLUSH EXEMPTION (user ruling 2026-08-06b after R-S2-28):
+    # same disease on walls — a wall-flush object has no plan-view
+    # footprint, so the top detection can't start and the full-height
+    # wedge slices a room column in front of the wall (obj_002 x369).
+    # Geometric only: flush to a measured shell wall (< 0.20 m) AND
+    # thin along that wall's normal axis (< 0.30 m). A deep bookshelf
+    # against the wall is flush but not thin -> still carved.
+    _wall_hit = None
+    for _axi, _planes in ((0, (XLO, XHI)), (2, (ZLO, ZHI))):
+        for _v in _planes:
+            if (min(abs(lo0[_axi] - _v), abs(hi0[_axi] - _v)) < 0.20
+                    and (hi0[_axi] - lo0[_axi]) < 0.30):
+                _wall_hit = (_axi, _v)
+    if _wall_hit is not None:
+        print("[carve]  wall-flush — carve exempt, resolved box kept "
+              "verbatim", flush=True)
+        kept_exempt.append({
+            "id": nid, "name": name, "nviews_vote": 0,
+            "status": "kept_wall",
+            "boxes": {"original":
+                      {"lo": [round(float(v), 3) for v in lo0],
+                       "hi": [round(float(v), 3) for v in hi0]}},
+            "rule": {"kept": "wall-flush — carve exempt (geometric: "
+                             "within 0.20 m of a shell wall plane and "
+                             "< 0.30 m thin along its normal)"}})
+        continue
+
+    # FLOOR-FLUSH EXEMPTION (user ruling 2026-08-07, with the shell
+    # electorate filter): rugs/floor mats are the wall-flush disease
+    # rotated to the floor — flush to the shell floor AND thin
+    # vertically. Must run BEFORE the electorate filter below, which
+    # would otherwise gut a flat floor object's entire electorate.
+    # y-down frame: an object's bottom is hi0[1]; FLOOR > CEIL.
+    if (FLOOR - hi0[1]) < 0.20 and (hi0[1] - lo0[1]) < 0.30:
+        print("[carve]  floor-flush — carve exempt, resolved box kept "
+              "verbatim", flush=True)
+        kept_exempt.append({
+            "id": nid, "name": name, "nviews_vote": 0,
+            "status": "kept_floor",
+            "boxes": {"original":
+                      {"lo": [round(float(v), 3) for v in lo0],
+                       "hi": [round(float(v), 3) for v in hi0]}},
+            "rule": {"kept": "floor-flush — carve exempt (geometric: "
+                             "bottom within 0.20 m of the shell floor "
+                             "and < 0.30 m tall)"}})
+        continue
 
     # ---- SLICE: prism primary, wedge fallback ----
     slice_mask, slice_info = None, ""
@@ -456,7 +559,19 @@ for n in nodes:
         slice_info = f"FALLBACK WEDGE ({nb} sp0 boxes; {slice_info})"
     cidx = np.nonzero(slice_mask)[0]
     dots = xyz[cidx]
-    print(f"[carve] slice: {len(dots):,} dots  [{slice_info}]", flush=True)
+    # SHELL ELECTORATE FILTER (user ruling 2026-08-07): dots on a
+    # measured shell plane are structure — ineligible for election.
+    # Claims/renders untouched (caches stay valid); votes zeroed at
+    # tally. Census printed + recorded (measure-first doctrine).
+    elig = ((np.abs(dots[:, 1] - FLOOR) > SHELL_EPS)
+            & (np.abs(dots[:, 1] - CEIL) > SHELL_EPS)
+            & (np.abs(dots[:, 0] - XLO) > SHELL_EPS)
+            & (np.abs(dots[:, 0] - XHI) > SHELL_EPS)
+            & (np.abs(dots[:, 2] - ZLO) > SHELL_EPS)
+            & (np.abs(dots[:, 2] - ZHI) > SHELL_EPS))
+    n_shell_dots = int((~elig).sum())
+    print(f"[carve] slice: {len(dots):,} dots  [{slice_info}]  "
+          f"(shell-plane ineligible: {n_shell_dots:,})", flush=True)
     if len(dots) < 100:
         print("[carve]   too few dots, skipping", flush=True)
         continue
@@ -490,60 +605,137 @@ for n in nodes:
                   "label": f"{nid} {name} slice 3/4 view",
                   "eye": [float(v) for v in eye34],
                   "aim": [float(v) for v in ctr], "fov": FOV_GOOD})
-    tf = sdir / f"votetgt_{nid}.json"
-    tf.write_text(json.dumps(views, indent=1))
-    cmd = ("wsl -d Ubuntu-24.04 -- bash -c \"cd /root/splat_analyzer && "
-           "/root/miniconda3/envs/splatanalyzer/bin/python "
-           f"'{to_wsl(HERE / 'analyzer' / 'render_targets_wsl.py')}' "
-           f"--targets '{to_wsl(tf)}' --ply '{to_wsl(plyp)}' "
-           f"--out '{to_wsl(sdir)}' --res {RES}\"")
-    subprocess.run(cmd, check=True, timeout=900, shell=True)
+    # VIEW TUNNEL (user design 2026-08-06 after R-S2-27): each card
+    # renders the FULL scene minus a tunnel — gaussians inside this
+    # camera's view cone (small pad for splat tails), nearer than the
+    # slice's far depth, and not slice members are culled. Occluders
+    # gone, side/background context intact. Claims are still counted on
+    # slice dots only. Per-card plys are transient (≈ whole scene).
+    def ctx_render_jobs(card_views):
+        jobs = []
+        for v in card_views:
+            veye = np.array(v["eye"], float)
+            vdir = np.array(v["aim"], float) - veye
+            vdir /= np.linalg.norm(vdir)
+            t_far = float(((dots - veye) @ vdir).max())
+            camk = make_cam(v["eye"], v["aim"], v["fov"], RES)
+            uu, vv_, zz = camk.project(xyz)
+            in_cone = ((zz > 0.05) & (uu >= -40) & (uu < RES + 40)
+                       & (vv_ >= -40) & (vv_ < RES + 40))
+            hole = (in_cone & (((xyz - veye) @ vdir) < (t_far + 0.05))
+                    & ~slice_mask)
+            cply = sdir / f"votectx_{v['name']}.ply"
+            write_subset_ply(~hole, cply)
+            ctf = sdir / f"votetgt_{v['name']}.json"
+            ctf.write_text(json.dumps([v], indent=1))
+            jobs.append((ctf, cply, True))
+        return jobs
 
-    # ---- DETECT + VOTE ----
-    claims, infos = [], []
-    for k in range(4):
-        vname = f"card{k}"
-        png = sdir / f"vote_{nid}_card{k}.png"
-        v = views[k]
-        info = {"view": vname, "eye": v["eye"]}
-        if not png.exists():
-            info["why"] = "no_render"
-            infos.append(info)
-            continue
-        img = Image.open(png).convert("RGB")
-        best = gdino_best(img, name)
-        if best is None:
-            info["why"] = "no_redetect"
-            infos.append(info)
-            print(f"[carve] {vname} no_redetect", flush=True)
-            continue
-        mask = sam_mask(img, best[1], DIL_ISO)
-        ov = img.convert("RGBA")
-        layer = Image.new("RGBA", ov.size, (0, 0, 0, 0))
-        px = layer.load()
-        ys, xs = np.nonzero(mask)
-        for yy, xx in zip(ys[::4], xs[::4]):
-            px[int(xx), int(yy)] = (0, 255, 90, 100)
-        ov = Image.alpha_composite(ov, layer).convert("RGB")
-        dr = ImageDraw.Draw(ov)
-        dr.rectangle(best[1], outline=(255, 40, 40), width=4)
-        ov.save(sdir / f"vote_{nid}_card{k}_det.png")
-        cam = make_cam(v["eye"], v["aim"], v["fov"], RES)
-        u, vv2, z = cam.project(dots)
-        inb = ((z > 0.05) & (u >= 0) & (u < RES - 1)
-               & (vv2 >= 0) & (vv2 < RES - 1))
-        cl = np.zeros(len(dots), bool)
-        ui = u[inb].astype(np.int64)
-        vi = vv2[inb].astype(np.int64)
-        cl[np.nonzero(inb)[0]] = mask[vi, ui]
-        claims.append(cl)
-        info["why"] = f"ok({best[0]:.2f})"
-        info["claimed"] = int(cl.sum())
-        info["idx"] = len(claims) - 1
-        infos.append(info)
-        print(f"[carve] {vname} ok({best[0]:.2f}) claims "
-              f"{int(cl.sum())}/{len(dots)}", flush=True)
+    def run_renders(jobs):
+        _py = "/root/miniconda3/envs/splatanalyzer/bin/python"
+        _scr = to_wsl(HERE / 'analyzer' / 'render_targets_wsl.py')
+        parts = [f"{_py} '{_scr}' --targets '{to_wsl(t)}' "
+                 f"--ply '{to_wsl(p)}' --out '{to_wsl(sdir)}' --res {RES}"
+                 for t, p, _tr in jobs]
+        cmd = ("wsl -d Ubuntu-24.04 -- bash -c \"cd /root/splat_analyzer"
+               " && " + " && ".join(parts) + "\"")
+        subprocess.run(cmd, check=True, timeout=1800, shell=True)
+        for _t, p, transient in jobs:
+            if transient:
+                p.unlink(missing_ok=True)
+
+    def card_votes(card_views):
+        """Detect+SAM each card render. Returns [(claims|None, info)];
+        claims are over slice dots only."""
+        out = []
+        for v in card_views:
+            vname = v["name"].split(f"vote_{nid}_", 1)[-1]
+            png = sdir / f"{v['name']}.png"
+            info = {"view": vname, "eye": v["eye"]}
+            if not png.exists():
+                info["why"] = "no_render"
+                out.append((None, info))
+                continue
+            img = Image.open(png).convert("RGB")
+            cam = make_cam(v["eye"], v["aim"], v["fov"], RES)
+            u, vv2, z = cam.project(dots)
+            inb = ((z > 0.05) & (u >= 0) & (u < RES - 1)
+                   & (vv2 >= 0) & (vv2 < RES - 1))
+            # context in frame: gate the re-detect to the slice's screen
+            # footprint (same prior mechanism as the top view) so a
+            # same-class object in the backdrop can't be picked
+            pb = ([float(max(0, u[inb].min() - 20)),
+                   float(max(0, vv2[inb].min() - 20)),
+                   float(min(RES, u[inb].max() + 20)),
+                   float(min(RES, vv2[inb].max() + 20))]
+                  if inb.any() else None)
+            best = gdino_best(img, name, prior_box=pb)
+            if best is None:
+                info["why"] = "no_redetect"
+                out.append((None, info))
+                print(f"[carve] {vname} no_redetect", flush=True)
+                continue
+            mask = sam_mask(img, best[1], DIL_ISO)
+            ov = img.convert("RGBA")
+            layer = Image.new("RGBA", ov.size, (0, 0, 0, 0))
+            px = layer.load()
+            ys, xs = np.nonzero(mask)
+            for yy, xx in zip(ys[::4], xs[::4]):
+                px[int(xx), int(yy)] = (0, 255, 90, 100)
+            ov = Image.alpha_composite(ov, layer).convert("RGB")
+            dr = ImageDraw.Draw(ov)
+            dr.rectangle(best[1], outline=(255, 40, 40), width=4)
+            ov.save(sdir / f"{v['name']}_det.png")
+            cl = np.zeros(len(dots), bool)
+            ui = u[inb].astype(np.int64)
+            vi = vv2[inb].astype(np.int64)
+            cl[np.nonzero(inb)[0]] = mask[vi, ui]
+            info["why"] = f"ok({best[0]:.2f})"
+            info["claimed"] = int(cl.sum())
+            out.append((cl, info))
+            print(f"[carve] {vname} ok({best[0]:.2f}) claims "
+                  f"{int(cl.sum())}/{len(dots)}", flush=True)
+        return out
+
+    # ---- TIER 1: context cards at object height ----
+    jobs = ctx_render_jobs(views[:4])
+    tf = sdir / f"votetgt_{nid}.json"
+    tf.write_text(json.dumps([views[4]], indent=1))  # clean slice34
+    jobs.append((tf, plyp, False))
+    run_renders(jobs)
+    card_res = card_votes(views[:4])
+    tiers = ["context"]
+
+    # ---- TIER 2: eye-height escalation (user design 2026-08-07) ----
+    # Marble scenes are biased toward eye-height capture: splat quality
+    # and the detector are both strongest from eye-height viewpoints.
+    # When MOST object-height cardinals are unproductive (>=3 of 4 with
+    # no detection or <50 claimed dots), add 4 eye-height cardinals
+    # (same tunnel carve) as EXTRA voters.
+    productive = sum(1 for cl, inf in card_res
+                     if cl is not None and inf.get("claimed", 0) >= 50)
+    if productive <= 1:
+        tiers.append("eyeheight")
+        print("[carve]  escalate: eye-height cardinals", flush=True)
+        eye_y = max(CEIL + WALL_PAD, FLOOR - 1.6)
+        eviews = []
+        for k, base in enumerate([np.array([1.0, 0, 0]),
+                                  np.array([-1.0, 0, 0]),
+                                  np.array([0, 0, 1.0]),
+                                  np.array([0, 0, -1.0])]):
+            dirv = roty(base, OFF_AXIS)
+            eeye = ctr + dirv * dist
+            eeye = eeye.copy()
+            eeye[1] = eye_y
+            eviews.append({"name": f"vote_{nid}_eyecard{k}",
+                           "label": f"{nid} {name} eyecard{k}",
+                           "eye": [float(x) for x in eeye],
+                           "aim": [float(x) for x in ctr],
+                           "fov": FOV_GOOD})
+        run_renders(ctx_render_jobs(eviews))
+        card_res = card_res + card_votes(eviews)
     # ---- v4: the TOP view votes too (its SAM mask on the plan render)
+    tcl, tinfo = None, None
     if top_ctx is not None:
         tcam, tb, timg, tvname, tscore, teye_v = top_ctx
         tmask = sam_mask(timg, tb, DIL_ISO)
@@ -563,10 +755,10 @@ for n in nodes:
         ui = u[inb].astype(np.int64)
         vi = vv2[inb].astype(np.int64)
         cl[np.nonzero(inb)[0]] = tmask[vi, ui]
-        claims.append(cl)
-        infos.append({"view": "top", "why": f"ok({tscore:.2f})",
-                      "eye": [float(v) for v in teye_v],
-                      "claimed": int(cl.sum()), "idx": len(claims) - 1})
+        tcl = cl
+        tinfo = {"view": "top", "why": f"ok({tscore:.2f})",
+                 "eye": [float(v) for v in teye_v],
+                 "claimed": int(cl.sum())}
         print(f"[carve] top   ok({tscore:.2f}) claims "
               f"{int(cl.sum())}/{len(dots)}", flush=True)
     # ---- v4: the ORIGINAL standpoint votes too (union of member masks)
@@ -595,23 +787,73 @@ for n in nodes:
             hit[np.nonzero(inb)[0]] = mkd[vi, ui]
             ocl |= hit
             n_msk += 1
+    oinfo = None
     if n_msk:
-        claims.append(ocl)
-        infos.append({"view": "sp0-original",
-                      "why": f"{n_msk} member mask(s)",
-                      "eye": [float(v) for v in eye0],
-                      "claimed": int(ocl.sum()), "idx": len(claims) - 1})
+        oinfo = {"view": "sp0-original",
+                 "why": f"{n_msk} member mask(s)",
+                 "eye": [float(v) for v in eye0],
+                 "claimed": int(ocl.sum())}
         print(f"[carve] sp0   {n_msk} masks   claims "
               f"{int(ocl.sum())}/{len(dots)}", flush=True)
-    n_ok = len(claims)
-    votes = (np.sum(claims, axis=0).astype(np.int64) if claims
-             else np.zeros(len(dots), np.int64))
-    # USER 2026-08-06 late: 3-vote gate (of the up-to-6 electorate);
-    # degrades only when fewer voters exist
-    need_votes = min(a.gate, n_ok) if n_ok else 1
-    prim_and, _ = (fragments_box(dots[votes == n_ok], lo0, hi0)
-                   if n_ok else (None, []))
-    prim_v2, frags_v2 = fragments_box(dots[votes >= need_votes], lo0, hi0)
+
+    # ---- ELECTION (assemble + tally; re-runnable for tier 3) ----
+    def assemble(card_res_):
+        cls, inf = [], []
+        for cl, i in card_res_:
+            i = dict(i)
+            if cl is not None:
+                cls.append(cl)
+                i["idx"] = len(cls) - 1
+            inf.append(i)
+        if tcl is not None:
+            ti = dict(tinfo)
+            cls.append(tcl)
+            ti["idx"] = len(cls) - 1
+            inf.append(ti)
+        if oinfo is not None:
+            oi = dict(oinfo)
+            cls.append(ocl)
+            oi["idx"] = len(cls) - 1
+            inf.append(oi)
+        return cls, inf
+
+    def tally(cls):
+        # USER 2026-08-06 late: 3-vote gate; degrades only when fewer
+        # voters exist
+        n = len(cls)
+        vts = (np.sum(cls, axis=0).astype(np.int64) if cls
+               else np.zeros(len(dots), np.int64))
+        vts[~elig] = 0   # shell electorate filter (user 2026-08-07)
+        need = min(a.gate, n) if n else 1
+        p_and, _ = (fragments_box(dots[vts == n], lo0, hi0)
+                    if n else (None, []))
+        p_v2, frags = fragments_box(dots[vts >= need], lo0, hi0)
+        return n, vts, need, p_and, p_v2, frags
+
+    claims, infos = assemble(card_res)
+    (n_ok, votes, need_votes,
+     prim_and, prim_v2, frags_v2) = tally(claims)
+
+    # ---- TIER 3: isolation retry (user-approved 2026-08-07) ----
+    # Election still empty -> re-render the object-height cards with the
+    # slice ALONE on black (run-1 mode, proven on small objects like the
+    # book) and re-elect with the extra voters. Only after this can the
+    # original box ship.
+    if prim_v2 is None:
+        tiers.append("isolation")
+        print("[carve]  escalate: isolation retry (slice on black)",
+              flush=True)
+        iviews = [{"name": f"vote_{nid}_iso{k}",
+                   "label": f"{nid} {name} iso{k}",
+                   "eye": views[k]["eye"], "aim": views[k]["aim"],
+                   "fov": FOV_GOOD} for k in range(4)]
+        itf = sdir / f"votetgt_{nid}_iso.json"
+        itf.write_text(json.dumps(iviews, indent=1))
+        run_renders([(itf, plyp, False)])
+        card_res = card_res + card_votes(iviews)
+        claims, infos = assemble(card_res)
+        (n_ok, votes, need_votes,
+         prim_and, prim_v2, frags_v2) = tally(claims)
     rule_flag = ""
     if frags_v2:
         biggest = max(frags_v2, key=lambda f: f["n_pts"])
@@ -642,6 +884,37 @@ for n in nodes:
                             "multiplicity judge territory")
         else:
             arm_flag = "sp0 coverage too thin — arm fallback to cluster"
+    # OUTLIER GUARD (user rule 2026-08-06b): a repair may refine, never
+    # explode — if the box that would ship is > OUTLIER_K x the original
+    # resolved volume, the original ships instead (kept_outlier). The
+    # oversized vote box stays recorded (honest fallback, judge fodder).
+    outlier_flag = ""
+    _fin = prim_arm if prim_arm is not None else prim_v2
+    if _fin is not None:
+        _vf = np.prod(np.maximum(
+            np.array(_fin["hi"]) - np.array(_fin["lo"]), 1e-6))
+        _vo = np.prod(np.maximum(hi0 - lo0, 1e-6))
+        if _vf > OUTLIER_K * _vo:
+            outlier_flag = (f"carved box is {_vf/_vo:.0f}x the original "
+                            f"volume (> {OUTLIER_K:.0f}x) — outlier "
+                            "guard: original box ships, vote box "
+                            "recorded as doubt")
+    # PLAN-FILL (user rule 3, 2026-08-07 — adopted from the scene-wide
+    # census: natural break 0.58 | 0.73, threshold 0.65 in open water):
+    # elected dots' 10 cm-voxel footprint coverage of the vote box. Low
+    # fill = the dots don't cover their own footprint — non-box shape
+    # (L-sectional) or sparse giant. Recorded here; the doubt fires in
+    # record_carve_doubts.py; the split-cell judge rules.
+    plan_fill = None
+    if prim_v2 is not None:
+        _el = dots[votes >= need_votes]
+        if len(_el):
+            _lo2 = np.array(prim_v2["lo"]); _hi2 = np.array(prim_v2["hi"])
+            _g = np.floor((_el[:, [0, 2]] - _lo2[[0, 2]]) / 0.10)
+            _occ = len(set(map(tuple, _g.astype(np.int64))))
+            _tot = int(np.prod(np.maximum(
+                np.ceil((_hi2 - _lo2)[[0, 2]] / 0.10), 1)))
+            plan_fill = round(min(_occ / max(_tot, 1), 2.0), 3)
     ur = ("empty" if prim_v2 is None else
           " x ".join(f"{prim_v2['hi'][i]-prim_v2['lo'][i]:.2f}"
                      for i in range(3)))
@@ -651,7 +924,8 @@ for n in nodes:
     print(f"[carve]  VOTE ≥{need_votes} of {n_ok}: {ur} m{ua}"
           + (f"  (culled {len(frags_v2)-1})" if len(frags_v2) > 1 else "")
           + (f"  ⚠ {rule_flag}" if rule_flag else "")
-          + (f"  ⚠ {arm_flag}" if arm_flag else ""), flush=True)
+          + (f"  ⚠ {arm_flag}" if arm_flag else "")
+          + (f"  ⚠ {outlier_flag}" if outlier_flag else ""), flush=True)
 
     # ---- figure ----
     Pc = dots[votes >= need_votes]
@@ -750,8 +1024,11 @@ for n in nodes:
                   "strict": _box(prim_and), "vote2": _box(prim_v2),
                   "arm": _box(prim_arm)},
         "rule": {"need_votes": need_votes, "flag": rule_flag,
-                 "arm_flag": arm_flag,
+                 "arm_flag": arm_flag, "outlier": outlier_flag,
+                 "tiers": tiers,
                  "culled_clusters": max(0, len(frags_v2) - 1),
+                 "shell_ineligible_dots": n_shell_dots,
+                 "plan_fill": plan_fill,
                  "slice": slice_info},
         "views": views_exp,
         "points": {"pos": [round(float(v), 3)
@@ -775,6 +1052,10 @@ for n in nodes:
         stats.append(f"ALL-cardinals box: {sz(prim_and)} m")
     if rule_flag:
         stats.append(f"\u26a0 FLAG: {rule_flag}")
+    if outlier_flag:
+        stats.append(f"\u26a0 OUTLIER: {outlier_flag}")
+    if len(tiers) > 1:
+        stats.append("escalated: " + " \u2192 ".join(tiers))
     strip = ""
     f34 = sdir / f"vote_{nid}_slice34.png"
     if f34.exists():
@@ -790,16 +1071,17 @@ for n in nodes:
         strip += (f"<figure><img src='pool_retake/{fsp.name}' "
                   f"loading='lazy'><figcaption>ORIGINAL VOTER · sp0 "
                   f"member mask</figcaption></figure>")
-    for k in range(4):
-        f = sdir / f"vote_{nid}_card{k}_det.png"
-        f2 = sdir / f"vote_{nid}_card{k}.png"
+    for i in infos:
+        vn = i["view"]
+        if vn in ("top", "sp0-original"):
+            continue
+        f = sdir / f"vote_{nid}_{vn}_det.png"
+        f2 = sdir / f"vote_{nid}_{vn}.png"
         src = f.name if f.exists() else (f2.name if f2.exists() else None)
-        why = next((i["why"] for i in infos
-                    if i["view"] == f"card{k}"), "?")
         if src:
             strip += (f"<figure><img src='pool_retake/slices/{src}' "
-                      f"loading='lazy'><figcaption>slice render card{k} "
-                      f"\u00b7 {why}</figcaption></figure>")
+                      f"loading='lazy'><figcaption>{vn} "
+                      f"\u00b7 {i.get('why', '?')}</figcaption></figure>")
     rows_html.append(f"""
 <section>
 <h2>{nid} \u2014 {name}</h2>
@@ -821,12 +1103,21 @@ img.big{{max-width:100%;border:1px solid #ccc;background:#fff}}
 p{{font-size:13px}}
 </style>
 <h1>v3 slice + vote \u2014 {SCENE}</h1>
-<p>SETTLED DESIGN: slice = top-box vertical prism (capped margin;
-fallback = original-box wedge) \u2192 the slice rendered ALONE by the
-real WSL renderer from 4 near-cardinals \u2192 detector+SAM per render
-\u2192 a dot is kept when \u22652 cardinals claim it (anchored cluster,
-others culled). Boxes: gray dashed = original, red = all cardinals
-agree, orange = the \u22652 rule.</p>
+<p>DESIGN (updated 2026-08-06b): slice = top-box vertical prism (capped
+margin; fallback = original-box wedge) \u2192 each card rendered by the
+real WSL renderer as the FULL SCENE minus a VIEW TUNNEL (occluders
+inside the camera cone and nearer than the slice are culled; side and
+background context intact; re-detect gated to the slice's screen
+footprint) \u2192 detector+SAM per render \u2192 6-voter election. Boxes: gray
+dashed = original, red = all cardinals agree, orange = the vote gate,
+cyan = arm. Ceiling-mounted and wall-flush objects are CARVE-EXEMPT
+(geometric tests) and keep their resolved box; a carved box growing
+past the outlier guard (8x original volume) also falls back to the
+original (kept_outlier), with the vote box recorded as doubt.</p>
+{("<p><b>carve-exempt (resolved box kept):</b> "
+  + ", ".join(f"{k['id']} {k['name']} [{k['status']}]"
+              for k in kept_exempt) + "</p>")
+ if kept_exempt else ""}
 {''.join(rows_html)}
 """
 (sd / "cone_map.html").write_text(html, encoding="utf-8")
@@ -836,14 +1127,18 @@ agree, orange = the \u22652 rule.</p>
 # ---- PREVIEW manifest + report (⚠ UNTESTED promotion) ----
 objs, by_status = [], {}
 for o in cm_objects:
-    box = (o["boxes"].get("arm") or o["boxes"].get("vote2")
-           or o["boxes"]["original"])
-    status = ("carved_arm" if o["boxes"].get("arm")
-              else ("carved" if o["boxes"].get("vote2") else "kept"))
+    if o["rule"].get("outlier"):
+        box, status = o["boxes"]["original"], "kept_outlier"
+    else:
+        box = (o["boxes"].get("arm") or o["boxes"].get("vote2")
+               or o["boxes"]["original"])
+        status = ("carved_arm" if o["boxes"].get("arm")
+                  else ("carved" if o["boxes"].get("vote2") else "kept"))
     by_status[status] = by_status.get(status, 0) + 1
     lo, hi = box["lo"], box["hi"]
     flags = [status] + [f for f in (o["rule"]["flag"],
-                                    o["rule"]["arm_flag"]) if f]
+                                    o["rule"]["arm_flag"],
+                                    o["rule"].get("outlier", "")) if f]
     objs.append({"id": o["id"],
                  "label": o["name"] + f" ({status} "
                           f"{o['rule']['need_votes']}v/"
@@ -853,12 +1148,26 @@ for o in cm_objects:
                             for x, y in zip(lo, hi)],
                  "size": [round(y - x, 4) for x, y in zip(lo, hi)],
                  "n_detections": 1, "views": [], "flags": flags})
+for kc in kept_exempt:
+    by_status[kc["status"]] = by_status.get(kc["status"], 0) + 1
+    b = kc["boxes"]["original"]
+    lo, hi = b["lo"], b["hi"]
+    objs.append({"id": kc["id"],
+                 "label": kc["name"] + f" ({kc['status']})",
+                 "score": 1.0, "aabb_min": lo, "aabb_max": hi,
+                 "center": [round((x + y) / 2, 4)
+                            for x, y in zip(lo, hi)],
+                 "size": [round(y - x, 4) for x, y in zip(lo, hi)],
+                 "n_detections": 1, "views": [],
+                 "flags": [kc["status"], kc["rule"]["kept"]]})
 (sd / "scene_manifest_slicevote_preview.json").write_text(json.dumps(
     {"scene": SCENE, "status": "UNTESTED-PREVIEW",
      "source": "carve_slicevote.py — slice-vote carve (top-box prism / "
-               "wedge fallback; 6-voter election, gate "
-               f"{a.gate}; per-node arm assignment). NO bedroom "
-               "regression yet; not on the pipeline map.",
+               "wedge fallback; view-tunnel context cards; 6-voter "
+               f"election, gate {a.gate}; per-node arm assignment; "
+               "ceiling/wall-flush exempt = kept_ceiling/kept_wall; "
+               f"outlier guard {OUTLIER_K:.0f}x = kept_outlier). "
+               "Preview only; not on the pipeline map.",
      "frame": {"space": "raw", "up": [0.0, -1.0, 0.0]},
      "n_objects": len(objs), "objects": objs}, indent=2))
 (rdir / "slicevote_report.json").write_text(json.dumps(
@@ -866,11 +1175,11 @@ for o in cm_objects:
      "status": "UNTESTED-PREVIEW", "gate": a.gate,
      "params": {"DET_THR": DET_THR, "PAD": PAD, "CAP_M": CAP_M,
                 "FOV_GOOD": FOV_GOOD, "OFF_AXIS": OFF_AXIS,
-                "DIL_ISO": DIL_ISO},
+                "DIL_ISO": DIL_ISO, "OUTLIER_K": OUTLIER_K},
      "by_status": by_status,
      "results": [{k: o[k] for k in ("id", "name", "nviews_vote",
                                     "boxes", "rule")}
-                 for o in cm_objects]}, indent=1))
+                 for o in cm_objects] + kept_exempt}, indent=1))
 print(f"[carve] statuses {by_status}; wrote cone_map.html + conemap.json "
       f"+ scene_manifest_slicevote_preview.json + slicevote_report.json "
       f"(⚠ UNTESTED-PREVIEW)", flush=True)
