@@ -147,6 +147,15 @@ function setPose(eye, look, fov) {
             parseFloat(q.get('fov') || '65'));
 }
 const fmt = v => (Math.round(v * 100) / 100).toFixed(2);
+// Carve vocabulary: records written before the 2026-08-07 rename say
+// "arm" where the stage now says "pano" (pano masks = a node's founding
+// masks from the original pano-funnel views). Display-only normalizer —
+// old records stay readable, they just read in the current words.
+const cvTerm = s => String(s == null ? '' : s)
+    .replace(/carved_arm/g, 'carved_pano')
+    .replace(/arm_vs_cluster/g, 'pano_vs_cluster')
+    .replace(/own-mask arm box/g, 'pano-filtered box')
+    .replace(/\barm box\b/g, 'pano-filtered box');
 
 // ---------------- camera number boxes (like the display-rot fields) ----------------
 // Live two-way binding: boxes track the camera while orbiting (skipped for a
@@ -711,7 +720,8 @@ try {
       addCmBox(og, o.boxes.original, 0x888888);
       addCmBox(og, o.boxes.strict, 0xd62728);
       addCmBox(og, o.boxes.vote2, 0xff9900);
-      addCmBox(og, o.boxes.arm, 0x00bcd4);   // per-node arm assignment
+      // per-node pano-mask filter (pre-rename records name the box "arm")
+      addCmBox(og, o.boxes.pano || o.boxes.arm, 0x00bcd4);
       o.views.forEach(v => {
         const c = new THREE.Color(v.color);
         const s = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10),
@@ -809,7 +819,7 @@ try {
         '<span style="color:#888888">▭ original</span> ' +
         '<span style="color:#d62728">▭ ALL agree</span> ' +
         '<span style="color:#ff9900">▭ vote gate·anchored</span> ' +
-        '<span style="color:#00bcd4">▭ arm (own-mask)</span>';
+        '<span style="color:#00bcd4">▭ pano-filtered</span>';
       cmHost.appendChild(leg);
       cb.onchange = e => {
         cmGroup.visible = e.target.checked;
@@ -1243,7 +1253,7 @@ try {
            ' · ' + ((n.evidence || {}).members || []).length +
            ' detections / ' + ((n.evidence || {}).views || []).length +
            ' views' +
-           ((pv.flags || []).length ? ' · ' + pv.flags.join(', ') : '') +
+           ((pv.flags || []).length ? ' · ' + cvTerm(pv.flags.join(', ')) : '') +
            '</div>';
     }
     // full label multiset — the record's plural truth
@@ -2226,13 +2236,13 @@ try {
       // card just shows them
       const jcv = ((gj.carve || {}).nodes || {})[jn.id];
       if (jcv) {
-        h += '<div class="dim">carve: ' + gEsc(jcv.status || '?') +
+        h += '<div class="dim">carve: ' + gEsc(cvTerm(jcv.status || '?')) +
              ((jcv.tiers || []).length > 1
                  ? ' · tiers ' + gEsc(jcv.tiers.join(' → ')) : '') +
              (jcv.slice ? ' · ' + gEsc(jcv.slice) : '') + '</div>';
         for (const d of (jcv.doubts || []))
           h += '<div style="color:#ffb74d">⚠ carve doubt: ' +
-               gEsc(d.text || d.kind) + '</div>';
+               gEsc(cvTerm(d.text || d.kind)) + '</div>';
       }
       // partner link (08-01): any object/arch id mentioned in the card is
       // clickable -- selects it like a box click + flies the camera there
@@ -2709,7 +2719,7 @@ function showManInfo(o, src) {
               + (o.n_points !== undefined ? ' (' + o.n_points + ' px lifted)' : ''))
         : '')
     + (o.frames ? row('evidence', o.frames.length + ' frames') : '')
-    + ((o.flags || []).length ? row('flags', o.flags.join(', ')) : '')
+    + ((o.flags || []).length ? row('flags', cvTerm(o.flags.join(', '))) : '')
     + (e ? row('env here', (e.floor ? 'floor ✓' : 'NO floor') + ', clear ' +
                fmt(e.clear) + ' m' + (e.dev !== null ? ', floor dev ' +
                (e.dev >= 0 ? '+' : '') + fmt(e.dev) + ' m' : '')) : '')

@@ -23,7 +23,10 @@ shopping) are NOT wired.
 3. **Isolation** (user design): candidates = original∪top masks, then the
    candidates rendered ALONE and re-detected. Big win (chair obj_068
    finally chair-sized) — isolation makes the detector's job easy. But
-   the original member masks carry junk (user found a member mask that
+   the PANO MASKS carry junk (pano masks = a node's founding masks from
+   the original pano-funnel views, i.e. the rig_sp0 f30 crops — the
+   graph's identity evidence, as opposed to the carve's fresh
+   identity-blind card detections; the user found a pano mask that
    segmented FLOOR, labeled sofa — nothing in the pipeline ever re-checks
    a mask against its label).
 4. **Top-column** (user design): slice = plan-view detection box extruded
@@ -40,7 +43,7 @@ shopping) are NOT wired.
    — found by the user on obj_041/obj_020).
 6. **6-voter election at gate 3** (user): 4 cardinals on the isolated
    renders + the top view's mask + the original standpoint (union of
-   member masks = ONE voter; same-eye crops must not corroborate each
+   pano masks = ONE voter; same-eye crops must not corroborate each
    other). Gate 3 killed the degenerate-ballot blowup (obj_063's
    claim-everything camera outvoted) AND obj_028's unstable-detection
    regression, while keeping the sofas' recovery.
@@ -50,19 +53,22 @@ shopping) are NOT wired.
 Slice (prism/wedge, capped margins, height-band footprint) → subset .ply
 → 4 near-cardinal WSL renders → GDINO+SAM per render → 6-voter election,
 gate `--gate` (default 3) → anchored cluster (culled clusters recorded as
-multiplicity evidence) → **arm assignment** (below). Outputs:
+multiplicity evidence) → **pano-mask filter** (formerly "arm
+assignment"; below). Outputs:
 `scene_manifest_slicevote_preview.json` (+ `pool_retake/
 slicevote_report.json`, the viewer cone-map layer files, `cone_map.html`).
 
-**Arm assignment (⚠ untested-est of all):** L-sectional problem — an
-axis-aligned box around an L bounds the whole L, and sibling nodes
-(obj_011/obj_063 are the two arms) each wrap the same cluster. Rule: each
-node keeps the vote survivors **its own original masks vouch for**
-(user's option 2); falls back to the cluster box when sp0 coverage is
-thin (junk-mask guard); flags when the arm box is <50% of the cluster
-volume (multiplicity-judge territory). The semantic authority for "two
-arms, one sectional" remains the queued multiplicity judge
-(PART_OF_STRUCTURE) — arm assignment is geometric triage, not identity.
+**Pano-mask filter — formerly "arm assignment" (⚠ untested-est of
+all):** L-sectional problem — an axis-aligned box around an L bounds the
+whole L, and sibling nodes (obj_011/obj_063 are the two arms of the
+sectional) each wrap the same cluster. Rule: each node keeps the vote
+survivors **its own pano masks vouch for** (user's option 2); falls back
+to the cluster box when sp0 coverage is thin (junk-mask guard); flags
+when the **pano-filtered box** is <50% of the cluster volume
+(multiplicity-judge territory). The semantic authority for "two arms,
+one sectional" remains the queued multiplicity judge
+(PART_OF_STRUCTURE) — the pano-mask filter is geometric triage, not
+identity.
 
 ## The uniform-instances judge: `compose/uniform_instances.py`
 
@@ -86,7 +92,7 @@ asset per group at the canonical size) NOT done.
   `compose/uniform_instances.py` becomes that pass's candidate
   generator; the compose module dissolves once wired; shopping only
   consumes the graph verdict (SAME_PRODUCT group + canonical size).
-- The carve's doubt flags (arm-vs-cluster ratio, culled clusters) are
+- The carve's doubt flags (pano-vs-cluster ratio, culled clusters) are
   RECORDED, never decided on: they enter the graph record via the
   description-making pass so node cards carry the doubt, and the judge
   passes consume them as typed open questions — the standard
@@ -101,9 +107,9 @@ asset per group at the canonical size) NOT done.
    + canonical runner wiring.
 4. Degenerate-ballot rule (a mask claiming ~100% of the slice = abstain)
    — discussed, NOT implemented; gate-3 currently contains the damage.
-5. Multiplicity judge (PART_OF_STRUCTURE) for flagged arm cases; its
-   typed evidence NOW EXISTS: `graph/record_carve_doubts.py` →
-   `graph/carve_doubts.json` (arm_vs_cluster / culled_clusters /
+5. Multiplicity judge (PART_OF_STRUCTURE) for flagged pano_vs_cluster
+   cases; its typed evidence NOW EXISTS: `graph/record_carve_doubts.py`
+   → `graph/carve_doubts.json` (pano_vs_cluster / culled_clusters /
    slice_fallback; 6 living nodes emitted, mechanics-verified).
 6. Same-product judge: NOW ITS OWN GRAPH-CHAIN PASS
    (`graph/judge_same_product.py`, judge-chain claude.exe pattern,
@@ -154,9 +160,11 @@ preview as the "slicevote" box-source layer (cyan). NOTHING COMMITTED.
 
 ## Final living numbers (run 4)
 
-45 objects: 28 carved_arm / 2 carved / 8 kept_wall / 7 kept_ceiling,
-zero kept-by-failure. (Count is 45 vs the earlier 44: exemptions catch
-an object that previously died silently at the <100-dot skip.)
+45 objects: 28 carved_pano / 2 carved / 8 kept_wall / 7 kept_ceiling,
+zero kept-by-failure. (The run-4/5 data on disk predates the rename and
+spells that status `carved_arm`; readers accept both.) (Count is 45 vs
+the earlier 44: exemptions catch an object that previously died silently
+at the <100-dot skip.)
 
 ## Where things stand / next
 

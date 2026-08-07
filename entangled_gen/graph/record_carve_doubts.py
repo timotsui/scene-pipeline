@@ -15,8 +15,11 @@ Two outputs:
 
 Doubt kinds (per node, from pool_retake/slicevote_report.json + the
 preview manifest's status flags):
-- arm_vs_cluster: own-mask arm box < 50% of the vote-cluster volume
-  (possible multi-node structure — multiplicity-judge territory)
+- pano_vs_cluster: pano-filtered box < 50% of the vote-cluster volume
+  (possible multi-node structure — multiplicity-judge territory).
+  Pano masks = the node's founding masks from the original pano-funnel
+  views (rig_sp0 crops). Formerly "arm_vs_cluster" — run-5 and earlier
+  records carry the old name and are still read.
 - culled_clusters: N vote clusters culled by anchoring (possible second
   instance — multiplicity evidence)
 - slice_fallback: slice came from the original-box wedge fallback (no
@@ -24,6 +27,10 @@ preview manifest's status flags):
 - low_plan_fill: elected dots cover < 65% of the vote box's footprint
   (user rule 3, 2026-08-07; census break 0.58|0.73) — non-box shape
   (L-sectional) or sparse giant; split-cell territory
+- large_empty_notch: largest contiguous empty axis-aligned rectangle in
+  the object's own plan footprint >= 0.50 m2 (user rule, 2026-08-07
+  late; run-6 census: sofa 1.52 m2 vs next 0.18 m2) — the notch where a
+  missing/other limb would park; multiplicity-judge territory
 - exemption: box kept verbatim, never carved (kept_wall / kept_ceiling
   / kept_floor / kept_outlier / kept) — recorded so judges know which
   geometry the carve never touched
@@ -51,10 +58,58 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
 
+# large_empty_notch thresholds (user rule, 2026-08-07 late). Run-6
+# scene-wide census: the sofa's largest contiguous empty footprint
+# rectangle is 1.52 m2 vs 0.18 m2 for the next object — open water.
+# Plan-fill v2 GLOBAL thresholds were tried and REFUTED (small round
+# objects underfill more than the L; the sofa sat mid-pack among
+# pillows), so the rule is the NOTCH, not overall fill.
+NOTCH_K = 2      # a plan cell counts as OCCUPIED only with >= K dots
+NOTCH_M2 = 0.50  # doubt when the largest empty rectangle >= this area
+
+
+def largest_empty_rect(pc):
+    """Largest contiguous EMPTY axis-aligned rectangle in a plan_cells
+    grid ({"cell_m", "nx", "nz", "counts": [[ix, iz, count], ...]}).
+    Empty = cell with < NOTCH_K dots (cells absent from counts are 0
+    dots = empty). Histogram-of-heights + monotonic stack per z-row.
+    Returns (area_m2, (x0, z0, x1, z1)) — cell bounds
+    inclusive-exclusive."""
+    nx, nz = pc["nx"], pc["nz"]
+    occ = np.zeros((nx, nz), dtype=bool)
+    for ix, iz, cnt in pc["counts"]:
+        if cnt >= NOTCH_K:
+            occ[ix, iz] = True
+    best_cells, best_rect = 0, (0, 0, 0, 0)
+    heights = np.zeros(nx, dtype=int)   # empty-run height ending at row z
+    for z in range(nz):
+        for x in range(nx):
+            heights[x] = 0 if occ[x, z] else heights[x] + 1
+        stack = []   # (start_x, height), heights strictly increasing
+        for x in range(nx + 1):
+            h = int(heights[x]) if x < nx else 0
+            start = x
+            while stack and stack[-1][1] >= h:
+                sx, sh = stack.pop()
+                if sh * (x - sx) > best_cells:
+                    best_cells = sh * (x - sx)
+                    best_rect = (sx, z - sh + 1, x, z + 1)
+                start = sx
+            if h > 0:
+                stack.append((start, h))
+    return best_cells * pc["cell_m"] ** 2, best_rect
+
+
+def pano_box(boxes):
+    """The pano-filtered box, under either name (pre-rename reports and
+    run-5 data call it "arm")."""
+    return boxes.get("pano") or boxes.get("arm")
+
+
 def doubt_text(d):
     k = d["kind"]
-    if k == "arm_vs_cluster":
-        return (f"own-mask arm box is {d['ratio']:.0%} of the vote-cluster "
+    if k in ("pano_vs_cluster", "arm_vs_cluster"):   # old name still read
+        return (f"pano-filtered box is {d['ratio']:.0%} of the vote-cluster "
                 "volume — possibly a multi-object structure "
                 "(multiplicity-judge territory)")
     if k == "culled_clusters":
@@ -67,6 +122,10 @@ def doubt_text(d):
         return (f"elected dots cover only {d['fill']:.0%} of the box "
                 "footprint — non-box shape (L?) or sparse election; "
                 "split-cell territory")
+    if k == "large_empty_notch":
+        return (f"largest contiguous empty rectangle in own footprint "
+                f"{d['notch_m2']:.2f} m2 (>= {NOTCH_M2:.2f}) — non-box "
+                "shape (L?); multiplicity judge territory")
     if k == "exemption":
         why = {"kept_wall": "wall-flush geometric exemption",
                "kept_ceiling": "ceiling-mount geometric exemption",
@@ -104,17 +163,18 @@ def main():
         d = []
         boxes = r["boxes"]
         status = status_by_id.get(r["id"], "")
-        if boxes.get("arm") and boxes.get("vote2"):
+        pbox = pano_box(boxes)
+        if pbox and boxes.get("vote2"):
             va = float(np.prod(np.maximum(
-                np.array(boxes["arm"]["hi"]) - np.array(boxes["arm"]["lo"]),
+                np.array(pbox["hi"]) - np.array(pbox["lo"]),
                 1e-6)))
             vv = float(np.prod(np.maximum(
                 np.array(boxes["vote2"]["hi"])
                 - np.array(boxes["vote2"]["lo"]), 1e-6)))
             if va < 0.5 * vv:
-                d.append({"kind": "arm_vs_cluster",
+                d.append({"kind": "pano_vs_cluster",
                           "ratio": round(va / vv, 3),
-                          "arm_box": boxes["arm"],
+                          "pano_box": pbox,
                           "cluster_box": boxes["vote2"]})
         if r["rule"].get("culled_clusters"):
             d.append({"kind": "culled_clusters",
@@ -125,6 +185,20 @@ def main():
         pf = r["rule"].get("plan_fill")
         if pf is not None and pf < 0.65:
             d.append({"kind": "low_plan_fill", "fill": pf})
+        pc = r["rule"].get("plan_cells")
+        if pc and boxes.get("vote2"):   # grid is anchored to the vote box
+            notch_m2, (x0, z0, x1, z1) = largest_empty_rect(pc)
+            if notch_m2 >= NOTCH_M2:
+                cm = pc["cell_m"]
+                lo_x = float(boxes["vote2"]["lo"][0])
+                lo_z = float(boxes["vote2"]["lo"][2])
+                d.append({"kind": "large_empty_notch",
+                          "notch_m2": round(notch_m2, 2),
+                          "rect_cells": [x0, z0, x1, z1],
+                          "rect_m": [round(lo_x + x0 * cm, 3),
+                                     round(lo_z + z0 * cm, 3),
+                                     round(lo_x + x1 * cm, 3),
+                                     round(lo_z + z1 * cm, 3)]})
         if status.startswith("kept"):
             d.append({"kind": "exemption", "status": status})
         for x in d:

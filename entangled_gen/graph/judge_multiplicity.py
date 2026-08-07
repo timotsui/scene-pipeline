@@ -2,7 +2,7 @@
 Phase A; USER GO 2026-08-07.)
 
 CONTRACT: GETS the carve block's multiplicity docket — AUTO DOUBTS ONLY
-(arm_vs_cluster / culled_clusters; Rule #1: no user-routing channel,
+(pano_vs_cluster / culled_clusters; Rule #1: no user-routing channel,
 the pipeline raises its own questions) — with visual stimuli assembled
 from the SAME evidence class the user judged in R-S2-26..30 (cone-map
 figure + plan-view/card detection renders).
@@ -18,14 +18,15 @@ REVIEW-FIRST: --sheets-only builds the case sheets + verbatim prompts
 the stimuli before any verdict runs.
 
 Facts each case carries (numbers, not vibes): carve status/tiers,
-arm-vs-cluster volume ratio + both boxes, culled-cluster count, carved
+pano-vs-cluster volume ratio + both boxes, culled-cluster count, carved
 vs original size, resolved member count, and WHICH OTHER RESOLVED NODES
 overlap the vote-cluster box (the "is the rest of it another existing
 object?" evidence).
 
 Box-color legend (drawn by the carve's cone-map renders, stated in the
 prompt): gray = original resolved box · red = all-agree strict box ·
-orange = gate-3 vote box · cyan = own-mask arm box.
+orange = gate-3 vote box · cyan = pano-filtered box (the node's founding
+pano-funnel masks' share of the elected dots).
 
 Run:  python graph/judge_multiplicity.py --scene living_marble --sheets-only
       python graph/judge_multiplicity.py --scene living_marble
@@ -211,9 +212,10 @@ Facts (meters, y = height):
 Look at the stimulus sheet image (ONE look should answer it):
   {sheet}
 Box colors in the renders: gray = original box, red = strict all-agree
-box, orange = gate-3 vote box, cyan = this node's own-mask arm box.
+box, orange = gate-3 vote box, cyan = this node's pano-filtered box.
 The question: does the ORANGE/GRAY extent contain ONE real object, or
-does it wrap several (of which the CYAN arm is this node's true part)?
+does it wrap several (of which the CYAN pano-filtered box is this
+node's true part)?
 
 Reply with ONE JSON object only:
 {{"verdict": "ONE_OBJECT" | "MULTIPLE" | "UNCLEAR",
@@ -235,11 +237,13 @@ def case_facts(c):
     lines.append(f"- resolved cluster: {c['n_members']} member "
                  f"detections across views")
     for d in c["doubts"]:
-        if d["kind"] == "arm_vs_cluster":
+        if d["kind"] in ("pano_vs_cluster", "arm_vs_cluster"):
+            # old-name doubts (run-5 records) carry arm_box
+            pb = d.get("pano_box") or d.get("arm_box")
             lines.append(
-                f"- ARM vs CLUSTER: own-mask arm box is {d['ratio']:.0%} "
-                f"of the vote-cluster volume (arm "
-                f"{fmt_box(d['arm_box'])} vs cluster "
+                f"- PANO vs CLUSTER: pano-filtered box is {d['ratio']:.0%} "
+                f"of the vote-cluster volume (pano-filtered "
+                f"{fmt_box(pb)} vs cluster "
                 f"{fmt_box(d['cluster_box'])})")
         if d["kind"] == "culled_clusters":
             lines.append(f"- {d['n']} vote cluster(s) CULLED by anchoring "
@@ -248,6 +252,10 @@ def case_facts(c):
         if d["kind"] == "slice_fallback":
             lines.append("- slice used the wedge fallback (no plan-view "
                          "detection) — geometry lower-confidence")
+        if d["kind"] == "large_empty_notch":
+            lines.append(f"- LARGE EMPTY NOTCH: {d['notch_m2']:.2f} m2 "
+                         f"contiguous empty rectangle in the footprint "
+                         f"(world x/z {d['rect_m']}) — non-box shape (L?)")
     if c["overlaps"]:
         lines.append("- other nodes overlapping the vote-cluster box: "
                      + ", ".join(f"{i} ({n}, {f:.0%} of smaller)"
@@ -291,7 +299,9 @@ def main():
     docket = {}
     for nid, cn in carve.get("nodes", {}).items():
         kinds = {d["kind"] for d in cn.get("doubts", [])}
-        if kinds & {"arm_vs_cluster", "culled_clusters", "low_plan_fill"}:
+        if kinds & {"pano_vs_cluster", "arm_vs_cluster",   # old name too
+                    "culled_clusters", "low_plan_fill",
+                    "large_empty_notch"}:
             docket[nid] = cn
     if a.only:
         keep = set(a.only.split(","))

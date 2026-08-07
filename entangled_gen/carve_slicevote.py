@@ -23,12 +23,17 @@ Per resolved graph node:
    member — claims are ray volumes with no depth test, so notch/gap
    floor dots collect claims from cameras whose rays end on the object
    behind them. Renders/claims unchanged (caches stay valid); the
-   filter zeroes those dots' votes at tally time. Exempt (kept_*)
-   objects never vote, so flat-on-shell objects are unaffected.
+   filter zeroes those dots' votes at tally time. HALF-SPACE form
+   (2026-08-07 late, obj_014): at-or-behind a shell plane (minus
+   SHELL_EPS) is ineligible — the old ±eps band re-admitted
+   wall-interior fuzz. Exempt (kept_*) objects never vote, so
+   flat-on-shell objects are unaffected.
 1. SLICE: PRIMARY = top-box vertical prism — GroundingDINO box on the
    cached WSL top/ctop plan render (prior-location-gated), corners
    cast across the OBJECT's height band, margin min(30%, 0.35 m)/side.
    FALLBACK (no top detection) = original-box wedge, capped margin.
+   Slices are CLAMPED to the shell interior (2026-08-07 late) — a
+   slice may never extend past a wall/floor plane.
 2. RENDER + DETECT, escalation ladder (user design 08-07):
    TIER 1  4 near-cardinal VIEW-TUNNEL cards at object height (full
            scene minus the camera->slice hole; occluders culled,
@@ -40,12 +45,16 @@ Per resolved graph node:
    TIER 3  election still empty: isolation retry (slice alone on
            black) with the cards re-detected;
    TIER 4  original box ships, status 'kept' (recorded, never silent).
-3. VOTE: cards + TOP view's mask + ORIGINAL standpoint (member-mask
+3. VOTE: cards + TOP view's mask + ORIGINAL standpoint (pano-mask
    union = ONE voter); dot kept at >=3 votes (gate degrades only when
    fewer voters exist); anchored cluster wins, culled ones recorded.
-4. ARM ASSIGNMENT (user option-2): each node keeps the vote survivors
-   ITS OWN original masks vouch for (L-sectional split); cluster-box
-   fallback when sp0 coverage is thin; <50%-volume flag -> judge.
+4. PANO-MASK FILTER (user option-2, formerly "arm assignment"). PANO
+   MASKS = the node's founding masks from the original pano-funnel
+   views (rig_sp0 crops) — the graph's identity evidence, as opposed
+   to the carve's fresh identity-blind card detections. Each node
+   keeps the vote survivors ITS OWN pano masks vouch for (L-sectional
+   split); cluster-box fallback when sp0 coverage is thin;
+   <50%-volume flag -> judge.
 5. OUTLIER GUARD (user rule): shipping box > OUTLIER_K x original
    volume -> original ships (kept_outlier), vote box recorded as doubt.
 
@@ -273,7 +282,7 @@ dets_all = json.loads((sd / "rig_sp0" / "seg_batched20" /
 _vc, _vm = {}, {}
 
 
-def member_mask(m):
+def pano_mask(m):
     view = m["view"]
     if view not in _vm:
         f = sd / "rig_sp0" / "seg_batched20" / f"{view}_masks.npy"
@@ -367,7 +376,7 @@ def fragments_box(K, prior_lo, prior_hi):
         ov = (np.prod(np.clip(ihi - ilo, 0, None))
               / max(np.prod(fhi - flo), 1e-9))
         frags.append({"n_pts": int(m.sum()), "overlap_prior": float(ov),
-                      "lo": flo, "hi": fhi})
+                      "lo": flo, "hi": fhi, "mask": m})
     if not frags:
         return None, []
     frags.sort(key=lambda f: (-round(f["overlap_prior"], 2), -f["n_pts"]))
@@ -557,18 +566,27 @@ for n in nodes:
                 nb += 1
         slice_mask &= below_ceil
         slice_info = f"FALLBACK WEDGE ({nb} sp0 boxes; {slice_info})"
+    # SLICE SHELL CLAMP (user ruling 2026-08-07 late, obj_014 wall-leak
+    # finding): the slice may never extend past the measured shell — a
+    # fallback wedge cast from a wall-poking original box put a wall
+    # slab on the ballot and in every card.
+    slice_mask &= ((xyz[:, 1] < FLOOR) & (xyz[:, 0] > XLO)
+                   & (xyz[:, 0] < XHI) & (xyz[:, 2] > ZLO)
+                   & (xyz[:, 2] < ZHI))
     cidx = np.nonzero(slice_mask)[0]
     dots = xyz[cidx]
-    # SHELL ELECTORATE FILTER (user ruling 2026-08-07): dots on a
-    # measured shell plane are structure — ineligible for election.
-    # Claims/renders untouched (caches stay valid); votes zeroed at
-    # tally. Census printed + recorded (measure-first doctrine).
-    elig = ((np.abs(dots[:, 1] - FLOOR) > SHELL_EPS)
-            & (np.abs(dots[:, 1] - CEIL) > SHELL_EPS)
-            & (np.abs(dots[:, 0] - XLO) > SHELL_EPS)
-            & (np.abs(dots[:, 0] - XHI) > SHELL_EPS)
-            & (np.abs(dots[:, 2] - ZLO) > SHELL_EPS)
-            & (np.abs(dots[:, 2] - ZHI) > SHELL_EPS))
+    # SHELL ELECTORATE FILTER (user ruling 2026-08-07; HALF-SPACE form
+    # 2026-08-07 late, obj_014 wall-leak finding): structure is a side,
+    # not a slab — a dot at or behind a measured shell plane (minus the
+    # SHELL_EPS tolerance) is ineligible, including the wall-interior
+    # splat fuzz the old ±eps band re-admitted. Votes zeroed at tally.
+    # Census printed + recorded (measure-first doctrine).
+    elig = ((dots[:, 1] < FLOOR - SHELL_EPS)
+            & (dots[:, 1] > CEIL + SHELL_EPS)
+            & (dots[:, 0] > XLO + SHELL_EPS)
+            & (dots[:, 0] < XHI - SHELL_EPS)
+            & (dots[:, 2] > ZLO + SHELL_EPS)
+            & (dots[:, 2] < ZHI - SHELL_EPS))
     n_shell_dots = int((~elig).sum())
     print(f"[carve] slice: {len(dots):,} dots  [{slice_info}]  "
           f"(shell-plane ineligible: {n_shell_dots:,})", flush=True)
@@ -761,7 +779,7 @@ for n in nodes:
                  "claimed": int(cl.sum())}
         print(f"[carve] top   ok({tscore:.2f}) claims "
               f"{int(cl.sum())}/{len(dots)}", flush=True)
-    # ---- v4: the ORIGINAL standpoint votes too (union of member masks)
+    # ---- v4: the ORIGINAL standpoint votes too (union of pano masks)
     ocl = np.zeros(len(dots), bool)
     n_msk = 0
     for fid in n.get("members", []):
@@ -772,7 +790,7 @@ for n in nodes:
             if mi >= len(pool_j):
                 continue
             m = pool_j[mi]
-            mk = member_mask(m)
+            mk = pano_mask(m)
             if mk is None:
                 continue
             mkd = ndimage.binary_dilation(mk, iterations=6)
@@ -790,7 +808,7 @@ for n in nodes:
     oinfo = None
     if n_msk:
         oinfo = {"view": "sp0-original",
-                 "why": f"{n_msk} member mask(s)",
+                 "why": f"{n_msk} pano mask(s)",
                  "eye": [float(v) for v in eye0],
                  "claimed": int(ocl.sum())}
         print(f"[carve] sp0   {n_msk} masks   claims "
@@ -828,11 +846,14 @@ for n in nodes:
         p_and, _ = (fragments_box(dots[vts == n], lo0, hi0)
                     if n else (None, []))
         p_v2, frags = fragments_box(dots[vts >= need], lo0, hi0)
-        return n, vts, need, p_and, p_v2, frags
+        win = np.zeros(len(dots), bool)
+        if p_v2 is not None:
+            win[np.nonzero(vts >= need)[0][p_v2["mask"]]] = True
+        return n, vts, need, p_and, p_v2, frags, win
 
     claims, infos = assemble(card_res)
     (n_ok, votes, need_votes,
-     prim_and, prim_v2, frags_v2) = tally(claims)
+     prim_and, prim_v2, frags_v2, win_blob) = tally(claims)
 
     # ---- TIER 3: isolation retry (user-approved 2026-08-07) ----
     # Election still empty -> re-render the object-height cards with the
@@ -853,43 +874,45 @@ for n in nodes:
         card_res = card_res + card_votes(iviews)
         claims, infos = assemble(card_res)
         (n_ok, votes, need_votes,
-         prim_and, prim_v2, frags_v2) = tally(claims)
+         prim_and, prim_v2, frags_v2, win_blob) = tally(claims)
     rule_flag = ""
     if frags_v2:
         biggest = max(frags_v2, key=lambda f: f["n_pts"])
         if biggest is not prim_v2:
             rule_flag = (f"anchored cluster ({prim_v2['n_pts']} pts) is "
                          f"not the biggest ({biggest['n_pts']} pts)")
-    # ---- ARM ASSIGNMENT (⚠ UNTESTED, user option-2 2026-08-06): multi-
+    # ---- PANO-MASK FILTER (⚠ UNTESTED, user option-2 2026-08-06): multi-
     # node structures (L-sectional) share one vote cluster, so every
     # sibling node wraps the whole L. Each node keeps only the vote
-    # survivors ITS OWN original masks vouch for. Guard: falls back to
+    # survivors ITS OWN pano masks vouch for. Guard: falls back to
     # the cluster box when sp0 coverage of the survivors is too thin
-    # (junk member masks must not starve the node).
-    prim_arm, arm_flag = None, ""
+    # (junk pano masks must not starve the node).
+    prim_pano, pano_flag = None, ""
     if n_msk and prim_v2 is not None:
-        surv = votes >= need_votes
-        armk = surv & ocl
-        if (armk.sum() >= 200
-                and armk.sum() >= 0.10 * max(1, surv.sum())):
-            lo_a = np.percentile(dots[armk], 1, axis=0)
-            hi_a = np.percentile(dots[armk], 99, axis=0)
-            prim_arm = {"lo": lo_a, "hi": hi_a, "n_pts": int(armk.sum())}
+        # winning blob only (user ruling 2026-08-07 late): culled-blob
+        # dots must not leak into the share comparison
+        panok = win_blob & ocl
+        if (panok.sum() >= 200
+                and panok.sum() >= 0.10 * max(1, int(win_blob.sum()))):
+            lo_a = np.percentile(dots[panok], 1, axis=0)
+            hi_a = np.percentile(dots[panok], 99, axis=0)
+            prim_pano = {"lo": lo_a, "hi": hi_a, "n_pts": int(panok.sum())}
             va = np.prod(np.maximum(hi_a - lo_a, 1e-6))
             vv = np.prod(np.maximum(
                 np.array(prim_v2["hi"]) - np.array(prim_v2["lo"]), 1e-6))
             if va < 0.5 * vv:
-                arm_flag = ("arm box is <50% of the cluster box volume "
-                            "— possible multi-node structure (L?); "
-                            "multiplicity judge territory")
+                pano_flag = ("pano-filtered box is <50% of the cluster box "
+                             "volume — possible multi-node structure (L?); "
+                             "multiplicity judge territory")
         else:
-            arm_flag = "sp0 coverage too thin — arm fallback to cluster"
+            pano_flag = ("sp0 coverage too thin — pano-mask filter falls "
+                         "back to cluster")
     # OUTLIER GUARD (user rule 2026-08-06b): a repair may refine, never
     # explode — if the box that would ship is > OUTLIER_K x the original
     # resolved volume, the original ships instead (kept_outlier). The
     # oversized vote box stays recorded (honest fallback, judge fodder).
     outlier_flag = ""
-    _fin = prim_arm if prim_arm is not None else prim_v2
+    _fin = prim_pano if prim_pano is not None else prim_v2
     if _fin is not None:
         _vf = np.prod(np.maximum(
             np.array(_fin["hi"]) - np.array(_fin["lo"]), 1e-6))
@@ -915,16 +938,42 @@ for n in nodes:
             _tot = int(np.prod(np.maximum(
                 np.ceil((_hi2 - _lo2)[[0, 2]] / 0.10), 1)))
             plan_fill = round(min(_occ / max(_tot, 1), 2.0), 3)
+    # PLAN-FILL v2 (2026-08-07 late; NOT the doubt trigger yet — recorded
+    # for the offline k-sweep recalibration queued in R-S2-34's run-5
+    # addendum): winning-blob dots only, cells clipped to the vote-box
+    # footprint (true 0-1 fill), per-cell dot counts recorded so k (min
+    # dots for an occupied cell) + threshold calibrate on one run's
+    # full-data distribution.
+    plan_fill2, plan_cells = None, None
+    if prim_v2 is not None and win_blob.any():
+        _wb = dots[win_blob]
+        _lo2 = np.array(prim_v2["lo"]); _hi2 = np.array(prim_v2["hi"])
+        _nx, _nz = (int(v) for v in np.maximum(
+            np.ceil((_hi2 - _lo2)[[0, 2]] / 0.10), 1))
+        _g = np.floor((_wb[:, [0, 2]] - _lo2[[0, 2]]) / 0.10).astype(
+            np.int64)
+        _in = ((_g[:, 0] >= 0) & (_g[:, 0] < _nx)
+               & (_g[:, 1] >= 0) & (_g[:, 1] < _nz))
+        _cells, _cnt = (np.unique(_g[_in], axis=0, return_counts=True)
+                        if _in.any() else (np.empty((0, 2), np.int64),
+                                           np.empty(0, np.int64)))
+        plan_fill2 = round(len(_cells) / max(_nx * _nz, 1), 3)
+        plan_cells = {"cell_m": 0.10, "nx": _nx, "nz": _nz,
+                      "counts": [[int(cx), int(cz), int(c)]
+                                 for (cx, cz), c in zip(_cells, _cnt)]}
+        print(f"[carve]  plan_fill {plan_fill} | v2 {plan_fill2}",
+              flush=True)
     ur = ("empty" if prim_v2 is None else
           " x ".join(f"{prim_v2['hi'][i]-prim_v2['lo'][i]:.2f}"
                      for i in range(3)))
-    ua = ("" if prim_arm is None else
-          "  arm " + " x ".join(f"{prim_arm['hi'][i]-prim_arm['lo'][i]:.2f}"
-                                for i in range(3)))
+    ua = ("" if prim_pano is None else
+          "  pano " + " x ".join(
+              f"{prim_pano['hi'][i]-prim_pano['lo'][i]:.2f}"
+              for i in range(3)))
     print(f"[carve]  VOTE ≥{need_votes} of {n_ok}: {ur} m{ua}"
           + (f"  (culled {len(frags_v2)-1})" if len(frags_v2) > 1 else "")
           + (f"  ⚠ {rule_flag}" if rule_flag else "")
-          + (f"  ⚠ {arm_flag}" if arm_flag else "")
+          + (f"  ⚠ {pano_flag}" if pano_flag else "")
           + (f"  ⚠ {outlier_flag}" if outlier_flag else ""), flush=True)
 
     # ---- figure ----
@@ -962,10 +1011,10 @@ for n in nodes:
             draw_box(ax, prim_v2["lo"], prim_v2["hi"], a0, a1,
                      "#ff9900", "-", 1.6,
                      f"\u2265{need_votes} votes (anchored)", flip)
-        if prim_arm is not None:
-            draw_box(ax, prim_arm["lo"], prim_arm["hi"], a0, a1,
-                     "#00bcd4", "-", 1.8, "arm (own-mask survivors)",
-                     flip)
+        if prim_pano is not None:
+            draw_box(ax, prim_pano["lo"], prim_pano["hi"], a0, a1,
+                     "#00bcd4", "-", 1.8, "pano-filtered (pano-mask "
+                     "survivors)", flip)
         ax.set_title(title, fontsize=11)
         if k == 0:
             ax.legend(fontsize=8, loc="upper right")
@@ -1022,13 +1071,14 @@ for n in nodes:
         "boxes": {"original": {"lo": [round(float(v), 3) for v in lo0],
                                "hi": [round(float(v), 3) for v in hi0]},
                   "strict": _box(prim_and), "vote2": _box(prim_v2),
-                  "arm": _box(prim_arm)},
+                  "pano": _box(prim_pano)},
         "rule": {"need_votes": need_votes, "flag": rule_flag,
-                 "arm_flag": arm_flag, "outlier": outlier_flag,
+                 "pano_flag": pano_flag, "outlier": outlier_flag,
                  "tiers": tiers,
                  "culled_clusters": max(0, len(frags_v2) - 1),
                  "shell_ineligible_dots": n_shell_dots,
                  "plan_fill": plan_fill,
+                 "plan_fill2": plan_fill2, "plan_cells": plan_cells,
                  "slice": slice_info},
         "views": views_exp,
         "points": {"pos": [round(float(v), 3)
@@ -1070,7 +1120,7 @@ for n in nodes:
     for fsp in sorted(rdir.glob(f"conemap_sp0_{nid}_*.png")):
         strip += (f"<figure><img src='pool_retake/{fsp.name}' "
                   f"loading='lazy'><figcaption>ORIGINAL VOTER · sp0 "
-                  f"member mask</figcaption></figure>")
+                  f"pano mask</figcaption></figure>")
     for i in infos:
         vn = i["view"]
         if vn in ("top", "sp0-original"):
@@ -1110,7 +1160,7 @@ inside the camera cone and nearer than the slice are culled; side and
 background context intact; re-detect gated to the slice's screen
 footprint) \u2192 detector+SAM per render \u2192 6-voter election. Boxes: gray
 dashed = original, red = all cardinals agree, orange = the vote gate,
-cyan = arm. Ceiling-mounted and wall-flush objects are CARVE-EXEMPT
+cyan = pano-filtered. Ceiling-mounted and wall-flush objects are CARVE-EXEMPT
 (geometric tests) and keep their resolved box; a carved box growing
 past the outlier guard (8x original volume) also falls back to the
 original (kept_outlier), with the vote box recorded as doubt.</p>
@@ -1130,14 +1180,14 @@ for o in cm_objects:
     if o["rule"].get("outlier"):
         box, status = o["boxes"]["original"], "kept_outlier"
     else:
-        box = (o["boxes"].get("arm") or o["boxes"].get("vote2")
+        box = (o["boxes"].get("pano") or o["boxes"].get("vote2")
                or o["boxes"]["original"])
-        status = ("carved_arm" if o["boxes"].get("arm")
+        status = ("carved_pano" if o["boxes"].get("pano")
                   else ("carved" if o["boxes"].get("vote2") else "kept"))
     by_status[status] = by_status.get(status, 0) + 1
     lo, hi = box["lo"], box["hi"]
     flags = [status] + [f for f in (o["rule"]["flag"],
-                                    o["rule"]["arm_flag"],
+                                    o["rule"]["pano_flag"],
                                     o["rule"].get("outlier", "")) if f]
     objs.append({"id": o["id"],
                  "label": o["name"] + f" ({status} "
@@ -1164,7 +1214,7 @@ for kc in kept_exempt:
     {"scene": SCENE, "status": "UNTESTED-PREVIEW",
      "source": "carve_slicevote.py — slice-vote carve (top-box prism / "
                "wedge fallback; view-tunnel context cards; 6-voter "
-               f"election, gate {a.gate}; per-node arm assignment; "
+               f"election, gate {a.gate}; per-node pano-mask filter; "
                "ceiling/wall-flush exempt = kept_ceiling/kept_wall; "
                f"outlier guard {OUTLIER_K:.0f}x = kept_outlier). "
                "Preview only; not on the pipeline map.",

@@ -326,7 +326,7 @@ trail: docs/REVIEW_LOG.md R-S2-26.
     pool_retake/conemap.json (+ cone_map.html, the viewer's TEMPORARY
     cone-map layer)
 - `graph/record_carve_doubts.py --scene <s>` — typed open questions
-  (arm_vs_cluster / culled_clusters / slice_fallback) ->
+  (pano_vs_cluster / culled_clusters / slice_fallback) ->
   graph/carve_doubts.json (SIDECAR; record-proper integration via the
   describe pass rides the gated map promotion)
 - `graph/judge_same_product.py --scene <s> [--dry-run]` — OWN judge-chain

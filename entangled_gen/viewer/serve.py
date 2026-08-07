@@ -48,9 +48,9 @@ def box_sources(sc):
          sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
          "Slice-vote carve RUN 5 (2026-08-07 overnight; mechanism "
          "user-PASSED R-S2-29/30, canonized 08-07; cyan to match the "
-         "cone map's arm box): per resolved node — top-box prism slice, "
-         "view-tunnel cards, 3-tier escalation ladder, 6-voter election "
-         "gate 3, own-mask arm assignment. Run-5 additions: shell "
+         "cone map's pano-filtered box): per resolved node — top-box "
+         "prism slice, view-tunnel cards, 3-tier escalation ladder, "
+         "6-voter election gate 3, pano-mask filter. Run-5 additions: shell "
          "electorate filter (floor/wall dots ineligible), kept_floor "
          "exemption (0 firings on living), plan_fill recorded (rule-3 "
          "calibration OPEN — R-S2-34 addendum). Exempt objects keep the "

@@ -18,56 +18,93 @@ GATE with review stimuli (module contract first); verdicts land in
 REVIEW_LOG.md; Claude does not conclude from images. Rule #1: no
 scene-specific tuning; fixes at the source.
 
-## STATE ENTERING THIS PLAN (all user-passed)
+## STATE ENTERING THIS PLAN (updated R-S2-35, 08-07 late)
 
-- Carve run 4 = current geometry: scene_manifest_slicevote_preview.json
-  (45 objects; 28 arm / 2 carved / 8 kept_wall / 7 kept_ceiling).
-- scene_graph.json `carve` block (R-S2-31): status + tiers + typed
-  doubts per node (28 nodes), obj_011 user-routed to multiplicity.
+- Carve run 6 = current geometry: scene_manifest_slicevote_preview.json
+  (45 objects; 27 carved_pano / 3 carved / 8 kept_wall / 7
+  kept_ceiling; the 4 R-S2-35 fixes in — half-space shell filter,
+  slice shell clamp, winning-blob pano filter, plan-fill v2 record).
+- scene_graph.json `carve` block re-applied post-run-6: status + tiers
+  + typed doubts per node (26 nodes with doubts); docket = AUTO doubts
+  only (the 08-07 user_routed channel was a Rule-1 violation, removed;
+  obj_011 now admits via large_empty_notch BY RULE).
 - Same-product grouping dry-run current: 6 groups (chairs×6, pillows×9,
   lights×4+×3, magazines×3+×2). Verdicts never run.
 - Resolved layer = identity canon; its boxes pre-carve (stale); ON
   edges declared poisoned 08-09 (rebuild post-carve).
 
-## PHASE A — SPLIT-CELL JUDGE (built: graph/judge_multiplicity.py)
+## PHASE A — J8 SPLIT-CELL JUDGE (graph/judge_multiplicity.py)
 
-**STATUS 08-07 late:** BUILT review-first (8-case sheets + prompts,
-zero verdicts). Docket rules final: ownership gap (arm<50%) +
-discarded candidate (culled>0) + shape gap (plan_fill<0.65, rule 3,
-R-S2-34). Run 5 launched with all three; after it the docket
-regenerates WITH obj_011 (by rule). PENDING USER SIGN-OFF: the
-5-outcome ask taxonomy + sheet redesign (cone map out, boxes projected
-onto real renders) — full proposal in R-S2-34 / the 08-12 handoff.
+**STATUS 08-07 late (R-S2-35): DESIGN v2 SETTLED** (user directive
+"commit and design j8 correctly"; sub-decisions adopted on the stated
+leans, read-back at Gate A0). Docket = run 6, 5 cases, obj_011 ON BY
+RULE via large_empty_notch (the R-S2-34 fill-fraction candidate is
+SUPERSEDED — plan-fill v2 k-sweep was an honest negative, the notch
+metric is the adopted form; census 1.52 m² vs 0.18 next). Old run-4
+sheets superseded; sheets rebuild in the v2 form below.
 
-- **Contract:** GETS the carve block's multiplicity docket — AUTO
-  DOUBTS ONLY (arm_vs_cluster ×6, culled_clusters ×2; Rule #1 — the
-  user_routed channel built 08-07 was a violation, removed same day;
-  obj_011's L-question = honest miss on the eval ledger, rule-design
-  candidate below) — plus visual stimuli. DECIDES per case: ONE_OBJECT |
-  MULTIPLE (named parts, PART_OF_STRUCTURE grouping, per-part boxes
-  from the carve's arm/cluster geometry) | UNCLEAR (ships open as a
-  work order). A mistake looks like: splitting a real single object,
-  or blessing one box around two real instances.
-- **Stimuli (one-look rule):** plan-view tile (clip-top render) with
-  the arm box vs vote-cluster box drawn + the cone-map card strip for
-  that object. Judge sees the SAME evidence the user judged in
-  R-S2-26..30.
-- **Pattern:** judge-chain claude.exe calls (judge_same_product's
-  env-scrub + parse), content-keyed cache, sidecar
-  graph/multiplicity.json. Verdicts REFERENCE nodes, never edit them
-  (materialize is the editor).
-- **Docket (living, auto):** obj_019/obj_024 pillows, obj_021/obj_068
-  chairs, obj_029 magazine, obj_042 tv stand (arm_vs_cluster);
-  obj_034 glass door, obj_032 magazine (culled). 8 cases.
-- **EVAL FINDING (recorded, not fixed — Rule #1):** the doubt rules
-  miss obj_011's L-question (arm ratio above the 0.5 gate because its
-  own masks are broad). Scene-agnostic rule CANDIDATE for a user gate,
-  designed from the failure mode not the instance: vote-dot
-  FILL-FRACTION of the vote-box AABB (an L fills ~half its bounding
-  box; computable for every node from data already in the report, no
-  labels). Decide at a gate; verify what else it fires on before
-  adopting.
-- **USER GATE A:** case sheets (stimulus + verdict + reason per case).
+- **Contract:** GETS one docket case = node + its ADMITTING doubts
+  (pano_vs_cluster / culled_clusters / low_plan_fill /
+  large_empty_notch; AUTO doubts only, Rule #1) + v2 stimuli. DECIDES
+  two things per case: (1) the multiplicity outcome, (2) WHICH
+  GEOMETRY SHIPS (the pano-vs-vote ambiguity is undecidable from
+  geometry — user insight 08-07: "exactly what the judge will be
+  solving"). NEVER edits nodes; verdicts land in the sidecar and
+  materialize applies them. A mistake looks like: splitting a real
+  single object, blessing one box around two real instances, or
+  picking the occlusion-shaved box over the true extent.
+- **Outcome taxonomy (5):**
+  - ONE_OBJECT — box ruling required: ship_pano (vote box absorbed a
+    neighbor) | ship_vote (pano cut was occlusion-shaved) | either
+    (boxes agree within tolerance).
+  - ONE_OBJECT_NONRECT — single object, non-box footprint (the L as
+    ONE sectional). CODE cuts the rectangles [sub-decision (a),
+    ADOPTED]: mechanical decomposition of the occupied footprint
+    (NOTCH_K occupancy) into >= 2 axis-aligned rectangles; per-part
+    boxes carry the elected heights. The judge only classifies —
+    part-naming needs pixel precision judges don't have; mechanical
+    cuts are reproducible and Rule-1-safe.
+  - MULTIPLE_COPIES — count-k of the same product in one box (Probe-A
+    vocabulary; the "6 matching chairs" family). Ships count + the
+    per-copy footprint from the same mechanical decomposition.
+  - MULTIPLE_DISTINCT — ownership itemization per part:
+    this_node | existing:<id> | missing_instance (missing_instance is
+    a work order for the loop-back, not an edit).
+  - UNCLEAR — shipping default stands; the doubt stays open on the
+    record as a work order.
+  - Tiebreak [sub-decision (b), ADOPTED]: when parts read as the same
+    product, PREFER MULTIPLE_COPIES over MULTIPLE_DISTINCT — copies
+    is the cheaper claim (one asset, k placements), and J9 exists to
+    verify sameness; DISTINCT requires a visible identity difference,
+    else it is unfalsifiable.
+- **Trigger-aware case openings:** the prompt opens with the doubt
+  that admitted the case and asks ITS question — notch case: "this
+  empty rectangle sits inside the footprint; is it a missing limb of
+  one non-rect object, another object's territory, or nothing?" /
+  pano_vs_cluster case: "the founding-mask share is under half the
+  elected mass; one occluded object or a shared cluster?" / culled
+  case: "a disconnected elected blob was discarded; was it part of
+  this object?". Same evidence, matched question.
+- **Stimuli v2 (one-look rule; cone-map tile OUT — user ruling):**
+  the object's real card renders + top view with boxes PROJECTED on
+  them — orange vote box, cyan pano box, red dashed notch rectangle
+  (rect_m from the doubt payload) when present. REQUIRES the shared
+  camera helper: lift the card-camera math out of carve_slicevote.py
+  (MatCamLite/make_cam + the card view construction) into a module
+  both the carve and the sheet builder import, so overlays cannot
+  drift from the renders they annotate.
+- **Verdict schema (sidecar graph/multiplicity.json):** per case:
+  {node, outcome, box_ruling?, count?, parts?[{footprint_rect_m,
+  owner}], confidence, reason, stimuli_hash}. Judge-chain claude.exe
+  pattern (judge_same_product's env-scrub + parse), content-keyed
+  cache (prompt+stimuli hash). Verdicts REFERENCE nodes, never edit
+  them (materialize is the editor).
+- **Docket (run 6, auto):** obj_011 sofa (large_empty_notch) ·
+  obj_019 pillow, obj_021 chair, obj_029 magazine (pano_vs_cluster) ·
+  obj_032 magazine (culled_clusters).
+- **USER GATE A0 (design read-back):** this section + notch_review
+  page. GATE A1: the v2 sheets (stimulus per case — tool-up = format
+  wrong). GATE A2: verdicts + reasons per case.
 - **Map:** draw "J8 · multiplicity" node into the main lane under the
   carve node when it lands.
 
