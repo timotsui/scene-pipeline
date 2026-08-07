@@ -114,9 +114,16 @@ def main():
         d0 /= np.linalg.norm(d0)
         dist = float(np.clip(2.2 * max(half * 2, 0.4), 1.0, 3.5))
         eyes = []
+        # NEAR-perpendicular, not perpendicular (user 2026-08-06): a thin
+        # object viewed exactly edge-on is a line no detector can find.
+        # 65 deg off the original ray keeps 91% of the parallax (sin65)
+        # while 42% of the face stays visible (cos65).
         for sgn in (1, -1):
-            side = np.array([sgn * d0[2], 0, -sgn * d0[0]])
-            eyes.append(clamp_eye(c + side * dist, c[1]))
+            th = math.radians(65.0) * sgn
+            ca, sa = math.cos(th), math.sin(th)
+            dirv = np.array([ca * d0[0] + sa * d0[2], 0,
+                             -sa * d0[0] + ca * d0[2]])
+            eyes.append(clamp_eye(c - dirv * dist, c[1]))
         dist_act = float(np.linalg.norm(np.array(eyes[0]) - c))
         fov = float(np.clip(math.degrees(
             2 * math.atan(1.5 * max(half, 0.15) / dist_act)), 35, 75))
