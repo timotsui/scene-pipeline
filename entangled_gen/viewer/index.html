@@ -658,6 +658,167 @@ function wideSprite(text, color, scale = 1) {   // textSprite clips ~10 chars
   return sp;
 }
 
+// ---------------- cone-map layer (TEMPORARY preview) ----------------
+// pool_retake/conemap.json — the cone-map experiment (2026-08-06
+// follow-up, k-rule calibration evidence): for the objects under
+// discussion, the node's ORIGINAL points colored by how many verified
+// retake views claim each point (a view claims a point when it projects
+// inside that view's detected mask), the three candidate boxes (gray =
+// original, red = strict all-agree, orange = >=2 views agree), and each
+// retake camera as a colored dot + sight line (✓ joined the coalition,
+// ✗ dropped as dissenter). The dropdown recolors the points to a single
+// view's claim = that camera's cone footprint. Additive + quiet-fail;
+// remove when the strictness rule is decided.
+try {
+  const cm = await (await fetch('conemap.json?' + sq)).json();
+  if ((cm.objects || []).length) {
+    const cmGroup = new THREE.Group();
+    cmGroup.visible = false;
+    worldGroup.add(cmGroup);
+    const VIR = [[68, 1, 84], [59, 82, 139], [33, 145, 140],
+                 [94, 201, 98], [253, 231, 37]];
+    const vcol = t => {   // 0..1 -> viridis-ish [r,g,b] in 0..1
+      const x = Math.max(0, Math.min(1, t)) * (VIR.length - 1);
+      const i = Math.min(VIR.length - 2, Math.floor(x)), f = x - i;
+      return [0, 1, 2].map(k =>
+        (VIR[i][k] + (VIR[i + 1][k] - VIR[i][k]) * f) / 255);
+    };
+    const clouds = [];
+    const ogs = [];   // one sub-group per object, for isolation viewing
+    const addCmBox = (g, b, hex) => {
+      if (!b) return;
+      const sx = b.hi[0] - b.lo[0], sy = b.hi[1] - b.lo[1],
+            sz = b.hi[2] - b.lo[2];
+      const ln = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(sx, sy, sz)),
+        new THREE.LineBasicMaterial({ color: hex }));
+      ln.position.set(b.lo[0] + sx / 2, b.lo[1] + sy / 2, b.lo[2] + sz / 2);
+      g.add(ln);
+    };
+    cm.objects.forEach((o, oi) => {
+      const og = new THREE.Group();
+      cmGroup.add(og);
+      ogs.push(og);
+      const n = o.points.votes.length;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(
+        new Float32Array(o.points.pos), 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(
+        new Float32Array(n * 3), 3));
+      og.add(new THREE.Points(geo, new THREE.PointsMaterial({
+        size: 0.02, vertexColors: true, sizeAttenuation: true })));
+      clouds.push({ geo, o, oi });
+      addCmBox(og, o.boxes.original, 0x888888);
+      addCmBox(og, o.boxes.strict, 0xd62728);
+      addCmBox(og, o.boxes.vote2, 0xff9900);
+      addCmBox(og, o.boxes.arm, 0x00bcd4);   // per-node arm assignment
+      o.views.forEach(v => {
+        const c = new THREE.Color(v.color);
+        const s = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10),
+          new THREE.MeshBasicMaterial({ color: c }));
+        s.position.set(...v.eye);
+        og.add(s);
+        const lg = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(...v.eye), new THREE.Vector3(...o.aim)]);
+        og.add(new THREE.Line(lg, new THREE.LineBasicMaterial({
+          color: c, transparent: true, opacity: 0.45 })));
+        const sp = wideSprite(o.id.replace('obj_', '') + ' ' + v.view +
+          (v.role.startsWith('DROPPED') ? ' ✗' : ' ✓'),
+          v.color, 0.9);
+        sp.position.set(v.eye[0], v.eye[1] - 0.09, v.eye[2]);
+        og.add(sp);
+      });
+    });
+    const cmRecolor = mode => {
+      for (const cl of clouds) {
+        const { votes, bits } = cl.o.points;
+        const col = cl.geo.attributes.color;
+        // nviews_vote: only the voting cameras set the color scale (the
+        // views list may also carry non-voting candidate-source entries)
+        const nv = Math.max(1, cl.o.nviews_vote || cl.o.views.length);
+        for (let i = 0; i < votes.length; i++) {
+          let r, g, b;
+          if (mode === 'votes') {
+            if (votes[i] === 0) { r = g = b = 0.32; }
+            else { [r, g, b] = vcol(votes[i] / nv); }
+          } else {
+            const [moi, vi] = mode.split(':').map(Number);
+            if (cl.oi !== moi) { r = g = b = 0.2; }
+            else if (bits[i] & (1 << vi)) {
+              const c = new THREE.Color(cl.o.views[vi].color);
+              r = c.r; g = c.g; b = c.b;
+            } else { r = g = b = 0.32; }
+          }
+          col.setXYZ(i, r, g, b);
+        }
+        col.needsUpdate = true;
+      }
+    };
+    cmRecolor('votes');
+    const cmHost = $('boxSources');
+    if (cmHost) {
+      const lab = document.createElement('label');
+      lab.style.color = '#9fdcff';
+      lab.style.marginRight = '4px';
+      lab.title = 'cone-map experiment: which retake view claims which ' +
+        'points (gray box = original, red = strict all-agree, orange = ' +
+        'USER RULE: ≥2-vote candidates (≥1 when only 2 cams), anchored ' +
+        'majority cluster, others culled)';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      lab.appendChild(cb);
+      lab.append(' cone map (' + cm.objects.length + ' obj)');
+      cmHost.appendChild(lab);
+      // isolation dropdown: show one object's points/boxes/cameras alone
+      const selo = document.createElement('select');
+      selo.style.marginRight = '4px';
+      selo.innerHTML = '<option value="all">all objects</option>';
+      cm.objects.forEach((o, oi) => {
+        const op = document.createElement('option');
+        op.value = oi;
+        op.textContent = o.id + ' ' + o.name;
+        selo.appendChild(op);
+      });
+      selo.onchange = () => {
+        ogs.forEach((g, oi) => {
+          g.visible = selo.value === 'all' || oi === Number(selo.value);
+        });
+      };
+      cmHost.appendChild(selo);
+      const selv = document.createElement('select');
+      selv.style.marginRight = '8px';
+      selv.innerHTML = '<option value="votes">color: vote count</option>';
+      cm.objects.forEach((o, oi) => o.views.forEach((v, vi) => {
+        const op = document.createElement('option');
+        op.value = oi + ':' + vi;
+        op.textContent = o.id + ' · ' + v.view +
+          (v.role.startsWith('DROPPED') ? ' (dropped)' : '');
+        selv.appendChild(op);
+      }));
+      selv.onchange = () => cmRecolor(selv.value);
+      cmHost.appendChild(selv);
+      // color legend (visible only while the layer is on)
+      const leg = document.createElement('span');
+      leg.style.cssText = 'display:none;font-size:11px;margin-right:8px;' +
+        'vertical-align:middle';
+      leg.innerHTML =
+        'dots: <span style="background:linear-gradient(90deg,#440154,' +
+        '#3b528b,#21918c,#5ec962,#fde725);display:inline-block;width:70px;' +
+        'height:10px;vertical-align:middle;border-radius:2px"></span>' +
+        ' 1 vote → all cams &nbsp; boxes: ' +
+        '<span style="color:#888888">▭ original</span> ' +
+        '<span style="color:#d62728">▭ ALL agree</span> ' +
+        '<span style="color:#ff9900">▭ vote gate·anchored</span> ' +
+        '<span style="color:#00bcd4">▭ arm (own-mask)</span>';
+      cmHost.appendChild(leg);
+      cb.onchange = e => {
+        cmGroup.visible = e.target.checked;
+        leg.style.display = e.target.checked ? 'inline' : 'none';
+      };
+    }
+  }
+} catch (e) { console.warn('no cone map', e); }
+
 // ---------------- scene graph layer — pass-1 RECORD (2026-07-26 rebuild) --
 // scene_graph.json = graph/build_graph.py + build_edges.py output on the
 // PANO TRACK: record nodes (full label multisets, evidence member crops,

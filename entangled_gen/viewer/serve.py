@@ -51,16 +51,10 @@ def box_sources(sc):
          "original masks' points refiltered through the established depth "
          "slab (all axes re-derived). Uncarved nodes keep the record box "
          "(flagged) and are absent from this layer"),
-        ("set_a", "set A · standpoint center", "current",
-         sd / "scene_manifest_pano2c.json", "#ffd24d",
-         "TWO-STANDPOINT EXPERIMENT — set A: the canonical rig at the "
-         "center eye (rig_sp0), lift stage, ungated merge"),
-        ("set_b", "set B · standpoint +1.1x", "current",
-         sd / "scene_manifest_pano2_sp1.json", "#7fd4ff",
-         "TWO-STANDPOINT EXPERIMENT — set B: the SAME chain re-run from "
-         "a standpoint 1.1 m along +x (rig_sp1; bubble verified empty). "
-         "Each set streaks along its own rays; matched-pair intersection "
-         "= the carve; in-one-set-only = phantom-or-occlusion signal"),
+        # set A / set B (two-standpoint experiment) REMOVED from the HUD
+        # 2026-08-06 cone session (user: "we no longer need those");
+        # manifests stay on disk (scene_manifest_pano2c.json /
+        # scene_manifest_pano2_sp1.json).
         # ("support_clipped", ...) removed from HUD — wiring premature
         # until support judgment runs on carved geometry (R-S2-22 note)
     ]
@@ -312,6 +306,17 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), "application/json")
             else:
                 self._send(404, b"unknown or missing box source; see /box_sources.json")
+        elif p == "/conemap.json":
+            # TEMPORARY cone-map experiment (2026-08-06 follow-up, k-rule
+            # calibration evidence): per-object view-claim points + the
+            # strict-AND vs >=2-vote candidate boxes + retake camera poses.
+            # Built by the scratchpad cone_map script; remove when the
+            # strictness rule is decided.
+            f = paths.scene_dir(sc) / "pool_retake" / "conemap.json"
+            if f.exists():
+                self._send(200, f.read_bytes(), "application/json")
+            else:
+                self._send(404, b"no pool_retake/conemap.json for this scene")
         elif p == "/collisions.json":
             # collide.py --export output: mesh-overlap pairs + RENDER-frame
             # overlap boxes for the viewer's collision layer
