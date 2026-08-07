@@ -249,6 +249,16 @@ class H(BaseHTTPRequestHandler):
                 meta["ceiling_y"] = fb["ceiling_y"]
             # (gpu_yaw photo-pose harvesting removed 2026-07-25 — yaw track
             # retired; startup pose is now derived from floor_y client-side)
+            # sensing standpoints (2026-08-06 two-standpoint experiment):
+            # one entry per rig_* dir -> HUD snap-to-eye buttons
+            sps = []
+            for rig in sorted(paths.scene_dir(sc).glob("rig_*")):
+                mf = rig / "pano_selfrender_meta.json"
+                if mf.exists():
+                    sps.append({"name": rig.name,
+                                "eye_raw": json.loads(mf.read_text())["eye_raw"]})
+            if sps:
+                meta["standpoints"] = sps
             self._send(200, json.dumps(meta).encode(), "application/json")
         elif p == "/raw":
             # ground-truth page: the Marble bundle exactly as shipped

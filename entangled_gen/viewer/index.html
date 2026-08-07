@@ -222,6 +222,33 @@ const floorY = meta.floor_y ?? -1.6;
     setPose(eye.toArray(), look.toArray(), 75);
   }
 }
+// ---- snap-to-standpoint buttons (2026-08-06 two-standpoint experiment):
+// one button per sensing rig; raw eye -> display Euler (same math as the
+// startup pose: the camera lives OUTSIDE worldGroup)
+if (meta.standpoints && meta.standpoints.length) {
+  const host = $('boxSources') ? $('boxSources').parentElement : null;
+  if (host) {
+    const bar = document.createElement('div');
+    bar.appendChild(document.createTextNode('snap to eye: '));
+    for (const sp of meta.standpoints) {
+      const b = document.createElement('button');
+      b.textContent = sp.name.replace('rig_', '');
+      b.title = 'camera to the ' + sp.name + ' sensing standpoint (raw eye '
+              + sp.eye_raw.map(v => v.toFixed(2)).join(', ') + '), looking +z';
+      b.onclick = () => {
+        const d2r = id => (parseFloat($(id).value) || 0) * Math.PI / 180;
+        const eul = new THREE.Euler(d2r('rx'), d2r('ry'), d2r('rz'));
+        const e = new THREE.Vector3(...sp.eye_raw).applyEuler(eul);
+        const l = new THREE.Vector3(sp.eye_raw[0], sp.eye_raw[1],
+                                    sp.eye_raw[2] + 3).applyEuler(eul);
+        setPose(e.toArray(), l.toArray(), 75);
+        msg('camera at ' + sp.name + ' standpoint');
+      };
+      bar.appendChild(b);
+    }
+    host.parentElement.insertBefore(bar, host);
+  }
+}
 const buf = await (await fetch('scene.bin?' + sq)).arrayBuffer();
 const n = meta.count;
 const pos = new Float32Array(buf, 0, n*3);
