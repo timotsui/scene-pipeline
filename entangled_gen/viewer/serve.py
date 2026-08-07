@@ -44,17 +44,19 @@ def box_sources(sc):
     # 2026-08-06 TEMPORARY streak-surgery previews (R-S2-22 gate): remove
     # both when ruled.
     return [
-        ("slicevote", "slice-vote carve (R-S2-29 user PASS)", "current",
+        ("slicevote", "slice-vote carve · run 5 (BOX CANON)", "current",
          sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
-         "Slice-vote carve run 3 (2026-08-06 night, user PASS R-S2-29; "
-         "cyan to match the cone map's arm box): per resolved node — "
-         "top-box prism slice, view-tunnel context cards (full scene "
-         "minus the camera→slice hole), 6-voter election gate 3, "
-         "own-mask arm assignment. Ceiling-mounted and wall-flush "
-         "objects keep the resolved box (kept_ceiling / kept_wall); "
-         ">8× growth ships the original (outlier guard). Per-box "
-         "status + doubt flags ride in each object's flags field. "
-         "Preview manifest — not yet wired into the canonical runner"),
+         "Slice-vote carve RUN 5 (2026-08-07 overnight; mechanism "
+         "user-PASSED R-S2-29/30, canonized 08-07; cyan to match the "
+         "cone map's arm box): per resolved node — top-box prism slice, "
+         "view-tunnel cards, 3-tier escalation ladder, 6-voter election "
+         "gate 3, own-mask arm assignment. Run-5 additions: shell "
+         "electorate filter (floor/wall dots ineligible), kept_floor "
+         "exemption (0 firings on living), plan_fill recorded (rule-3 "
+         "calibration OPEN — R-S2-34 addendum). Exempt objects keep the "
+         "resolved box (kept_ceiling / kept_wall / kept_floor); outlier "
+         "guard 8×. Per-box status + doubt flags in each object's flags "
+         "field. Preview manifest — runner wiring pending"),
         ("parallax_carved", "parallax retake · carved (preview)", "current",
          sd / "scene_manifest_parallax_preview.json", "#65ff8f",
          "PREVIEW — experiments/parallax_retake.py: per-node side view "
