@@ -301,7 +301,7 @@ def main():
             souts.pred_masks.cpu(), sinp["original_sizes"].cpu(),
             sinp["reshaped_input_sizes"].cpu())[0].squeeze(1).numpy()[0] > 0
         lifted = lift_frame(xyz, cam, [dict(best, label=p["name"])],
-                            mask[None], view=f"retake_{nid}", keep_pts=False,
+                            mask[None], view=f"retake_{nid}", keep_pts=True,
                             min_score=DET_THR)
         if not lifted:
             rec["status"] = "lift_empty"
@@ -320,73 +320,137 @@ def main():
         rec["side_box"] = {"lo": [round(float(x), 4) for x in slo],
                            "hi": [round(float(x), 4) for x in shi],
                            "det_score": best["score"]}
-        # v2: point-level refilter through the established interval — the
-        # original views' own points, restricted to the true depth slab,
-        # re-derive every axis (kills the vertical streak as well)
-        node = next(n for n in nodes if n["id"] == nid)
-        ref = refilter_points(node, ax_or, interval)
-        if ref is not None:
-            ilo, ihi = ref
-            rec["method"] = "point_refilter"
-        else:
-            ilo, ihi = np.array(lo), np.array(hi)
-            ilo[ax_or], ihi[ax_or] = interval
-            rec["method"] = "axis_carve"
-        rec["status"] = "carved"
-        rec["after"] = {"aabb_min": [round(float(x), 4) for x in ilo],
-                        "aabb_max": [round(float(x), 4) for x in ihi],
-                        "size": [round(float(h - l), 4)
-                                 for l, h in zip(ilo, ihi)]}
+        # v3 (user 2026-08-06, "more than one extra retake"): each view
+        # returns its CONSTRAINTS; the caller composes all views' evidence
+        # in one refilter. Two constraints per successful view, both in
+        # directions this view measures well:
+        #   interval — the original's ray axis (the view sees it laterally)
+        #   band     — lateral direction perpendicular to THIS view's ray
+        #              (point-based 2/98 pct: AABB corners overstate)
+        rh = np.array(p["aim"]) - np.array(eye)
+        rh[1] = 0
+        rh /= np.linalg.norm(rh)
+        lvec = np.array([rh[2], 0.0, -rh[0]])
+        pts = lifted[0].get("pts")
+        band = None
+        if pts is not None and len(pts):
+            proj = pts @ lvec
+            band = {"l": lvec.tolist(),
+                    "lo": float(np.percentile(proj, 2) - 0.05),
+                    "hi": float(np.percentile(proj, 98) + 0.05)}
+        rec["status"] = "ok"
+        rec["constraints"] = {"ax": int(ax_or),
+                              "interval": [float(interval[0]),
+                                           float(interval[1])],
+                              "band": band}
         return rec
 
-    FAIL = ("no_render", "corr_fail", "behind_cam", "no_redetect",
-            "lift_empty", "no_overlap")
-    results = {}
-    for p in plans:
-        rec = attempt(p, p["eye"], rdir / f"{p['id']}.png")
-        results[p["id"]] = rec
-        if rec["status"] == "carved":
-            print(f"[retake] {p['id']:8s} {p['name']:16s} "
-                  f"corr {rec.get('corr', 0):+.2f} {rec['method']} "
-                  f"{[round(v, 2) for v in rec['before']['size']]} -> "
-                  f"{[round(v, 2) for v in rec['after']['size']]}", flush=True)
-        else:
-            print(f"[retake] {p['id']} A-side {rec['status']} — trying B",
-                  flush=True)
+    # ---- v3: BOTH sides render and run for EVERY object; all successful
+    # views' constraints compose in one point refilter ----
+    tb = [{"name": p["id"] + "_b", "label": p["name"],
+           "eye": list(map(float, p["eye_b"])),
+           "aim": p["aim"], "fov": p["fov"]} for p in plans
+          if not (rdir / f"{p['id']}_b.png").exists()]
+    if tb:
+        tfb = rdir / "retake_targets_b.json"
+        tfb.write_text(json.dumps(tb, indent=1))
+        print(f"[retake] rendering {len(tb)} B-side views ...", flush=True)
+        cmd = ("wsl -d Ubuntu-24.04 -- bash -c \"cd /root/splat_analyzer && "
+               "/root/miniconda3/envs/splatanalyzer/bin/python "
+               f"'{to_wsl(HERE / 'analyzer' / 'render_targets_wsl.py')}' "
+               f"--targets '{to_wsl(tfb)}' "
+               f"--ply '{to_wsl(paths.ply(a.scene))}' "
+               f"--out '{to_wsl(rdir)}' --res {a.res}\"")
+        subprocess.run(cmd, check=True, timeout=3600, shell=True)
 
-    # ---- plan-B pass: re-render failures from the other side ----
-    retry = [p for p in plans if results[p["id"]]["status"] in FAIL]
-    if retry:
-        tb = [{"name": p["id"] + "_b", "label": p["name"],
-               "eye": list(map(float, p["eye_b"])),
-               "aim": p["aim"], "fov": p["fov"]} for p in retry
-              if not (rdir / f"{p['id']}_b.png").exists()]
-        if tb:
-            tfb = rdir / "retake_targets_b.json"
-            tfb.write_text(json.dumps(tb, indent=1))
-            print(f"[retake] B-side: rendering {len(tb)} views ...", flush=True)
-            cmd = ("wsl -d Ubuntu-24.04 -- bash -c \"cd /root/splat_analyzer && "
-                   "/root/miniconda3/envs/splatanalyzer/bin/python "
-                   f"'{to_wsl(HERE / 'analyzer' / 'render_targets_wsl.py')}' "
-                   f"--targets '{to_wsl(tfb)}' "
-                   f"--ply '{to_wsl(paths.ply(a.scene))}' "
-                   f"--out '{to_wsl(rdir)}' --res {a.res}\"")
-            subprocess.run(cmd, check=True, timeout=3600, shell=True)
-        for p in retry:
-            rec = attempt(p, p["eye_b"], rdir / f"{p['id']}_b.png")
-            if rec["status"] == "carved":
-                rec["side"] = "B"
-                results[p["id"]] = rec
-                print(f"[retake] {p['id']:8s} {p['name']:16s} B-side "
-                      f"{rec['method']} "
-                      f"{[round(v, 2) for v in rec['before']['size']]} -> "
-                      f"{[round(v, 2) for v in rec['after']['size']]}",
-                      flush=True)
-            else:
-                results[p["id"]]["status_b"] = rec["status"]
-                print(f"[retake] {p['id']} B-side {rec['status']} — kept "
-                      f"original, flagged", flush=True)
-    results = list(results.values())
+    # optional extra constraint source: bubble-view lateral bands
+    # (user 2026-08-06: "more than 1 extra retake" — every available view
+    # contributes; far views cut the streak, bubble views cover objects
+    # far cameras can't see)
+    bubble_bands = {}
+    bf = sd / "bubble_retake" / "bubble_report.json"
+    if bf.exists():
+        for r in json.loads(bf.read_text())["results"]:
+            if r.get("bands"):
+                bubble_bands[r["id"]] = r["bands"]
+        print(f"[retake] bubble bands available for "
+              f"{len(bubble_bands)} nodes", flush=True)
+
+    results = []
+    for p in plans:
+        recA = attempt(p, p["eye"], rdir / f"{p['id']}.png")
+        recB = attempt(p, p["eye_b"], rdir / f"{p['id']}_b.png")
+        rec = {"id": p["id"], "name": p["name"],
+               "before": recA["before"],
+               "sides": {"A": recA.get("status"), "B": recB.get("status")},
+               "corr": {"A": recA.get("corr"), "B": recB.get("corr")}}
+        cons = [r["constraints"] for r in (recA, recB)
+                if r.get("status") == "ok"]
+        for band in bubble_bands.get(p["id"], []):
+            cons.append({"ax": None, "interval": None, "band": band})
+        rec["n_far"] = sum(1 for r in (recA, recB) if r.get("status") == "ok")
+        rec["n_bubble"] = len(bubble_bands.get(p["id"], []))
+        if not cons:
+            rec["status"] = "kept"
+            results.append(rec)
+            print(f"[retake] {p['id']:8s} {p['name']:16s} KEPT "
+                  f"(A {recA.get('status')} / B {recB.get('status')})",
+                  flush=True)
+            continue
+        node = next(n for n in nodes if n["id"] == p["id"])
+        P = None
+        pts_all = []
+        for fid in node.get("members", []):
+            fo = f30_by_id.get(fid)
+            if not fo:
+                continue
+            for mi in fo.get("members", []):
+                if mi >= len(pool):
+                    continue
+                m = pool[mi]
+                mk = member_mask(m)
+                if mk is None:
+                    continue
+                dep = view_depth(m["view"])
+                valid = mk & np.isfinite(dep)
+                vs, us = np.nonzero(valid)
+                if len(vs):
+                    pts_all.append(unproject_px(
+                        view_cam(m["view"]), us.astype(np.float32),
+                        vs.astype(np.float32), dep[vs, us]))
+        if pts_all:
+            P = np.concatenate(pts_all)
+        if P is None or len(P) < 50:
+            rec["status"] = "kept_no_points"
+            results.append(rec)
+            continue
+        keep = np.ones(len(P), bool)
+        for c in cons:
+            if c.get("ax") is not None and c.get("interval"):
+                ax = c["ax"]
+                keep &= ((P[:, ax] >= c["interval"][0] - 0.05)
+                         & (P[:, ax] <= c["interval"][1] + 0.05))
+            if c.get("band"):
+                proj = P @ np.array(c["band"]["l"])
+                keep &= (proj >= c["band"]["lo"]) & (proj <= c["band"]["hi"])
+        if keep.sum() < 50:
+            rec["status"] = "kept_empty_overlap"
+            results.append(rec)
+            print(f"[retake] {p['id']:8s} {p['name']:16s} EMPTY overlap — "
+                  f"kept, flagged", flush=True)
+            continue
+        ilo = np.percentile(P[keep], 1, axis=0)
+        ihi = np.percentile(P[keep], 99, axis=0)
+        rec["status"] = "carved"
+        rec["n_views"] = len(cons)
+        rec["after"] = {"aabb_min": [round(float(v), 4) for v in ilo],
+                        "aabb_max": [round(float(v), 4) for v in ihi],
+                        "size": [round(float(h - l), 4)
+                                 for l, h in zip(ilo, ihi)]}
+        results.append(rec)
+        print(f"[retake] {p['id']:8s} {p['name']:16s} {len(cons)} views "
+              f"{[round(v, 2) for v in rec['before']['size']]} -> "
+              f"{[round(v, 2) for v in rec['after']['size']]}", flush=True)
 
     report = {"scene": a.scene, "stage": "parallax_retake", "res": a.res,
               "params": {"CORR_MIN": CORR_MIN, "DET_THR": DET_THR},

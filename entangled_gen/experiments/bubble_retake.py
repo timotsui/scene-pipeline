@@ -268,6 +268,7 @@ def main():
             rec["views"][rig["name"]] = why
             if band is not None:
                 prisms.append(band)
+        rec["bands"] = prisms      # exported: compose-mode constraint source
         if not prisms:
             rec["status"] = "kept"
             results.append(rec)
