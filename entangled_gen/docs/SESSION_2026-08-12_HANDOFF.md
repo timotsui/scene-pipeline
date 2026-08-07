@@ -49,13 +49,22 @@ user's command: `git push origin master`.)
 ## NEXT SESSION (user's parting plan: "design the new judges and run
 the scene")
 
-1. **Check run 5 finished clean**: tail slicevote_full_run5.log; expect
-   ~45 objects, statuses incl. any kept_floor; obj_011 rule should
-   carry plan_fill ≈ 0.57.
-2. **Regenerate doubts + docket** (mechanical):
-   `PYTHONUTF8=1 python graph/record_carve_doubts.py --scene living_marble --apply`
-   then `PYTHONUTF8=1 python graph/judge_multiplicity.py --scene living_marble --sheets-only`
-   → docket should now include obj_011 via low_plan_fill.
+1. **Run 5 DONE overnight** (clean, statuses == run 4, kept_floor 0
+   firings) and **doubts+docket already regenerated** (27 doubt nodes,
+   7-case docket). ⚠ READ THE R-S2-34 RUN-5 ADDENDUM FIRST: the
+   in-pipeline plan_fill (full elected set) reads much higher than the
+   subsampled census the 0.65 threshold came from — obj_011 = 0.85,
+   mid-pack, NO break; only the glass door fires (0.36). RULE 3 AS
+   LANDED DOES NOT CATCH THE L. Deliberately NOT retuned (contamination
+   discipline). USER DECISION QUEUED: density-weighted occupancy
+   refinement (cell occupied only at >= k dots — the principled form of
+   what the subsample did by accident) or another shape metric; then
+   recalibrate on the recorded full-data distribution.
+2. **Docket now (run 5, 7 cases):** obj_019/obj_024 pillows +
+   obj_029 magazine + obj_042 tv stand + obj_068 chair (arm ratio),
+   obj_032 magazine + obj_034 glass door (culled; obj_034 also
+   low_plan_fill). obj_021 chair DROPPED OFF vs run 4 (arm ratio rose
+   above 0.5 under the shell filter). obj_011 = still the honest miss.
 3. **DESIGN GATE — the J8 ask** (proposed in full at the end of
    REVIEW_LOG R-S2-34 and in the 08-07 conversation; NOT signed off):
    5-outcome taxonomy (ONE_OBJECT / ONE_OBJECT_NONRECT → mechanical
