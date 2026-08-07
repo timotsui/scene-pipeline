@@ -41,10 +41,16 @@ FACES = [("f_pz", [0, 0, 1]), ("f_px", [1, 0, 0]), ("f_nz", [0, 0, -1]),
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
+    ap.add_argument("--rig", default="rig_sp0",
+                    help="rig dir name (multi-standpoint: rig_sp1, ...)")
+    ap.add_argument("--eye-offset", default="0,0",
+                    help="horizontal standpoint offset 'dx,dz' in RAW "
+                         "meters from the default center eye (second-"
+                         "standpoint experiment 2026-08-06)")
     a = ap.parse_args()
     sc = a.scene
     sd = paths.scene_dir(sc)
-    outd = sd / "rig_sp0"
+    outd = sd / a.rig
     outd.mkdir(exist_ok=True)
 
     # Frame info source: legacy sweep manifest (bedroom-era scenes) ->
@@ -65,8 +71,9 @@ def main():
     signs = np.array([1.0, -1.0, 1.0])          # the A2 readability mirror
     floor_y = fr["floor_y"]
     up_sign = -1 if fr["up"][1] < 0 else 1
-    eye = [0.0, floor_y + up_sign * EYE_H, 0.0]
-    print(f"[stitch] eye {eye}", flush=True)
+    dx, dz = (float(t) for t in a.eye_offset.split(","))
+    eye = [dx, floor_y + up_sign * EYE_H, dz]
+    print(f"[stitch] eye {eye} (offset {dx},{dz})", flush=True)
 
     # ---------- render the 6 faces (GPU, WSL, resumable) ----------
     # Face cache is valid ONLY for this exact camera + frame + ply state —

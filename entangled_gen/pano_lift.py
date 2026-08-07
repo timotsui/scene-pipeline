@@ -54,6 +54,8 @@ def main():
     ap.add_argument("--suffix", default="",
                     help="manifest name suffix (e.g. 'b' -> "
                          "scene_manifest_pano2b*.json)")
+    ap.add_argument("--rig", default="rig_sp0",
+                    help="rig dir (multi-standpoint: rig_sp1, ...)")
     ap.add_argument("--min-score", type=float, default=0.35,
                     help="lift admission floor (match the detect box-thr)")
     ap.add_argument("--gate-peak", type=float, default=GATE_PEAK,
@@ -61,7 +63,7 @@ def main():
     a = ap.parse_args()
     sc = a.scene
     sd = paths.scene_dir(sc)
-    rig = sd / "rig_sp0"
+    rig = sd / a.rig
     seg = rig / (a.seg_dir or "seg")
     meta = json.loads((rig / "pano_selfrender_meta.json").read_text())
     eye = meta["eye_raw"]

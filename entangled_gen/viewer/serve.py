@@ -51,12 +51,18 @@ def box_sources(sc):
          "original masks' points refiltered through the established depth "
          "slab (all axes re-derived). Uncarved nodes keep the record box "
          "(flagged) and are absent from this layer"),
-        ("support_clipped", "support clip · preview", "current",
-         sd / "scene_manifest_supportclip_preview.json", "#ffb84d",
-         "PREVIEW — compose/support_clip.py: ON nodes cut at their "
-         "supporter surface + footprint. NOTE: current ON edges are "
-         "streak-poisoned (book ON floor) — real wiring runs AFTER the "
-         "parallax carve"),
+        ("set_a", "set A · standpoint center", "current",
+         sd / "scene_manifest_pano2c.json", "#ffd24d",
+         "TWO-STANDPOINT EXPERIMENT — set A: the canonical rig at the "
+         "center eye (rig_sp0), lift stage, ungated merge"),
+        ("set_b", "set B · standpoint +1.1x", "current",
+         sd / "scene_manifest_pano2_sp1.json", "#7fd4ff",
+         "TWO-STANDPOINT EXPERIMENT — set B: the SAME chain re-run from "
+         "a standpoint 1.1 m along +x (rig_sp1; bubble verified empty). "
+         "Each set streaks along its own rays; matched-pair intersection "
+         "= the carve; in-one-set-only = phantom-or-occlusion signal"),
+        # ("support_clipped", ...) removed from HUD — wiring premature
+        # until support judgment runs on carved geometry (R-S2-22 note)
     ]
     #     # ---- current: the pano-track funnel, upstream -> downstream ----
     #     # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->

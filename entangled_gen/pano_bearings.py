@@ -42,9 +42,11 @@ Rules:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
+    ap.add_argument("--rig", default="rig_sp0",
+                    help="rig dir (multi-standpoint: rig_sp1, ...)")
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
-    rig = sd / "rig_sp0"
+    rig = sd / a.rig
     pano = rig / "pano_selfrender.png"
     vocab = json.loads((sd / "vocab.json").read_text(encoding="utf-8"))
     terms = list(vocab["canonical"])
