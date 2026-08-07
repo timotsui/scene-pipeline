@@ -149,18 +149,28 @@ def main():
         cands.append(("top", up_dir / np.linalg.norm(up_dir)))
         for sgn, nm in ((1, "perpA"), (-1, "perpB")):
             cands.append((nm, -roty(d0, sgn * PERP)))
+        need = 1.5 * max(half, 0.15) / math.tan(math.radians(FOV_GOOD) / 2)
+        frame_clamped = dist < need - 1e-6   # object cannot fit the frame
         views = []
-        stand_y = FLOOR - 1.6      # walkable air layer (y-down): standing
+        stand_y = FLOOR - 1.6
         top_ok = False
-        for nm, dirv in cands:     # eyes live where rooms are empty
-            eye = c + dirv * dist
+        for nm, dirv in cands:
+            # CARDINAL TO THE OBJECT (user): prefer the camera at the
+            # object's own height (face-on), raise toward standing height
+            # only when that spot fails the general cull — the cull
+            # arbitrates placement, never a fixed eye level
             if nm == "top":
-                eye[1] = max(eye[1], CEIL + WALL_PAD + 0.05)
+                heights = [max(c[1] + dirv[1] * dist, CEIL + WALL_PAD + 0.05)]
             else:
-                eye[1] = min(eye[1], stand_y)   # y-down: raise to standing
-            if not in_bounds(eye):
-                continue
-            if empty_at(eye) > EMPTY_MAX:
+                heights = [c[1], (c[1] + stand_y) / 2, stand_y]
+            eye = None
+            for hy in heights:
+                cand = c + dirv * dist
+                cand[1] = hy
+                if in_bounds(cand) and empty_at(cand) <= EMPTY_MAX:
+                    eye = cand
+                    break
+            if eye is None:
                 continue
             dist_act = float(np.linalg.norm(eye - c))
             fov = float(np.clip(math.degrees(
@@ -172,7 +182,7 @@ def main():
             targets.append({"name": f"{n['id']}_{nm}", "label": n["name"],
                             "eye": [float(v) for v in eye],
                             "aim": [float(v) for v in c], "fov": fov})
-        if not top_ok:
+        if not top_ok or frame_clamped:
             # clip-top plan view (user: "clip top for plan view if
             # needed"): camera ABOVE the ceiling, ceiling clipped out of
             # the splat — bounds/emptiness don't apply, the clip creates
@@ -181,7 +191,9 @@ def main():
             up = np.array([math.sin(math.radians(10)) * d0[0], -1.0,
                            math.sin(math.radians(10)) * d0[2]])
             up /= np.linalg.norm(up)
-            eye = c + up * max(dist, 2.0)
+            # UNCLAMPED stand-off: above the clipped ceiling there is no
+            # bounds limit, so even room-scale objects fit the frame
+            eye = c + up * max(need, 2.0)
             fov = float(np.clip(math.degrees(
                 2 * math.atan(1.5 * max(half, 0.15)
                               / float(np.linalg.norm(eye - c)))), 35, 75))
@@ -341,25 +353,57 @@ def main():
         mask = sam_proc.image_processor.post_process_masks(
             souts.pred_masks.cpu(), sinp["original_sizes"].cpu(),
             sinp["reshaped_input_sizes"].cpu())[0].squeeze(1).numpy()[0] > 0
+        # evidence overlay for the review page: winning box + mask
+        try:
+            from PIL import ImageDraw
+            ov = img.convert("RGBA")
+            layer = Image.new("RGBA", ov.size, (0, 0, 0, 0))
+            ys, xs = np.nonzero(mask)
+            px = layer.load()
+            for yy, xx in zip(ys[::4], xs[::4]):
+                px[int(xx), int(yy)] = (0, 255, 90, 100)
+            ov = Image.alpha_composite(ov, layer).convert("RGB")
+            dr = ImageDraw.Draw(ov)
+            bx = best["box"]
+            dr.rectangle([bx["xmin"], bx["ymin"], bx["xmax"], bx["ymax"]],
+                         outline=(255, 40, 40), width=4)
+            ov.save(rdir / f"{name}_det.png")
+        except Exception:  # noqa: BLE001 — overlay is best-effort evidence
+            pass
         lifted = lift_frame(vx, cam, [dict(best, label=p["name"])],
                             mask[None], view=name, keep_pts=True,
                             min_score=DET_THR)
         if not lifted or lifted[0].get("pts") is None:
             return None, "lift_empty"
         pts = lifted[0]["pts"]
-        # horizontal lateral band(s): camera-right always; camera-up too
-        # when its horizontal component dominates (the near-top view)
+        # EDGE TRUST (user: "extends beyond one square"): a detection box
+        # clipped at a frame edge measured NOTHING about that side — the
+        # band bound facing a clipped edge is released (same per-axis
+        # edge-trust rule the lift itself uses). Both sides clipped on an
+        # axis -> no band on that axis.
+        tol = 3.0
+        bx = best["box"]
+        clip_l = bx["xmin"] <= tol
+        clip_r = bx["xmax"] >= a.res - tol
+        clip_t = bx["ymin"] <= tol
+        clip_b = bx["ymax"] >= a.res - tol
         bands = []
-        for axis_vec in (cam.R[0], cam.R[1]):
+        for axis_vec, lo_clip, hi_clip in (
+                (cam.R[0], clip_l, clip_r),      # camera-right: u grows +
+                (cam.R[1], clip_b, clip_t)):     # camera-up: top = +up
             h = np.array([axis_vec[0], 0.0, axis_vec[2]])
             nh = np.linalg.norm(h)
             if nh < abs(axis_vec[1]):        # more vertical than horizontal
                 continue
+            if lo_clip and hi_clip:
+                continue
             h /= nh
             proj = pts @ h
             bands.append({"l": h.tolist(),
-                          "lo": float(np.percentile(proj, 2) - BAND_PAD),
-                          "hi": float(np.percentile(proj, 98) + BAND_PAD)})
+                          "lo": (-1e9 if lo_clip else
+                                 float(np.percentile(proj, 2) - BAND_PAD)),
+                          "hi": (1e9 if hi_clip else
+                                 float(np.percentile(proj, 98) + BAND_PAD))})
         if not bands:
             return None, "no_horizontal_band"
         return bands, f"ok({best['score']:.2f})"
