@@ -4,7 +4,9 @@
 SESSION_2026-08-11_HANDOFF.md. Evidence trail: REVIEW_LOG R-S2-31..34.
 PLAN_CARVE_DOWNSTREAM.md = the working plan for everything below —
 READ IT after this file. pipeline_map.html re-drawn (authority).
-NOTHING COMMITTED this session or the four-run night — see queue.)
+ALL COMMITTED end-of-session as a5792e8 (user order, Timotsui —
+four-run night + this session, 11 files). PUSH STILL PENDING =
+user's command: `git push origin master`.)
 
 ## WHAT HAPPENED (one line each)
 
@@ -72,12 +74,11 @@ the scene")
    upgrade first) → Probe A wiring (Phase A2, independent — can go
    any time) → materialize graph["carved"] → compose. All phased in
    PLAN_CARVE_DOWNSTREAM.md with gates.
-5. **COMMIT + PUSH (user's call, NOW TWO SESSIONS DEEP UNCOMMITTED):**
-   four-run-night deltas + today: carve_slicevote.py,
-   record_carve_doubts.py, judge_multiplicity.py (new), viewer
-   serve.py + index.html (carve-block cards), pipeline_map.html
-   (major redraw), CARVE_SLICEVOTE.md, PLAN_CARVE_DOWNSTREAM.md (new),
-   REVIEW_LOG R-S2-26..34, SESSION handoffs 2026-08-10/11/12.
+5. **PUSH (only step left; commit DONE as a5792e8 end-of-session):**
+   `git push origin master` — the push permission was gated in the
+   wrap-up session, so the commit is local-only. Note: this handoff's
+   own post-commit header edit + the run-5 outputs' doc updates may
+   leave a small uncommitted tail — `git status` first thing.
 
 ## STATE / FILES (all under out root = CS-8903-OVM\week7\entangled_gen\out\living_marble\)
 
