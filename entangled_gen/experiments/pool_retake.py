@@ -370,43 +370,15 @@ def main():
             ov.save(rdir / f"{name}_det.png")
         except Exception:  # noqa: BLE001 — overlay is best-effort evidence
             pass
-        lifted = lift_frame(vx, cam, [dict(best, label=p["name"])],
-                            mask[None], view=name, keep_pts=True,
-                            min_score=DET_THR)
-        if not lifted or lifted[0].get("pts") is None:
-            return None, "lift_empty"
-        pts = lifted[0]["pts"]
-        # EDGE TRUST (user: "extends beyond one square"): a detection box
-        # clipped at a frame edge measured NOTHING about that side — the
-        # band bound facing a clipped edge is released (same per-axis
-        # edge-trust rule the lift itself uses). Both sides clipped on an
-        # axis -> no band on that axis.
-        tol = 3.0
-        bx = best["box"]
-        clip_l = bx["xmin"] <= tol
-        clip_r = bx["xmax"] >= a.res - tol
-        clip_t = bx["ymin"] <= tol
-        clip_b = bx["ymax"] >= a.res - tol
-        bands = []
-        for axis_vec, lo_clip, hi_clip in (
-                (cam.R[0], clip_l, clip_r),      # camera-right: u grows +
-                (cam.R[1], clip_b, clip_t)):     # camera-up: top = +up
-            h = np.array([axis_vec[0], 0.0, axis_vec[2]])
-            nh = np.linalg.norm(h)
-            if nh < abs(axis_vec[1]):        # more vertical than horizontal
-                continue
-            if lo_clip and hi_clip:
-                continue
-            h /= nh
-            proj = pts @ h
-            bands.append({"l": h.tolist(),
-                          "lo": (-1e9 if lo_clip else
-                                 float(np.percentile(proj, 2) - BAND_PAD)),
-                          "hi": (1e9 if hi_clip else
-                                 float(np.percentile(proj, 98) + BAND_PAD))})
-        if not bands:
-            return None, "no_horizontal_band"
-        return bands, f"ok({best['score']:.2f})"
+        # THE CLAIM IS THE RAY VOLUME (user 2026-08-06: "it's not the box
+        # that votes, it's the projection ray volume"): this view claims
+        # exactly the cone of sight-lines through its SAM mask — a 3D
+        # point is inside iff it projects into the mask. No side-view
+        # lift, no bands, no depth: the side view's own porosity drops
+        # out of the equation entirely. Mask dilated 2 px for pixel slop.
+        from scipy import ndimage
+        mdil = ndimage.binary_dilation(mask, iterations=2)
+        return {"cam": cam, "mask": mdil}, f"ok({best['score']:.2f})"
 
     results = []
     for p in plans:
@@ -415,15 +387,14 @@ def main():
                           "aabb_min": p["geo"]["aabb_min"],
                           "aabb_max": p["geo"]["aabb_max"]},
                "views": {}}
-        bands_all = []
+        per_view = []          # each entry: one view's ray-volume claim
         for v in p["views"]:
-            bands, why = try_view(p, v)
+            claim, why = try_view(p, v)
             rec["views"][v["view"]] = why
-            if bands:
-                bands_all.extend(bands)
-        rec["n_ok"] = sum(1 for w in rec["views"].values()
-                          if w.startswith("ok"))
-        if not bands_all:
+            if claim:
+                per_view.append(claim)
+        rec["n_ok"] = len(per_view)
+        if not per_view:
             rec["status"] = "kept"
             results.append(rec)
             print(f"[pool] {p['id']:8s} {p['name']:16s} KEPT "
@@ -435,29 +406,123 @@ def main():
             rec["status"] = "kept_no_points"
             results.append(rec)
             continue
-        keep = np.ones(len(P), bool)
-        for b in bands_all:
-            proj = P @ np.array(b["l"])
-            keep &= (proj >= b["lo"]) & (proj <= b["hi"])
+        # RAY-VOLUME VOTING (user 2026-08-06: "2 or more intersecting ->
+        # a fragment of the object is there; the projection ray volume
+        # votes"): a point is claimed by a view iff it projects inside
+        # that view's detection mask. Consensus = >=2 claims (1 view
+        # total -> its lone cone stands, flagged). Outlier views (wrong
+        # same-class instance) are OUTVOTED, never a veto.
+        claims = []
+        for claim in per_view:
+            ccam, cmask = claim["cam"], claim["mask"]
+            u, vv2, z = ccam.project(P)
+            inb = ((z > 0.2) & (u >= 0) & (u < a.res - 1)
+                   & (vv2 >= 0) & (vv2 < a.res - 1))
+            claimed = np.zeros(len(P), bool)
+            ui = u[inb].astype(np.int64)
+            vi = vv2[inb].astype(np.int64)
+            claimed[np.nonzero(inb)[0]] = cmask[vi, ui]
+            claims.append(claimed)
+        # COALITION: the most-agreeing PAIR of ray volumes defines the
+        # object ("2 or more intersect -> the object is there"); every
+        # view that concurs joins; dissenters (wrong same-class instance)
+        # are dropped as outliers; the coalition is intersected STRICTLY
+        # (voting alone is too generous where views agree - pairwise cone
+        # crossings keep streak segments AND-carving kills).
+        if len(claims) == 1:
+            keep = claims[0]
+            rec["coalition"] = 1
+        else:
+            best_pair, best_j = None, -1.0
+            for i in range(len(claims)):
+                for j in range(i + 1, len(claims)):
+                    inter = (claims[i] & claims[j]).sum()
+                    union = (claims[i] | claims[j]).sum()
+                    jac = inter / union if union else 0.0
+                    if jac > best_j:
+                        best_j, best_pair = jac, (i, j)
+            core = claims[best_pair[0]] & claims[best_pair[1]]
+            members = list(best_pair)
+            for i in range(len(claims)):
+                if i in members:
+                    continue
+                inter = (claims[i] & core).sum()
+                if core.sum() and inter / core.sum() >= 0.3:
+                    members.append(i)
+                    core = core & claims[i]
+            keep = core
+            rec["coalition"] = len(members)
+            rec["dropped_views"] = len(claims) - len(members)
         if keep.sum() < 50:
             rec["status"] = "kept_empty_overlap"
             results.append(rec)
-            print(f"[pool] {p['id']:8s} {p['name']:16s} EMPTY overlap — "
-                  f"kept, flagged", flush=True)
+            print(f"[pool] {p['id']:8s} {p['name']:16s} no consensus "
+                  f"region — kept, flagged", flush=True)
             continue
-        lo = np.percentile(P[keep], 1, axis=0)
-        hi = np.percentile(P[keep], 99, axis=0)
+        # FRAGMENTS: consensus points can form several blobs (repeated-
+        # class instances, L-arms). Voxel connected components at 15 cm;
+        # the node keeps the fragment overlapping ITS OWN prior location
+        # best (the original box anchors which instance this node is);
+        # other fragments ship in the report as multiplicity evidence.
+        K = P[keep]
+        vox = np.floor(K / 0.15).astype(np.int64)
+        uniq, inv_idx = np.unique(vox, axis=0, return_inverse=True)
+        parent = list(range(len(uniq)))
+
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        vset = {tuple(v): i for i, v in enumerate(uniq)}
+        for i, v in enumerate(uniq):
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for dz in (-1, 0, 1):
+                        j = vset.get((v[0] + dx, v[1] + dy, v[2] + dz))
+                        if j is not None and j != i:
+                            ri, rj = find(i), find(j)
+                            if ri != rj:
+                                parent[rj] = ri
+        roots = np.array([find(i) for i in range(len(uniq))])
+        frag_of_pt = roots[inv_idx]
+        frags = []
+        blo, bhi = np.array(p["geo"]["aabb_min"]), np.array(p["geo"]["aabb_max"])
+        for root in np.unique(frag_of_pt):
+            m = frag_of_pt == root
+            if m.sum() < 50:
+                continue
+            flo = np.percentile(K[m], 1, axis=0)
+            fhi = np.percentile(K[m], 99, axis=0)
+            ilo, ihi = np.maximum(flo, blo), np.minimum(fhi, bhi)
+            ov = (np.prod(np.clip(ihi - ilo, 0, None))
+                  / max(np.prod(fhi - flo), 1e-9))
+            frags.append({"n_pts": int(m.sum()), "overlap_prior": float(ov),
+                          "aabb_min": [round(float(x), 4) for x in flo],
+                          "aabb_max": [round(float(x), 4) for x in fhi],
+                          "size": [round(float(h_ - l_), 4)
+                                   for l_, h_ in zip(flo, fhi)]})
+        if not frags:
+            rec["status"] = "kept_empty_overlap"
+            results.append(rec)
+            continue
+        frags.sort(key=lambda f: (-round(f["overlap_prior"], 2), -f["n_pts"]))
+        primary = frags[0]
         rec["status"] = "carved"
-        rec["n_bands"] = len(bands_all)
-        rec["after"] = {"aabb_min": [round(float(v), 4) for v in lo],
-                        "aabb_max": [round(float(v), 4) for v in hi],
-                        "size": [round(float(h_ - l_), 4)
-                                 for l_, h_ in zip(lo, hi)]}
+        rec["n_fragments"] = len(frags)
+        rec["fragments"] = frags
+        rec["after"] = {"aabb_min": primary["aabb_min"],
+                        "aabb_max": primary["aabb_max"],
+                        "size": primary["size"]}
         results.append(rec)
+        extra = (f" +{len(frags) - 1} frag (multiplicity evidence)"
+                 if len(frags) > 1 else "")
         print(f"[pool] {p['id']:8s} {p['name']:16s} "
-              f"{rec['n_ok']} views / {len(bands_all)} bands "
+              f"{rec['n_ok']} views vote "
               f"{[round(v, 2) for v in p['geo']['size']]} -> "
-              f"{[round(v, 2) for v in rec['after']['size']]}", flush=True)
+              f"{[round(v, 2) for v in rec['after']['size']]}{extra}",
+              flush=True)
 
     by = {}
     for r in results:
