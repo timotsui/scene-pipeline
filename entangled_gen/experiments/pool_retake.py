@@ -53,8 +53,12 @@ WALL_PAD = 0.30
 EMPTY_R = 0.30
 EMPTY_MAX = 1500         # cheap pre-filter LOOSER than the verifier: a
 #                          sphere grazing a sofa edge is a usable camera
-OFF_AXIS = 20.0          # near-cardinal / near-top tilt (deg)
+OFF_AXIS = 10.0          # near-cardinal / near-top tilt (deg) — "more
+#                          cardinal" (user): the good lens + clip-top plan
+#                          fallback reduce the edge-on exposure
 PERP = 65.0              # near-perpendicular (deg off the original ray)
+FOV_GOOD = 55.0          # natural-perspective lens for side views; the
+#                          stand-off distance derives from it, not vice versa
 BAND_PAD = 0.05
 
 
@@ -126,7 +130,10 @@ def main():
         geo = n["geometry"]
         c = np.array(geo["center"], float)
         half = max(geo["size"]) / 2
-        dist = float(np.clip(2.2 * max(half * 2, 0.4), 1.0, 3.5))
+        # good-lens rule (user): fixed natural fov, distance derived
+        dist = float(np.clip(
+            1.5 * max(half, 0.15) / math.tan(math.radians(FOV_GOOD) / 2),
+            1.2, 4.0))
         d0 = c - eye0
         d0[1] = 0
         if np.linalg.norm(d0) < 0.3:
@@ -136,7 +143,7 @@ def main():
         for k, base in enumerate([np.array([1.0, 0, 0]), np.array([-1.0, 0, 0]),
                                   np.array([0, 0, 1.0]), np.array([0, 0, -1.0])]):
             cands.append((f"card{k}", roty(base, OFF_AXIS)))
-        tilt = math.radians(OFF_AXIS)
+        tilt = math.radians(max(OFF_AXIS, 15.0))
         up_dir = np.array([math.sin(tilt) * d0[0], -math.cos(tilt),
                            math.sin(tilt) * d0[2]])   # y-down: -y is up
         cands.append(("top", up_dir / np.linalg.norm(up_dir)))
@@ -144,6 +151,7 @@ def main():
             cands.append((nm, -roty(d0, sgn * PERP)))
         views = []
         stand_y = FLOOR - 1.6      # walkable air layer (y-down): standing
+        top_ok = False
         for nm, dirv in cands:     # eyes live where rooms are empty
             eye = c + dirv * dist
             if nm == "top":
@@ -157,15 +165,36 @@ def main():
             dist_act = float(np.linalg.norm(eye - c))
             fov = float(np.clip(math.degrees(
                 2 * math.atan(1.5 * max(half, 0.15) / dist_act)), 35, 75))
+            if nm == "top":
+                top_ok = True
             views.append({"view": nm, "eye": [float(v) for v in eye],
                           "fov": fov})
             targets.append({"name": f"{n['id']}_{nm}", "label": n["name"],
                             "eye": [float(v) for v in eye],
                             "aim": [float(v) for v in c], "fov": fov})
+        if not top_ok:
+            # clip-top plan view (user: "clip top for plan view if
+            # needed"): camera ABOVE the ceiling, ceiling clipped out of
+            # the splat — bounds/emptiness don't apply, the clip creates
+            # the free space. 10-deg tilt keeps thin-vertical objects
+            # from being perfectly edge-on.
+            up = np.array([math.sin(math.radians(10)) * d0[0], -1.0,
+                           math.sin(math.radians(10)) * d0[2]])
+            up /= np.linalg.norm(up)
+            eye = c + up * max(dist, 2.0)
+            fov = float(np.clip(math.degrees(
+                2 * math.atan(1.5 * max(half, 0.15)
+                              / float(np.linalg.norm(eye - c)))), 35, 75))
+            views.append({"view": "ctop", "eye": [float(v) for v in eye],
+                          "fov": fov, "clip": True})
+            targets.append({"name": f"{n['id']}_ctop", "label": n["name"],
+                            "eye": [float(v) for v in eye],
+                            "aim": [float(v) for v in c], "fov": fov,
+                            "clip_y_gt": float(CEIL + 0.08)})
         plans.append({"id": n["id"], "name": n["name"], "geo": geo,
                       "aim": [float(v) for v in c], "views": views})
         print(f"[pool] {n['id']:8s} {n['name']:16s} candidates "
-              f"{len(views)}/7 after cull "
+              f"{len(views)} after cull "
               f"({', '.join(v['view'] for v in views)})", flush=True)
 
     missing = [t for t in targets
@@ -248,17 +277,23 @@ def main():
                         vs.astype(np.float32), dep[vs, us]))
         return np.concatenate(pts) if pts else None
 
+    # clipped point set for plan views (ceiling removed, matches the
+    # clip_y_gt render)
+    _clipm = xyz[:, 1] > (CEIL + 0.08)
+    xyz_c, rgb_c = xyz[_clipm], rgb[_clipm]
+
     def try_view(p, v):
         """One pool view -> list of horizontal band constraints or None."""
         name = f"{p['id']}_{v['view']}"
         png = rdir / f"{name}.png"
         if not png.exists():
             return None, "no_render"
+        vx, vr = (xyz_c, rgb_c) if v.get("clip") else (xyz, rgb)
         cam = make_cam(v["eye"], p["aim"], v["fov"], a.res)
         s = 192.0 / a.res
         cam192 = MatCam(cam.R, cam.pos, cam.f * s, cam.cx * s, cam.cy * s,
                         192, 192)
-        corr = corr_check(xyz, rgb, cam192, png)
+        corr = corr_check(vx, vr, cam192, png)
         if corr < CORR_MIN:
             return None, f"corr_fail({corr:+.2f})"
         geo = p["geo"]
@@ -306,7 +341,7 @@ def main():
         mask = sam_proc.image_processor.post_process_masks(
             souts.pred_masks.cpu(), sinp["original_sizes"].cpu(),
             sinp["reshaped_input_sizes"].cpu())[0].squeeze(1).numpy()[0] > 0
-        lifted = lift_frame(xyz, cam, [dict(best, label=p["name"])],
+        lifted = lift_frame(vx, cam, [dict(best, label=p["name"])],
                             mask[None], view=name, keep_pts=True,
                             min_score=DET_THR)
         if not lifted or lifted[0].get("pts") is None:

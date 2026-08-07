@@ -85,11 +85,20 @@ def main():
         c2w = c2w_from_eye_aim(t["eye"], t["aim"], [0.0, -1.0, 0.0])
         w2c = torch.linalg.inv(
             torch.tensor(c2w, dtype=torch.float32, device=dev)).unsqueeze(0)
+        gg = g
+        if t.get("clip_y_gt") is not None:
+            # plan-view support (2026-08-06): drop gaussians ABOVE a y
+            # plane (y-down: keep means_y > value) so a camera above the
+            # ceiling sees the room top-down, unobstructed
+            m = g["means"][:, 1] > float(t["clip_y_gt"])
+            gg = {k: (v[m] if hasattr(v, "shape") and len(v.shape)
+                      and v.shape[0] == m.shape[0] else v)
+                  for k, v in g.items()}
         rgb, _, _ = rasterization(
-            means=g["means"], quats=g["quats"], scales=g["scales"],
-            opacities=g["opacities"], colors=g["sh"],
+            means=gg["means"], quats=gg["quats"], scales=gg["scales"],
+            opacities=gg["opacities"], colors=gg["sh"],
             viewmats=w2c, Ks=K.unsqueeze(0),
-            width=W, height=H, sh_degree=g["sh_degree"],
+            width=W, height=H, sh_degree=gg["sh_degree"],
             near_plane=NEAR_PLANE, far_plane=FAR_PLANE)
         img = (rgb[0].clamp(0, 1).cpu().numpy() * 255).astype(np.uint8)
         Image.fromarray(img).save(f)
