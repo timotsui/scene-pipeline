@@ -628,6 +628,19 @@
         <text class="nscript" x="14" y="31">graph["resolved"] in scene_graph.json</text>
         <text class="nsub" x="14" y="45">82 boxes ship · 4 removed: obj_040 structure,</text>
         <text class="nsub" x="14" y="58">obj_083 plant REJECTED · obj_138/139 door-frame</text></g>
+      <!-- ⚠ UNTESTED PROMOTION (08-06 cone session): slice-vote carve —
+           repair-stage CANDIDATE between the graph handoff and S1.
+           Dashed = not wired, preview outputs only; canon gates:
+           user pass on R-S2-26 → bedroom regression → runner wiring. -->
+      <g class="node" data-k="carve" transform="translate(8,1666)">
+        <rect class="nbox" width="256" height="64" rx="8" style="stroke-dasharray:5 4"/>
+        <rect class="b-lane" width="4" height="64" rx="2"/>
+        <text class="ntitle" x="14" y="17">REPAIR · slice-vote carve<tspan class="ngate"> · ⚠ UNTESTED</tspan></text>
+        <text class="nscript" x="14" y="31">carve_slicevote.py — preview, not wired</text>
+        <text class="nsub" x="14" y="45">prism slice → isolated renders → 6-voter gate 3</text>
+        <text class="nsub" x="14" y="58">doubts → carve_doubts.json · same-product judge</text>
+      </g>
+      <path class="edge e-bus" style="stroke-dasharray:5 4" d="M264,1698 H388"/>
       <!-- ===== downstream: COMPOSE + LOOP (design 07-26) =====
            The stage is a LOOP with two halves: SEMANTIC (what is in the
            scene) and PHYSICAL (where it legally goes). Working set =
@@ -1083,6 +1096,17 @@ g4: {mod:"eg", eyebrow:"4g4 · RESOLVED = THE CANONICAL BOX SET · RUN 07-26", n
   reads:["written by J7 · materialize"],
   writes:["the COMPOSE+LOOP stage reads THIS layer — L0's anchor set derives from its support edges (live in the viewer 07-26)"],
   note:"Remaining suspect/open flags ship inside this layer's provenance as next-stage work orders — placement is where boxes change; this layer never edits geometry."},
+carve: {mod:"lane", eyebrow:"REPAIR · SLICE-VOTE CARVE · ⚠ UNTESTED PROMOTION 08-06 (cone-map session)", name:"Slice-vote carve — box repair between the graph handoff and S1",
+  script:"carve_slicevote.py (+ graph/record_carve_doubts.py, graph/judge_same_product.py) — ALL UNTESTED, preview outputs only, NOT in the canonical runner",
+  how:["USER-DESIGNED in ~10 rapid experiments on 8 living objects (full lineage: docs/CARVE_SLICEVOTE.md; evidence trail: REVIEW_LOG R-S2-26)",
+       "SLICE: top-box vertical prism — plan-view detection box cast across the object's HEIGHT BAND (full-height casting smears the tilted beam ~0.7 m, user-traced), margin min(30%, 0.35 m)/side CAPPED; fallback = original-box wedge, full height",
+       "ISOLATE: the slice's gaussians rendered ALONE (subset .ply, real WSL renderer) from 4 near-cardinals — isolation is what makes re-detection easy (CPU renders defeat the detector)",
+       "VOTE: 6-voter election — 4 cardinals + the top view's mask + the original standpoint (member-mask union = ONE voter; same-eye crops must not corroborate each other) at USER GATE 3 VOTES; anchored cluster wins, culled clusters recorded as multiplicity evidence",
+       "ARM ASSIGNMENT: each node keeps the vote survivors its OWN masks vouch for (L-sectional triage; the semantic split stays with the multiplicity judge); <50%-volume flag fires → judge territory",
+       "DOUBTS RECORDED, NEVER DECIDED: graph/carve_doubts.json (arm_vs_cluster / culled_clusters / slice_fallback) — typed open questions for the judges; SAME-PRODUCT judge is its OWN graph-chain pass (user ruling 08-06: chairs at one table = one product, judge picks ONE canonical size → shopping; verdicts NEVER run, consumer NOT wired)"],
+  reads:["graph['resolved'] + cached pool top renders + rig_sp0 masks + gen_raw.ply"],
+  writes:["scene_manifest_slicevote_preview.json (⚠ preview)","pool_retake/slicevote_report.json","graph/carve_doubts.json","viewer cone-map layer (TEMPORARY)"],
+  note:"CANON GATES, in order: user pass on R-S2-26 (shaved chair heights + arm flags) → bedroom regression (standing set + no-growth) → living-46 blind → wire into the runner and draw this node solid. Nothing committed."},
 j0: {mod:"lane", eyebrow:"J0 · PAIR TRIAGE · BUILT + FIRST RUN 08-01 (94 → 6/88)", name:"Pair triage — text-only docket clerk",
   script:"graph/triage_pairs.py → additive SAME_CANDIDATE edges (zone: semantic) + graph/triage_pairs_cache.json",
   how:["COST GRADIENT (user design 08-01: lower the bar for candidates, filter before the expensive judge): code records every fact for free → a cheap text LLM triages which facts deserve attention → the expensive VLM rules with crops. This module is the middle tier",
