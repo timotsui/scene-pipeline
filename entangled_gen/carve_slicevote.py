@@ -560,8 +560,24 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
 
     # ---- CAMERA: pushed off the object into the room along the normal,
     # far enough that the in-plane extent (+40%) fits in FOV_GOOD.
+    # FRAME FROM THE SLAB, NOT THE PRIOR (user finding 2026-08-07,
+    # obj_034 glass door): the original box is DRIFTED — aiming at its
+    # center and sizing from its extent leaves a badly drifted object
+    # partly out of frame, and the re-box then clips at the FOV instead
+    # of the object's real edge. The slab is measured content: aim at
+    # the slab dots' in-plane centroid and size the frame so the slab's
+    # 1-99 percentile in-plane extent fits (+40% margin). The normal
+    # axis keeps the box-center aim and the stand-off logic unchanged.
     ctr = 0.5 * (np.asarray(lo0, float) + np.asarray(hi0, float))
-    span = float(max(hi0[k] - lo0[k] for k in ip))
+    sp1 = np.percentile(sdots, 1, axis=0)
+    sp99 = np.percentile(sdots, 99, axis=0)
+    for k in ip:
+        ctr[k] = float(sdots[:, k].mean())
+    # half-span from the AIM point so the p1-p99 band fits on both sides
+    span = 2.0 * float(max(max(abs(sp99[k] - ctr[k]), abs(sp1[k] - ctr[k]))
+                           for k in ip))
+    rec["frame"] = {"aim": "slab centroid (in-plane)",
+                    "slab_span_m": round(span, 3)}
     dist_need = max(PERP_MARGIN * 0.5 * max(span, 0.2)
                     / math.tan(math.radians(FOV_GOOD) / 2), 1.0)
     eye = ctr.copy()
@@ -644,6 +660,36 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     strip += _fig(f"{vname}_det.png",
                   f"PERP RE-BOX &middot; mask+box ok({best[0]:.2f})")
 
+    # ---- BORDER-TRUNCATION GUARD (user finding 2026-08-07): if the
+    # mask (or the detection box) reaches within 4 px of an image
+    # border, the evidence on that side is CLIPPED BY THE FRAME, not by
+    # the object's real edge (obj_034 signature: slab 29,867 dots vs
+    # 8,009 claimed). A truncated side must NOT pull its extent inward
+    # from the original box; a frame truncated on ALL sides re-boxes
+    # nothing. Never silent: the decision lands in rec.
+    PERP_EDGE_PX = 4
+    trunc = set()
+    bx0, by0, bx1, by1 = (float(v) for v in best[1])
+    if xs.size:
+        if xs.min() <= PERP_EDGE_PX or bx0 <= PERP_EDGE_PX:
+            trunc.add("left")
+        if xs.max() >= RES - 1 - PERP_EDGE_PX or bx1 >= RES - 1 - PERP_EDGE_PX:
+            trunc.add("right")
+        if ys.min() <= PERP_EDGE_PX or by0 <= PERP_EDGE_PX:
+            trunc.add("top")
+        if ys.max() >= RES - 1 - PERP_EDGE_PX or by1 >= RES - 1 - PERP_EDGE_PX:
+            trunc.add("bottom")
+    if trunc:
+        rec["truncated_edges"] = sorted(trunc)
+        print(f"[carve]  perp: mask touches image border(s) "
+              f"{sorted(trunc)} - those sides keep the original extent",
+              flush=True)
+    if len(trunc) == 4:
+        rec["result"] = "frame truncated on all sides — kept"
+        print("[carve]  perp: frame truncated on all sides - "
+              "original box kept", flush=True)
+        return None, None, rec, strip
+
     # ---- CLAIM the slab's dots through the mask (mirrors card_votes)
     u2, v2, z2 = cam.project(sdots)
     inb = ((z2 > 0.05) & (u2 >= 0) & (u2 < RES - 1)
@@ -666,6 +712,29 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     for k in ip:
         new_lo[k] = float(np.percentile(K[:, k], 1))
         new_hi[k] = float(np.percentile(K[:, k], 99))
+    # BORDER-TRUNCATION GUARD, part 2: map each truncated image border
+    # to the world side it clips (probe: project a small in-plane step
+    # from the aim point and read which way it moves on screen), and on
+    # those sides keep the ORIGINAL extent — the evidence there is
+    # incomplete, so only the sides with complete evidence re-box.
+    if trunc:
+        kept_sides = []
+        for k in ip:
+            probe = np.vstack([ctr, ctr])
+            probe[1][k] += 0.1
+            pu, pv, _pz = cam.project(probe)
+            du, dv = float(pu[1] - pu[0]), float(pv[1] - pv[0])
+            if abs(du) >= abs(dv):
+                lo_b, hi_b = ("left", "right") if du > 0 else ("right", "left")
+            else:
+                lo_b, hi_b = ("top", "bottom") if dv > 0 else ("bottom", "top")
+            if lo_b in trunc:
+                new_lo[k] = float(lo0[k])
+                kept_sides.append([k, "lo", lo_b])
+            if hi_b in trunc:
+                new_hi[k] = float(hi0[k])
+                kept_sides.append([k, "hi", hi_b])
+        rec["truncation_kept_sides"] = kept_sides
     rec["from"] = [[k, round(float(lo0[k]), 3), round(float(hi0[k]), 3)]
                    for k in ip]
     rec["to"] = [[k, round(float(new_lo[k]), 3), round(float(new_hi[k]), 3)]
