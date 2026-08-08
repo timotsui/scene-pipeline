@@ -107,18 +107,56 @@ Per resolved graph node:
 Outputs (per scene): scene_manifest_slicevote_preview.json,
 pool_retake/slicevote_report.json (rule.tiers records escalation),
 pool_retake/conemap.json (viewer cone-map layer), conemap_obj_*.png,
-cone_map.html.
+cone_map.html, pool_retake/rows/<id>[.exempt].html (per-object page
+fragments — the sidecars that let a partial run rebuild a COMPLETE page).
+
+PARTIAL RUNS ARE FIRST CLASS (user order 2026-08-08: "restructure so we
+can do the partial runs first — debugging is inefficient if we need a
+full run every time"). `--only obj_034,obj_006` now REPAIRS the
+whole-scene documents instead of replacing them:
+  * the startup image wipe is SCOPED to the ids being processed, so no
+    other object's cone-map row loses its pictures;
+  * slicevote_report.json / scene_manifest_slicevote_preview.json /
+    pool_retake/conemap.json are MERGED ON WRITE — the existing document
+    is loaded, only the processed ids' entries are replaced, every other
+    entry is kept VERBATIM, and objects are emitted in RESOLVED-NODE
+    ORDER so the files stay diff-stable. An id on disk that this run did
+    not process is never dropped. Absent/corrupt document -> this run's
+    entries only, said out loud in the log;
+  * cone_map.html is rebuilt COMPLETE from the per-object row sidecars
+    (processed ids' fragments are rewritten, everyone else's are read
+    back off disk).
+PROVENANCE IS THE GUARD THAT MAKES MERGING HONEST. Every entry a run
+produces is stamped prov = {run_id, run_at, params_hash, source_sha}
+(params_hash = short sha256 of the tunable-constant dict, source_sha =
+short sha256 of this file's own source). Each document header carries
+run_kind ("full"/"partial"), the run's ids, params_hash, source_sha,
+mixed_provenance, provenance_summary {source_sha: [ids]} and
+canon_eligible — TRUE ONLY for a full run with no mixed provenance. The
+status string stays "UNTESTED-PREVIEW"; a partial or mixed document is
+explicitly NOT canon, and cone_map.html prints a mixed-provenance banner
+(project convention: stale = BADGED, never hidden).
+
+CARD RENDERS still keep the MANUAL-wipe rule: the WSL renderer skips by
+FILENAME, so after a SLICE-GEOMETRY edit delete pool_retake/slices/
+vote_*.png by hand (or vote_<id>_*.png for the ids you are debugging).
+The det overlays and the perp renders are wiped automatically, scoped to
+the ids this run processes.
 
 Run:  PYTHONUTF8=1 HF_HUB_OFFLINE=1 python carve_slicevote.py
       --scene living_marble [--only obj_004,...] [--gate 3] [--res 768]
+      [--run-id r20260808-0130]
       (PYTHONUTF8 required when stdout is redirected — cp1252 chokes
       on the vote glyphs)
 """
 import argparse
+import hashlib
 import json
 import math
+import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -139,13 +177,32 @@ from carve_cams import (FOV_GOOD, OFF_AXIS, RES, WALL_PAD,  # noqa: E402
 ap = argparse.ArgumentParser()
 ap.add_argument("--scene", required=True)
 ap.add_argument("--only", default="",
-                help="comma-separated node ids (default: all resolved)")
+                help="comma-separated node ids (default: all resolved). "
+                     "A PARTIAL RUN REPAIRS, IT DOES NOT REPLACE: the "
+                     "image wipe is scoped to these ids, the report / "
+                     "preview manifest / conemap.json are merged on write "
+                     "(every unprocessed id kept verbatim, objects emitted "
+                     "in resolved-node order) and cone_map.html is rebuilt "
+                     "complete from the per-object row sidecars. The "
+                     "resulting documents are stamped run_kind=partial and "
+                     "canon_eligible=false")
 ap.add_argument("--gate", type=int, default=3,
                 help="votes required (degrades when fewer voters exist)")
 ap.add_argument("--res", type=int, default=RES)
+ap.add_argument("--run-id", dest="run_id", default="",
+                help="short id stamped on every entry this run produces "
+                     "(default: derived from the run start time)")
 a = ap.parse_args()
 
 SCENE = a.scene
+# ---- RUN IDENTITY (provenance stamps, see the docstring) -------------
+RUN_AT = datetime.now().astimezone().isoformat(timespec="seconds")
+RUN_ID = a.run_id.strip() or datetime.now().strftime("r%Y%m%d-%H%M%S")
+SOURCE_SHA = hashlib.sha256(
+    Path(__file__).read_bytes()).hexdigest()[:12]
+# ids named on the command line — needed BEFORE the graph is read so the
+# startup wipe can be scoped to them (see below)
+ONLY_IDS = [s.strip() for s in a.only.split(",") if s.strip()]
 RES = a.res        # this run's resolution (default = carve_cams.RES)
 DET_THR = 0.20
 PAD = 0.30
@@ -172,6 +229,8 @@ rdir = sd / "pool_retake"
 rdir.mkdir(exist_ok=True)
 sdir = rdir / "slices"
 sdir.mkdir(exist_ok=True)
+rowdir = rdir / "rows"          # per-object cone_map.html fragments
+rowdir.mkdir(exist_ok=True)
 # STALE-CACHE POISON (user finding 2026-08-08, obj_034): the WSL
 # renderer skips by FILENAME, not by content — a render whose CAMERA
 # changed but whose name did not is silently reused, and the stage then
@@ -180,10 +239,48 @@ sdir.mkdir(exist_ok=True)
 # derived from the slab/box, so it can change every run — only 14 of
 # them, cheap). Card renders keep the manual-wipe rule (documented in
 # the docstring): wipe slices/vote_*.png by hand on slice-geometry edits.
-for f in sdir.glob("vote_*_det.png"):
-    f.unlink()
-for f in sdir.glob("vote_*_perp.png"):
-    f.unlink()
+#
+# SCOPED TO THIS RUN'S IDS (2026-08-08, partial-runs-first): the wipe is
+# still UNCONDITIONAL — but only for the ids being processed. Under
+# --only, another object's cone-map row still points at its own det /
+# perp pictures, and deleting them would leave the rebuilt page full of
+# broken images. A full run wipes everything, exactly as before.
+
+
+def _wipe_ids(ids):
+    """Delete the auto-wiped renders belonging to `ids` (None = all).
+    Id-prefix safe: obj_005 must not take obj_005_c00's pictures with
+    it, so the segment between 'vote_<id>_' and '_det.png' must be a
+    single view token (card0/eyecard0/iso0/top/perp/slice34 — none of
+    them contain an underscore)."""
+    n = 0
+    if ids is None:
+        for f in sdir.glob("vote_*_det.png"):
+            f.unlink()
+            n += 1
+        for f in sdir.glob("vote_*_perp.png"):
+            f.unlink()
+            n += 1
+        return n
+    for nid in ids:
+        pre, suf = f"vote_{nid}_", "_det.png"
+        for f in sdir.glob(f"{pre}*{suf}"):
+            if "_" in f.name[len(pre):-len(suf)]:
+                continue            # belongs to a longer id, not this one
+            f.unlink()
+            n += 1
+        p = sdir / f"vote_{nid}_perp.png"
+        if p.exists():
+            p.unlink()
+            n += 1
+    return n
+
+
+_nwiped = _wipe_ids(ONLY_IDS or None)
+_scope = (f"{len(ONLY_IDS)} requested id(s)" if ONLY_IDS
+          else "the whole scene")
+print(f"[carve] run {RUN_ID} src {SOURCE_SHA} — wiped {_nwiped} stale "
+      f"det/perp render(s) for {_scope}", flush=True)
 
 
 def to_wsl(p):
@@ -232,9 +329,21 @@ def write_subset_ply(mask, out_path):
 
 g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
 nodes = g["resolved"]["nodes"]
-if a.only:
-    want = set(a.only.split(","))
+# RESOLVED-NODE ORDER — the canonical emit order for every merged
+# document and for the rebuilt cone_map.html (keeps files diff-stable).
+ALL_IDS = [n["id"] for n in nodes]
+ALL_RANK = {nid: k for k, nid in enumerate(ALL_IDS)}
+if ONLY_IDS:
+    want = set(ONLY_IDS)
     nodes = [n for n in nodes if n["id"] in want]
+    _missing = sorted(want - set(ALL_IDS))
+    if _missing:
+        print(f"[carve] --only: {_missing} not in the resolved graph "
+              "— ignored", flush=True)
+PROCESSED_IDS = [n["id"] for n in nodes]
+RUN_KIND = "full" if set(PROCESSED_IDS) == set(ALL_IDS) else "partial"
+print(f"[carve] run_kind={RUN_KIND} — processing {len(PROCESSED_IDS)} of "
+      f"{len(ALL_IDS)} resolved node(s)", flush=True)
 eye0 = np.array(json.loads((sd / "rig_sp0" / "pano_selfrender_meta.json")
                            .read_text())["eye_raw"])
 sh = json.loads((sd / "room_shell.json").read_text())
@@ -499,6 +608,30 @@ PERP_MAX_SHIFT = 1.0   # m — in-plane center jump that REJECTS the re-box
 PERP_MAX_RATIO = 3.0   # x — in-plane extent change that REJECTS it
 PERP_MARGIN = 1.4      # framing margin on the in-plane extent (+40%)
 PERP_DET_PAD = 40      # px — generous slack on the projected prior box
+PERP_EDGE_PX = 4       # px — border-truncation guard band (was a local
+                       # inside perp_rebox; module level so it is covered
+                       # by PARAMS_HASH like every other tunable)
+
+# ============ PROVENANCE (partial-run guard, 2026-08-08) ==============
+# params_hash fingerprints EVERY tunable constant this stage decides
+# with. Together with source_sha (this file's own text) it is what makes
+# a merged document honest: an entry stamped with a different hash was
+# produced by a different stage, and the header says so out loud.
+PARAMS = {"SHELL_EPS": SHELL_EPS, "WALL_TOUCH": WALL_TOUCH,
+          "WALL_PROTRUDE_MAX": WALL_PROTRUDE_MAX, "MIN_SLAB": MIN_SLAB,
+          "OUTLIER_K": OUTLIER_K, "PAD": PAD, "CAP_M": CAP_M,
+          "DET_THR": DET_THR, "DIL_ISO": DIL_ISO, "EMPTY_R": EMPTY_R,
+          "EMPTY_MAX": EMPTY_MAX, "gate": a.gate, "RES": RES,
+          "PERP_GROW": PERP_GROW, "PERP_SLAB_PAD": PERP_SLAB_PAD,
+          "PERP_MIN_CLAIM": PERP_MIN_CLAIM,
+          "PERP_MAX_SHIFT": PERP_MAX_SHIFT,
+          "PERP_MAX_RATIO": PERP_MAX_RATIO, "PERP_MARGIN": PERP_MARGIN,
+          "PERP_DET_PAD": PERP_DET_PAD, "PERP_EDGE_PX": PERP_EDGE_PX}
+PARAMS_HASH = hashlib.sha256(
+    json.dumps(PARAMS, sort_keys=True).encode()).hexdigest()[:12]
+PROV = {"run_id": RUN_ID, "run_at": RUN_AT,
+        "params_hash": PARAMS_HASH, "source_sha": SOURCE_SHA}
+print(f"[carve] params_hash {PARAMS_HASH}", flush=True)
 
 # NOTE on the camera's up vector: make_cam / the WSL renderer share ONE
 # c2w_from_eye_aim with world up [0,-1,0] AND the same degenerate
@@ -675,7 +808,8 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     # 8,009 claimed). A truncated side must NOT pull its extent inward
     # from the original box; a frame truncated on ALL sides re-boxes
     # nothing. Never silent: the decision lands in rec.
-    PERP_EDGE_PX = 4
+    # (PERP_EDGE_PX now lives with the other PERP_* constants so
+    # PARAMS_HASH covers it — same value, same behaviour.)
     trunc = set()
     bx0, by0, bx1, by1 = (float(v) for v in best[1])
     if xs.size:
@@ -792,7 +926,7 @@ def perp_for_exempt(nid, name, lo0, hi0, plane):
                "result": f"kept - perp re-box failed: {e}"}
         print(f"[carve]  perp: FAILED ({e}) - original box kept", flush=True)
     if strip:
-        exempt_rows_html.append(f"""
+        save_row(nid, "exempt", f"""
 <section>
 <h2>{nid} — {name} <span style='font-weight:400;font-size:13px'>
 (carve-exempt, perp re-box)</span></h2>
@@ -805,10 +939,82 @@ def perp_for_exempt(nid, name, lo0, hi0, plane):
 
 
 # ================= per-object: slice -> render -> detect -> vote =======
-rows_html = []
-exempt_rows_html = []
 cm_objects = []
 kept_exempt = []
+
+
+# ---- cone_map.html ROW SIDECARS (partial-runs-first, 2026-08-08) -----
+# The page used to exist only as two in-memory lists, so a partial run
+# could only ever produce a partial page. Each object's fragment is now
+# persisted as it is produced; the page is rebuilt at the end by reading
+# the fragments of ALL resolved ids in node order, so an unprocessed
+# object keeps its row (and its pictures, which the scoped wipe spared).
+# Two kinds keep the page's existing two-section structure: "exempt"
+# (the perp re-box rows) and "carve" (the slice+vote rows).
+def _row_path(nid, kind):
+    return rowdir / (f"{nid}.exempt.html" if kind == "exempt"
+                     else f"{nid}.html")
+
+
+def clear_rows(nid):
+    """Drop both fragments for an id that is about to be reprocessed —
+    a status flip (carved <-> exempt) must not leave two rows behind,
+    and an object that now produces no row must lose its old one."""
+    for kind in ("carve", "exempt"):
+        _row_path(nid, kind).unlink(missing_ok=True)
+
+
+def save_row(nid, kind, html_fragment):
+    _row_path(nid, kind).write_text(html_fragment, encoding="utf-8")
+
+
+def read_row(nid, kind):
+    p = _row_path(nid, kind)
+    try:
+        return p.read_text(encoding="utf-8") if p.exists() else ""
+    except OSError as e:                                     # noqa: BLE001
+        print(f"[carve] row sidecar {p.name} unreadable ({e})", flush=True)
+        return ""
+
+
+def backfill_rows_from_page():
+    """ONE-TIME MIGRATION (2026-08-08). The sidecars did not exist before
+    this restructure, so on an existing scene the FIRST partial run would
+    rebuild a page with only the ids it processed — the very failure this
+    change is meant to kill. Split the cone_map.html already on disk into
+    its <section> blocks and write any MISSING sidecar. Purely additive:
+    an existing sidecar is never overwritten, and no page just means
+    there is nothing to recover. Scene-agnostic (no id lists, no labels)
+    and self-retiring — once every row has a sidecar it does nothing."""
+    page = sd / "cone_map.html"
+    if not page.exists():
+        return 0
+    try:
+        txt = page.read_text(encoding="utf-8")
+    except OSError as e:                                     # noqa: BLE001
+        print(f"[carve] row backfill: cone_map.html unreadable ({e})",
+              flush=True)
+        return 0
+    n = 0
+    for m in re.finditer(r"<section>.*?</section>", txt, re.S):
+        sec = m.group(0)
+        h2 = re.search(r"<h2>\s*([^\s<]+)", sec)
+        if not h2:
+            continue
+        kind = ("exempt" if "carve-exempt, perp re-box" in sec else "carve")
+        p = _row_path(h2.group(1), kind)
+        if p.exists():
+            continue
+        # the leading newline reproduces the fragment save_row writes
+        p.write_text("\n" + sec, encoding="utf-8")
+        n += 1
+    if n:
+        print(f"[carve] row backfill: recovered {n} cone-map row(s) from "
+              "the existing cone_map.html", flush=True)
+    return n
+
+
+backfill_rows_from_page()
 
 
 def add_exempt(nid, name, lo0, hi0, status, kept, extra=None,
@@ -839,6 +1045,7 @@ for n in nodes:
     corners = np.array([[x, y, z] for x in (lo0[0], hi0[0])
                         for y in (lo0[1], hi0[1]) for z in (lo0[2], hi0[2])])
     print(f"[carve] {nid} {name}", flush=True)
+    clear_rows(nid)     # this run owns this id's cone-map row from here
 
     # CEILING EXEMPTION (user ruling 2026-08-06 after R-S2-27): a flat
     # ceiling-mounted object has no side silhouette for the cardinals,
@@ -1558,7 +1765,7 @@ for n in nodes:
             strip += (f"<figure><img src='pool_retake/slices/{src}' "
                       f"loading='lazy'><figcaption>{vn} "
                       f"\u00b7 {i.get('why', '?')}</figcaption></figure>")
-    rows_html.append(f"""
+    save_row(nid, "carve", f"""
 <section>
 <h2>{nid} \u2014 {name}</h2>
 <p>{' &nbsp;\u00b7&nbsp; '.join(stats)}</p>
@@ -1566,55 +1773,99 @@ for n in nodes:
 <div class='strip'>{strip}</div>
 </section>""")
 
-html = f"""<!doctype html><meta charset='utf-8'>
-<title>v3 slice+vote \u2014 {SCENE}</title>
-<style>
-body{{font-family:system-ui,sans-serif;margin:24px;background:#fafafa}}
-h1{{font-size:20px}} h2{{font-size:16px;margin:28px 0 4px}}
-img.big{{max-width:100%;border:1px solid #ccc;background:#fff}}
-.strip{{display:flex;gap:8px;overflow-x:auto;margin-top:8px}}
-.strip figure{{margin:0;flex:0 0 auto}}
-.strip img{{height:190px;border:1px solid #ccc}}
-.strip figcaption{{font-size:11px;max-width:200px}}
-p{{font-size:13px}}
-</style>
-<h1>v3 slice + vote \u2014 {SCENE}</h1>
-<p>DESIGN (updated 2026-08-06b): slice = top-box vertical prism (capped
-margin; fallback = original-box wedge) \u2192 each card rendered by the
-real WSL renderer as the FULL SCENE minus a VIEW TUNNEL (occluders
-inside the camera cone and nearer than the slice are culled; side and
-background context intact; re-detect gated to the slice's screen
-footprint) \u2192 detector+SAM per render \u2192 6-voter election. Boxes: gray
-dashed = original, red = all cardinals agree, orange = the vote gate,
-cyan = pano-filtered. Ceiling-mounted, wall-protruding (touches a wall
-plane and protrudes ≤ 0.20 m into the room) and floor-flush objects
-are CARVE-EXEMPT (geometric tests) and keep their resolved box; a
-carved box growing past the outlier guard (8x original volume) also
-falls back to the original (kept_outlier), with the vote box recorded
-as doubt. Every SHIPPING box is finally clipped to the measured shell
-interior (strictly external volume booleaned out); the boxes drawn
-here are the unclipped evidence.</p>
-{("<p><b>carve-exempt (resolved box kept):</b> "
-  + ", ".join(f"{k['id']} {k['name']} [{k['status']}]"
-              for k in kept_exempt) + "</p>")
- if kept_exempt else ""}
-{("<p>WALL / CEILING exempt objects additionally get a PERP RE-BOX (user "
-  "design 2026-08-07): one face-on view-tunnel render perpendicular to "
-  "their own plane, detector+SAM, and the mask's claimed slab dots set "
-  "the two IN-PLANE extents (the normal axis is untouched — a face-on "
-  "view cannot see depth). Guards: a candidate whose in-plane center "
-  f"moves &gt; {PERP_MAX_SHIFT:.1f} m or whose extent changes by more "
-  f"than {PERP_MAX_RATIO:.0f}x is recorded and REJECTED, original ships. "
-  "Their rows are below.</p>" + ''.join(exempt_rows_html))
- if exempt_rows_html else ""}
-{''.join(rows_html)}
-"""
-(sd / "cone_map.html").write_text(html, encoding="utf-8")
-(rdir / "conemap.json").write_text(
-    json.dumps({"scene": SCENE, "objects": cm_objects}), encoding="utf-8")
+# ===================== MERGE ON WRITE + PROVENANCE ====================
+# (partial-runs-first restructure, user order 2026-08-08). A run that
+# processed a SUBSET must repair the whole-scene documents, not replace
+# them: load what is on disk, swap in only the ids this run produced,
+# keep everyone else VERBATIM, emit in RESOLVED-NODE ORDER. Provenance
+# stamps are what make that honest — every entry says which build and
+# which constants made it, and the header says out loud when they differ.
+PROCESSED_SET = set(PROCESSED_IDS)
+
+
+def _load_list(path, listkey):
+    """Existing document's entry list, or [] with a spoken reason."""
+    if not path.exists():
+        print(f"[carve] merge: {path.name} absent — writing THIS RUN'S "
+              "entries only", flush=True)
+        return []
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        lst = doc.get(listkey)
+        if not isinstance(lst, list):
+            raise ValueError(f"no '{listkey}' list")
+        return lst
+    except Exception as e:                                   # noqa: BLE001
+        print(f"[carve] merge: {path.name} corrupt/unreadable ({e}) — "
+              "writing THIS RUN'S entries only", flush=True)
+        return []
+
+
+def merge_entries(path, listkey, run_entries):
+    """Replace only this run's ids, drop nothing else, order by node."""
+    old = _load_list(path, listkey)
+    fresh = {o["id"]: o for o in run_entries}
+    merged = {}
+    for o in old:
+        oid = o.get("id")
+        # a PROCESSED id is this run's to say — its old entry goes even
+        # when the run produced none for THIS document (an object that
+        # turned carve-exempt has no conemap entry any more)
+        if oid is None or oid in PROCESSED_SET:
+            continue
+        merged[oid] = o
+    merged.update(fresh)
+    out = sorted(merged.values(),
+                 key=lambda o: (ALL_RANK.get(o["id"], len(ALL_IDS)),
+                                o["id"]))
+    print(f"[carve] merge {path.name}: {len(fresh)} from this run + "
+          f"{len(out) - len(fresh)} kept verbatim = {len(out)} entries",
+          flush=True)
+    return out
+
+
+def prov_stats(entries):
+    """(mixed?, {source_sha: [ids]}) over a merged entry list. An entry
+    with no stamp counts as its own provenance ('unstamped') — a
+    pre-provenance document mixed with fresh entries IS mixed."""
+    summ, phs = {}, set()
+    for o in entries:
+        p = o.get("prov") if isinstance(o.get("prov"), dict) else {}
+        summ.setdefault(p.get("source_sha") or "unstamped",
+                        []).append(o["id"])
+        phs.add(p.get("params_hash") or "unstamped")
+    return (len(summ) > 1 or len(phs) > 1), summ
+
+
+def prov_header(entries):
+    """The document header's provenance block. STATUS SEMANTICS: the
+    status string stays 'UNTESTED-PREVIEW'; canon_eligible is the
+    machine-readable "one build, whole scene" test — a partial OR mixed
+    document is explicitly NOT canon."""
+    mixed, summ = prov_stats(entries)
+    return {"run_kind": RUN_KIND, "run_id": RUN_ID, "run_at": RUN_AT,
+            "run_ids": list(PROCESSED_IDS),
+            "params_hash": PARAMS_HASH, "source_sha": SOURCE_SHA,
+            "mixed_provenance": mixed, "provenance_summary": summ,
+            "canon_eligible": (RUN_KIND == "full" and not mixed)}
+
+
+# ---- stamp everything this run produced -----------------------------
+for _o in cm_objects:
+    _o["prov"] = dict(PROV)
+for _kc in kept_exempt:
+    _kc["prov"] = dict(PROV)
+
+# ---- conemap.json (carved objects only) ------------------------------
+# written BEFORE the shell clip below, exactly as before: the cone-map
+# layer carries the unclipped evidence boxes.
+cm_path = rdir / "conemap.json"
+cm_merged = merge_entries(cm_path, "objects", cm_objects)
+cm_path.write_text(json.dumps({"scene": SCENE, **prov_header(cm_merged),
+                               "objects": cm_merged}), encoding="utf-8")
 
 # ---- PREVIEW manifest + report (⚠ UNTESTED promotion) ----
-objs, by_status = [], {}
+objs = []
 for o in cm_objects:
     if o["rule"].get("outlier"):
         box, status = o["boxes"]["original"], "kept_outlier"
@@ -1623,7 +1874,6 @@ for o in cm_objects:
                or o["boxes"]["original"])
         status = ("carved_pano" if o["boxes"].get("pano")
                   else ("carved" if o["boxes"].get("vote2") else "kept"))
-    by_status[status] = by_status.get(status, 0) + 1
     # SHELL CLIP (step 6): only the box that SHIPS is clipped — the
     # original/vote2/pano boxes above stay recorded unclipped (evidence)
     ship = ship_box(box["lo"], box["hi"], o["rule"])
@@ -1640,9 +1890,9 @@ for o in cm_objects:
                  "center": [round((x + y) / 2, 4)
                             for x, y in zip(lo, hi)],
                  "size": [round(y - x, 4) for x, y in zip(lo, hi)],
-                 "n_detections": 1, "views": [], "flags": flags})
+                 "n_detections": 1, "views": [], "flags": flags,
+                 "prov": dict(PROV)})
 for kc in kept_exempt:
-    by_status[kc["status"]] = by_status.get(kc["status"], 0) + 1
     b = kc["boxes"].get("shipping") or kc["boxes"]["original"]
     lo, hi = b["lo"], b["hi"]
     objs.append({"id": kc["id"],
@@ -1652,8 +1902,16 @@ for kc in kept_exempt:
                             for x, y in zip(lo, hi)],
                  "size": [round(y - x, 4) for x, y in zip(lo, hi)],
                  "n_detections": 1, "views": [],
-                 "flags": [kc["status"], kc["rule"]["kept"]]})
-(sd / "scene_manifest_slicevote_preview.json").write_text(json.dumps(
+                 "flags": [kc["status"], kc["rule"]["kept"]],
+                 "prov": dict(PROV)})
+man_path = sd / "scene_manifest_slicevote_preview.json"
+man_objs = merge_entries(man_path, "objects", objs)
+# by_status now describes the MERGED document, not just this run
+by_status = {}
+for _mo in man_objs:
+    _s = (_mo.get("flags") or ["?"])[0]
+    by_status[_s] = by_status.get(_s, 0) + 1
+man_path.write_text(json.dumps(
     {"scene": SCENE, "status": "UNTESTED-PREVIEW",
      "source": "carve_slicevote.py — slice-vote carve (top-box prism / "
                "wedge fallback; view-tunnel context cards; 6-voter "
@@ -1665,26 +1923,96 @@ for kc in kept_exempt:
                f"{OUTLIER_K:.0f}x = kept_outlier; every shipped box "
                "clipped to the measured shell interior). "
                "Preview only; not on the pipeline map.",
+     **prov_header(man_objs),
      "frame": {"space": "raw", "up": [0.0, -1.0, 0.0]},
-     "n_objects": len(objs), "objects": objs}, indent=2))
-(rdir / "slicevote_report.json").write_text(json.dumps(
+     "n_objects": len(man_objs), "objects": man_objs}, indent=2))
+
+rep_path = rdir / "slicevote_report.json"
+results = merge_entries(rep_path, "results",
+                        [{k: o[k] for k in ("id", "name", "nviews_vote",
+                                            "boxes", "rule", "prov")}
+                         for o in cm_objects] + kept_exempt)
+rep_path.write_text(json.dumps(
     {"scene": SCENE, "stage": "carve_slicevote",
      "status": "UNTESTED-PREVIEW", "gate": a.gate,
-     "params": {"DET_THR": DET_THR, "PAD": PAD, "CAP_M": CAP_M,
-                "FOV_GOOD": FOV_GOOD, "OFF_AXIS": OFF_AXIS,
-                "DIL_ISO": DIL_ISO, "OUTLIER_K": OUTLIER_K,
-                "SHELL_EPS": SHELL_EPS, "WALL_TOUCH": WALL_TOUCH,
-                "WALL_PROTRUDE_MAX": WALL_PROTRUDE_MAX,
-                "MIN_SLAB": MIN_SLAB,
-                "PERP_GROW": PERP_GROW, "PERP_SLAB_PAD": PERP_SLAB_PAD,
-                "PERP_MIN_CLAIM": PERP_MIN_CLAIM,
-                "PERP_MAX_SHIFT": PERP_MAX_SHIFT,
-                "PERP_MAX_RATIO": PERP_MAX_RATIO,
-                "PERP_MARGIN": PERP_MARGIN},
+     **prov_header(results),
+     "params": dict(PARAMS, FOV_GOOD=FOV_GOOD, OFF_AXIS=OFF_AXIS),
      "by_status": by_status,
-     "results": [{k: o[k] for k in ("id", "name", "nviews_vote",
-                                    "boxes", "rule")}
-                 for o in cm_objects] + kept_exempt}, indent=1))
-print(f"[carve] statuses {by_status}; wrote cone_map.html + conemap.json "
-      f"+ scene_manifest_slicevote_preview.json + slicevote_report.json "
-      f"(⚠ UNTESTED-PREVIEW)", flush=True)
+     "results": results}, indent=1))
+
+# ---- cone_map.html: COMPLETE under partial runs ----------------------
+# rows come from the per-object sidecars, read for ALL resolved ids in
+# node order — this run's were just rewritten, everyone else's are the
+# ones on disk (whose pictures the scoped wipe deliberately spared).
+exempt_frag = "".join(read_row(_i, "exempt") for _i in ALL_IDS)
+carve_frag = "".join(read_row(_i, "carve") for _i in ALL_IDS)
+exempt_list = [e for e in results
+               if isinstance(e.get("rule"), dict) and "kept" in e["rule"]]
+_mixed, _summ = prov_stats(results)
+_others = {s: len(v) for s, v in _summ.items() if s != SOURCE_SHA}
+# STALE = BADGED, NEVER HIDDEN (project convention): a mixed page shows
+# every row and says in one line how many came from an older build.
+prov_banner = ("" if not _mixed else
+               "<p style='background:#fff4d6;border:1px solid #d9a900;"
+               "padding:8px 10px;font-size:13px'><b>&#9888; MIXED "
+               f"PROVENANCE</b> &mdash; {sum(_others.values())} of "
+               f"{len(results)} objects on this page were produced by an "
+               "EARLIER build ("
+               + "; ".join(f"source_sha {s}: {n}"
+                           for s, n in sorted(_others.items()))
+               + f"); {len(_summ.get(SOURCE_SHA, []))} came from this "
+               f"{RUN_KIND} run {RUN_ID} (source_sha {SOURCE_SHA}, "
+               f"params_hash {PARAMS_HASH}). Nothing is hidden &mdash; "
+               "re-run the full carve to make this page canon.</p>")
+
+html = f"""<!doctype html><meta charset='utf-8'>
+<title>v3 slice+vote \u2014 {SCENE}</title>
+<style>
+body{{font-family:system-ui,sans-serif;margin:24px;background:#fafafa}}
+h1{{font-size:20px}} h2{{font-size:16px;margin:28px 0 4px}}
+img.big{{max-width:100%;border:1px solid #ccc;background:#fff}}
+.strip{{display:flex;gap:8px;overflow-x:auto;margin-top:8px}}
+.strip figure{{margin:0;flex:0 0 auto}}
+.strip img{{height:190px;border:1px solid #ccc}}
+.strip figcaption{{font-size:11px;max-width:200px}}
+p{{font-size:13px}}
+</style>
+<h1>v3 slice + vote \u2014 {SCENE}</h1>
+{prov_banner}
+<p>DESIGN (updated 2026-08-06b): slice = top-box vertical prism (capped
+margin; fallback = original-box wedge) \u2192 each card rendered by the
+real WSL renderer as the FULL SCENE minus a VIEW TUNNEL (occluders
+inside the camera cone and nearer than the slice are culled; side and
+background context intact; re-detect gated to the slice's screen
+footprint) \u2192 detector+SAM per render \u2192 6-voter election. Boxes: gray
+dashed = original, red = all cardinals agree, orange = the vote gate,
+cyan = pano-filtered. Ceiling-mounted, wall-protruding (touches a wall
+plane and protrudes ≤ 0.20 m into the room) and floor-flush objects
+are CARVE-EXEMPT (geometric tests) and keep their resolved box; a
+carved box growing past the outlier guard (8x original volume) also
+falls back to the original (kept_outlier), with the vote box recorded
+as doubt. Every SHIPPING box is finally clipped to the measured shell
+interior (strictly external volume booleaned out); the boxes drawn
+here are the unclipped evidence.</p>
+{("<p><b>carve-exempt (resolved box kept):</b> "
+  + ", ".join(f"{e['id']} {e['name']} [{e['status']}]"
+              for e in exempt_list) + "</p>")
+ if exempt_list else ""}
+{("<p>WALL / CEILING exempt objects additionally get a PERP RE-BOX (user "
+  "design 2026-08-07): one face-on view-tunnel render perpendicular to "
+  "their own plane, detector+SAM, and the mask's claimed slab dots set "
+  "the two IN-PLANE extents (the normal axis is untouched — a face-on "
+  "view cannot see depth). Guards: a candidate whose in-plane center "
+  f"moves &gt; {PERP_MAX_SHIFT:.1f} m or whose extent changes by more "
+  f"than {PERP_MAX_RATIO:.0f}x is recorded and REJECTED, original ships. "
+  "Their rows are below.</p>" + exempt_frag)
+ if exempt_frag else ""}
+{carve_frag}
+"""
+(sd / "cone_map.html").write_text(html, encoding="utf-8")
+_hdr = prov_header(results)
+print(f"[carve] statuses {by_status}; run_kind={RUN_KIND} "
+      f"mixed_provenance={_hdr['mixed_provenance']} "
+      f"canon_eligible={_hdr['canon_eligible']}; wrote cone_map.html "
+      f"+ conemap.json + scene_manifest_slicevote_preview.json "
+      f"+ slicevote_report.json (⚠ UNTESTED-PREVIEW)", flush=True)
