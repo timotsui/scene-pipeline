@@ -1674,11 +1674,18 @@ def main():
 
     sheets_dir = sd / "graph" / "multiplicity_sheets"
     sheets_dir.mkdir(parents=True, exist_ok=True)
-    # the v2.1 sheet form supersedes the v2 sheets: wipe, don't mix
+    # Wipe only what THIS run rebuilds (2026-08-08): an --only run used to
+    # wipe every sheet and then write a sidecar holding just its own
+    # case(s), silently destroying the rest of the docket — the same
+    # clobber bug the carve had before merge-on-write. A full run still
+    # clears everything (the v2.1 sheet form must not mix with older).
+    _keep_ids = set(docket) if a.only else None
     for old in list(sheets_dir.glob("*.png")) + \
             list(sheets_dir.glob("*.html")) + \
             list(sheets_dir.glob("*_prompt.txt")):
-        old.unlink()
+        if _keep_ids is None or any(old.name.startswith(i)
+                                    for i in _keep_ids):
+            old.unlink()
 
     notes, cases = [], []
     for nid, cn in sorted(docket.items()):
@@ -1824,6 +1831,23 @@ def main():
     cache_f.write_text(json.dumps(cache, indent=1))
 
     out_f = sd / "graph" / "multiplicity.json"
+    fresh = [{k: v for k, v in c.items() if k not in ("prompt", "cm", "geo")}
+             for c in results]
+    # MERGE-ON-WRITE (2026-08-08, same rule as the carve): an --only run
+    # REPAIRS its cases and keeps every other case on disk verbatim, so
+    # debugging one node can never destroy the rest of the docket.
+    if a.only and out_f.exists():
+        try:
+            prev = json.loads(out_f.read_text(encoding="utf-8"))
+            done = {c["id"] for c in fresh}
+            kept = [c for c in prev.get("cases", [])
+                    if c.get("id") not in done]
+            print(f"[multiplicity] merge: {len(fresh)} from this run + "
+                  f"{len(kept)} kept verbatim")
+            fresh = sorted(fresh + kept, key=lambda c: c.get("id", ""))
+        except Exception as e:                        # noqa: BLE001
+            print(f"[multiplicity] previous sidecar unreadable ({e}) — "
+                  "writing THIS RUN'S cases only", flush=True)
     out_f.write_text(json.dumps({
         "scene": a.scene, "built": date.today().isoformat(),
         "source": "graph/judge_multiplicity.py (J8) — verdicts REFERENCE "
@@ -1835,9 +1859,7 @@ def main():
                   "ship_vote/either enum. `candidates` is recorded per case "
                   "for audit; materialize resolves the named box from the "
                   "CARVE's own records, never from this file.",
-        "cases": [{k: v for k, v in c.items()
-                   if k not in ("prompt", "cm", "geo")}
-                  for c in results]}, indent=1))
+        "cases": fresh}, indent=1))
     for c in results:
         v = c["verdict"]
         extra = (f"ship={v['ship']}" if v.get("ship")
