@@ -648,6 +648,40 @@ try {
       redraw();   // placement legality depends on visible sources
     };
     boxSrcs.push({ s, group, entries, cb });
+    // ---- dropped ledger (materialized layer) ----------------------------
+    // Boxes the layer's pass REMOVED (merged away / split-replaced /
+    // discarded side). They do not ship, so they are never part of the
+    // layer itself — drawing them alongside shipping boxes reads as stale
+    // (user ruling 08-08). Own default-off toggle, ghost style (dimmed
+    // color, no text label), and kept OUT of boxSrcs so picking and the
+    // placement legality check ignore them entirely.
+    const drops = (data.dropped || []).filter(d => d.aabb_min && d.aabb_max);
+    if (drops.length) {
+      const dgroup = new THREE.Group();
+      dgroup.visible = false;
+      worldGroup.add(dgroup);
+      const dcol = new THREE.Color(col).multiplyScalar(0.55).getHex();
+      for (const d of drops) {
+        const [c, sz] = objCS(d);
+        if (!c || !sz) continue;
+        const grp = objBox(c, sz, 0, dcol);
+        grp.userData.edges.material.opacity = 0.5;
+        dgroup.add(grp);
+      }
+      const dlab = document.createElement('label');
+      dlab.style.color = s.color;
+      dlab.style.opacity = '0.65';
+      dlab.style.marginRight = '8px';
+      dlab.title = 'ghost outlines of the boxes this pass DROPPED — NOT '
+          + 'part of the shipping set:\n'
+          + drops.map(d => d.label + ' — ' + (d.why || '')).join('\n');
+      const dcb = document.createElement('input');
+      dcb.type = 'checkbox';
+      dlab.appendChild(dcb);
+      dlab.append(' ↳ dropped (' + drops.length + ')');
+      dcb.onchange = ev => { dgroup.visible = ev.target.checked; };
+      if (srcHost) srcHost.appendChild(dlab);
+    }
   }
 } catch (e) {
   console.warn('no box sources', e);
@@ -2760,6 +2794,44 @@ function applySelection() {
 }
 
 function row(k, v) { return '<tr><td>' + k + '</td><td>' + v + '</td></tr>'; }
+// extra card rows for the MATERIALIZED layer (scene_graph.json['carved'],
+// Phase C): the rule trail that produced this box, the identity moves
+// (merge / split / same-product), and — the point of the layer — the
+// conflicts and open questions still filed against it. Guarded on
+// mat_rules, so every other box source's card is byte-identical.
+function matRows(o) {
+  if (!o.mat_rules) return '';
+  const mEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let h = row('rules', o.mat_rules.map(r => mEsc(cvTerm(r))).join(' → '));
+  if (o.split_from) h += row('split from', mEsc(o.split_from));
+  if ((o.merged_from || []).length)
+    h += row('merged in', o.merged_from.map(mEsc).join(', ')
+             + ' <span class="dim">(identity only — box NOT unioned)</span>');
+  if (o.product_group)
+    h += row('same product', mEsc(o.product_group)
+             + (o.canonical_size
+                 ? ' <span class="dim">· canonical '
+                   + o.canonical_size.map(fmt).join(' × ')
+                   + ' m (annotation, no resize)</span>' : ''));
+  for (const c of o.conflicts || [])
+    h += row('<b style="color:#ff6b6b">⚠ CONFLICT</b>',
+        '<b style="color:#ff6b6b">' + mEsc(c.why) + '</b>'
+        + [c.claim_a, c.claim_b].filter(Boolean).map((cl, i) =>
+            '<div class="dim">' + (i ? 'B' : 'A') + ' ' + mEsc(cl.rule)
+            + ': ' + mEsc(cl.claim)
+            + (cl.confidence != null ? ' (conf ' + cl.confidence + ')' : '')
+            + (cl.reason ? ' — ' + mEsc(cl.reason) : '') + '</div>').join('')
+        + (c.applied ? '<div class="dim">applied: ' + mEsc(c.applied)
+                       + '</div>' : ''));
+  for (const q of o.open_questions || [])
+    h += row('<span style="color:#ffb74d">open ?</span>',
+        '<span style="color:#ffb74d">' + mEsc(q.kind) + '</span> — '
+        + mEsc(cvTerm(q.text))
+        + (q.confidence != null ? ' <span class="dim">(conf ' + q.confidence
+                                  + ')</span>' : ''));
+  return h;
+}
 function showManInfo(o, src) {
   // works for every method schema: manifest-style (aabb + score/views/
   // n_detections/flags) and analyzer bridged (center/size + frames evidence)
@@ -2780,6 +2852,7 @@ function showManInfo(o, src) {
         : '')
     + (o.frames ? row('evidence', o.frames.length + ' frames') : '')
     + ((o.flags || []).length ? row('flags', cvTerm(o.flags.join(', '))) : '')
+    + matRows(o)
     + (e ? row('env here', (e.floor ? 'floor ✓' : 'NO floor') + ', clear ' +
                fmt(e.clear) + ' m' + (e.dev !== null ? ', floor dev ' +
                (e.dev >= 0 ? '+' : '') + fmt(e.dev) + ' m' : '')) : '')

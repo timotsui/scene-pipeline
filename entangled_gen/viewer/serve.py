@@ -43,7 +43,7 @@ def box_sources(sc):
     # the user eyeball — RULED same day, prior promoted, entries removed.)
     # 2026-08-06 TEMPORARY streak-surgery previews (R-S2-22 gate): remove
     # both when ruled.
-    return [
+    srcs = [
         ("slicevote", "slice-vote carve · run 10 (BOX CANON)", "current",
          sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
          "Slice-vote carve RUN 10 (2026-08-07 late; user-PASSED "
@@ -78,8 +78,13 @@ def box_sources(sc):
         # judge_preview: COMPOSED server-side (judge_preview() below), not
         # a file — the path here is its base input, used for the exists()
         # gate; /boxes.json special-cases the key.
-        ("judge_preview", "judge preview · J8/J8s (display only)", "current",
+        ("judge_preview", "judge preview · J8/J8s (SUPERSEDED)", "current",
          sd / "scene_manifest_slicevote_preview.json", "#b388ff",
+         "SUPERSEDED 2026-08-08 by the 'materialized' layer (amber): this "
+         "was the hand-composed PREVIEW of what materialize would do; the "
+         "real Phase C output now exists in scene_graph.json['carved'] and "
+         "is served as src=materialized. Kept as-is (behaviour unchanged) "
+         "for side-by-side comparison of preview vs actual. — "
          "judge preview: J8 box rulings + J8s split pieces + coverage "
          "drops (NOT materialized — display only). Per object the box "
          "the judges would ship: shipping box by default; J8 ONE_BOX "
@@ -93,6 +98,36 @@ def box_sources(sc):
          "pool_retake/slicevote_report.json; missing side files degrade "
          "to the plain shipping boxes"),
     ]
+    # materialized: COMPOSED server-side (materialized() below) from
+    # scene_graph.json['carved'] — /boxes.json special-cases the key. The
+    # entry only appears when that additive block exists (other scenes:
+    # no entry, and the route 404s), and its note carries THIS scene's
+    # real counts rather than a hard-coded summary.
+    cv = carved_layer(sc)
+    if cv is not None:
+        n = cv.get("counts") or {}
+        srcs.append((
+            "materialized", "materialized · graph.carved (Phase C trial)",
+            "current", sd / "scene_graph.json", "#ffb300",
+            "THE MATERIALIZE OUTPUT (graph/materialize_carve.py, Phase C) "
+            "drawn verbatim — status " + str(cv.get("status") or "?")
+            + ": an ADDITIVE block in scene_graph.json, NOT promoted to "
+            "canon (record/judged/resolved/carve/carved_edges untouched; "
+            "the box canon is still the slice-vote carve layer). Boxes are "
+            "COPIES, never recomputed: carve shipping box -> J8 box ruling "
+            "-> J8s split pieces -> J1 SAME merges -> J9 same-product "
+            "annotation (no resize) -> unclear ships unchanged. This "
+            "scene: " + f"{n.get('resolved_in', '?')} resolved in -> "
+            f"{n.get('nodes_out', '?')} boxes out, {n.get('dropped', 0)} "
+            f"dropped (own ↳ toggle, ghost outlines — NOT shipping), "
+            f"{n.get('j8s_pieces_made', 0)} split piece(s), "
+            f"{n.get('j1_merged_away', 0)} merged away, "
+            f"{n.get('j9_annotated', 0)} same-product annotations, "
+            f"{n.get('conflicts', 0)} conflict(s), "
+            f"{n.get('open_questions', 0)} open question(s) on "
+            f"{n.get('nodes_with_open_doubts', 0)} node(s) — click a box "
+            "to read them"))
+    return srcs
     #     # ---- current: the pano-track funnel, upstream -> downstream ----
     #     # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->
     #     # stage 3 = geometry dedup + GRAPH RECORD (the "graph record"
@@ -277,6 +312,165 @@ def judge_preview(sc):
                       "scene_graph.json carved_edges (J1 SAME merges)",
             "frame": man.get("frame"),
             "not_shipping": not_shipping,
+            "n_objects": len(out),
+            "objects": out}
+
+
+# ---- materialized layer (Phase C) -------------------------------------
+# scene_graph.json's ADDITIVE `carved` block (graph/materialize_carve.py):
+# the first real materialize output. The judge_preview layer above was the
+# hand-composed preview of exactly this; this layer supersedes it.
+_carved_cache = {}   # scene -> (scene_graph.json mtime, carved dict or None)
+
+
+def carved_layer(sc):
+    """Read scene_graph.json['carved'] (or None when the scene has no
+    graph / no carved block / an unreadable one). mtime-cached because
+    both the registry gate (box_sources) and the box composer
+    (materialized) need the same 0.5 MB parse."""
+    p = paths.scene_dir(sc) / "scene_graph.json"
+    try:
+        mt = p.stat().st_mtime
+    except OSError:
+        return None
+    ent = _carved_cache.get(sc)
+    if ent and ent[0] == mt:
+        return ent[1]
+    try:
+        # explicit utf-8: the judges' notes carry em-dashes, and read_text()
+        # would otherwise decode them through the Windows locale codepage
+        cv = json.loads(p.read_text(encoding="utf-8")).get("carved")
+    except Exception:
+        cv = None
+    if not isinstance(cv, dict) or not cv.get("nodes"):
+        cv = None
+    _carved_cache[sc] = (mt, cv)
+    return cv
+
+
+# rules that only restate where the box CAME from (no edit of its own):
+# skipped when picking the box label's tag, still listed in flags.
+MAT_BASE_RULES = ("geometry_base_carved", "geometry_base_resolved_fallback",
+                  "inherited_from_parent")
+
+
+def _mat_tag(rule, pv, node):
+    """Short label tag for the highest-precedence rule that fired on a
+    node — what materialize DID to this box, readable in the 3D view
+    without opening the card (sprites clip ~10 chars, so keep it short)."""
+    if rule == "j8s_split_piece":
+        return "split piece"
+    if rule == "j1_same_merge_survivor":
+        got = pv.get("merged_from") or node.get("merged_from") or []
+        return ("merged " + "+".join(got)) if got else "merged"
+    if rule == "j9_same_product_annotation":
+        g = pv.get("product_group") or node.get("product_group") or ""
+        return ("same-product " + (g.split("_")[0] or g)) if g \
+            else "same-product"
+    return {"j8_box_swapped": "J8 vote box",
+            "j8_box_ruling_noop": "J8 noop",
+            "j8_ruling_not_applicable": "J8 n/a",
+            "j8_unclear_ship_unchanged": "J8 unclear",
+            "j8s_piece_owned_by_existing": "piece->existing"}.get(rule, rule)
+
+
+def _mat_box(g):
+    """center/size from a carved geometry block (both are recorded; this
+    only fills them in if an older record left them out). Returns None
+    when there is no box to draw."""
+    lo, hi = (g or {}).get("aabb_min"), (g or {}).get("aabb_max")
+    if not lo or not hi:
+        return None
+    return {"aabb_min": list(lo), "aabb_max": list(hi),
+            "center": list(g.get("center")
+                           or [(lo[i] + hi[i]) / 2 for i in range(3)]),
+            "size": list(g.get("size")
+                         or [hi[i] - lo[i] for i in range(3)])}
+
+
+def materialized(sc):
+    """Compose the MATERIALIZED box layer: the carved block's nodes drawn
+    VERBATIM (geometry copied, nothing recomputed here either), each box
+    carrying its provenance rule trail plus any conflict / open question
+    filed against it — seeing which boxes still carry unresolved
+    questions is this layer's whole point.
+
+    DROPPED nodes (merged away / split-replaced / discarded side) are NOT
+    in `objects`: they do not ship, and drawing them as normal boxes
+    would read as stale (user ruling 2026-08-08). They ride in a separate
+    `dropped` list with their former geometry + why, which the client
+    renders behind its own default-off ghost toggle.
+
+    Returns None when the scene has no carved block (route 404s)."""
+    cv = carved_layer(sc)
+    if cv is None:
+        return None
+    confl, opens = {}, {}
+    for c in cv.get("conflicts") or []:
+        confl.setdefault(c.get("node"), []).append(c)
+    for q in cv.get("open_questions") or []:
+        opens.setdefault(q.get("node"), []).append(q)
+
+    out = []
+    for n in cv.get("nodes") or []:
+        box = _mat_box(n.get("geometry"))
+        if box is None:
+            continue          # nothing to draw (counts still report it)
+        nid = n.get("id")
+        prov = n.get("provenance") or []
+        rules = [p.get("rule") for p in prov if p.get("rule")]
+        tag = ""
+        for p in reversed(prov):
+            if p.get("rule") and p["rule"] not in MAT_BASE_RULES:
+                tag = _mat_tag(p["rule"], p, n)
+                break
+        cf, oq = confl.get(nid) or [], opens.get(nid) or []
+        flags = list(rules)                    # the card shows these
+        if cf:
+            flags.append("CONFLICT")
+        if oq:
+            flags.append("open_question")
+        name = n.get("name") or ""
+        out.append({
+            "id": nid,
+            "label": f"{nid} {tag}" if tag else f"{nid} {name}",
+            "name": name,
+            "mat_tag": tag,
+            "mat_rules": rules,
+            "provenance": prov,
+            "members": n.get("members") or [],
+            "mat_from": n.get("from"),
+            "split_from": n.get("split_from"),
+            "merged_from": n.get("merged_from") or [],
+            "product_group": n.get("product_group"),
+            "canonical_size": n.get("canonical_size"),
+            "conflicts": cf,
+            "open_questions": oq,
+            "flags": flags,
+            **box})
+
+    dropped = []
+    for d in cv.get("dropped") or []:
+        e = {k: v for k, v in d.items() if k != "geometry_was"}
+        e["label"] = f"{d.get('id')} {d.get('rule') or 'dropped'}"
+        box = _mat_box(d.get("geometry_was"))
+        if box:
+            e.update(box)
+        dropped.append(e)
+
+    return {"scene": sc,
+            "status": cv.get("status") or "UNTESTED-TRIAL",
+            "source": "viewer/serve.py materialized(): scene_graph.json "
+                      "['carved'] verbatim (graph/materialize_carve.py, "
+                      "Phase C) — RAW frame, like every other box layer",
+            "built": cv.get("built"),
+            "built_from": cv.get("built_from"),
+            "note": cv.get("note"),
+            "precedence": cv.get("precedence") or [],
+            "counts": cv.get("counts") or {},
+            "conflicts": cv.get("conflicts") or [],
+            "open_questions": cv.get("open_questions") or [],
+            "dropped": dropped,
             "n_objects": len(out),
             "objects": out}
 
@@ -469,6 +663,17 @@ class H(BaseHTTPRequestHandler):
                                       "application/json")
                 return self._send(404, b"no scene_manifest_slicevote_"
                                        b"preview.json for this scene")
+            if src == "materialized":
+                # COMPOSED layer (materialized()), not a file on disk:
+                # scene_graph.json's additive 'carved' block (Phase C)
+                data = materialized(sc)
+                if data is not None:
+                    return self._send(200, json.dumps(data).encode(),
+                                      "application/json")
+                return self._send(404, b"no scene_graph.json['carved'] for "
+                                       b"this scene; run graph/"
+                                       b"materialize_carve.py --scene "
+                                       + sc.encode())
             f = next((f for k, _, _, f, _, _ in box_sources(sc) if k == src), None)
             if f is not None and f.exists():
                 self._send(200, f.read_bytes(), "application/json")
