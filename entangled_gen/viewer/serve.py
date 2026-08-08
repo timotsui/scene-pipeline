@@ -161,7 +161,9 @@ def judge_preview(sc):
     the manifest's shipping boxes edited per the J8 multiplicity verdicts
     (graph/multiplicity.json) and the J8s split executions
     (graph/split_cuts.json), vote2 boxes from pool_retake/
-    slicevote_report.json. Materialize (Phase C) stays the only editor —
+    slicevote_report.json, plus the J1 SAME merges from
+    scene_graph.json carved_edges (duplicate pairs: the smaller box is
+    tagged merged into its survivor, geometry unchanged). Materialize (Phase C) stays the only editor —
     this just previews what it would do. Every side file is optional
     (other scenes): absent ones simply leave boxes unchanged. Returns a
     manifest-style dict, or None when the base manifest is missing."""
@@ -186,6 +188,30 @@ def judge_preview(sc):
     splits = {c["id"]: c
               for c in load(sd / "graph" / "split_cuts.json", "cases")
               if c.get("id")}
+
+    # J1 SAME merges from the graph record (tolerant: absent file/layer
+    # = no merges). For each SAME-verdict SAME_CANDIDATE edge the
+    # smaller-volume node merges into the larger (the survivor).
+    def _vol(o):
+        lo, hi = o["aabb_min"], o["aabb_max"]
+        return abs((hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]))
+    vols = {o["id"]: _vol(o) for o in man.get("objects", [])}
+    merged = {}   # loser id -> survivor id
+    try:
+        gedges = (json.loads((sd / "scene_graph.json").read_text())
+                  .get("carved_edges") or {}).get("edges") or []
+    except Exception:
+        gedges = []
+    for e in gedges:
+        if e.get("type") != "SAME_CANDIDATE":
+            continue
+        if ((e.get("verdict") or {}).get("verdict")) != "SAME":
+            continue
+        a, b = e.get("a"), e.get("b")
+        if not a or not b or a == b or a not in vols or b not in vols:
+            continue
+        loser, surv = (a, b) if vols[a] <= vols[b] else (b, a)
+        merged[loser] = surv
 
     out = []
 
@@ -222,6 +248,15 @@ def judge_preview(sc):
             add(oid, name, lo, hi, "dropped:covered",
                 ["judge_dropped", "not_shipping"])
             continue
+        surv = merged.get(oid)
+        if surv and surv != oid:
+            # J1 SAME merge: duplicate pair — this (smaller) box would
+            # NOT ship; its content is the survivor's box (already
+            # present as its own node). Tagged so the merge is visible,
+            # not silently omitted; geometry unchanged.
+            add(oid, name, lo, hi, f"merged:->{surv}",
+                ["judge_merged", "not_shipping"])
+            continue
         v = mult.get(oid)
         if v and v.get("outcome") == "ONE_BOX" \
                 and v.get("box_ruling") == "ship_vote":
@@ -238,7 +273,8 @@ def judge_preview(sc):
                       "scene_manifest_slicevote_preview.json + "
                       "graph/multiplicity.json (J8) + "
                       "graph/split_cuts.json (J8s) + "
-                      "pool_retake/slicevote_report.json",
+                      "pool_retake/slicevote_report.json + "
+                      "scene_graph.json carved_edges (J1 SAME merges)",
             "frame": man.get("frame"),
             "n_objects": len(out),
             "objects": out}
