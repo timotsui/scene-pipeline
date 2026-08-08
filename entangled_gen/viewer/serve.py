@@ -226,6 +226,7 @@ def judge_preview(sc):
             "size": [hi[i] - lo[i] for i in range(3)],
             "flags": flags})
 
+    not_shipping = []   # omitted boxes, recorded (never silently lost)
     for o in man.get("objects", []):
         oid = o["id"]
         name = o.get("name") or (o.get("label") or "").split(" (")[0]
@@ -244,18 +245,17 @@ def judge_preview(sc):
         if sp and sp.get("resolution") == "covered_by_existing":
             # J8s coverage drop: this box would NOT ship — its content is
             # the owners' boxes (already present as their own nodes).
-            # Shown tagged so the drop is visible, not silently omitted.
-            add(oid, name, lo, hi, "dropped:covered",
-                ["judge_dropped", "not_shipping"])
+            # OMITTED from the drawn set (user 2026-08-08: tagged boxes
+            # render like normal ones and read as stale); recorded in
+            # the payload's not_shipping ledger instead.
+            not_shipping.append({"id": oid, "why": "dropped:covered"})
             continue
         surv = merged.get(oid)
         if surv and surv != oid:
-            # J1 SAME merge: duplicate pair — this (smaller) box would
-            # NOT ship; its content is the survivor's box (already
-            # present as its own node). Tagged so the merge is visible,
-            # not silently omitted; geometry unchanged.
-            add(oid, name, lo, hi, f"merged:->{surv}",
-                ["judge_merged", "not_shipping"])
+            # J1 SAME merge: the (smaller) duplicate would NOT ship —
+            # the survivor's box is already present as its own node.
+            # OMITTED from the drawn set; recorded in the ledger.
+            not_shipping.append({"id": oid, "why": f"merged:->{surv}"})
             continue
         v = mult.get(oid)
         if v and v.get("outcome") == "ONE_BOX" \
@@ -276,6 +276,7 @@ def judge_preview(sc):
                       "pool_retake/slicevote_report.json + "
                       "scene_graph.json carved_edges (J1 SAME merges)",
             "frame": man.get("frame"),
+            "not_shipping": not_shipping,
             "n_objects": len(out),
             "objects": out}
 
