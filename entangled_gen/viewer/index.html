@@ -2316,7 +2316,8 @@ try {
         const mhex = v.outcome === 'SPLIT' ? '#ff5ad1' : '#7fd4ff';
         let mt = '<span style="color:' + mhex + '">' + gEsc(v.outcome) +
                  '</span>';
-        if (v.box_ruling) mt += ' · box ' + gEsc(v.box_ruling);
+        if (v.ship) mt += ' · ship ' + gEsc(v.ship);
+        else if (v.box_ruling) mt += ' · box ' + gEsc(v.box_ruling);
         if (v.identity) mt += ' · ' + gEsc(v.identity);
         if ((v.parts || []).length)
           mt += ': ' + v.parts.map(p => {

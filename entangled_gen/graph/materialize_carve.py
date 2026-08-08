@@ -26,18 +26,27 @@ fires is recorded on the node's `provenance` list:
      keeps its resolved box and is recorded
      (rule `geometry_base_resolved_fallback`) + listed as an open
      question.
-  2. J8 BOX RULING (ONE_BOX cases only).
-       ship_vote        -> the carve report's boxes.vote2 for that node
-                           (rule `j8_box_swap_vote2`).
-       ship_pano|either -> the shipping box stands unchanged
-                           (rule `j8_box_ruling_noop`).
-     A CARVE-EXEMPT node has neither a vote2 nor a pano box (its report
-     entry only carries original/rebox/shipping), so a ruling on it is a
-     NO-OP: it is recorded as `j8_ruling_not_applicable` -- never as a
-     ruling that applied -- and raised as an open question.
-     A ship_pano ruling whose pano box differs from the shipping box is
-     a CONFLICT (two claims about which box ships), never silently
-     resolved.
+  2. J8 SHIP RULING (ONE_BOX cases only). J8 v2.2 names ONE KEY from that
+     case's own candidate-box list ("ship"); the retired enum
+     (ship_vote|ship_pano|either) is still accepted on an old sidecar and
+     mapped onto the same keys. The NAMED BOX IS APPLIED when it exists,
+     copied verbatim from the CARVE's own records -- never from the J8
+     sidecar, which is a verdict file, not a geometry source:
+       "vote"            -> the carve report's boxes.vote2
+       "pano"            -> the carve report's boxes.pano
+       "rebox_candidate" -> the rejected face-on re-box the carve recorded
+                            on its own rebox_rejected_smaller doubt. On a
+                            carve-EXEMPT node this is the judge ADOPTING
+                            the smaller MEASURED box over the pre-carve
+                            prior that ships today.
+       "current"|"either"-> explicit NO-OPs: the shipping box stands
+                            (rule `j8_box_ruling_noop`).
+     Applying = `j8_box_swap` when the named box differs from the shipping
+     box, `j8_box_ruling_noop` when it is already the same geometry.
+     A key that names a box THIS NODE DOES NOT HAVE (e.g. "vote" on a
+     carve-exempt node, whose report entry only carries
+     original/rebox/shipping) is recorded as `j8_ruling_not_applicable` --
+     never as a ruling that applied -- and raised as an open question.
      UNCLEAR -> the node ships unchanged (`j8_unclear_ship_unchanged`)
      and the doubt stays open (rule 6).
   3. J8s SPLIT PIECES.
@@ -74,10 +83,10 @@ fires is recorded on the node's `provenance` list:
 CONFLICTS. When two rules make disagreeing claims about the same node
 (a merge whose partner a split already removed, a J9 set member that no
 longer exists, a piece pointing at a node nothing kept, a node that
-represents dropped content and is then merged away, a ship_pano ruling
-contradicted by the shipped geometry, or a pair J1 merged as ONE OBJECT
-that J9 ruled NOT the same product), BOTH claims land in `conflicts` with
-their rules. Nothing is silently resolved.
+represents dropped content and is then merged away, a J8 ship key this
+stage has no vocabulary for, or a pair J1 merged as ONE OBJECT that J9
+ruled NOT the same product), BOTH claims land in `conflicts` with their
+rules. Nothing is silently resolved.
 
 NOT IN THIS PASS (honest scope): edges are NOT re-derived here. The plan's
 Phase C also calls for a mechanical edge rebuild on the materialized
@@ -114,6 +123,13 @@ J8_ADMITTING = ("pano_vs_cluster", "culled_clusters", "low_plan_fill",
                 "large_empty_notch", "rebox_rejected_smaller",
                 "rebox_truncated")
 INFORMATIONAL_DOUBTS = ("exemption",)
+
+# J8 v2.2 ship vocabulary. SHIP_KEYS name a box that must be looked up and
+# applied; NOOP_KEYS name the box that already ships. The retired enum is
+# accepted on an OLD sidecar only, mapped onto the same keys.
+SHIP_KEYS = ("vote", "pano", "rebox_candidate")
+NOOP_KEYS = ("current", "either")
+LEGACY_SHIP = {"ship_vote": "vote", "ship_pano": "pano", "either": "either"}
 
 
 # --------------------------------------------------------------------------
@@ -276,6 +292,35 @@ class Materialize:
         self.stats["base_resolved_fallback"] = fallbacks
 
     # -- rule 2 ----------------------------------------------------------
+    def named_box(self, nid, key):
+        """The box a J8 ship key names, from the CARVE's own records.
+        Returns (box|None, source). `None` means this node does not have
+        that box -- the ruling is then not-applicable, never guessed."""
+        boxes = self.report.get(nid) or {}
+        if key == "vote":
+            return boxes.get("vote2"), str(CARVE_REPORT).replace("\\", "/")
+        if key == "pano":
+            return boxes.get("pano"), str(CARVE_REPORT).replace("\\", "/")
+        if key == "rebox_candidate":
+            for d in self.doubts.get(nid, []):
+                if d.get("kind") == "rebox_rejected_smaller" \
+                        and d.get("proposed_box"):
+                    return d["proposed_box"], ("graph/carve_doubts.json "
+                                               "rebox_rejected_smaller."
+                                               "proposed_box")
+            return None, "graph/carve_doubts.json"
+        return None, ""
+
+    def available_keys(self, nid):
+        """The ship keys this node COULD honour -- for the not-applicable
+        record, so the open question says what was actually on hand."""
+        boxes = sorted(self.report.get(nid) or {})
+        got = [k for k, b in (("vote", "vote2"), ("pano", "pano"))
+               if b in boxes]
+        if self.named_box(nid, "rebox_candidate")[0]:
+            got.append("rebox_candidate")
+        return got + ["current", "either"]
+
     def box_rulings(self):
         swapped = noop = na = unclear = 0
         for case in (self.mult or {}).get("cases", []):
@@ -300,67 +345,52 @@ class Materialize:
                 continue
             if outcome != "ONE_BOX":
                 continue                      # SPLIT -> rule 3
-            ruling = v.get("box_ruling")
-            boxes = self.report.get(nid) or {}
-            if ruling == "ship_vote":
-                b = boxes.get("vote2")
-                if b:
+            # v2.2 vocabulary; a legacy sidecar's box_ruling maps onto it
+            ruling = v.get("ship") or LEGACY_SHIP.get(v.get("box_ruling"))
+            if ruling in ("current", "either"):
+                self.prov(nid, "j8_box_ruling_noop", ship=ruling,
+                          confidence=v.get("confidence"),
+                          note="the ruling names the box that already "
+                               "ships -- nothing to apply")
+                noop += 1
+            elif ruling in SHIP_KEYS:
+                b, src = self.named_box(nid, ruling)
+                if b is None:
+                    self.prov(nid, "j8_ruling_not_applicable", ship=ruling,
+                              available=self.available_keys(nid),
+                              note=f"this node has no {ruling!r} box on "
+                                   "record, so the ruling is a NO-OP -- the "
+                                   "shipping box stands unchanged")
+                    self.open_q(nid, "ruling_not_applicable",
+                                f"J8 ruled ship={ruling} but no such box "
+                                f"exists for this node (available: "
+                                f"{', '.join(self.available_keys(nid))}) -- "
+                                f"the ruling could not be executed")
+                    na += 1
+                elif same_box(self.nodes[nid]["geometry"], b["lo"], b["hi"]):
+                    self.prov(nid, "j8_box_ruling_noop", ship=ruling,
+                              source=src, confidence=v.get("confidence"),
+                              note="shipping box already IS the ruled box")
+                    noop += 1
+                else:
                     old = self.nodes[nid]["geometry"]
                     new = geom_from_lohi(b["lo"], b["hi"])
                     self.nodes[nid]["geometry"] = new
-                    self.prov(nid, "j8_box_swap_vote2",
-                              source=str(CARVE_REPORT).replace("\\", "/"),
+                    self.prov(nid, "j8_box_swap", ship=ruling, source=src,
                               was={"aabb_min": old["aabb_min"],
                                    "aabb_max": old["aabb_max"]},
                               now={"aabb_min": new["aabb_min"],
                                    "aabb_max": new["aabb_max"]},
-                              confidence=v.get("confidence"))
+                              confidence=v.get("confidence"),
+                              note="box COPIED verbatim from the carve's own "
+                                   "record -- never from the J8 sidecar")
                     swapped += 1
-                else:
-                    self.prov(nid, "j8_ruling_not_applicable",
-                              ruling=ruling,
-                              available_boxes=sorted(boxes),
-                              note="this node has no vote2/pano box (carve"
-                                   "-exempt: the carve never sliced it), so "
-                                   "the ruling is a NO-OP -- the shipping "
-                                   "box stands unchanged")
-                    self.open_q(nid, "ruling_not_applicable",
-                                f"J8 ruled {ruling} but the carve produced "
-                                f"no vote box for this node "
-                                f"({', '.join(sorted(boxes)) or 'no boxes'})"
-                                f" -- the ruling could not be executed")
-                    na += 1
-            elif ruling in ("ship_pano", "either"):
-                pano = boxes.get("pano")
-                if pano is None:
-                    self.prov(nid, "j8_ruling_not_applicable", ruling=ruling,
-                              available_boxes=sorted(boxes),
-                              note="no pano box on record -- NO-OP")
-                    self.open_q(nid, "ruling_not_applicable",
-                                f"J8 ruled {ruling} but no pano box exists "
-                                f"for this node")
-                    na += 1
-                    continue
-                g = self.nodes[nid]["geometry"]
-                if not same_box(g, pano["lo"], pano["hi"]):
-                    self.conflict(
-                        nid, "J8 ruled ship_pano but the shipped carve box "
-                             "is not the pano box",
-                        {"rule": "j8_box_ruling", "claim": "pano box ships",
-                         "box": {"lo": pano["lo"], "hi": pano["hi"]}},
-                        {"rule": "geometry_base_carved",
-                         "claim": "manifest shipping box",
-                         "box": {"lo": g["aabb_min"], "hi": g["aabb_max"]}})
-                self.prov(nid, "j8_box_ruling_noop", ruling=ruling,
-                          confidence=v.get("confidence"),
-                          note="shipping box already IS the ruled box")
-                noop += 1
             else:
-                self.conflict(nid, "unknown J8 box ruling",
+                self.conflict(nid, "unknown J8 ship ruling",
                               {"rule": "j8_box_ruling", "claim": ruling},
                               {"rule": "materialize",
                                "claim": "vocabulary is "
-                                        "ship_vote|ship_pano|either"})
+                                        + "|".join(SHIP_KEYS + NOOP_KEYS)})
         self.stats.update(j8_box_swapped=swapped, j8_box_noop=noop,
                           j8_ruling_not_applicable=na, j8_unclear=unclear)
 
@@ -397,11 +427,11 @@ class Materialize:
                               {"rule": "materialize", "claim": "node absent"})
                 continue
             prior = [p["rule"] for p in self.nodes[nid]["provenance"]]
-            if "j8_box_swap_vote2" in prior:
+            if "j8_box_swap" in prior:
                 self.conflict(nid, "node carries both a J8 ONE_BOX box swap "
                                    "and a J8s split",
-                              {"rule": "j8_box_swap_vote2",
-                               "claim": "one box, vote2 ships"},
+                              {"rule": "j8_box_swap",
+                               "claim": "one box, the J8-named box ships"},
                               {"rule": f"j8s_{res}",
                                "claim": "the node is replaced by pieces"})
             if res == "covered_by_existing":
@@ -733,8 +763,11 @@ class Materialize:
             d = drop_by.get(nid)
             if node:
                 rules = [p["rule"] for p in node["provenance"]]
-                if "j8_box_swap_vote2" in rules:
-                    fate, rule = "box-swapped (vote2)", "j8_box_swap_vote2"
+                if "j8_box_swap" in rules:
+                    sw = next(p for p in node["provenance"]
+                              if p["rule"] == "j8_box_swap")
+                    fate = f"box-swapped ({sw.get('ship')})"
+                    rule = "j8_box_swap"
                 else:
                     fate, rule = "kept", rules[0] if rules else "-"
                     if "j1_same_merge_survivor" in rules:
@@ -820,8 +853,11 @@ class Materialize:
                     "re-derived in this pass (open question).",
             "precedence": [
                 "1 geometry base = carve shipping box verbatim",
-                "2 J8 box ruling (ship_vote -> vote2; ship_pano/either -> "
-                "unchanged; exempt node -> ruling_not_applicable)",
+                "2 J8 ship ruling (the named candidate box is APPLIED from "
+                "the carve's own record: vote -> boxes.vote2, pano -> "
+                "boxes.pano, rebox_candidate -> the rejected face-on "
+                "re-box; current/either -> unchanged; a key this node has "
+                "no box for -> ruling_not_applicable)",
                 "3 J8s split pieces (<nid>#k; existing:<id> piece dropped "
                 "with a pointer, never grows that node)",
                 "4 J1 SAME merges (smaller volume removed, transitive)",

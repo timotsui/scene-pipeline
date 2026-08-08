@@ -85,10 +85,12 @@ def box_sources(sc):
          "real Phase C output now exists in scene_graph.json['carved'] and "
          "is served as src=materialized. Kept as-is (behaviour unchanged) "
          "for side-by-side comparison of preview vs actual. — "
-         "judge preview: J8 box rulings + J8s split pieces + coverage "
+         "judge preview: J8 ship rulings + J8s split pieces + coverage "
          "drops (NOT materialized — display only). Per object the box "
-         "the judges would ship: shipping box by default; J8 ONE_BOX "
-         "ship_vote swaps in the report's vote2 box (ship_pano/either "
+         "the judges would ship: shipping box by default; a J8 ONE_BOX "
+         "verdict naming a box swaps it in (ship=vote -> the report's "
+         "vote2, ship=pano -> its pano, ship=rebox_candidate -> the "
+         "rejected face-on re-box on the carve doubt; current/either "
          "keep shipping); J8s split_chain replaces the case node's box "
          "with its final piece boxes; J8s covered_by_existing shows the "
          "case node's box tagged dropped:covered (would NOT ship — its "
@@ -223,6 +225,29 @@ def judge_preview(sc):
     splits = {c["id"]: c
               for c in load(sd / "graph" / "split_cuts.json", "cases")
               if c.get("id")}
+    # J8 v2.2 ship keys name a box; "rebox_candidate" is the rejected
+    # face-on re-box the carve recorded on its own doubt (same source
+    # materialize reads — the verdict file is never a geometry source).
+    rejected = {}
+    for n in load(sd / "graph" / "carve_doubts.json", "nodes"):
+        for d in n.get("doubts") or []:
+            if d.get("kind") == "rebox_rejected_smaller" \
+                    and d.get("proposed_box"):
+                rejected[n["id"]] = d["proposed_box"]
+
+    def ship_box(oid, v):
+        """The box a ONE_BOX verdict asks to ship, or None for a no-op /
+        a key this node has no box for. Legacy box_ruling accepted."""
+        key = v.get("ship") or {"ship_vote": "vote", "ship_pano": "pano",
+                                "either": "either"}.get(v.get("box_ruling"))
+        if key in ("vote", "pano"):
+            b = (rep.get(oid) or {}).get(
+                "vote2" if key == "vote" else "pano") or {}
+            return (key, b) if "lo" in b and "hi" in b else None
+        if key == "rebox_candidate":
+            b = rejected.get(oid) or {}
+            return (key, b) if "lo" in b and "hi" in b else None
+        return None
 
     # J1 SAME merges from the graph record (tolerant: absent file/layer
     # = no merges). For each SAME-verdict SAME_CANDIDATE edge the
@@ -293,12 +318,12 @@ def judge_preview(sc):
             not_shipping.append({"id": oid, "why": f"merged:->{surv}"})
             continue
         v = mult.get(oid)
-        if v and v.get("outcome") == "ONE_BOX" \
-                and v.get("box_ruling") == "ship_vote":
-            b = (rep.get(oid) or {}).get("vote2") or {}
-            if "lo" in b and "hi" in b:   # report absent -> unchanged
-                add(oid, name, b["lo"], b["hi"], "ship_vote",
-                    ["judge_ship_vote"])
+        if v and v.get("outcome") == "ONE_BOX":
+            sb = ship_box(oid, v)
+            if sb:                        # box absent -> unchanged
+                key, b = sb
+                add(oid, name, b["lo"], b["hi"], f"ship:{key}",
+                    [f"judge_ship_{key}"])
                 continue
         add(oid, name, lo, hi, "", ["judge_default"])
 
@@ -367,7 +392,8 @@ def _mat_tag(rule, pv, node):
         g = pv.get("product_group") or node.get("product_group") or ""
         return ("same-product " + (g.split("_")[0] or g)) if g \
             else "same-product"
-    return {"j8_box_swapped": "J8 vote box",
+    return {"j8_box_swap": "J8 box swap",
+            "j8_box_swapped": "J8 vote box",
             "j8_box_ruling_noop": "J8 noop",
             "j8_ruling_not_applicable": "J8 n/a",
             "j8_unclear_ship_unchanged": "J8 unclear",
