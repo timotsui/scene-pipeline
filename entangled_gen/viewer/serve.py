@@ -75,6 +75,23 @@ def box_sources(sc):
         # scene_manifest_pano2_sp1.json).
         # ("support_clipped", ...) removed from HUD — wiring premature
         # until support judgment runs on carved geometry (R-S2-22 note)
+        # judge_preview: COMPOSED server-side (judge_preview() below), not
+        # a file — the path here is its base input, used for the exists()
+        # gate; /boxes.json special-cases the key.
+        ("judge_preview", "judge preview · J8/J8s (display only)", "current",
+         sd / "scene_manifest_slicevote_preview.json", "#b388ff",
+         "judge preview: J8 box rulings + J8s split pieces + coverage "
+         "drops (NOT materialized — display only). Per object the box "
+         "the judges would ship: shipping box by default; J8 ONE_BOX "
+         "ship_vote swaps in the report's vote2 box (ship_pano/either "
+         "keep shipping); J8s split_chain replaces the case node's box "
+         "with its final piece boxes; J8s covered_by_existing shows the "
+         "case node's box tagged dropped:covered (would NOT ship — its "
+         "content is the owners' boxes, already present as their own "
+         "nodes). Composed live from scene_manifest_slicevote_preview + "
+         "graph/multiplicity.json + graph/split_cuts.json + "
+         "pool_retake/slicevote_report.json; missing side files degrade "
+         "to the plain shipping boxes"),
     ]
     #     # ---- current: the pano-track funnel, upstream -> downstream ----
     #     # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->
@@ -137,6 +154,94 @@ def box_sources(sc):
     #      "-> GroundingDINO+SAM -> per-pixel z-buffer mask lift -> "
     #      "label+IoU merge (lift_views.py), then splat-amodal box extension "
     #      "(amodal_apply.py, 2026-07-15). 4-yaw observation retired 07-24"),
+
+
+def judge_preview(sc):
+    """Compose the judge-preview box layer (display only, NOT materialized):
+    the manifest's shipping boxes edited per the J8 multiplicity verdicts
+    (graph/multiplicity.json) and the J8s split executions
+    (graph/split_cuts.json), vote2 boxes from pool_retake/
+    slicevote_report.json. Materialize (Phase C) stays the only editor —
+    this just previews what it would do. Every side file is optional
+    (other scenes): absent ones simply leave boxes unchanged. Returns a
+    manifest-style dict, or None when the base manifest is missing."""
+    sd = paths.scene_dir(sc)
+    manf = sd / "scene_manifest_slicevote_preview.json"
+    if not manf.exists():
+        return None
+    man = json.loads(manf.read_text())
+
+    def load(f, key):   # tolerant reader: {} / [] on absent or bad file
+        try:
+            return json.loads(f.read_text()).get(key) or []
+        except Exception:
+            return []
+
+    rep = {r.get("id"): r.get("boxes") or {}
+           for r in load(sd / "pool_retake" / "slicevote_report.json",
+                         "results")}
+    mult = {c["id"]: c.get("verdict") or {}
+            for c in load(sd / "graph" / "multiplicity.json", "cases")
+            if c.get("id")}
+    splits = {c["id"]: c
+              for c in load(sd / "graph" / "split_cuts.json", "cases")
+              if c.get("id")}
+
+    out = []
+
+    def add(oid, name, lo, hi, tag, flags):
+        out.append({
+            "id": oid,
+            "label": f"{oid} {tag}" if tag else f"{oid} {name}",
+            "name": name,
+            "judge_tag": tag,
+            "aabb_min": list(lo), "aabb_max": list(hi),
+            "center": [(lo[i] + hi[i]) / 2 for i in range(3)],
+            "size": [hi[i] - lo[i] for i in range(3)],
+            "flags": flags})
+
+    for o in man.get("objects", []):
+        oid = o["id"]
+        name = o.get("name") or (o.get("label") or "").split(" (")[0]
+        lo, hi = o["aabb_min"], o["aabb_max"]
+        sp = splits.get(oid)
+        if sp and sp.get("resolution") == "split_chain" and sp.get("pieces"):
+            # J8s executed cut: the node's box is REPLACED by its final
+            # piece boxes (each tagged; owners recorded)
+            for pc in sp["pieces"]:
+                b = pc.get("box") or {}
+                if "lo" in b and "hi" in b:
+                    add(f"{oid}:{pc.get('id', '?')}", name,
+                        b["lo"], b["hi"], "piece",
+                        ["judge_piece", f"owner:{pc.get('owner', '?')}"])
+            continue
+        if sp and sp.get("resolution") == "covered_by_existing":
+            # J8s coverage drop: this box would NOT ship — its content is
+            # the owners' boxes (already present as their own nodes).
+            # Shown tagged so the drop is visible, not silently omitted.
+            add(oid, name, lo, hi, "dropped:covered",
+                ["judge_dropped", "not_shipping"])
+            continue
+        v = mult.get(oid)
+        if v and v.get("outcome") == "ONE_BOX" \
+                and v.get("box_ruling") == "ship_vote":
+            b = (rep.get(oid) or {}).get("vote2") or {}
+            if "lo" in b and "hi" in b:   # report absent -> unchanged
+                add(oid, name, b["lo"], b["hi"], "ship_vote",
+                    ["judge_ship_vote"])
+                continue
+        add(oid, name, lo, hi, "", ["judge_default"])
+
+    return {"scene": sc,
+            "status": "judge preview (NOT materialized — display only)",
+            "source": "viewer/serve.py judge_preview(): "
+                      "scene_manifest_slicevote_preview.json + "
+                      "graph/multiplicity.json (J8) + "
+                      "graph/split_cuts.json (J8s) + "
+                      "pool_retake/slicevote_report.json",
+            "frame": man.get("frame"),
+            "n_objects": len(out),
+            "objects": out}
 
 
 class H(BaseHTTPRequestHandler):
@@ -319,6 +424,14 @@ class H(BaseHTTPRequestHandler):
         elif p == "/boxes.json":
             # one method box set, by registry key (?src=<key>)
             src = (q.get("src") or [""])[0]
+            if src == "judge_preview":
+                # COMPOSED layer (judge_preview()), not a file on disk
+                data = judge_preview(sc)
+                if data is not None:
+                    return self._send(200, json.dumps(data).encode(),
+                                      "application/json")
+                return self._send(404, b"no scene_manifest_slicevote_"
+                                       b"preview.json for this scene")
             f = next((f for k, _, _, f, _, _ in box_sources(sc) if k == src), None)
             if f is not None and f.exists():
                 self._send(200, f.read_bytes(), "application/json")

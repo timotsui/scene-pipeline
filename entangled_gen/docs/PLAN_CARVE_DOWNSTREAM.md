@@ -39,11 +39,16 @@ scene-specific tuning; fixes at the source.
   lights×4+×3, magazines×3+×2). Verdicts never run.
 - Resolved layer = identity canon; its boxes pre-carve (stale); the
   poisoned ON edges are superseded by the rebuilt carved_edges layer.
-- **NEXT: Phase C materialize design**, carrying the queued opens:
-  mechanical ownership assignment for J8 splits (run-8→9 drift);
-  eyeballs — obj_042 TV-stand extent (run 9) + curtain re-box under
-  the dist-clamped camera (run 10); J8 confidence clustering .62–.83
-  (watch for anchoring).
+- **NEXT (updated R-S2-42): next session = J9 GATES** — sheets +
+  first-ever verdicts user review; set-member id normalization nit;
+  obj_005_c00/obj_017_c00 no-crop members — **then PHASE C
+  materialize design** (its inputs now all exist; must define the
+  merge semantics across J8-identity + J8s-geometry + J1-merge +
+  J9-set + box-ruling verdicts, incl. not-this-object pieces never
+  grow the named neighbor). Carried opens: eyeballs — obj_042
+  TV-stand extent (run 9) + curtain re-box under the dist-clamped
+  camera (run 10); J8 confidence clustering .62–.83 (watch for
+  anchoring).
 
 ## PHASE A — J8 SPLIT-CELL JUDGE (graph/judge_multiplicity.py)
 
@@ -71,6 +76,9 @@ the decisive fact; rule adopted: J8 READS relational facts from the
 graph's own 4g2 edges and never computes private overlaps. obj_011 is
 ON BY RULE via large_empty_notch (plan-fill v2 k-sweep was an honest
 negative; census 1.52 m² vs 0.18 next).
+**J8 BENCH CLOSED (user, R-S2-42 session): design + verdicts
+user-passed; identity/annotation verdicts stand; geometric execution =
+Phase A3.**
 
 - **Contract:** GETS one docket case = node + its ADMITTING doubts
   (pano_vs_cluster / culled_clusters / low_plan_fill /
@@ -94,12 +102,15 @@ negative; census 1.52 m² vs 0.18 next).
     copies(k) (same product, k placements — Probe-A vocabulary) |
     distinct (different objects). Sub-box OWNERS per part:
     this_node | existing:<id> | missing_instance (missing_instance is
-    a work order for the loop-back, not an edit). CODE cuts the
-    rectangles mechanically [sub-decision (a), ADOPTED — carried]:
-    NOTCH_K-occupancy decomposition into axis-aligned rectangles;
-    per-part boxes carry the elected heights. The judge only
-    classifies — part-naming needs pixel precision judges don't have;
-    mechanical cuts are reproducible and Rule-1-safe.
+    a work order for the loop-back, not an edit). WHERE the box is
+    actually cut is **PHASE A3** — the split-cut judge, a FIXED
+    3-ROUND CHAIN. The old lettered sub-decision (a)
+    ("NOTCH_K-occupancy decomposition into axis-aligned rectangles")
+    is **SUPERSEDED 08-07** by that section: a blind occupancy
+    decomposition cannot say which of its rectangles is a real
+    boundary, so the cut line is asked for — in grid vocabulary — and
+    snapped by code. Per-part boxes still carry
+    the elected heights, and the judge still never names pixels.
   - UNCLEAR — shipping default stands; the doubt stays open on the
     record as a work order.
   - Tiebreak [sub-decision (b), ADOPTED — now inside the identity
@@ -151,6 +162,135 @@ negative; census 1.52 m² vs 0.18 next).
   facts, USER-PASSED with today's arc (R-S2-36..39).
 - **Map:** draw "J8 · multiplicity" node into the main lane under the
   carve node when it lands.
+
+## PHASE A3 — SPLIT CUTS (fixed 3-round chain)
+(build: graph/split_cuts.py — J8s. **USER RULING 08-07: NO RECURSION
+MACHINERY.** A plain loop over a flat worklist, at most 3 rounds, then it
+stops. This section SUPERSEDES the earlier lettered-candidate-options
+phrasing of Phase A sub-decision (a) and any "recursive split-cut judge"
+wording elsewhere in this plan.)
+
+**STATUS 08-08 ~00:30 (R-S2-42): DESIGN CANON (user-passed R-S2-42)**
+— the settling point. Representation objective: discard what existing
+boxes take care of; keep only unrepresented content. Residue
+criterion: <= 25% uncovered occupied cells, 0.10 m margin.
+Independent-support eligibility: cover must be the `a` of an ON edge
+to a target other than the case node; riders + unsupported objects
+drawn gray dashed, never cover. One-cut-per-call chain (k=3 cap, early
+termination). CONVERGENCE: the L resolved in ONE call / ONE cut / zero
+doubts — representation achieved as the union of one new piece +
+obj_063's + obj_006's existing boxes. CLOSED open: other-class cover
+refinement (subsumed by eligibility). NEW open: the 4g2 pillow-ON gap
+— the carve turns resting relations into IN edges; support
+re-derivation needed pre-compose.
+
+- **Contract:** GETS one SPLIT outcome from graph/multiplicity.json plus
+  the node's CARVED box (verbatim from the preview manifest). DECIDES,
+  one region at a time, WHERE the box is cut and WHO owns each piece.
+  NEVER edits the graph, the carve or multiplicity.json — verdicts are a
+  SIDECAR and materialize (Phase C) is the editor. A mistake looks like:
+  cutting one physical object in half, leaving two objects inside one
+  piece, or landing a cut a few cm off a real boundary that the S-lines
+  had measured exactly.
+- **ONE JUDGE CALL = ONE REGION = ONE DECISION.** Either
+  `{"no_cut", action: keep|discard}` (a one-thing region: keep with an
+  owner, or discard with a note) or ONE cut line plus, for EACH of the
+  two sides, an INDEPENDENT per-side verdict (user ruling 08-07 late):
+  `{action: "keep", owner: this_node | existing:<id>, more_cut:
+  true|false}` (+ optional exclusions) or `{action: "discard", note?}`.
+  Nothing bigger is ever asked in one breath.
+- **KEEP/DISCARD per side (user ruling 08-07 late).** A DISCARDED side
+  is DROPPED from this case entirely — empty floor, junk, or the
+  territory of an object that already has its own node (e.g. the
+  coffee-table region): recorded in the rounds list with its note, no
+  owner, never a more_cut, never a final piece. Keeping BOTH sides is
+  legal and normal. The old `not_this_object` owner is RETIRED —
+  nobody's-territory content is a discard now. The chain continues ONLY
+  where a kept side has more_cut=true and ends the moment nothing is
+  flagged. PROMPT BIAS, stated explicitly: DECIDE NOW —
+  discard-and-finish or keep-and-finish whenever this one cut settles
+  the side; flag more_cut ONLY when the kept side visibly contains
+  multiple separable things that THIS cut could not separate.
+- **REPRESENTATION CHECK on discards (user-adopted 08-07; replaces the
+  same-class union-cover >= 0.60 rule AND the mostly-empty exemption
+  with ONE rule):** a side may be discarded iff its UNREPRESENTED-
+  CONTENT RESIDUE is small — residue = (occupied plan cells, >= 2 dots
+  from the carve's own plan_cells grid, covered by NO ELIGIBLE existing
+  box) / max(1, occupied cells) <= 0.25. ELIGIBLE = carved boxes
+  (preview manifest) overlapping the side, ANY class, plan footprints
+  grown 0.10 m on all sides — EXCLUDING RIDERS (the `a` of an ON edge
+  whose `b` is the case node in carved_edges: resting objects never
+  represent the region beneath them). Cover must be independently
+  supported — an ON edge to something other than the case node; the
+  carved-edge layer's missing pillow ON edges is a recorded 4g2 open.
+  Mostly-empty sides pass automatically (few
+  occupied cells => tiny residue — no separate rule). On failure the
+  discard is DOWNGRADED to keep {this_node, more_cut: false} with doubt
+  "discard_unverified — NN% of the side's content is unrepresented";
+  the residue + eligible box ids + excluded box ids with reasons
+  (rider | no_independent_support) are recorded on EVERY discard,
+  standing or not.
+- **The judge answers in GRID VOCABULARY ONLY** — a lattice line name
+  (letters = constant-x, numbers = constant-z), a measured special line
+  name (S1..), or "between X and Y". It NEVER states a coordinate.
+- **Stimulus per region** (promoted verbatim from the two user-passed
+  08-07 scratchpad prototypes — promote, don't reinvent): the
+  BOX-CONTENT top render — ONLY the gaussians inside this region's box,
+  camera straight above and OUTSIDE the room, fov 50 — with
+  (a) projected boxes: the region box (orange), same-class neighbours'
+  carved boxes (green), overlapping other-class carved boxes (red),
+  RIDER boxes thin dashed gray labeled "resting — not cover",
+  drawn by the SAME camera that made the render (carve_cams.make_cam,
+  the anti-drift module); (b) a DYNAMIC named lattice — pitch chosen
+  from {0.1, 0.2, 0.25, 0.5, 1.0} so the longer plan extent carries <= 9
+  lines, chess chips at BOTH ends + the world coordinate; (c) MAGENTA
+  S-LINES at measured boundaries inside the region (same-class neighbour
+  box edges + notch-rect edges from the carve doubts, deduped at
+  0.15 m), named S1.. with a LEGEND STRIP appended below the render;
+  (d) the object's existing J8 card renders as side context.
+- **Snapping is CODE's job, never the judge's:** an S-line pick takes its
+  measured coordinate verbatim; a lattice pick takes that line's value,
+  then snaps to the nearest measured boundary within 0.25 m if one
+  exists on the same axis; "between X and Y" takes an S-line lying
+  between them when there is one, else the midpoint (recorded as
+  midpoint_fallback). Every cut carries its provenance.
+- **THE CHAIN (no recursion):** a flat worklist, at most 3 ROUNDS.
+  Round 1 — the case box gets one judged cut. Rounds 2 and 3 — every
+  KEPT piece flagged more_cut gets one judged cut, with a FRESH
+  sub-render and a re-derived grid + S-lines for that piece. The chain
+  ends the moment nothing is flagged more_cut; after round 3 the loop
+  STOPS UNCONDITIONALLY regardless.
+- **GUARDS:** a piece with either plan extent < 0.25 m is auto-done and
+  is NEVER judged; at most 8 pieces per case (the chain stops early and
+  the remaining more_cut pieces are recorded); any piece still wanting a
+  cut when the chain stops ships UNCUT with doubt "split_incomplete"; an
+  unparsable model reply twice ships that region uncut; a cut line
+  outside the region or outside the region's vocabulary ships it uncut.
+- **Record:** rounds are a FLAT LIST — [{round, region_box, stimulus,
+  verdict, snapped_cut, pieces}] — no tree structures. Plus a flat final
+  pieces list [{box, owner, provenance}] of KEPT pieces only: discarded
+  sides live in the rounds list (with their notes) and never appear in
+  final pieces.
+- **Docket:** SPLIT-outcome cases from graph/multiplicity.json. A
+  SPLIT/distinct case whose parts ALL map to existing nodes whose carved
+  boxes cover the region needs NO cuts: record
+  {"resolution": "covered_by_existing", owners} MECHANICALLY, zero model
+  calls. Only cases needing real geometry (one_structure, copies, or any
+  missing_instance part) enter the chain.
+- **Outputs:** graph/split_cuts.json (per case: the rounds list + flat
+  final pieces) and graph/split_sheets/<case>/ (stimulus pngs + verbatim
+  prompt txts + a small index.html). Content-keyed verdict cache (region
+  box + prompt + stimulus bytes) like the sibling judges; claude.exe
+  through the same judge-chain pattern (env-scrub, retry x2,
+  malformed -> ship-uncut fallback).
+- **CLI:** `python graph/split_cuts.py --scene <s> [--only ids]
+  [--sheets-only] [--rounds 3] [--model sonnet]`.
+- **USER GATE A3:** the per-case sheet (stimulus + the rounds list +
+  final pieces). Watch item: piece owners that disagree with J8's
+  identity annotation are the ownership-drift open (Phase A, ledger
+  item 4) becoming visible as geometry.
+- **Map:** dashed "J8s · split cuts" node in the J-lane under J8; solid
+  when materialize consumes the cuts.
 
 ## PHASE A2 — ROW-COUNT ATTRIBUTE JUDGE (wire: multiplicity probe A)
 (user 08-07: "something that would tell shopping if it should look for
@@ -296,7 +436,10 @@ finding, R-S2-33)
 
 ## ORDER + WHY
 
-A → A2 → B2 → B → C → D → E.
+A → A3 → A2 → B2 → B → C → D → E.
+A3 follows A directly: it consumes A's SPLIT verdicts and produces the
+geometry those verdicts only asserted, so it must land before C
+(materialize folds the cuts in).
 A here = the DESIGN/BUILD work (v2.1 sheets + trials); J8's CANONICAL
 verdicts execute inside B2's pass, at its end (order ruling in Phase
 B2 — J8 reads the rebuilt 4g2 edges first). A2 is independent (crop-based attribute) — may run
