@@ -7,11 +7,17 @@ low_plan_fill / rebox_rejected_smaller / rebox_truncated — Rule #1: no
 user-routing channel, the pipeline raises its own questions) plus the
 v2.1 stimuli.
 DECIDES, representation first: (1) the OUTCOME — ONE_BOX / SPLIT /
-UNCLEAR — (2) WHICH GEOMETRY SHIPS when the outcome is ONE_BOX (which of
-the boxes on record is the object is undecidable from geometry alone; it
-is exactly what the judge is here to solve), and (3) on a SPLIT, the
-IDENTITY ANNOTATION — one_structure / copies(k) / distinct + per-part
-owners.
+NO_GOOD_BOX / UNCLEAR — (2) WHICH GEOMETRY SHIPS when the outcome is
+ONE_BOX (which of the boxes on record is the object is undecidable from
+geometry alone; it is exactly what the judge is here to solve), and (3)
+on a SPLIT, the IDENTITY ANNOTATION — one_structure / copies(k) /
+distinct + per-part owners.
+NO_GOOD_BOX (v2.3, the obj_021 ruling): the evidence DOES settle it and
+the answer is "none of these boxes is usable" — every candidate badly
+cuts the object and/or mostly contains things that are not it. It is NOT
+UNCLEAR (which means the evidence does not settle the question); it
+carries a `reason`, has no `ship`, and materialize keeps the node's
+current shipping geometry and raises it as an open question.
 
 THE SHIP CHOICE IS PER CASE (v2.2, user ruling 2026-08-08 ~04:30 — "allow
 it to ship the boxes it is able to evaluate"). The old fixed enum
@@ -34,6 +40,11 @@ and its provenance sentence:
 The answer field is "ship": <one key from THIS case's list>; the prompt
 lists that case's keys verbatim and the parser rejects any other value
 (legacy ship_vote/ship_pano/either replies map onto vote/pano/either).
+v2.3 asks that choice as a COMPARISON with tolerance — pick the BETTER
+box, COMPLETE (contains the whole object) before TIGHT ENOUGH (not mostly
+empty space or another object's territory), a box only has to be
+REASONABLE — and each key's old failure-mode sentence is demoted to a
+HINT, never the test.
 It NEVER edits the graph — verdicts land in the graph/multiplicity.json
 sidecar; materialize (Phase C) is the editor. A mistake looks like:
 splitting a real single object, blessing one box around two real
@@ -100,9 +111,42 @@ conemap views record); the plan camera is rebuilt with
 carve_cams.top_cam_for and is only drawn when its eye VALIDATES against
 the eye the carve recorded (within EYE_TOL). No guessed projections.
 
+DEPENDENCY-ORDERED JUDGING (v2.4, user ruling 2026-08-08 — "judge INNER
+BEFORE OUTER"): a case's verdict is placed against its NEIGHBOURS' boxes,
+and another case's verdict can MOVE one of those boxes. J8 ruled obj_063
+ship=vote, growing it from x -1.532..0.335 to -1.514..0.636 — while the
+split judge had already cut obj_011 at x=0.335, chosen BECAUSE that was
+obj_063's edge; the two nodes ended up overlapping by 0.30 m. Every case
+was built up front and judged in parallel, so no case could ever see
+another's result. Now:
+  * ONE SETTLED MAP is the geometry every case reads. It starts as the
+    carve's SHIPPING boxes (scene_manifest_slicevote_preview.json,
+    verbatim) and each ONE_BOX verdict REPLACES its own node's entry with
+    the box it NAMED, resolved from the CARVE's own records exactly as
+    materialize resolves it (vote -> the carve report's boxes.vote2, pano
+    -> boxes.pano, rebox_candidate -> the rejected face-on re-box on the
+    node's own doubt). SPLIT / UNCLEAR / NO_GOOD_BOX leave the entry
+    untouched. It ships in the sidecar as `settled_boxes`.
+  * DEPENDENCY ORDER over the docket, from geometry only: for two docket
+    boxes whose overlap is >= DEP_FRAC of the SMALLER box's volume
+    (containment-ish), the SMALLER is judged FIRST. Cases are grouped into
+    LEVELS (`judge_order` in the sidecar); a level's cases are independent
+    and still run concurrently, levels run in sequence. Same number of
+    model calls, just sequenced.
+  * SHEETS ARE BUILT LAZILY, inside the per-case work, so a case sees the
+    settled map AS IT STANDS AT THAT MOMENT. A moved neighbour box changes
+    the prompt and the panels, so the case cache key MISSES — that is the
+    correct behaviour, not a bug.
+  * A POST-PASS CONSISTENCY CHECK (pure arithmetic, no model calls)
+    re-measures every docket pair afterwards and records any pair whose
+    overlap fraction GREW under `post_judge_conflicts`. It is RECORDED,
+    never acted on — it catches dependencies that only appear after a box
+    grows.
+
 REVIEW-FIRST: --sheets-only builds one self-contained HTML sheet + the
 verbatim prompt per case (graph/multiplicity_sheets/) with ZERO model
-calls — USER GATE A1 eyeballs the stimuli before any verdict runs.
+calls — USER GATE A1 eyeballs the stimuli before any verdict runs. It
+builds every sheet against the INITIAL settled map and judges nothing.
 
 Run:  python graph/judge_multiplicity.py --scene living_marble --sheets-only
       python graph/judge_multiplicity.py --scene living_marble
@@ -117,6 +161,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
@@ -137,7 +182,8 @@ CONCURRENCY = 8   # user ruling 08-04: lanes are couriers, compute is cloud-side
 CALL_TIMEOUT_S = 600   # s — raised from 240 (2026-08-08): image-heavy cases
                        # legitimately run long; a timeout is a failed attempt,
                        # never a crash (see run_case)
-OUTCOMES = ("ONE_BOX", "SPLIT", "UNCLEAR")           # v2.1 — representation
+OUTCOMES = ("ONE_BOX", "SPLIT", "UNCLEAR",           # v2.1 — representation
+            "NO_GOOD_BOX")                           # v2.3 — the kill
 IDENTITIES = ("one_structure", "copies", "distinct")  # v2.1 — annotation
 # v2.2: the ONE_BOX answer is "ship": <key from THIS case's candidate list>.
 # The old fixed enum survives only as an inbound compatibility mapping so a
@@ -148,6 +194,12 @@ AGREE_TOL = 0.05   # m — per face. Two candidate boxes closer than this on
 #                    case offer "either".
 FACT_CAP = 8       # unrelated-class fact lines kept, by relevance; same-class
 #                    facts are NEVER truncated (the obj_063 rule)
+DEP_FRAC = 0.5     # v2.4 — two docket boxes whose overlap is at least this
+#                    share of the SMALLER box's volume are a containment-ish
+#                    pair: the SMALLER one is judged FIRST (inner before
+#                    outer), so the bigger one sees a settled box.
+SETTLED_BASE = ("carve shipping box (scene_manifest_slicevote_preview.json)"
+                ", verbatim")   # the settled map's starting provenance
 
 # ---- the box-content panel (exempt cases; machinery from split_cuts.py) --
 BOXC_FOV = 50.0      # deg — the adopted isolated-render lens (split_cuts)
@@ -236,15 +288,18 @@ def parse_verdict(text, ship_keys=()):
     `ship` is optional there and absent from the verdict.
 
     Conditional-key rules (required EXACTLY when the answer demands them):
-      outcome     enum ONE_BOX | SPLIT | UNCLEAR
+      outcome     enum ONE_BOX | SPLIT | NO_GOOD_BOX | UNCLEAR
       ship        required + in ship_keys iff outcome == ONE_BOX and the
-                  case has candidate boxes
+                  case has candidate boxes. NEVER carried on any other
+                  outcome — NO_GOOD_BOX names no box on purpose.
       identity    required + valid iff outcome == SPLIT
       count       required positive int iff identity == "copies"
       parts       required non-empty valid list iff identity == "distinct"
                   (accepted, not required, on the other identities)
       confidence  clamped to [0, 1], default 0.5
-      reason      string (empty when absent)
+      reason      string (empty when absent); REQUIRED non-empty iff
+                  outcome == NO_GOOD_BOX — a kill with no stated fault is
+                  a malformed reply, not a verdict
 
     Returns the validated verdict dict, or None on any malformed reply
     (caller retries once, then ships the UNCLEAR fallback)."""
@@ -304,6 +359,237 @@ def parse_verdict(text, ship_keys=()):
     out["confidence"] = round(min(1.0, max(0.0, conf)), 2)
     reason = v.get("reason")
     out["reason"] = reason.strip() if isinstance(reason, str) else ""
+    if outcome == "NO_GOOD_BOX" and not out["reason"]:
+        return None      # a kill must say what is wrong with the boxes
+    return out
+
+
+# ---- THE SETTLED MAP + THE DEPENDENCY ORDER (v2.4) -----------------------
+# THE BUG THIS EXISTS FOR (traced 2026-08-08): a case's cut/verdict is
+# placed against a NEIGHBOUR's box, and another case can MOVE that
+# neighbour's box. Every case used to be built up front and judged in
+# parallel, so nobody saw anyone else's result — J8 grew obj_063 to
+# x..0.636 after the split judge had already cut obj_011 at obj_063's OLD
+# edge x=0.335, leaving the two nodes overlapping by 0.30 m.
+#
+# THE RULING (user, over re-running the chain to a fixed point — too much
+# compute): JUDGE INNER BEFORE OUTER. The map below is the single geometry
+# every case reads; the order below settles the contained box first.
+#
+# NOTE ON SCOPE: these overlaps decide ORDER ONLY. They are never shown to
+# the judge and never become a relational fact — the obj_063 rule (v2.1,
+# "J8 computes NO private overlap lists") still holds for everything the
+# prompt says.
+
+def box_vol(b):
+    lo, hi = b["lo"], b["hi"]
+    return (max(0.0, float(hi[0]) - float(lo[0]))
+            * max(0.0, float(hi[1]) - float(lo[1]))
+            * max(0.0, float(hi[2]) - float(lo[2])))
+
+
+def box_overlap_vol(a, b):
+    d = [max(0.0, min(float(a["hi"][k]), float(b["hi"][k]))
+             - max(float(a["lo"][k]), float(b["lo"][k]))) for k in range(3)]
+    return d[0] * d[1] * d[2]
+
+
+def frac_of_smaller(a, b):
+    """(overlap / the SMALLER box's volume, overlap m3) — the
+    containment-ish number both the dependency order and the post-pass
+    consistency check speak."""
+    ov = box_overlap_vol(a, b)
+    small = min(box_vol(a), box_vol(b))
+    return (ov / small if small > 1e-9 else 0.0), ov
+
+
+def same_box(a, b):
+    """Byte-for-byte-equal boxes, to float noise. boxes_agree is the same
+    face-by-face test — this only pins the tolerance to "identical", not
+    to AGREE_TOL (which is a JUDGEMENT tolerance, 5 cm)."""
+    return boxes_agree(a, b, 1e-6)
+
+
+def named_box(nid, key, report, doubts):
+    """The box a J8 ship key NAMES, resolved from the CARVE's own records —
+    the same lookup materialize_carve.named_box does, so the map J8 judges
+    against and the geometry materialize will actually apply cannot drift:
+        "vote"            -> the carve report's boxes.vote2
+        "pano"            -> the carve report's boxes.pano
+        "rebox_candidate" -> the rejected face-on re-box the carve recorded
+                             on this node's rebox_rejected_smaller doubt
+        "current"/"either"-> NO-OPs: they name the box that already ships
+    Returns (box|None, source). None means there is nothing to apply — the
+    entry stands; a box is NEVER guessed."""
+    bx = report.get(nid) or {}
+    if key == "vote":
+        return bx.get("vote2"), "pool_retake/slicevote_report.json boxes.vote2"
+    if key == "pano":
+        return bx.get("pano"), "pool_retake/slicevote_report.json boxes.pano"
+    if key == "rebox_candidate":
+        for d in doubts.get(nid) or []:
+            if d.get("kind") == "rebox_rejected_smaller" \
+                    and d.get("proposed_box"):
+                return d["proposed_box"], ("carve doubt rebox_rejected_"
+                                           "smaller.proposed_box")
+        return None, "carve doubts (no rebox_rejected_smaller.proposed_box)"
+    return None, ""          # "current" / "either" — the shipping box stands
+
+
+def init_settled(carved_boxes):
+    """The settled map at the start of a run: the carve's SHIPPING boxes,
+    verbatim, for EVERY id in the preview manifest (not just the docket —
+    a case's neighbours and a later stage's cover boxes are often
+    non-docket nodes)."""
+    return {i: {"lo": list(lo), "hi": list(hi), "source": SETTLED_BASE}
+            for i, (lo, hi) in carved_boxes.items()}
+
+
+def settle_verdict(settled, nid, v, report, doubts):
+    """Fold ONE case's verdict into the settled map and return the record
+    of what happened. ONLY a ONE_BOX verdict moves a box — it NAMES one,
+    and the named box is resolved from the carve's own records (never from
+    the J8 sidecar). SPLIT / UNCLEAR / NO_GOOD_BOX leave the entry exactly
+    as it was. Each verdict touches only its OWN node's entry, so the
+    order verdicts are applied in cannot change the final map."""
+    v = v or {}
+    rec = {"id": nid, "outcome": v.get("outcome"), "ship": v.get("ship"),
+           "changed": False}
+    if v.get("outcome") != "ONE_BOX":
+        rec["why"] = "not a ONE_BOX verdict — the entry stands"
+        return rec
+    key = v.get("ship")
+    if not key:
+        rec["why"] = "ONE_BOX with no ship key (this case had no candidate " \
+                     "boxes) — the entry stands"
+        return rec
+    b, src = named_box(nid, key, report, doubts)
+    if b is None:
+        rec["why"] = (f"ship={key} names no box to apply"
+                      + (f" ({src})" if src else " (it names the box that "
+                         "already ships)") + " — the entry stands")
+        return rec
+    cur = settled.get(nid)
+    new = {"lo": [float(x) for x in b["lo"]], "hi": [float(x) for x in b["hi"]],
+           "source": f"J8 ONE_BOX ship={key} -> {src}"}
+    if cur is not None and same_box(cur, new):
+        rec["why"] = "the named box already IS this node's shipping box"
+        return rec
+    if cur is not None:
+        rec["was"] = {"lo": list(cur["lo"]), "hi": list(cur["hi"])}
+    rec["now"] = {"lo": list(new["lo"]), "hi": list(new["hi"])}
+    rec["changed"] = True
+    rec["why"] = f"ship={key} named a different box — the entry MOVES"
+    rec["source"] = new["source"]
+    settled[nid] = new
+    return rec
+
+
+def dependency_levels(ids, settled, notes):
+    """JUDGE INNER BEFORE OUTER. Edges come from GEOMETRY ONLY, over the
+    docket cases: for two docket boxes whose overlap is at least DEP_FRAC
+    of the SMALLER box's volume, the SMALLER must be judged BEFORE the
+    bigger one. Remaining ties break on (volume, id), which is a strict
+    TOTAL order — so every edge points forward in that order and the graph
+    provably cannot cycle. The cycle branch below is therefore a safety
+    net, not a normal path: it takes the smallest remaining member, marks
+    the order ARBITRARY on the record, and keeps going rather than
+    dropping cases.
+
+    Returns {"levels": [[id, ...], ...], "edges": [...], "arbitrary":
+    [...], "rule": ...}. Cases inside one level are independent and may
+    still run concurrently; levels run in sequence."""
+    ids = list(ids)
+    key = {}
+    for i in ids:
+        e = settled.get(i)
+        if e is None:
+            notes.append(f"{i}: no box in the settled map — no dependency "
+                         "could be computed for it (judged in level 0)")
+            key[i] = (0.0, i)
+        else:
+            key[i] = (box_vol(e), i)
+    order = sorted(ids, key=lambda i: key[i])
+    deps = {i: set() for i in ids}          # i waits for every id in deps[i]
+    pairs = []
+    for ai in range(len(order)):
+        for bi in range(ai + 1, len(order)):
+            a, b = order[ai], order[bi]     # key[a] < key[b] -> a is smaller
+            ea, eb = settled.get(a), settled.get(b)
+            if ea is None or eb is None:
+                continue
+            f, ov = frac_of_smaller(ea, eb)
+            if f < DEP_FRAC:
+                continue
+            deps[b].add(a)
+            pairs.append({"before": a, "after": b,
+                          "overlap_frac_of_smaller": round(f, 3),
+                          "overlap_m3": round(ov, 4),
+                          "vol_before_m3": round(box_vol(ea), 4),
+                          "vol_after_m3": round(box_vol(eb), 4),
+                          "why": f"{f:.0%} of {a}'s volume is inside {b} "
+                                 f"(>= {DEP_FRAC:.0%}) — the smaller box is "
+                                 "settled first"})
+    lvl, remaining, arbitrary, n = {}, set(ids), set(), 0
+    while remaining:
+        ready = sorted((i for i in remaining if not (deps[i] & remaining)),
+                       key=lambda i: key[i])
+        if not ready:
+            # SAFETY NET (unreachable while the (volume, id) total order
+            # holds): mutual heavy overlap. Fall back to smaller-first and
+            # SAY SO — an arbitrary order is recorded, never hidden.
+            ready = [min(remaining, key=lambda i: key[i])]
+            arbitrary.update(ready)
+            notes.append(f"{ready[0]}: dependency cycle (mutual heavy "
+                         "overlap) — its position in the judge order is "
+                         "ARBITRARY (smaller-first/id fallback)")
+        for i in ready:
+            lvl[i] = n
+        remaining -= set(ready)
+        n += 1
+    levels = [sorted((i for i in ids if lvl[i] == k), key=lambda i: key[i])
+              for k in range(n)]
+    return {"levels": levels, "edges": pairs, "arbitrary": sorted(arbitrary),
+            "dep_frac": DEP_FRAC,
+            "rule": "INNER BEFORE OUTER (user ruling 2026-08-08): for two "
+                    "docket boxes whose overlap is >= "
+                    f"{DEP_FRAC:.0%} of the SMALLER box's volume, the "
+                    "smaller is judged first so the bigger one sees a "
+                    "SETTLED neighbour box. Ties break on (volume, id). "
+                    "Cases in one level are independent and run "
+                    "concurrently; levels run in sequence."}
+
+
+def post_judge_conflicts(ids, before, after, verdicts):
+    """PURE ARITHMETIC, ZERO model calls. After every case is judged,
+    re-measure each docket PAIR and record any pair whose overlap fraction
+    GREW versus the pre-judging boxes — a dependency that only appeared
+    once a box moved. RECORDED ONLY: this function never changes a box and
+    never re-opens a case."""
+    out = []
+    ids = sorted(i for i in ids if i in before and i in after)
+    for ai in range(len(ids)):
+        for bi in range(ai + 1, len(ids)):
+            a, b = ids[ai], ids[bi]
+            f0, ov0 = frac_of_smaller(before[a], before[b])
+            f1, ov1 = frac_of_smaller(after[a], after[b])
+            if f1 <= f0 + 1e-6 or f1 <= 0.0:
+                continue
+            out.append({
+                "a": a, "b": b,
+                "overlap_frac_of_smaller_before": round(f0, 3),
+                "overlap_frac_of_smaller_after": round(f1, 3),
+                "overlap_m3_before": round(ov0, 4),
+                "overlap_m3_after": round(ov1, 4),
+                "verdicts": {i: {"outcome": (verdicts.get(i) or {}).get(
+                                     "outcome"),
+                                 "ship": (verdicts.get(i) or {}).get("ship"),
+                                 "box_moved": not same_box(before[i],
+                                                           after[i])}
+                             for i in (a, b)},
+                "note": "the two boxes overlap MORE after judging than "
+                        "before. RECORDED ONLY — no box was changed and no "
+                        "case was re-opened."})
     return out
 
 
@@ -370,11 +656,30 @@ def _ev_bits(ev, keys):
     return ", ".join(out)
 
 
-def edge_fact_line(nid, e, names, neighbor_ids):
+def settled_note(o, settled):
+    """The SETTLED-BOX addendum for a fact line (v2.4). An edge's evidence
+    numbers were measured by the loop-back on the CARVED boxes; if an
+    EARLIER case in this same run has since moved `o`'s box, the judge must
+    be told the number it is reading is about the old box and what the box
+    is NOW. Returns "" when the box has not moved — so an unaffected case's
+    prompt is byte-identical to before and still hits the cache."""
+    e = (settled or {}).get(o)
+    if not e or e.get("source") == SETTLED_BASE:
+        return ""
+    lo, hi = e["lo"], e["hi"]
+    return (f"\n    SETTLED SINCE: {o}'s box was moved by an EARLIER verdict "
+            f"in this same run ({e['source']}). It is NOW x {lo[0]:.3f}.."
+            f"{hi[0]:.3f}, y {lo[1]:.3f}..{hi[1]:.3f}, z {lo[2]:.3f}.."
+            f"{hi[2]:.3f} — that is the box drawn on the panels. The numbers "
+            "on this edge were measured on its PRE-verdict carve box.")
+
+
+def edge_fact_line(nid, e, names, neighbor_ids, settled=None):
     """One fact line for one edge of graph['carved_edges'] that touches
     this node — the relation phrased from THIS node's side, with the
     edge's own evidence numbers, plus the J1 verdict when the edge is a
-    judged SAME_CANDIDATE."""
+    judged SAME_CANDIDATE, plus (v2.4) the SETTLED-BOX addendum when an
+    earlier verdict in this run has moved the other end's box."""
     t = e["type"]
     o = other_end(nid, e)
     a_is_me = e["a"] == nid
@@ -441,7 +746,7 @@ def edge_fact_line(nid, e, names, neighbor_ids):
             conf, (int, float)) else ""
         line += (f"\n    J1 ruled {v['verdict']}{conf}: "
                  f"\"{(v.get('reason') or '').strip()}\"")
-    return line
+    return line + settled_note(o, settled)
 
 
 def fmt_box(b):
@@ -498,19 +803,22 @@ def build_candidates(c):
         if bx.get("vote2"):
             out.append({
                 "key": "vote", "box": bx["vote2"], "colour": "ORANGE",
-                "what": "the ELECTED CLUSTER box (boxes.vote2) — the "
-                        "points most carve cameras agreed on. Ship it when "
-                        "the pano cut was occlusion-shaved (the cyan box "
-                        "is a partial view and the orange box is the true "
-                        "extent)."})
+                "what": "WHERE IT CAME FROM: the ELECTED CLUSTER box "
+                        "(boxes.vote2) — the points most carve cameras "
+                        "agreed on. (HINT, NOT THE TEST: of the two, this "
+                        "is usually the fuller box, because the cyan cut "
+                        "can be occlusion-shaved down to a partial view. "
+                        "Judge it by what you SEE, not by this hint.)"})
         if bx.get("pano"):
             out.append({
                 "key": "pano", "box": bx["pano"], "colour": "CYAN",
-                "what": "the FOUNDING-MASK SHARE of that cluster "
-                        "(boxes.pano) — the part this node's own founding "
-                        "masks vouch for. Ship it when the vote box "
-                        "absorbed a neighbour (the orange box is too "
-                        "big)."})
+                "what": "WHERE IT CAME FROM: the FOUNDING-MASK SHARE of "
+                        "that cluster (boxes.pano) — the part this node's "
+                        "own founding masks vouch for. (HINT, NOT THE "
+                        "TEST: of the two, this is usually the tighter "
+                        "box, because the orange vote box can absorb a "
+                        "neighbour. Judge it by what you SEE, not by this "
+                        "hint.)"})
     if len(out) == 2 and boxes_agree(out[0]["box"], out[1]["box"]):
         out.append({
             "key": "either", "box": None, "colour": None,
@@ -712,6 +1020,11 @@ def perp_panels(c, sd, sheets_dir, notes):
 # same params-sidecar staleness rule: reuse only on a hash match.
 
 _SPLATS = {}          # ply path -> split_cuts.Splat (read once per process)
+_SPLAT_LOCK = threading.Lock()   # v2.4: panels are now built INSIDE the
+#                                  per-case worker threads, so two exempt
+#                                  cases in one level can reach this cache
+#                                  at the same time. The ply is hundreds of
+#                                  MB — read it once, not once per thread.
 
 
 def _split_cuts():
@@ -722,9 +1035,10 @@ def _split_cuts():
 def _splat(ply):
     sc = _split_cuts()
     key = str(ply)
-    if key not in _SPLATS:
-        _SPLATS[key] = sc.Splat(ply)
-    return _SPLATS[key]
+    with _SPLAT_LOCK:
+        if key not in _SPLATS:
+            _SPLATS[key] = sc.Splat(ply)
+        return _SPLATS[key]
 
 
 def boxcontent_region(box, axis, sign):
@@ -1214,6 +1528,15 @@ TAXONOMY_TAIL = """- SPLIT — one box is NOT enough: this footprint must become
       "parts" is REQUIRED when identity is "distinct"; it is welcome and
       optional on "one_structure" and "copies".
 
+- NO_GOOD_BOX — EVERY candidate box is GROSSLY wrong: each one badly
+  cuts the object, and/or mostly contains things that are not it. Give
+  "reason" — say what is wrong with the boxes — and do NOT give "ship".
+  This is NOT the same as UNCLEAR: UNCLEAR means the evidence does not
+  settle the question, NO_GOOD_BOX means the evidence DOES settle it and
+  the answer is "none of these boxes is usable". Use it only for GROSSLY
+  wrong boxes, never for merely imperfect ones — remember the error
+  tolerance above.
+
 - UNCLEAR — the evidence does not settle it. The shipping default stands
   and the doubt stays open on the record as a work order. Use this rather
   than guessing.
@@ -1227,10 +1550,27 @@ unfalsifiable."""
 ONE_BOX_HEAD = """OUTCOME — REPRESENTATION FIRST. Choose exactly ONE:
 
 - ONE_BOX — ONE box represents this node. YOU MUST ALSO SAY WHICH BOX
-  SHIPS, as "ship": "<key>", because which of the boxes on record is the
-  object is undecidable from geometry alone. The keys below are THE BOXES
-  THAT EXIST FOR THIS NODE — the complete list for this case, built from
-  what the carve actually recorded. Answer with exactly one of them:
+  SHIPS, as "ship": "<key>". THIS IS A COMPARISON: look at the candidate
+  boxes on the panels and pick the BETTER one. Better means, IN THIS
+  ORDER:
+    1. COMPLETE — it contains the WHOLE object. A box that CUTS THROUGH
+       the object is worse: part of the object visibly continues outside
+       the wireframe in a panel, or the box floats above the surface the
+       object plainly rests on while the object clearly reaches down to
+       that surface.
+    2. TIGHT ENOUGH — it is not mostly empty space, and not mostly
+       another object's territory.
+  PERFECTION IS NOT REQUIRED, and there is real error tolerance: a box
+  only has to be REASONABLE, not exact. Some slack around the object, or
+  a face a few centimetres off, is FINE — that is not a fault and not a
+  reason to reject a box. If BOTH candidates are reasonable, ship the one
+  that is MORE COMPLETE without being loose.
+  The keys below are THE BOXES THAT EXIST FOR THIS NODE — the complete
+  list for this case, built from what the carve actually recorded. Each
+  says WHERE ITS BOX CAME FROM; any bracketed HINT is only how that box
+  usually goes wrong and is NOT the test. The test is the two criteria
+  above, applied to what you SEE in the panels. Answer with exactly one
+  of them:
 {candidates}
   Valid "ship" values on this case: {keys}. Nothing else is accepted."""
 
@@ -1273,7 +1613,7 @@ CASE FACTS (meters; y is the height axis, y-DOWN — smaller y is higher):
 {taxonomy}
 
 Reply with ONE JSON object only, no prose around it:
-{{"outcome": "ONE_BOX" | "SPLIT" | "UNCLEAR",
+{{"outcome": "ONE_BOX" | "SPLIT" | "NO_GOOD_BOX" | "UNCLEAR",
   "ship": "<one key from this case's list above>",     // ONE_BOX only
   "identity": "one_structure" | "copies" | "distinct", // SPLIT only
   "count": <positive int>,                             // identity "copies" only
@@ -1283,6 +1623,8 @@ Reply with ONE JSON object only, no prose around it:
                                                        // identity is "distinct"
   "confidence": <0..1>,
   "reason": "<one or two sentences citing what you SEE in a named panel>"}}
+                                                       // "reason" is REQUIRED
+                                                       // on NO_GOOD_BOX
 Omit the keys that do not apply to your answer."""
 
 
@@ -1440,11 +1782,13 @@ def case_facts(c):
     return "\n".join(lines)
 
 
-def edge_fact_lines(nid, edges, names, neighbor_ids):
+def edge_fact_lines(nid, edges, names, neighbor_ids, settled=None):
     """The relational fact block for one case. Same-class neighbours are
     listed FIRST and are NEVER truncated (the obj_063 rule); the rest are
     capped at FACT_CAP by relevance, with the count of what was cut said
-    out loud so the judge knows the list is not the whole world."""
+    out loud so the judge knows the list is not the whole world. `settled`
+    (v2.4) is the run's settled geometry map — a fact about a node whose
+    box an earlier verdict has already moved says so, verbatim."""
     touching = edges_touching(nid, edges)
     if not touching:
         return ["- (this node has no edges in the carved-edge layer: it "
@@ -1457,7 +1801,8 @@ def edge_fact_lines(nid, edges, names, neighbor_ids):
         (same if (mine and node_class(o, names) == mine) else rest).append(e)
     rest.sort(key=lambda e: fact_relevance(nid, e), reverse=True)
     kept, cut = rest[:FACT_CAP], rest[FACT_CAP:]
-    out = [edge_fact_line(nid, e, names, neighbor_ids) for e in same + kept]
+    out = [edge_fact_line(nid, e, names, neighbor_ids, settled)
+           for e in same + kept]
     if cut:
         out.append(f"- (+{len(cut)} further edge(s) of lower relevance not "
                    "listed: "
@@ -1466,11 +1811,13 @@ def edge_fact_lines(nid, edges, names, neighbor_ids):
     return out
 
 
-def same_class_neighbors(nid, edges, names, carved_boxes, notes):
+def same_class_neighbors(nid, edges, names, settled, notes):
     """The SAME-CLASS nodes joined to this node by ANY carved edge, with
-    their CARVED boxes verbatim from the preview manifest. These are the
-    nodes that get a GREEN wireframe on every panel — only same-class
-    neighbours are ever drawn (v2.1)."""
+    their boxes taken from the run's SETTLED MAP (v2.4) — the carve's
+    shipping box verbatim until an EARLIER verdict in this run has named a
+    different one, in which case the settled box is what gets drawn GREEN.
+    These are the nodes that get a green wireframe on every panel; only
+    same-class neighbours are ever drawn (v2.1)."""
     mine = node_class(nid, names)
     out, seen = [], set()
     if not mine:
@@ -1480,13 +1827,17 @@ def same_class_neighbors(nid, edges, names, carved_boxes, notes):
         if o in seen or node_class(o, names) != mine:
             continue
         seen.add(o)
-        geo = carved_boxes.get(o)
+        geo = settled.get(o)
         if geo is None:
-            notes.append(f"{nid}: same-class neighbour {o} has no carved box "
-                         "in the preview manifest — NOT drawn")
+            notes.append(f"{nid}: same-class neighbour {o} has no box in the "
+                         "settled map (absent from the preview manifest) — "
+                         "NOT drawn")
             continue
         out.append({"id": o, "name": names[o], "via": e["type"],
-                    "lo": list(geo[0]), "hi": list(geo[1])})
+                    "lo": list(geo["lo"]), "hi": list(geo["hi"]),
+                    "box_source": geo.get("source", SETTLED_BASE),
+                    "settled": geo.get("source", SETTLED_BASE)
+                    != SETTLED_BASE})
     return sorted(out, key=lambda n: n["id"])
 
 
@@ -1530,8 +1881,9 @@ node's carved box (labelled with its id)</span>"""
 
 
 def build_sheet(c, sheets_dir):
-    neigh_txt = ", ".join(f"{n['id']} ({n['name']}, via {n['via']})"
-                          for n in c["neighbors"]) or (
+    neigh_txt = ", ".join(
+        f"{n['id']} ({n['name']}, via {n['via']}; box: {n.get('box_source', SETTLED_BASE)})"
+        for n in c["neighbors"]) or (
         "none — this node has no same-class neighbour in the carved edges")
     # the sheet's legend follows the SAME per-node-type rule as the
     # prompt's: never a swatch for a colour this case's panels lack
@@ -1570,6 +1922,58 @@ camera that made each render</h2>
     p = sheets_dir / f"{c['id']}.html"
     p.write_text(html, encoding="utf-8")
     return p.name
+
+
+def build_stimuli(c, sd, sheets_dir, settled, edges, names, notes):
+    """LAZY SHEET BUILD (v2.4). Everything a case shows the judge — its
+    green neighbour boxes, its relational fact block, its annotated panels,
+    its prompt and its HTML sheet — is built HERE, inside the per-case
+    work, against the SETTLED MAP AS IT STANDS AT THIS MOMENT.
+
+    This is the whole point of the dependency order: sheets used to be
+    built for the entire docket up front, so a case could only ever see the
+    carve's boxes, never a neighbour box an earlier verdict had already
+    moved. A moved neighbour changes the prompt text AND the panel pixels,
+    so the case cache key misses — that is CORRECT, not a bug: it is a
+    different question than the one that was cached.
+
+    `c` is mutated in place and returned; one case is only ever touched by
+    one worker."""
+    nid = c["id"]
+    c["neighbors"] = same_class_neighbors(nid, edges, names, settled, notes)
+    c["fact_lines"] = edge_fact_lines(
+        nid, edges, names, {n["id"] for n in c["neighbors"]}, settled)
+    c["panels"] = build_panels(c, sd, sheets_dir, notes)
+    if not c["panels"]:
+        print(f"[multiplicity] {nid}: NO stimulus images found — "
+              "case ships UNCLEAR-by-no-stimulus", flush=True)
+        c["no_stimulus"] = True
+    panel_list = "\n".join(
+        f"  {p['file']}  — {p['caption']}"
+        + ("" if p["overlay"] != "NONE"
+           else "   [no boxes drawn: camera not recoverable]")
+        for p in c["panels"])
+    c["prompt"] = PROMPT.format(
+        nid=nid, name=c["name"], status=c["status"],
+        tiers="→".join(c["tiers"]) or "none",
+        opening=case_opening(c), panel_list=panel_list,
+        legend=legend_for(c), facts=case_facts(c),
+        taxonomy=taxonomy_for(c["candidates"]))
+    (sheets_dir / f"{nid}_prompt.txt").write_text(c["prompt"],
+                                                  encoding="utf-8")
+    c["sheet"] = build_sheet(c, sheets_dir)
+    c["neighbor_boxes_settled"] = [n["id"] for n in c["neighbors"]
+                                   if n.get("settled")]
+    print(f"[multiplicity] {nid:>8} {c['name']:<12} "
+          f"{len(c['panels'])} panel(s) "
+          f"[{', '.join(p['file'] for p in c['panels']) or 'none'}]"
+          f" · ship keys "
+          f"[{', '.join(cd['key'] for cd in c['candidates']) or 'none'}]"
+          + (" · SETTLED neighbour box(es) "
+             + "/".join(c["neighbor_boxes_settled"])
+             if c["neighbor_boxes_settled"] else "")
+          + f" -> {c['sheet']}", flush=True)
+    return c
 
 
 def build_index(cases, sheets_dir, scene, notes):
@@ -1640,6 +2044,15 @@ def main():
         for o in json.loads(prev.read_text())["objects"]:
             carved_boxes[o["id"]] = (o["aabb_min"], o["aabb_max"])
             carved_sizes[o["id"]] = [round(v, 2) for v in o["size"]]
+    # v2.4 — the CARVE's own records, the only place a J8 ship key's box may
+    # be resolved from (the same two sources materialize reads).
+    report = {}
+    rep_f = sd / "pool_retake" / "slicevote_report.json"
+    if rep_f.exists():
+        report = {r["id"]: (r.get("boxes") or {}) for r in json.loads(
+            rep_f.read_text(encoding="utf-8"))["results"]}
+    all_doubts = {i: (n.get("doubts") or [])
+                  for i, n in (carve.get("nodes") or {}).items()}
     cm_f = sd / "pool_retake" / "conemap.json"
     if not cm_f.exists():
         raise SystemExit("[multiplicity] no pool_retake/conemap.json — run "
@@ -1732,52 +2145,45 @@ def main():
              "carved_size": carved_sizes.get(nid, "n/a"),
              "original_size": [round(v, 2) for v in rn["geometry"]["size"]],
              "n_members": len(rn.get("members", []))}
-        # same-class neighbours joined to this node by ANY carved edge get
-        # a GREEN wireframe (v2.1). Their boxes are the carve manifest's,
-        # VERBATIM — nothing is recomputed here.
-        c["neighbors"] = same_class_neighbors(nid, edges, names,
-                                              carved_boxes, notes)
-        c["fact_lines"] = edge_fact_lines(
-            nid, edges, names, {n["id"] for n in c["neighbors"]})
         # v2.2: the ONE_BOX vocabulary is built PER CASE from the boxes
         # this node actually has — the prompt lists these keys verbatim and
-        # the parser accepts nothing else.
+        # the parser accepts nothing else. It depends only on THIS node's
+        # own boxes, so it is safe to build up front (v2.4).
         c["candidates"] = build_candidates(c)
-        c["panels"] = build_panels(c, sd, sheets_dir, notes)
-        if not c["panels"]:
-            print(f"[multiplicity] {nid}: NO stimulus images found — "
-                  "case ships UNCLEAR-by-no-stimulus")
-            c["no_stimulus"] = True
-        panel_list = "\n".join(
-            f"  {p['file']}  — {p['caption']}"
-            + ("" if p["overlay"] != "NONE"
-               else "   [no boxes drawn: camera not recoverable]")
-            for p in c["panels"])
-        c["prompt"] = PROMPT.format(
-            nid=nid, name=rn["name"], status=c["status"],
-            tiers="→".join(c["tiers"]) or "none",
-            opening=case_opening(c), panel_list=panel_list,
-            legend=legend_for(c), facts=case_facts(c),
-            taxonomy=taxonomy_for(c["candidates"]))
-        (sheets_dir / f"{nid}_prompt.txt").write_text(c["prompt"],
-                                                      encoding="utf-8")
-        c["sheet"] = build_sheet(c, sheets_dir)
         cases.append(c)
-        print(f"[multiplicity] {nid:>8} {rn['name']:<12} "
-              f"{len(c['panels'])} panel(s) [{', '.join(p['file'] for p in c['panels']) or 'none'}]"
-              f" · ship keys "
-              f"[{', '.join(cd['key'] for cd in c['candidates']) or 'none'}]"
-              f" -> {c['sheet']}", flush=True)
 
-    idx = build_index(cases, sheets_dir, a.scene, notes)
-    for n in notes:
-        print(f"[multiplicity] NOTE: {n}", flush=True)
-    print(f"[multiplicity] docket: {len(cases)} case(s) -> {sheets_dir}",
-          flush=True)
-    print(f"[multiplicity] index: {idx}", flush=True)
+    # ---- v2.4: THE SETTLED MAP + THE DEPENDENCY ORDER -------------------
+    # Everything the cases read comes from this one map; it starts as the
+    # carve's shipping boxes and moves only where a ONE_BOX verdict names
+    # a different box. Sheets are built INSIDE the per-case work so a case
+    # judged later sees the boxes earlier cases settled.
+    settled = init_settled(carved_boxes)
+    pre_judging = {i: {"lo": list(e["lo"]), "hi": list(e["hi"])}
+                   for i, e in settled.items()}
+    order = dependency_levels([c["id"] for c in cases], settled, notes)
+    for k, lv in enumerate(order["levels"]):
+        print(f"[multiplicity] LEVEL {k}: {', '.join(lv)}", flush=True)
+    for dep in order["edges"]:
+        print(f"[multiplicity]   dep: {dep['before']} BEFORE {dep['after']} "
+              f"— {dep['why']}", flush=True)
+    if not order["edges"]:
+        print("[multiplicity]   dep: none — no docket pair is "
+              f"containment-ish (>= {DEP_FRAC:.0%} of the smaller box)",
+              flush=True)
+
     if a.sheets_only:
+        for c in cases:
+            build_stimuli(c, sd, sheets_dir, settled, edges, names, notes)
+        idx = build_index(cases, sheets_dir, a.scene, notes)
+        for n in notes:
+            print(f"[multiplicity] NOTE: {n}", flush=True)
+        print(f"[multiplicity] docket: {len(cases)} case(s) -> {sheets_dir}",
+              flush=True)
+        print(f"[multiplicity] index: {idx}", flush=True)
         print("[multiplicity] sheets-only — zero model calls (USER GATE A1 "
-              "reviews the stimuli first)", flush=True)
+              "reviews the stimuli first); every sheet was built against "
+              "the INITIAL settled map (no verdict has moved a box)",
+              flush=True)
         return
 
     cache_f = sd / "graph" / "judge_multiplicity_cache.json"
@@ -1790,7 +2196,10 @@ def main():
             h.update((sheets_dir / p["file"]).read_bytes())
         return h.hexdigest()[:24]
 
-    def run_case(c):
+    def run_case(c, snap):
+        # v2.4 — the stimulus is built HERE, against `snap` (the settled
+        # map as it stood when this level started), not up front.
+        build_stimuli(c, sd, sheets_dir, snap, edges, names, notes)
         if c.get("no_stimulus"):
             return {**c, "verdict": {
                 "outcome": "UNCLEAR", "confidence": 0.0,
@@ -1826,9 +2235,45 @@ def main():
         cache[k] = v
         return {**c, "verdict": v, "cached": False}
 
-    with ThreadPoolExecutor(max_workers=a.concurrency) as ex:
-        results = list(ex.map(run_case, cases))
+    # LEVELS RUN IN SEQUENCE; a level's cases are independent and still run
+    # concurrently. After each level its ONE_BOX verdicts are folded into
+    # the settled map, so the next level's sheets are built against them.
+    by_case_id = {c["id"]: c for c in cases}
+    done, settle_log = {}, []
+    for k, lv in enumerate(order["levels"]):
+        snap = {i: dict(e) for i, e in settled.items()}   # frozen per level
+        batch = [by_case_id[i] for i in lv]
+        print(f"[multiplicity] === judging LEVEL {k} "
+              f"({len(batch)} case(s), concurrency {a.concurrency}) ===",
+              flush=True)
+        with ThreadPoolExecutor(max_workers=a.concurrency) as ex:
+            got = list(ex.map(lambda c: run_case(c, snap), batch))
+        for r in got:
+            r["judge_level"] = k
+            if r["id"] in order["arbitrary"]:
+                r["judge_order_arbitrary"] = True
+                r["judge_order_note"] = (
+                    "a dependency cycle (mutual heavy overlap) put this "
+                    "case in an ARBITRARY position in the judge order "
+                    "(smaller-first/id fallback)")
+            done[r["id"]] = r
+            rec = settle_verdict(settled, r["id"], r["verdict"], report,
+                                 all_doubts)
+            rec["level"] = k
+            settle_log.append(rec)
+            if rec["changed"]:
+                print(f"[multiplicity] SETTLED {r['id']}: {rec['why']} "
+                      f"-> lo {[round(v, 3) for v in rec['now']['lo']]} hi "
+                      f"{[round(v, 3) for v in rec['now']['hi']]}", flush=True)
+    results = [done[c["id"]] for c in cases if c["id"] in done]
     cache_f.write_text(json.dumps(cache, indent=1))
+
+    idx = build_index(results, sheets_dir, a.scene, notes)
+    for n in notes:
+        print(f"[multiplicity] NOTE: {n}", flush=True)
+    print(f"[multiplicity] docket: {len(results)} case(s) -> {sheets_dir}",
+          flush=True)
+    print(f"[multiplicity] index: {idx}", flush=True)
 
     out_f = sd / "graph" / "multiplicity.json"
     fresh = [{k: v for k, v in c.items() if k not in ("prompt", "cm", "geo")}
@@ -1848,6 +2293,28 @@ def main():
         except Exception as e:                        # noqa: BLE001
             print(f"[multiplicity] previous sidecar unreadable ({e}) — "
                   "writing THIS RUN'S cases only", flush=True)
+
+    # ---- v2.4: the SETTLED MAP that ships ------------------------------
+    # Rebuilt from the carve's shipping boxes + EVERY case on the record
+    # (this run's and, on an --only run, the ones kept verbatim). A verdict
+    # only ever touches its OWN node's entry, so the order they are applied
+    # in cannot change the result — which is what lets an --only run write
+    # a COMPLETE map instead of regressing the cases it did not judge.
+    settled_out = init_settled(carved_boxes)
+    for c in sorted(fresh, key=lambda c: c.get("id", "")):
+        settle_verdict(settled_out, c["id"], c.get("verdict"), report,
+                       all_doubts)
+    conflicts = post_judge_conflicts(
+        [c["id"] for c in fresh], pre_judging, settled_out,
+        {c["id"]: c.get("verdict") for c in fresh})
+    for k in conflicts:
+        print(f"[multiplicity] POST-JUDGE CONFLICT {k['a']} / {k['b']}: "
+              f"overlap {k['overlap_frac_of_smaller_before']:.0%} -> "
+              f"{k['overlap_frac_of_smaller_after']:.0%} of the smaller box "
+              "(RECORDED ONLY)", flush=True)
+    if not conflicts:
+        print("[multiplicity] post-judge consistency check: no docket pair "
+              "overlaps MORE than it did before judging", flush=True)
     out_f.write_text(json.dumps({
         "scene": a.scene, "built": date.today().isoformat(),
         "source": "graph/judge_multiplicity.py (J8) — verdicts REFERENCE "
@@ -1858,18 +2325,47 @@ def main():
                   "rebox_candidate|either), NOT the retired ship_pano/"
                   "ship_vote/either enum. `candidates` is recorded per case "
                   "for audit; materialize resolves the named box from the "
-                  "CARVE's own records, never from this file.",
+                  "CARVE's own records, never from this file. v2.3: the "
+                  "ONE_BOX ask is a COMPARISON with error tolerance (pick "
+                  "the BETTER box — COMPLETE first, then TIGHT ENOUGH), and "
+                  "a fourth outcome NO_GOOD_BOX carries a required "
+                  "\"reason\" and NO \"ship\" key: every candidate was "
+                  "grossly wrong. On NO_GOOD_BOX materialize keeps the "
+                  "node's current shipping geometry unchanged (rule "
+                  "j8_no_good_box) and raises it as an open question — it "
+                  "is never a silent accept and never a dropped node. v2.4: "
+                  "DEPENDENCY-ORDERED JUDGING (judge INNER before OUTER). "
+                  "`settled_boxes` is the geometry every case was judged "
+                  "AGAINST and the geometry downstream stages must use: the "
+                  "carve's shipping boxes with every ONE_BOX verdict's named "
+                  "box already applied (resolved from the CARVE's own "
+                  "records, exactly as materialize resolves it). "
+                  "`judge_order` records the levels the docket ran in. "
+                  "`post_judge_conflicts` is a pure-arithmetic post-pass: "
+                  "docket pairs that overlap MORE after judging than before "
+                  "— RECORDED ONLY, never acted on.",
+        "settled_boxes": settled_out,
+        "settled_boxes_note": "{id: {lo, hi, source}} for EVERY id in the "
+                              "carve preview manifest. `source` says whether "
+                              "the box is the carve's shipping box or the "
+                              "box a J8 verdict NAMED. SPLIT / UNCLEAR / "
+                              "NO_GOOD_BOX never move an entry.",
+        "judge_order": order,
+        "settle_log": settle_log,
+        "post_judge_conflicts": conflicts,
         "cases": fresh}, indent=1))
     for c in results:
         v = c["verdict"]
         extra = (f"ship={v['ship']}" if v.get("ship")
                  else v.get("identity") or "")
+        if v["outcome"] == "NO_GOOD_BOX":
+            extra = "ship=NONE (no usable candidate box)"
         if v.get("count"):
             extra += f"({v['count']})"
         if v.get("parts"):
             extra += " parts " + "/".join(p["owner"] for p in v["parts"])
         print(f"[multiplicity] {c['id']:>8} {c['name']:<14} "
-              f"{v['outcome']:<8} {extra:<28} "
+              f"{v['outcome']:<11} {extra:<35} "
               f"conf {v.get('confidence', 0.0):.2f} "
               f"{'(cache)' if c.get('cached') else ''} — "
               f"{v.get('reason', '')[:80]}", flush=True)

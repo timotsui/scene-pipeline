@@ -49,6 +49,13 @@ fires is recorded on the node's `provenance` list:
      never as a ruling that applied -- and raised as an open question.
      UNCLEAR -> the node ships unchanged (`j8_unclear_ship_unchanged`)
      and the doubt stays open (rule 6).
+     NO_GOOD_BOX (J8 v2.3) -> the judge ruled EVERY candidate grossly
+     wrong. Handled CONSERVATIVELY: the node KEEPS its current shipping
+     geometry (nothing is dropped, no box is invented), records rule
+     `j8_no_good_box` with the judge's reason, and lands in
+     `open_questions` so it is loud and reviewable rather than silently
+     accepted. Its carve doubts also stay open (rule 6): a kill is not
+     an answer to the doubt.
   3. J8s SPLIT PIECES.
        resolution `split_chain`      -> the case node is REPLACED by its
            final KEPT pieces, ids `<nid>#1`, `<nid>#2`, ... Each piece
@@ -322,7 +329,7 @@ class Materialize:
         return got + ["current", "either"]
 
     def box_rulings(self):
-        swapped = noop = na = unclear = 0
+        swapped = noop = na = unclear = no_good = 0
         for case in (self.mult or {}).get("cases", []):
             nid = case["id"]
             v = case.get("verdict") or {}
@@ -342,6 +349,25 @@ class Materialize:
                             "J8 could not decide; shipping default stands",
                             confidence=v.get("confidence"))
                 unclear += 1
+                continue
+            if outcome == "NO_GOOD_BOX":
+                # J8 v2.3 kill: every candidate box was grossly wrong.
+                # CONSERVATIVE by rule -- the node keeps whatever geometry
+                # it already ships (no drop, no invented box) and the case
+                # is raised loudly instead of being silently accepted.
+                why = (v.get("reason") or "").strip() or "(no reason given)"
+                self.prov(nid, "j8_no_good_box",
+                          confidence=v.get("confidence"), reason=why,
+                          note="J8 ruled NO candidate box usable. The "
+                               "current shipping geometry STANDS UNCHANGED "
+                               "-- the node is not dropped and no box is "
+                               "invented; the case is an open question")
+                self.open_q(nid, "j8_no_good_box",
+                            f"J8 ruled NO_GOOD_BOX (every candidate box is "
+                            f"grossly wrong): {why} -- the node ships its "
+                            f"current geometry unchanged and NEEDS a new box",
+                            confidence=v.get("confidence"))
+                no_good += 1
                 continue
             if outcome != "ONE_BOX":
                 continue                      # SPLIT -> rule 3
@@ -392,7 +418,8 @@ class Materialize:
                                "claim": "vocabulary is "
                                         + "|".join(SHIP_KEYS + NOOP_KEYS)})
         self.stats.update(j8_box_swapped=swapped, j8_box_noop=noop,
-                          j8_ruling_not_applicable=na, j8_unclear=unclear)
+                          j8_ruling_not_applicable=na, j8_unclear=unclear,
+                          j8_no_good_box=no_good)
 
     # -- rule 3 ----------------------------------------------------------
     def annotate_owner(self, owner_id, src_node, piece_id, kind):
@@ -774,6 +801,10 @@ class Materialize:
                         fate = ("kept · absorbed "
                                 + ", ".join(node.get("merged_from") or []))
                         rule = "j1_same_merge_survivor"
+                    if "j8_no_good_box" in rules:
+                        # never let a kill hide in the "kept" rows
+                        fate += " · NO GOOD BOX (j8)"
+                        rule = "j8_no_good_box"
                 rows.append(self.row(nid, rn["name"], fate, rule, node))
             elif d and d["rule"] == "j8s_split_replaced":
                 kids = [self.nodes[i] for i in d.get("pieces") or []]
@@ -857,7 +888,9 @@ class Materialize:
                 "the carve's own record: vote -> boxes.vote2, pano -> "
                 "boxes.pano, rebox_candidate -> the rejected face-on "
                 "re-box; current/either -> unchanged; a key this node has "
-                "no box for -> ruling_not_applicable)",
+                "no box for -> ruling_not_applicable; NO_GOOD_BOX -> the "
+                "current shipping geometry stands unchanged and the node "
+                "is raised in open_questions)",
                 "3 J8s split pieces (<nid>#k; existing:<id> piece dropped "
                 "with a pointer, never grows that node)",
                 "4 J1 SAME merges (smaller volume removed, transitive)",
@@ -889,7 +922,8 @@ class Materialize:
               f" / resolved-fallback {s['base_resolved_fallback']} · "
               f"J8 swap {s['j8_box_swapped']}, noop {s['j8_box_noop']}, "
               f"not-applicable {s['j8_ruling_not_applicable']}, "
-              f"UNCLEAR {s['j8_unclear']} · "
+              f"UNCLEAR {s['j8_unclear']}, "
+              f"NO_GOOD_BOX {s['j8_no_good_box']} · "
               f"J8s cases {s['j8s_cases']} (pieces {s['j8s_pieces_made']}, "
               f"pieces dropped {s['j8s_pieces_dropped']}, sides discarded "
               f"{s['j8s_sides_discarded']}, covered "

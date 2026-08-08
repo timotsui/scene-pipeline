@@ -4,9 +4,16 @@ user-adopted 2026-08-07. The user ruled NO RECURSION MACHINERY: this is a
 plain loop over a flat worklist, at most 3 rounds, and it STOPS.)
 
 CONTRACT: GETS one SPLIT outcome from graph/multiplicity.json (J8 ruled
-"one box is not enough") and the node's CARVED box. DECIDES, one region at
+"one box is not enough") and the node's SETTLED box. DECIDES, one region at
 a time, WHERE the box is cut and WHO owns each piece. ONE judge call =
 ONE region = ONE decision:
+
+SETTLED GEOMETRY (2026-08-08): every box this stage reads — the region, the
+green/red/gray context boxes, the S-lines built from their edges, the
+discard cover test — comes from graph/multiplicity.json's `settled_boxes`
+when that map is present, and from the preview manifest per id when it is
+not. See settled_carved() for why: a cut placed on a neighbour's edge went
+stale the moment a J8 verdict moved that neighbour.
 
     {"decision": "no_cut", "action": "keep", "owner": ...}
   or{"decision": "no_cut", "action": "discard", "note": ...}
@@ -38,7 +45,8 @@ side may be DISCARDED iff its UNREPRESENTED-CONTENT RESIDUE is small:
             <= RESIDUE_MAX (0.25)
 
 Occupied cells come from the carve's own plan_cells grid (>= OCC_K
-dots). ELIGIBLE boxes = carved boxes (preview manifest) of nodes whose
+dots). ELIGIBLE boxes = the SETTLED boxes (see settled_carved: J8's
+`settled_boxes` per id, preview manifest as fallback) of nodes whose
 box overlaps the side, ANY class — EXCLUDING RIDERS (the `a` of an ON
 edge in graph["carved_edges"] whose `b` is the case node: pillows ON
 the sofa — resting objects never represent the region beneath them).
@@ -334,9 +342,55 @@ def grown_rect(lo, hi):
     return (lo[0] - MARGIN, lo[2] - MARGIN, hi[0] + MARGIN, hi[2] + MARGIN)
 
 
+# ---- THE SETTLED GEOMETRY (2026-08-08) -----------------------------------
+# THE BUG THIS FIXES: this stage cut obj_011 at x=0.335 because that WAS
+# obj_063's box edge — but J8 had (in the same docket) ruled obj_063
+# ship=vote, moving that edge to x=0.636. The two nodes ended up
+# overlapping by 0.30 m. J8 now judges INNER BEFORE OUTER and publishes
+# `settled_boxes` in graph/multiplicity.json: the carve's shipping boxes
+# with every ONE_BOX verdict's named box ALREADY APPLIED. When that map is
+# present it is the authority for EVERY box this stage draws or measures —
+# the case node's own region, the green/red/gray neighbour boxes, the
+# S-lines derived from them, and the discard-eligibility cover test. The
+# preview manifest stays the PER-ID fallback for any id the map does not
+# carry (an older sidecar, or a node J8 never saw).
+
+def settled_carved(mult, carved):
+    """(boxes, note): the preview manifest's carved boxes with
+    multiplicity.json's `settled_boxes` laid over them, per id. Same shape
+    as `carved` ({id: (lo, hi)}) so nothing downstream has to change."""
+    sb = (mult or {}).get("settled_boxes") or {}
+    if not sb:
+        return dict(carved), ("scene_manifest_slicevote_preview.json (the "
+                              "carved SHIPPING box), verbatim — "
+                              "graph/multiplicity.json carries no "
+                              "`settled_boxes` map")
+    out, moved, added = dict(carved), [], 0
+    for oid, e in sb.items():
+        lo, hi = e.get("lo"), e.get("hi")
+        if lo is None or hi is None:
+            continue
+        old = out.get(oid)
+        if old is None:
+            added += 1
+        elif any(abs(float(old[0][k]) - float(lo[k])) > 1e-6
+                 or abs(float(old[1][k]) - float(hi[k])) > 1e-6
+                 for k in range(3)):
+            moved.append(oid)
+        out[oid] = (list(lo), list(hi))
+    return out, ("graph/multiplicity.json `settled_boxes` (the carve's "
+                 "shipping boxes with every J8 ONE_BOX verdict's named box "
+                 "applied), with scene_manifest_slicevote_preview.json as "
+                 f"the per-id fallback — {len(sb)} settled entr(ies), "
+                 f"{len(moved)} of them MOVED by a verdict"
+                 + (": " + ", ".join(sorted(moved)) if moved else "")
+                 + (f"; {added} not in the manifest" if added else ""))
+
+
 def eligible_for_side(st, rect):
-    """ELIGIBLE existing boxes for a side: carved boxes (preview
-    manifest) of nodes whose grown plan footprint overlaps the side's
+    """ELIGIBLE existing boxes for a side: the SETTLED boxes (J8's
+    `settled_boxes`, preview manifest per-id fallback) of nodes whose
+    grown plan footprint overlaps the side's
     plan rect, ANY class — EXCLUDING the case node itself and every
     node in st["excluded"] (user rule 08-07: existing boxes count as
     cover only if they represent INDEPENDENT objects — a node must be
@@ -1342,9 +1396,9 @@ def case_excluded(nid, edges, carved):
 
 
 def build_case_context(nid, edges, names, carved, region, excluded):
-    """GREEN = same-class neighbours joined by any carved edge (carved
-    boxes VERBATIM from the preview manifest). RED = any OTHER-class node
-    whose carved box overlaps the region (eligible cover, drawn so the
+    """GREEN = same-class neighbours joined by any carved edge (their
+    SETTLED boxes VERBATIM — see settled_carved). RED = any OTHER-class node
+    whose box overlaps the region (eligible cover, drawn so the
     judge sees it). GRAY DASHED = never-cover nodes (riders + nodes
     with no independent support, per case_excluded) whose box touches
     the region — drawn so the judge sees which boxes never count as
@@ -1541,6 +1595,12 @@ def main():
     prev = sd / "scene_manifest_slicevote_preview.json"
     carved = {o["id"]: (o["aabb_min"], o["aabb_max"])
               for o in json.loads(prev.read_text(encoding="utf-8"))["objects"]}
+    # SETTLED GEOMETRY (2026-08-08) — J8's `settled_boxes` wins per id over
+    # the preview manifest, for EVERY box below: the region being cut, the
+    # green/red/gray context boxes, the S-lines built from them, and the
+    # discard-cover eligibility test. See settled_carved().
+    carved, carved_src = settled_carved(mult, carved)
+    print(f"[splitcuts] boxes: {carved_src}", flush=True)
     # plan_cells per node (the carve's own occupancy grid, 0.10 m cells
     # anchored to the vote2 box) — the discard residue check's occupied
     # cells (audit_discard).
@@ -1584,8 +1644,7 @@ def main():
             continue
         rec = {"id": nid, "name": case["name"],
                "j8_verdict": case["verdict"],
-               "region_box_source": "scene_manifest_slicevote_preview.json "
-                                    "(the carved SHIPPING box), verbatim"}
+               "region_box_source": carved_src}
         mech = covered_by_existing(case, carved)
         if mech is not None:
             rec.update(mech)
@@ -1672,6 +1731,7 @@ def main():
                   "a flat worklist; no recursion). SIDECAR ONLY: the rounds "
                   "list + final pieces reference nodes; materialize is the "
                   "editor.",
+        "boxes_source": carved_src,
         "guards": {"max_rounds": a.rounds, "min_extent_m": MIN_EXTENT,
                    "max_pieces": MAX_PIECES, "snap_radius_m": SNAP_R,
                    "s_dedupe_m": S_DEDUPE,
