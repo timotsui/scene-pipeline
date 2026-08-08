@@ -119,7 +119,8 @@ import paths  # noqa: E402
 from carve_cams import make_cam  # noqa: E402
 
 MODEL = "sonnet"
-CALL_TIMEOUT_S = 240
+CALL_TIMEOUT_S = 600   # s — raised from 240 (2026-08-08); a timeout is a
+                       # failed attempt, never a crash (see judge_one_region)
 RES = 1024              # stimulus render resolution
 FOV = 50.0              # user-adopted top-view lens
 PLY_PAD = 0.05          # m — subset ply is the region box grown by this
@@ -1055,17 +1056,30 @@ def judge_one_region(st, item, rnd):
     if key in st["cache"]:
         v, cached = st["cache"][key], True
     else:
-        out = call_claude(prompt, st["dir"], st["model"])
-        v = parse_verdict(out)
+        # A CALL FAILURE MAY NEVER KILL THE CHAIN (2026-08-08): a slow
+        # claude.exe hitting CALL_TIMEOUT_S raised TimeoutExpired out of
+        # the round loop and lost the whole case. Every failure is a
+        # failed ATTEMPT — retried once, then the region ships UNCUT with
+        # the reason recorded (same fallback as a malformed reply).
+        def attempt(p):
+            try:
+                return parse_verdict(call_claude(p, st["dir"],
+                                                 st["model"])), None
+            except Exception as e:                    # noqa: BLE001
+                return None, f"{type(e).__name__}: {str(e)[:160]}"
+
+        v, err = attempt(prompt)
         if v is None:
-            out = call_claude(prompt + "\n\nREPLY WITH THE JSON OBJECT "
-                              "ONLY.", st["dir"], st["model"])
-            v = parse_verdict(out)
+            v, err2 = attempt(prompt + "\n\nREPLY WITH THE JSON OBJECT "
+                              "ONLY.")
+            err = err2 or err
         if v is None:
             v = {"decision": "no_cut", "action": "keep",
                  "owner": item.get("owner") or "this_node",
                  "confidence": 0.0,
-                 "reason": "malformed model reply x2 - region ships UNCUT"}
+                 "reason": (f"judge call failed x2 ({err}) - region ships "
+                            "UNCUT" if err else
+                            "malformed model reply x2 - region ships UNCUT")}
             rec["doubts"].append("unclear_ships_uncut")
         v = {**v, "model": st["model"], "date": date.today().isoformat()}
         st["cache"][key] = v

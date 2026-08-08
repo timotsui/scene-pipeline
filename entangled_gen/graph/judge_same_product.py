@@ -49,7 +49,8 @@ import paths  # noqa: E402
 
 GROUP_RADIUS = 2.5
 ANCHOR_AREA_RATIO = 2.0
-CALL_TIMEOUT_S = 180
+CALL_TIMEOUT_S = 600   # s — raised from 180 (2026-08-08): image-heavy
+                       # contact sheets legitimately run long
 CROPS_PER_MEMBER = 2       # judge_pairs.py pattern: up to 2 crops/node
 CROP_H = 200               # uniform crop height on the contact sheet
 LABEL_W = 260              # left text column (id + carved size)
@@ -96,6 +97,33 @@ def parse_json_obj(text):
         i, j = text.find("{"), text.rfind("}")
         raw = text[i:j + 1] if i >= 0 and j > i else None
     return json.loads(raw) if raw else None
+
+
+def normalize_ids(raw, member_ids):
+    """set_members comes back in whatever shape the judge felt like:
+    proper ids ('obj_024'), bare ints (29), or numeric strings ('29').
+    Normalise to real node ids of THIS group; drop anything that does not
+    resolve (recorded by the caller as a shrunken set, never silently
+    invented). Consumers — shopping, materialize — need ids, not digits.
+    """
+    if not raw:
+        return None
+    by_num = {}
+    for mid in member_ids:
+        digits = re.sub(r"\D", "", mid)
+        if digits:
+            by_num.setdefault(str(int(digits)), mid)
+    out = []
+    for v in raw:
+        s = str(v).strip()
+        if s in member_ids:
+            out.append(s)
+            continue
+        d = re.sub(r"\D", "", s)
+        hit = by_num.get(str(int(d))) if d else None
+        if hit and hit not in out:
+            out.append(hit)
+    return out or None
 
 
 def plan_center(geo):
@@ -353,6 +381,8 @@ def main():
             verdict = {"same_object": None, "set_members": None,
                        "canonical_size": None,
                        "reason": f"judge call failed: {e}"}
+        verdict["set_members"] = normalize_ids(
+            verdict.get("set_members"), [m["id"] for m in gr["members"]])
         gr_out = {**gr, "members": [
             {k: v for k, v in m.items() if k != "_res_node"}
             for m in gr["members"]]}

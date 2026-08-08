@@ -31,6 +31,26 @@ preview manifest's status flags):
   the object's own plan footprint >= 0.50 m2 (user rule, 2026-08-07
   late; run-6 census: sofa 1.52 m2 vs next 0.18 m2) — the notch where a
   missing/other limb would park; multiplicity-judge territory
+- rebox_rejected_smaller: a carve-EXEMPT node's face-on (perp) re-box
+  found the object at < 1/3 of the current box on BOTH in-plane axes and
+  the 3x sanity guard threw the proposal away, so the oversized box
+  ships. A confident detection (score present, >= 200 claimed dots) that
+  says "what is in this box is much smaller than this box" is evidence of
+  MULTIPLE things inside one box — the exempt paths otherwise raise no
+  doubt at all and could never reach the multiplicity judge (user
+  ruling 2026-08-08, obj_018 "ceiling light": one box over a compact
+  fixture AND a 0.7 m strip). Growth rejections never fire this.
+- rebox_truncated: the face-on (perp) re-box was ACCEPTED, but the mask
+  ran OFF THE FRAME on >= 2 of the 4 in-plane sides, so those sides kept
+  their PRIOR extents instead of being measured (carve_slicevote's
+  border-truncation guard, recorded as truncated_edges +
+  truncation_kept_sides). Most of the shipping box is then still a
+  guess, which is an open QUESTION rather than a result — what the box
+  contains is unresolved (user ruling 2026-08-08: the same routing that
+  sends a REJECTED re-box to the multiplicity judge sends a heavily
+  truncated one; motivating case obj_038 "window", 3 of 4 in-plane sides
+  on priors). One truncated side is normal for a wall-flush object and
+  does NOT fire this.
 - exemption: box kept verbatim, never carved (kept_wall / kept_ceiling
   / kept_floor / kept_outlier / kept) — recorded so judges know which
   geometry the carve never touched
@@ -66,6 +86,27 @@ import paths  # noqa: E402
 # pillows), so the rule is the NOTCH, not overall fill.
 NOTCH_K = 2      # a plan cell counts as OCCUPIED only with >= K dots
 NOTCH_M2 = 0.50  # doubt when the largest empty rectangle >= this area
+
+# rebox_rejected_smaller thresholds. These MIRROR carve_slicevote.py's
+# own perp constants (PERP_MAX_RATIO 3.0 -> the 1/3 shrink bound,
+# PERP_MIN_CLAIM 200) — the carve is a script with side effects at import
+# (argparse, ply read), so its values are restated here rather than
+# imported. This rule only READS a rejection the carve already recorded;
+# it never re-decides one, so a drift between the two files can at worst
+# widen or narrow which rejections raise a doubt.
+REBOX_SHRINK_MAX = 1.0 / 3.0   # every in-plane ratio must be under this
+REBOX_MIN_CLAIM = 200          # dots the face-on mask claimed
+
+# rebox_truncated. A face-on re-box measures the two IN-PLANE axes, i.e.
+# 4 sides (lo/hi each); carve_slicevote's border-truncation guard makes
+# every side whose mask ran off the frame keep the ORIGINAL (prior)
+# extent instead. At >= 2 of 4 sides on priors, most of the box is a
+# guess and the question "what is in it" is open. One truncated side is
+# routine for a wall-flush object (the frame clips the wall it lies on)
+# and is not a doubt. Like the rejection rule above, this only READS
+# what the carve already recorded; it never re-decides a re-box.
+REBOX_IN_PLANE_SIDES = 4       # lo + hi on each of the two in-plane axes
+REBOX_TRUNC_MIN_EDGES = 2      # doubt when this many image borders clipped
 
 
 def largest_empty_rect(pc):
@@ -106,6 +147,32 @@ def pano_box(boxes):
     return boxes.get("pano") or boxes.get("arm")
 
 
+def rebox_proposed_box(orig, to):
+    """Full lo/hi of the face-on re-box candidate the carve REJECTED.
+    `to` = the perp re-box's two IN-PLANE extents, [[axis, lo, hi], ...];
+    the remaining (normal) axis keeps the ORIGINAL box's extent, because
+    depth is exactly what a face-on view cannot measure."""
+    lo = [float(v) for v in orig["lo"]]
+    hi = [float(v) for v in orig["hi"]]
+    for k, l, h in to:
+        lo[int(k)], hi[int(k)] = float(l), float(h)
+    return {"lo": [round(v, 3) for v in lo],
+            "hi": [round(v, 3) for v in hi]}
+
+
+def rebox_final_box(boxes, to):
+    """The box an ACCEPTED face-on re-box left behind — the one that
+    ships. The carve records it as boxes["shipping"] (the re-box after
+    any wall clip), so it is read VERBATIM and never recomputed; only if
+    that is missing is it rebuilt from the original box + the re-box's
+    in-plane extents, exactly as the rejected path does."""
+    b = boxes.get("shipping") or boxes.get("rebox")
+    if b:
+        return {"lo": [round(float(v), 3) for v in b["lo"]],
+                "hi": [round(float(v), 3) for v in b["hi"]]}
+    return rebox_proposed_box(boxes["original"], to)
+
+
 def doubt_text(d):
     k = d["kind"]
     if k in ("pano_vs_cluster", "arm_vs_cluster"):   # old name still read
@@ -126,6 +193,19 @@ def doubt_text(d):
         return (f"largest contiguous empty rectangle in own footprint "
                 f"{d['notch_m2']:.2f} m2 (>= {NOTCH_M2:.2f}) — non-box "
                 "shape (L?); multiplicity judge territory")
+    if k == "rebox_rejected_smaller":
+        pct = "/".join(f"{r:.0%}" for r in d["extent_ratio"])
+        return (f"face-on view found an object at {pct} of this box's "
+                f"extents (detection {d['score']:.2f}, {d['claimed']} "
+                "dots) — the box is much larger than what is in it; "
+                "possible multiple fixtures — multiplicity judge "
+                "territory")
+    if k == "rebox_truncated":
+        edges = "/".join(d["truncated_edges"])
+        return (f"face-on re-box measured only {d['n_measured_sides']} of "
+                f"{REBOX_IN_PLANE_SIDES} in-plane sides — {edges} ran off "
+                "the frame and kept their prior extents; what this box "
+                "contains is unresolved — multiplicity judge territory")
     if k == "exemption":
         why = {"kept_wall": "wall-flush geometric exemption",
                "kept_ceiling": "ceiling-mount geometric exemption",
@@ -199,6 +279,52 @@ def main():
                                      round(lo_z + z0 * cm, 3),
                                      round(lo_x + x1 * cm, 3),
                                      round(lo_z + z1 * cm, 3)]})
+        # A carve-EXEMPT node's face-on (perp) re-box that was REJECTED
+        # for being far SMALLER than the box it was measuring. Growth
+        # rejections and centre-jump-only rejections are NOT this doubt:
+        # every recorded in-plane ratio must be under the shrink bound.
+        # Confidence gate: the same claim floor the carve itself demands
+        # before it will even try a re-box, plus a recorded detection
+        # score — a weak/absent detection says nothing about multiplicity.
+        rb = r["rule"].get("rebox")
+        if (isinstance(rb, dict)
+                and str(rb.get("result", "")).startswith("REJECTED")):
+            ratios = [float(x) for x in (rb.get("extent_ratio") or [])]
+            shrank = bool(ratios) and all(x < REBOX_SHRINK_MAX
+                                          for x in ratios)
+            confident = (rb.get("score") is not None
+                         and int(rb.get("claimed") or 0) >= REBOX_MIN_CLAIM)
+            if shrank and confident and rb.get("to") and boxes.get("original"):
+                d.append({"kind": "rebox_rejected_smaller",
+                          "plane": rb.get("plane", "?"),
+                          "extent_ratio": ratios,
+                          "score": float(rb["score"]),
+                          "claimed": int(rb["claimed"]),
+                          "center_shift_m": rb.get("center_shift_m"),
+                          "proposed_box": rebox_proposed_box(
+                              boxes["original"], rb["to"]),
+                          "rejected_because": rb.get("result", "")})
+        # An ACCEPTED face-on re-box that had almost nothing to measure:
+        # the mask ran off the frame on >= 2 of the 4 in-plane sides, so
+        # the carve's border-truncation guard left those sides on the
+        # ORIGINAL box's prior extents. The re-box "succeeded", but most
+        # of the shipping box is still a guess — an open question about
+        # what the box contains, not a measurement (user ruling
+        # 2026-08-08). Rejections take the branch above instead.
+        if (isinstance(rb, dict) and rb.get("result") == "reboxed"
+                and len(rb.get("truncated_edges") or [])
+                >= REBOX_TRUNC_MIN_EDGES):
+            kept_sides = rb.get("truncation_kept_sides") or []
+            d.append({"kind": "rebox_truncated",
+                      "plane": rb.get("plane", "?"),
+                      "truncated_edges": list(rb["truncated_edges"]),
+                      "truncation_kept_sides": kept_sides,
+                      "n_measured_sides": (REBOX_IN_PLANE_SIDES
+                                           - len(kept_sides)),
+                      "score": (float(rb["score"])
+                                if rb.get("score") is not None else None),
+                      "claimed": int(rb.get("claimed") or 0),
+                      "final_box": rebox_final_box(boxes, rb.get("to"))})
         if status.startswith("kept"):
             d.append({"kind": "exemption", "status": status})
         for x in d:
