@@ -42,7 +42,25 @@ Per resolved graph node:
    SAMs, claims the slab dots through the mask (>= 200 required), and
    replaces ONLY the in-plane extents with their 1-99 percentile box.
    The normal axis is untouched — depth is the one thing a face-on view
-   cannot measure. Guards: an in-plane center jump > 1.0 m or an extent
+   cannot measure.
+   FRAMING IS TAKEN FROM THE PLANE (user ruling 2026-08-08: "the only
+   really possible center for something flush on a wall/floor/ceiling
+   is ON that plane"). The camera aims at the point whose NORMAL-axis
+   coordinate is the PLANE's value and whose two IN-PLANE coordinates
+   are the ORIGINAL BOX's in-plane centre (the identity anchor), and
+   the frame is sized from the ORIGINAL BOX's in-plane extent x
+   PERP_MARGIN. The slab is NOT used for framing — it only supplies the
+   dots that get claimed. (A slab-centroid aim + slab-span frame was
+   tried 2026-08-07 late and REVERTED 2026-08-08: for a wall OPENING the
+   slab spans the box's full depth, which for the glass door is 6.6 m of
+   outdoor scenery seen through the glass, so both the centroid and the
+   span were dominated by landscape — the camera ended up 6.6 m back,
+   outside the room, and the frame clipped the door. Do not re-add it.)
+   The perp eye is NOT clamped into the shell: a wide object simply
+   cannot be framed from inside its own room, and we are rendering a
+   point cloud, so a camera standing "inside" a wall is legal. Only an
+   absolute PERP_MAX_DIST cap applies; dist_m is always recorded.
+   Guards: an in-plane center jump > 1.0 m or an extent
    change > 3x either way REJECTS the candidate (recorded in
    rule.rebox, original ships). No detection / thin slab / no room for
    the camera all keep the original, always with a recorded reason.
@@ -68,9 +86,21 @@ Per resolved graph node:
    dots are stopped from being ELECTED by the half-space electorate
    filter at tally time.
 2. RENDER + DETECT, escalation ladder (user design 08-07):
-   TIER 1  4 near-cardinal VIEW-TUNNEL cards at object height (full
-           scene minus the camera->slice hole; occluders culled,
-           context intact; re-detect gated to the slice's screen box);
+   TIER 1  4 near-cardinal VIEW-TUNNEL cards at object height. The
+           tunnel CULLS ONLY WHAT IS IN FRONT OF THE OBJECT (user
+           ruling 2026-08-08): t_near = the smallest depth along the
+           view direction over the OBJECT BOX's 8 corners, and every
+           gaussian inside the view cone nearer than t_near -
+           NEAR_MARGIN is dropped. Nothing else is touched — the
+           object AND all of its surroundings that are not blocking
+           the view (the wall beside it, the floor under it, the room
+           behind it) stay in the picture, which is what segmentation
+           needs. The old rule culled up to the SLICE's FAR depth
+           minus the slice members, which deleted the walls beside and
+           behind the object and coupled the pictures to the slice
+           geometry; card renders are now DECOUPLED from the slice
+           (the slice still defines who may be claimed, never what is
+           drawn). Re-detect stays gated to the slice's screen box;
    TIER 2  if >=3 of 4 cards unproductive (<50 claimed dots): add 4
            EYE-HEIGHT cardinal tunnel cards as extra voters (Marble is
            biased toward eye-height capture — proven on obj_004 book:
@@ -137,11 +167,24 @@ status string stays "UNTESTED-PREVIEW"; a partial or mixed document is
 explicitly NOT canon, and cone_map.html prints a mixed-provenance banner
 (project convention: stale = BADGED, never hidden).
 
-CARD RENDERS still keep the MANUAL-wipe rule: the WSL renderer skips by
-FILENAME, so after a SLICE-GEOMETRY edit delete pool_retake/slices/
-vote_*.png by hand (or vote_<id>_*.png for the ids you are debugging).
-The det overlays and the perp renders are wiped automatically, scoped to
-the ids this run processes.
+RENDER STALENESS IS DECIDED BY PARAMETERS, NOT BY FILENAME (user order
+2026-08-08 — root cause of the poisoned 08-08 01:00 run). The WSL
+renderer skips any png that already exists, so a render whose CAMERA or
+CULL changed but whose NAME did not used to be silently reused, and the
+stage then detected on the old picture while projecting with the new
+camera. Every render this stage requests now carries a sidecar
+pool_retake/slices/<render_name>.params.json holding the hash of
+everything that determines the image: camera eye / aim / fov, res, the
+cull rule string + its margin, and a sha of the exact kept-gaussian set
+that was written to the ply. Before a render is requested the sidecar is
+compared; on MISMATCH OR MISSING SIDECAR the png is DELETED so the
+renderer must regenerate it, and the decision is printed. Card,
+eye-height, isolation, clean-3/4 and perp renders are all covered.
+THE MANUAL "wipe slices/vote_*.png by hand after a slice-geometry edit"
+RULE IS RETIRED — nothing needs wiping by hand any more. The det
+overlays are still wiped unconditionally (scoped to this run's ids):
+they are drawn by this stage, not by the renderer, so a run whose
+detection now fails must not leave last run's overlay behind.
 
 Run:  PYTHONUTF8=1 HF_HUB_OFFLINE=1 python carve_slicevote.py
       --scene living_marble [--only obj_004,...] [--gate 3] [--res 768]
@@ -223,6 +266,12 @@ WALL_PROTRUDE_MAX = 0.20   # m — max intrusion into the room interior for
                    # (magazines, bookshelves) — 0.20 sits in open water.
 MIN_SLAB = 0.02    # m — thinnest slab a shell-clipped shipping box may
                    # collapse to (kept flush against its plane)
+NEAR_MARGIN = 0.05  # m — VIEW-TUNNEL cull margin (user ruling
+                   # 2026-08-08): a card render drops only what sits in
+                   # the view cone NEARER than the object box's nearest
+                   # corner minus this margin. Everything at or behind
+                   # the object — including the wall beside it and the
+                   # room behind it — stays in the picture.
 
 sd = paths.scene_dir(SCENE)
 rdir = sd / "pool_retake"
@@ -232,23 +281,28 @@ sdir.mkdir(exist_ok=True)
 rowdir = rdir / "rows"          # per-object cone_map.html fragments
 rowdir.mkdir(exist_ok=True)
 # STALE-CACHE POISON (user finding 2026-08-08, obj_034): the WSL
-# renderer skips by FILENAME, not by content — a render whose CAMERA
-# changed but whose name did not is silently reused, and the stage then
-# detects on the old picture while projecting with the new camera.
-# Wipe always: det overlays, and the PERP renders (their camera is
-# derived from the slab/box, so it can change every run — only 14 of
-# them, cheap). Card renders keep the manual-wipe rule (documented in
-# the docstring): wipe slices/vote_*.png by hand on slice-geometry edits.
+# renderer skips by FILENAME, not by content. THE FIX IS THE PER-RENDER
+# PARAMS SIDECAR (see the docstring and render_gate below) — every png
+# this stage requests is compared against a hash of its own camera +
+# cull + kept-gaussian set and deleted when they disagree. The blanket
+# perp wipe that stood here is therefore GONE (2026-08-08): the sidecar
+# subsumes it exactly, a second mechanism doing the same job would only
+# hide sidecar bugs, and reusing an UNCHANGED perp render is the whole
+# point of making partial runs cheap.
 #
-# SCOPED TO THIS RUN'S IDS (2026-08-08, partial-runs-first): the wipe is
-# still UNCONDITIONAL — but only for the ids being processed. Under
-# --only, another object's cone-map row still points at its own det /
-# perp pictures, and deleting them would leave the rebuilt page full of
-# broken images. A full run wipes everything, exactly as before.
+# What still needs an unconditional wipe: the DET OVERLAYS. They are
+# drawn by this stage, not by the renderer, so no sidecar governs them,
+# and a run whose detection now fails must not leave the previous run's
+# overlay on the page.
+#
+# SCOPED TO THIS RUN'S IDS (2026-08-08, partial-runs-first): under
+# --only, another object's cone-map row still points at its own det
+# pictures, and deleting them would leave the rebuilt page full of
+# broken images. A full run wipes every id, exactly as before.
 
 
 def _wipe_ids(ids):
-    """Delete the auto-wiped renders belonging to `ids` (None = all).
+    """Delete the det overlays belonging to `ids` (None = all).
     Id-prefix safe: obj_005 must not take obj_005_c00's pictures with
     it, so the segment between 'vote_<id>_' and '_det.png' must be a
     single view token (card0/eyecard0/iso0/top/perp/slice34 — none of
@@ -256,9 +310,6 @@ def _wipe_ids(ids):
     n = 0
     if ids is None:
         for f in sdir.glob("vote_*_det.png"):
-            f.unlink()
-            n += 1
-        for f in sdir.glob("vote_*_perp.png"):
             f.unlink()
             n += 1
         return n
@@ -269,10 +320,6 @@ def _wipe_ids(ids):
                 continue            # belongs to a longer id, not this one
             f.unlink()
             n += 1
-        p = sdir / f"vote_{nid}_perp.png"
-        if p.exists():
-            p.unlink()
-            n += 1
     return n
 
 
@@ -280,7 +327,8 @@ _nwiped = _wipe_ids(ONLY_IDS or None)
 _scope = (f"{len(ONLY_IDS)} requested id(s)" if ONLY_IDS
           else "the whole scene")
 print(f"[carve] run {RUN_ID} src {SOURCE_SHA} — wiped {_nwiped} stale "
-      f"det/perp render(s) for {_scope}", flush=True)
+      f"det overlay(s) for {_scope}; render staleness is decided by the "
+      f".params.json sidecars", flush=True)
 
 
 def to_wsl(p):
@@ -325,6 +373,60 @@ def write_subset_ply(mask, out_path):
                 f.write(line)
         sub.astype("<f4").tofile(f)
     return len(sub)
+
+
+# ---- RENDER STALENESS BY PARAMS, NOT BY FILENAME (user order
+# 2026-08-08) ----------------------------------------------------------
+# The WSL renderer skips any png that already exists. So before we ask
+# for a render we fingerprint EVERYTHING that determines the image —
+# camera (eye / aim / fov), resolution, the cull rule + its margin, and
+# the exact kept-gaussian set that will be written to the ply — and
+# compare it with the sidecar left by whoever made the png on disk. Hash
+# differs, or no sidecar at all: the png is DELETED so the renderer has
+# to regenerate it. Never silent: every reuse and every delete prints.
+CULL_TUNNEL = "in_cone & depth < t_near(object box) - NEAR_MARGIN"
+CULL_SLICE = "slice members only (isolation / clean 3-4 view)"
+CULL_PERP = "in_cone & depth < t_far(slab) + 0.05 & not slab"
+
+
+def _keep_sha(keep):
+    """Content hash of a kept-gaussian boolean mask (the 'id set')."""
+    return hashlib.sha256(
+        np.packbits(np.asarray(keep, bool)).tobytes()).hexdigest()[:16]
+
+
+def render_gate(view, cull_rule, cull_margin, keep):
+    """Fingerprint one requested render, drop a stale png, write the
+    sidecar. Returns True when the renderer will have to regenerate."""
+    name = view["name"]
+    payload = {"eye": [round(float(v), 6) for v in view["eye"]],
+               "aim": [round(float(v), 6) for v in view["aim"]],
+               "fov": round(float(view["fov"]), 6), "res": int(RES),
+               "cull": {"rule": cull_rule,
+                        "margin": round(float(cull_margin), 6)},
+               "keep_sha": _keep_sha(keep)}
+    h = hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
+    side = sdir / f"{name}.params.json"
+    png = sdir / f"{name}.png"
+    old = None
+    if side.exists():
+        try:
+            old = json.loads(side.read_text(encoding="utf-8")).get("hash")
+        except Exception as e:                               # noqa: BLE001
+            print(f"[carve] sidecar {side.name} unreadable ({e}) — "
+                  "treating the render as stale", flush=True)
+    fresh = (old == h)
+    if png.exists() and not fresh:
+        png.unlink()
+        print(f"[carve] render {name}: params {old or 'MISSING sidecar'} "
+              f"-> {h} — png DELETED, will regenerate", flush=True)
+    elif png.exists():
+        print(f"[carve] render {name}: params match ({h}) — reusing png",
+              flush=True)
+    side.write_text(json.dumps({"hash": h, **payload}, indent=1),
+                    encoding="utf-8")
+    return not fresh
 
 
 g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
@@ -606,7 +708,13 @@ PERP_SLAB_PAD = 0.35   # m — room-side depth of context kept in the slab
 PERP_MIN_CLAIM = 200   # dots the mask must claim for a re-box to be tried
 PERP_MAX_SHIFT = 1.0   # m — in-plane center jump that REJECTS the re-box
 PERP_MAX_RATIO = 3.0   # x — in-plane extent change that REJECTS it
-PERP_MARGIN = 1.4      # framing margin on the in-plane extent (+40%)
+PERP_MARGIN = 1.4      # framing margin on the ORIGINAL BOX's in-plane
+                       # extent (+40%) — the frame is sized from the box,
+                       # never from the slab (user ruling 2026-08-08)
+PERP_MAX_DIST = 25.0   # m — absolute cap on the perp stand-off. There is
+                       # deliberately NO shell clamp: the eye may stand
+                       # outside the room when the object is too wide to
+                       # frame from inside it (user ruling 2026-08-08).
 PERP_DET_PAD = 40      # px — generous slack on the projected prior box
 PERP_EDGE_PX = 4       # px — border-truncation guard band (was a local
                        # inside perp_rebox; module level so it is covered
@@ -626,7 +734,8 @@ PARAMS = {"SHELL_EPS": SHELL_EPS, "WALL_TOUCH": WALL_TOUCH,
           "PERP_MIN_CLAIM": PERP_MIN_CLAIM,
           "PERP_MAX_SHIFT": PERP_MAX_SHIFT,
           "PERP_MAX_RATIO": PERP_MAX_RATIO, "PERP_MARGIN": PERP_MARGIN,
-          "PERP_DET_PAD": PERP_DET_PAD, "PERP_EDGE_PX": PERP_EDGE_PX}
+          "PERP_DET_PAD": PERP_DET_PAD, "PERP_EDGE_PX": PERP_EDGE_PX,
+          "PERP_MAX_DIST": PERP_MAX_DIST, "NEAR_MARGIN": NEAR_MARGIN}
 PARAMS_HASH = hashlib.sha256(
     json.dumps(PARAMS, sort_keys=True).encode()).hexdigest()[:12]
 PROV = {"run_id": RUN_ID, "run_at": RUN_AT,
@@ -699,41 +808,41 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
         return None, None, rec, ""
     sdots = xyz[slab]
 
-    # ---- CAMERA: pushed off the object into the room along the normal,
-    # far enough that the in-plane extent (+40%) fits in FOV_GOOD.
-    # FRAME FROM THE SLAB, NOT THE PRIOR (user finding 2026-08-07,
-    # obj_034 glass door): the original box is DRIFTED — aiming at its
-    # center and sizing from its extent leaves a badly drifted object
-    # partly out of frame, and the re-box then clips at the FOV instead
-    # of the object's real edge. The slab is measured content: aim at
-    # the slab dots' in-plane centroid and size the frame so the slab's
-    # 1-99 percentile in-plane extent fits (+40% margin). The normal
-    # axis keeps the box-center aim and the stand-off logic unchanged.
+    # ---- CAMERA: FRAME THE FLAT OBJECT FROM ITS PLANE (user ruling
+    # 2026-08-08: "the only really possible center for something flush
+    # on a wall/floor/ceiling is ON that plane").
+    #   aim  = the plane's coordinate on the NORMAL axis, and the
+    #          ORIGINAL BOX's in-plane centre on the other two (the
+    #          identity anchor — the box is what says WHICH object).
+    #   size = the ORIGINAL BOX's in-plane extent x PERP_MARGIN.
+    # The slab plays NO part in framing; it only supplies the dots that
+    # get claimed further down. (Slab-centroid aim + slab-span framing
+    # was tried 08-07 late and reverted 08-08 — for a wall opening the
+    # slab is 6.6 m of outdoor scenery seen through the glass, so both
+    # the centroid and the span were landscape, not door.)
     ctr = 0.5 * (np.asarray(lo0, float) + np.asarray(hi0, float))
-    sp1 = np.percentile(sdots, 1, axis=0)
-    sp99 = np.percentile(sdots, 99, axis=0)
-    for k in ip:
-        ctr[k] = float(sdots[:, k].mean())
-    # half-span from the AIM point so the p1-p99 band fits on both sides
-    span = 2.0 * float(max(max(abs(sp99[k] - ctr[k]), abs(sp1[k] - ctr[k]))
-                           for k in ip))
-    rec["frame"] = {"aim": "slab centroid (in-plane)",
-                    "slab_span_m": round(span, 3)}
+    ctr[axi] = float(plane_val)
+    span = float(max(float(hi0[k]) - float(lo0[k]) for k in ip))
+    rec["frame"] = {"aim": "plane + box in-plane centre",
+                    "box_span_m": round(span, 3)}
     dist_need = max(PERP_MARGIN * 0.5 * max(span, 0.2)
                     / math.tan(math.radians(FOV_GOOD) / 2), 1.0)
+    # NO SHELL CLAMP (user ruling 2026-08-08): an object too wide to
+    # frame from inside its own room simply cannot be framed from
+    # inside it, and clamping the eye to the shell is what clipped the
+    # glass door. We render a POINT CLOUD, so a camera standing behind
+    # a wall is legal — the view-tunnel cull removes whatever sits
+    # between it and the object. Only an absolute sanity cap applies.
+    dist_act = min(dist_need, PERP_MAX_DIST)
     eye = ctr.copy()
-    eye[axi] = ctr[axi] + inward * dist_need
-    lim = [(XLO + WALL_PAD, XHI - WALL_PAD),
-           (CEIL + WALL_PAD, FLOOR - WALL_PAD),
-           (ZLO + WALL_PAD, ZHI - WALL_PAD)]
-    eye = np.array([float(np.clip(eye[k], lim[k][0], lim[k][1]))
-                    for k in range(3)])
-    dist_act = float((eye[axi] - ctr[axi]) * inward)
+    eye[axi] = ctr[axi] + inward * dist_act
     rec["dist_m"] = round(dist_act, 3)
+    rec["eye_outside_shell"] = not in_bounds(eye)
     if dist_act < dist_need - 1e-3:
         rec["dist_clamped"] = {"need": round(dist_need, 3),
-                               "got": round(dist_act, 3)}
-        print(f"[carve]  perp: room too shallow - stand-off {dist_act:.2f} m "
+                               "got": round(dist_act, 3),
+                               "cap_m": PERP_MAX_DIST}
+        print(f"[carve]  perp: stand-off capped at {dist_act:.2f} m "
               f"of {dist_need:.2f} m needed", flush=True)
     if dist_act < 0.15:
         rec["result"] = "kept - no room for a face-on camera"
@@ -753,14 +862,16 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
                & (vv_ >= -40) & (vv_ < RES + 40))
     hole = in_cone & (((xyz - eye) @ vdir) < (t_far + 0.05)) & ~slab
     vname = f"vote_{nid}_perp"
+    view = {"name": vname, "label": f"{nid} {name} perp ({pid})",
+            "eye": [float(v) for v in eye],
+            "aim": [float(v) for v in ctr], "fov": FOV_GOOD}
+    # params sidecar: this camera moves whenever the box or the plane
+    # moves, so a same-named png from an earlier build must not survive
+    render_gate(view, CULL_PERP, 0.05, ~hole)
     cply = sdir / f"votectx_{vname}.ply"
     write_subset_ply(~hole, cply)
     tf = sdir / f"votetgt_{vname}.json"
-    tf.write_text(json.dumps([{"name": vname,
-                               "label": f"{nid} {name} perp ({pid})",
-                               "eye": [float(v) for v in eye],
-                               "aim": [float(v) for v in ctr],
-                               "fov": FOV_GOOD}], indent=1))
+    tf.write_text(json.dumps([view], indent=1))
     perp_run_renders(tf, cply)
     cply.unlink(missing_ok=True)
     png = sdir / f"{vname}.png"
@@ -1256,25 +1367,36 @@ for n in nodes:
                   "label": f"{nid} {name} slice 3/4 view",
                   "eye": [float(v) for v in eye34],
                   "aim": [float(v) for v in ctr], "fov": FOV_GOOD})
-    # VIEW TUNNEL (user design 2026-08-06 after R-S2-27): each card
-    # renders the FULL scene minus a tunnel — gaussians inside this
-    # camera's view cone (small pad for splat tails), nearer than the
-    # slice's far depth, and not slice members are culled. Occluders
-    # gone, side/background context intact. Claims are still counted on
-    # slice dots only. Per-card plys are transient (≈ whole scene).
+    # VIEW TUNNEL (user design 2026-08-06 after R-S2-27; CULL RULE
+    # REPLACED by user ruling 2026-08-08). Each card renders the FULL
+    # scene minus what is IN FRONT OF THE OBJECT: gaussians inside this
+    # camera's view cone (small pad for splat tails) whose depth along
+    # the view direction is nearer than t_near - NEAR_MARGIN, where
+    # t_near is the smallest depth over the OBJECT BOX's 8 corners.
+    # Nothing else is removed — the object and every one of its
+    # surroundings that is NOT blocking the view (the wall beside it,
+    # the floor under it, the room behind it) stays in the picture,
+    # which is what segmentation needs.
+    # The old rule culled everything in the cone up to the SLICE's FAR
+    # depth minus the slice members, which deleted the walls beside and
+    # behind the object and coupled the pictures to the slice geometry.
+    # THE CARD RENDERS ARE NOW DECOUPLED FROM THE SLICE: the slice still
+    # decides who may be CLAIMED, never what is DRAWN. Claims are still
+    # counted on slice dots only. Per-card plys are transient (≈ whole
+    # scene).
     def ctx_render_jobs(card_views):
         jobs = []
         for v in card_views:
             veye = np.array(v["eye"], float)
             vdir = np.array(v["aim"], float) - veye
             vdir /= np.linalg.norm(vdir)
-            t_far = float(((dots - veye) @ vdir).max())
+            t_near = float(((corners - veye) @ vdir).min())
             camk = make_cam(v["eye"], v["aim"], v["fov"], RES)
             uu, vv_, zz = camk.project(xyz)
             in_cone = ((zz > 0.05) & (uu >= -40) & (uu < RES + 40)
                        & (vv_ >= -40) & (vv_ < RES + 40))
-            hole = (in_cone & (((xyz - veye) @ vdir) < (t_far + 0.05))
-                    & ~slice_mask)
+            hole = in_cone & (((xyz - veye) @ vdir) < (t_near - NEAR_MARGIN))
+            render_gate(v, CULL_TUNNEL, NEAR_MARGIN, ~hole)
             cply = sdir / f"votectx_{v['name']}.ply"
             write_subset_ply(~hole, cply)
             ctf = sdir / f"votetgt_{v['name']}.json"
@@ -1352,6 +1474,7 @@ for n in nodes:
     jobs = ctx_render_jobs(views[:4])
     tf = sdir / f"votetgt_{nid}.json"
     tf.write_text(json.dumps([views[4]], indent=1))  # clean slice34
+    render_gate(views[4], CULL_SLICE, 0.0, slice_mask)
     jobs.append((tf, plyp, False))
     run_renders(jobs)
     card_res = card_votes(views[:4])
@@ -1503,6 +1626,8 @@ for n in nodes:
                    "fov": FOV_GOOD} for k in range(4)]
         itf = sdir / f"votetgt_{nid}_iso.json"
         itf.write_text(json.dumps(iviews, indent=1))
+        for _iv in iviews:
+            render_gate(_iv, CULL_SLICE, 0.0, slice_mask)
         run_renders([(itf, plyp, False)])
         card_res = card_res + card_votes(iviews)
         claims, infos = assemble(card_res)
@@ -1979,11 +2104,15 @@ p{{font-size:13px}}
 </style>
 <h1>v3 slice + vote \u2014 {SCENE}</h1>
 {prov_banner}
-<p>DESIGN (updated 2026-08-06b): slice = top-box vertical prism (capped
+<p>DESIGN (updated 2026-08-08): slice = top-box vertical prism (capped
 margin; fallback = original-box wedge) \u2192 each card rendered by the
-real WSL renderer as the FULL SCENE minus a VIEW TUNNEL (occluders
-inside the camera cone and nearer than the slice are culled; side and
-background context intact; re-detect gated to the slice's screen
+real WSL renderer as the FULL SCENE minus WHAT IS IN FRONT OF THE
+OBJECT (gaussians inside the camera cone nearer than the object box's
+nearest corner minus 0.05 m are culled; the object and every
+surrounding that is not blocking the view \u2014 wall, floor, the room
+behind \u2014 stay in the picture, which is what segmentation needs; the
+card renders are DECOUPLED from the slice, which now only decides who
+may be claimed; re-detect still gated to the slice's screen
 footprint) \u2192 detector+SAM per render \u2192 6-voter election. Boxes: gray
 dashed = original, red = all cardinals agree, orange = the vote gate,
 cyan = pano-filtered. Ceiling-mounted, wall-protruding (touches a wall
