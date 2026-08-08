@@ -10,13 +10,44 @@ wiring. Served in the viewer as the "slicevote" box-source layer.
 Per resolved graph node:
 0. EXEMPTIONS (geometric, never label lists): ceiling-mounted (top
    within 0.35 m of the shell ceiling + bottom in the upper half of
-   the room) -> kept_ceiling; wall-flush (within 0.20 m of a shell
-   wall plane + < 0.30 m thin along its normal) -> kept_wall;
+   the room) -> kept_ceiling; WALL PROTRUSION (user ruling 2026-08-07
+   late, REPLACING the old flush+thin test) -> kept_wall: the box
+   TOUCHES OR CROSSES a shell wall plane (its facing face within
+   0.20 m of the plane, or extending past it) AND protrudes into the
+   room interior <= WALL_PROTRUDE_MAX = 0.20 m (protrusion for a
+   high-side wall = plane - box_lo on that axis, clamped >= 0; low
+   side mirrored). Depth BEYOND the plane is deliberately IGNORED —
+   openings (glass door, window) carry their mass at or beyond the
+   wall and the old thin test dropped them (the R-S2-36-era obj_034
+   regression is the motivating case). Census basis for 0.20:
+   flat/opening objects protrude 0.00-0.16 m (doors, glass door,
+   window, television, curtain, picture); real furniture starts at
+   0.26 (plant) then 0.35+ (magazines, bookshelves) — 0.20 sits in
+   open water. The rule also deliberately UN-exempts the old test's
+   false exempts (plant, shelf magazines — the R-S2-30 "surprise
+   wall exemptions" carried open), which are now carved. Recorded
+   with protrusion_m + the wall id.
    floor-flush (bottom within 0.20 m of the shell floor + < 0.30 m
    tall) -> kept_floor (user ruling 2026-08-07: rugs/mats are the
    wall-flush disease rotated to the floor — protected structurally,
-   no class names). All keep the resolved box verbatim — flat objects
-   have no side silhouette and their slices degenerate.
+   no class names). All keep the resolved box — flat objects have no
+   side silhouette and their slices degenerate.
+0a. PERP CAM RE-BOX (user design 2026-08-07) for the WALL and CEILING
+   exempts only: skipping the carve leaves them on the ORIGINAL one-shot
+   pano-lift box, which DRIFTS ALONG its own plane (glass door). Their
+   two IN-PLANE extents are, however, exactly what ONE face-on view
+   shows. So each runs a single view-tunnel render perpendicular to its
+   plane (slab = the object's box grown 0.30 m in-plane, spanning the
+   plane to its far face plus 0.35 m of room-side context), detects +
+   SAMs, claims the slab dots through the mask (>= 200 required), and
+   replaces ONLY the in-plane extents with their 1-99 percentile box.
+   The normal axis is untouched — depth is the one thing a face-on view
+   cannot measure. Guards: an in-plane center jump > 1.0 m or an extent
+   change > 3x either way REJECTS the candidate (recorded in
+   rule.rebox, original ships). No detection / thin slab / no room for
+   the camera all keep the original, always with a recorded reason.
+   The too-thin 'kept' rows do NOT get this treatment. One code path,
+   parameterized by (axis, plane, side) — ceiling and all four walls.
 0b. SHELL ELECTORATE FILTER (user ruling 2026-08-07, the L-notch floor
    finding): a dot lying on a measured shell plane (floor/wall/ceiling
    within SHELL_EPS) is STRUCTURE and cannot be ELECTED as an object
@@ -32,8 +63,10 @@ Per resolved graph node:
    cached WSL top/ctop plan render (prior-location-gated), corners
    cast across the OBJECT's height band, margin min(30%, 0.35 m)/side.
    FALLBACK (no top detection) = original-box wedge, capped margin.
-   Slices are CLAMPED to the shell interior (2026-08-07 late) — a
-   slice may never extend past a wall/floor plane.
+   Slices are NOT clamped to the shell — renders and ballot keep full
+   context (a shell clamp was tried and reverted 2026-08-07); wall
+   dots are stopped from being ELECTED by the half-space electorate
+   filter at tally time.
 2. RENDER + DETECT, escalation ladder (user design 08-07):
    TIER 1  4 near-cardinal VIEW-TUNNEL cards at object height (full
            scene minus the camera->slice hole; occluders culled,
@@ -57,6 +90,19 @@ Per resolved graph node:
    <50%-volume flag -> judge.
 5. OUTLIER GUARD (user rule): shipping box > OUTLIER_K x original
    volume -> original ships (kept_outlier), vote box recorded as doubt.
+6. SHELL CLIP on every SHIPPED box (user ruling 2026-08-07 late,
+   "boolean out all the strictly external volume"): at output time
+   every box that SHIPS — the kept_* exemption entries AND the final
+   carved/outlier box — is intersected with the shell interior
+   [XLO..XHI] x [CEIL..FLOOR] x [ZLO..ZHI]. If the intersection
+   collapses on an axis (< MIN_SLAB = 0.02 m) a MIN_SLAB-thick slab
+   is kept FLUSH against the plane the box sat at/beyond, the other
+   two axes keeping their clipped extents — a fully-outside opening
+   becomes a thin panel AT its wall. Honesty: when the clip changed
+   anything the rule record gains clip = {pre-clip box + per-axis
+   deltas}, and boxes.shipping carries the clipped box. The raw
+   vote/pano/original boxes stay recorded UNCLIPPED — they are
+   evidence, not shipping geometry.
 
 Outputs (per scene): scene_manifest_slicevote_preview.json,
 pool_retake/slicevote_report.json (rule.tiers records escalation),
@@ -85,7 +131,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
 from pano_lift import crop_cam_raw  # noqa: E402
-from sweep_recenter import c2w_from_eye_aim  # noqa: E402
+# camera math lives in ONE place (carve_cams.py) so the J8 sheet builder
+# can annotate these renders with the very cameras that made them
+from carve_cams import (FOV_GOOD, OFF_AXIS, RES, WALL_PAD,  # noqa: E402
+                        make_cam, roty, top_cam_for)
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--scene", required=True)
@@ -93,23 +142,30 @@ ap.add_argument("--only", default="",
                 help="comma-separated node ids (default: all resolved)")
 ap.add_argument("--gate", type=int, default=3,
                 help="votes required (degrades when fewer voters exist)")
-ap.add_argument("--res", type=int, default=768)
+ap.add_argument("--res", type=int, default=RES)
 a = ap.parse_args()
 
 SCENE = a.scene
-RES = a.res
+RES = a.res        # this run's resolution (default = carve_cams.RES)
 DET_THR = 0.20
 PAD = 0.30
 CAP_M = 0.35
-FOV_GOOD = 55.0
-OFF_AXIS = 10.0
-WALL_PAD = 0.30
 EMPTY_R = 0.30
 EMPTY_MAX = 1500
 DIL_ISO = 8
 OUTLIER_K = 8.0
 SHELL_EPS = 0.03   # m — shell electorate filter (user 2026-08-07, in the
                    # approved 2-3 cm band; shell is collider-agreed 5-36mm)
+WALL_TOUCH = 0.20  # m — a face this close to a wall plane (or past it)
+                   # counts as touching that wall
+WALL_PROTRUDE_MAX = 0.20   # m — max intrusion into the room interior for
+                   # the wall exemption. Census (living_marble): flat /
+                   # opening objects protrude 0.00-0.16 (doors, glass
+                   # door, window, television, curtain, picture); real
+                   # furniture starts at 0.26 (plant) then 0.35+
+                   # (magazines, bookshelves) — 0.20 sits in open water.
+MIN_SLAB = 0.02    # m — thinnest slab a shell-clipped shipping box may
+                   # collapse to (kept flush against its plane)
 
 sd = paths.scene_dir(SCENE)
 rdir = sd / "pool_retake"
@@ -182,6 +238,76 @@ for w in sh["walls"]:
     v = w["plane_upright_m"] * (_r2r[0] if w["axis"] == "x" else _r2r[2])
     (_xs if w["axis"] == "x" else _zs).append(v)
 XLO, XHI, ZLO, ZHI = min(_xs), max(_xs), min(_zs), max(_zs)
+# the four wall planes as (axis, plane value, side) — side +1 means the
+# room interior lies BELOW the plane (a high-side wall), -1 above it
+WALLS = [(0, XLO, -1, "XLO"), (0, XHI, +1, "XHI"),
+         (2, ZLO, -1, "ZLO"), (2, ZHI, +1, "ZHI")]
+
+
+def wall_protrusion(lo, hi):
+    """WALL PROTRUSION RULE (user ruling 2026-08-07 late, replacing the
+    old flush+thin test). A box is wall-exempt when it TOUCHES OR
+    CROSSES a shell wall plane (its facing face within WALL_TOUCH of
+    the plane, or extending past it) AND protrudes into the room
+    interior by at most WALL_PROTRUDE_MAX. Depth beyond the plane is
+    deliberately ignored — an opening (glass door, window) keeps its
+    mass at or beyond the wall. Returns (wall_id, protrusion_m) for
+    the least-protruding qualifying wall, else None."""
+    best = None
+    for axi, v, side, wid in WALLS:
+        if side > 0:                       # interior is at x/z < v
+            touches = hi[axi] > v - WALL_TOUCH
+            protr = v - lo[axi]
+        else:                              # interior is at x/z > v
+            touches = lo[axi] < v + WALL_TOUCH
+            protr = hi[axi] - v
+        protr = max(float(protr), 0.0)
+        if touches and protr <= WALL_PROTRUDE_MAX:
+            if best is None or protr < best[1]:
+                best = (wid, protr)
+    return best
+
+
+def shell_clip(lo, hi):
+    """SHELL CLIP (user ruling 2026-08-07 late: "boolean out all the
+    strictly external volume"). Intersect a SHIPPING box with the shell
+    interior. If an axis collapses below MIN_SLAB, keep a MIN_SLAB slab
+    flush against the plane the box sat at/beyond (the other axes keep
+    their clipped extents). Returns (lo, hi, clip_record|None)."""
+    olo = np.asarray(lo, float)
+    ohi = np.asarray(hi, float)
+    nlo, nhi = olo.copy(), ohi.copy()
+    for axi, (blo, bhi) in enumerate(((XLO, XHI), (CEIL, FLOOR),
+                                      (ZLO, ZHI))):
+        cl, ch = max(olo[axi], blo), min(ohi[axi], bhi)
+        if ch - cl < MIN_SLAB:
+            if olo[axi] <= blo and ohi[axi] < bhi:      # at/beyond low
+                cl, ch = blo, blo + MIN_SLAB
+            elif ohi[axi] >= bhi and olo[axi] > blo:    # at/beyond high
+                cl, ch = bhi - MIN_SLAB, bhi
+            else:                       # degenerate box in the interior
+                c = min(max(0.5 * (olo[axi] + ohi[axi]), blo + MIN_SLAB / 2),
+                        bhi - MIN_SLAB / 2)
+                cl, ch = c - MIN_SLAB / 2, c + MIN_SLAB / 2
+        nlo[axi], nhi[axi] = cl, ch
+    d_lo, d_hi = nlo - olo, nhi - ohi
+    if not (np.abs(d_lo) > 1e-6).any() and not (np.abs(d_hi) > 1e-6).any():
+        return nlo, nhi, None
+    rec = {"pre_lo": [round(float(v), 3) for v in olo],
+           "pre_hi": [round(float(v), 3) for v in ohi],
+           "d_lo": [round(float(v), 3) for v in d_lo],
+           "d_hi": [round(float(v), 3) for v in d_hi]}
+    return nlo, nhi, rec
+
+
+def ship_box(lo, hi, rule):
+    """Clip a shipping box to the shell and record the clip honestly.
+    Returns {"lo": [...], "hi": [...]} (rounded, ready for output)."""
+    nlo, nhi, rec = shell_clip(lo, hi)
+    if rec is not None:
+        rule["clip"] = rec
+    return {"lo": [round(float(v), 3) for v in nlo],
+            "hi": [round(float(v), 3) for v in nhi]}
 
 
 def in_bounds(eye):
@@ -195,71 +321,8 @@ def empty_at(eye):
     return int((np.einsum("ij,ij->i", d, d) < EMPTY_R * EMPTY_R).sum())
 
 
-class MatCamLite:
-    def __init__(self, R, pos, f, cx, cy):
-        self.R, self.pos = R, pos
-        self.f, self.cx, self.cy = f, cx, cy
-
-    def project(self, pts):
-        rel = (pts - self.pos) @ self.R.T
-        x, y, z = rel[:, 0], rel[:, 1], rel[:, 2]
-        with np.errstate(divide="ignore", invalid="ignore"):
-            u = self.cx + self.f * x / z
-            v = self.cy - self.f * y / z
-        return u, v, z
-
-
-def make_cam(eye, aim, fov, res):
-    M = c2w_from_eye_aim(eye, aim, [0.0, -1.0, 0.0])
-    R = np.stack([M[:3, 0], -M[:3, 1], M[:3, 2]])
-    f = res / (2 * math.tan(math.radians(fov) / 2))
-    return MatCamLite(R, np.asarray(eye, np.float64), f, res / 2, res / 2)
-
-
-def roty(v, deg):
-    th = math.radians(deg)
-    ca, sa = math.cos(th), math.sin(th)
-    return np.array([ca * v[0] + sa * v[2], v[1], -sa * v[0] + ca * v[2]])
-
-
-def top_cam_for(n):
-    geo = n["geometry"]
-    c = np.array(geo["center"], float)
-    half = max(geo["size"]) / 2
-    dist = float(np.clip(
-        1.5 * max(half, 0.15) / math.tan(math.radians(FOV_GOOD) / 2),
-        1.2, 4.0))
-    d0 = c - eye0
-    d0[1] = 0
-    if np.linalg.norm(d0) < 0.3:
-        d0 = np.array([1.0, 0, 0])
-    d0 /= np.linalg.norm(d0)
-    out = []
-    tilt = math.radians(max(OFF_AXIS, 15.0))
-    up_dir = np.array([math.sin(tilt) * d0[0], -math.cos(tilt),
-                       math.sin(tilt) * d0[2]])
-    up_dir /= np.linalg.norm(up_dir)
-    eye = c + up_dir * dist
-    eye[1] = max(c[1] + up_dir[1] * dist, CEIL + WALL_PAD + 0.05)
-    top_ok = False
-    if in_bounds(eye) and empty_at(eye) <= EMPTY_MAX:
-        dist_act = float(np.linalg.norm(eye - c))
-        fov = float(np.clip(math.degrees(
-            2 * math.atan(1.5 * max(half, 0.15) / dist_act)), 35, 75))
-        out.append(("top", eye, fov))
-        top_ok = True
-    need = 1.5 * max(half, 0.15) / math.tan(math.radians(FOV_GOOD) / 2)
-    if not top_ok or dist < need - 1e-6:
-        up = np.array([math.sin(math.radians(10)) * d0[0], -1.0,
-                       math.sin(math.radians(10)) * d0[2]])
-        up /= np.linalg.norm(up)
-        eye = c + up * max(need, 2.0)
-        fov = float(np.clip(math.degrees(
-            2 * math.atan(1.5 * max(half, 0.15)
-                          / float(np.linalg.norm(eye - c)))), 35, 75))
-        out.append(("ctop", eye, fov))
-    return out, c
-
+# MatCamLite / make_cam / roty / top_cam_for now live in carve_cams.py
+# (imported above) — ONE definition, shared with the J8 sheet builder.
 
 import torch  # noqa: E402
 dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -408,10 +471,289 @@ def draw_box(ax, lo, hi, ax0, ax1, color, ls, lw, label=None, flip1=False):
                            label=label))
 
 
+# ================= PERP CAM RE-BOX (user design 2026-08-07) ===========
+# The exempt objects (kept_wall / kept_ceiling) skip the carve entirely,
+# so they still carry the ORIGINAL one-shot pano-lift box — which drifts
+# ALONG its own plane (the glass door is the motivating case: the box
+# slides sideways along the wall it hangs on). The carve's slice/vote
+# machinery cannot help them (a flat object has no side silhouette), but
+# ONE FACE-ON view can: seen perpendicular to its plane, the object's
+# two IN-PLANE extents are exactly what the image shows. So: render one
+# perpendicular view-tunnel card, detect+SAM the object, claim the
+# slab's dots through that mask, and replace ONLY the two in-plane
+# extents. The normal axis keeps whatever it had (depth is what the
+# face-on view cannot see). Scene-agnostic: ceiling and all four walls
+# run the SAME code, parameterized by (axis, plane, side).
+PERP_GROW = 0.30       # m — in-plane grow of the object box for the slab
+PERP_SLAB_PAD = 0.35   # m — room-side depth of context kept in the slab
+PERP_MIN_CLAIM = 200   # dots the mask must claim for a re-box to be tried
+PERP_MAX_SHIFT = 1.0   # m — in-plane center jump that REJECTS the re-box
+PERP_MAX_RATIO = 3.0   # x — in-plane extent change that REJECTS it
+PERP_MARGIN = 1.4      # framing margin on the in-plane extent (+40%)
+PERP_DET_PAD = 40      # px — generous slack on the projected prior box
+
+# NOTE on the camera's up vector: make_cam / the WSL renderer share ONE
+# c2w_from_eye_aim with world up [0,-1,0] AND the same degenerate
+# fallback (fwd parallel to up -> right = fwd x +x). A wall camera is
+# horizontal, so world y is its up; a ceiling camera looks straight up
+# the y axis and lands in the fallback, which yields camera-up = +x —
+# exactly the horizontal up this design asks for, and identical on both
+# sides of the WSL boundary. No camera-math change was needed.
+
+
+def perp_run_renders(targets_json, ply_path):
+    """Standalone one-shot render (the in-loop run_renders is defined
+    after the exemption paths have already `continue`d)."""
+    _py = "/root/miniconda3/envs/splatanalyzer/bin/python"
+    _scr = to_wsl(HERE / 'analyzer' / 'render_targets_wsl.py')
+    cmd = ("wsl -d Ubuntu-24.04 -- bash -c \"cd /root/splat_analyzer && "
+           f"{_py} '{_scr}' --targets '{to_wsl(targets_json)}' "
+           f"--ply '{to_wsl(ply_path)}' --out '{to_wsl(sdir)}' "
+           f"--res {RES}\"")
+    subprocess.run(cmd, check=True, timeout=1800, shell=True)
+
+
+def _fig(fname, cap):
+    return (f"<figure><img src='pool_retake/slices/{fname}' "
+            f"loading='lazy'><figcaption>{cap}</figcaption></figure>")
+
+
+def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
+    """One face-on view -> new IN-PLANE extents for a carve-exempt
+    object. `axi` is the plane's NORMAL axis, `plane_val` the plane's
+    coordinate, `side` the WALLS-table sign (+1 = room interior lies
+    BELOW the plane), `pid` its id. Returns
+    (ship_lo|None, ship_hi|None, rec, strip_html) — None means KEEP the
+    original box; `rec` always says why (never silent)."""
+    ip = [k for k in range(3) if k != axi]
+    inward = -side                      # into the room, along the normal
+    rec = {"view": "perp", "plane": pid, "normal_axis": axi}
+
+    # ---- SLAB: the object's own depth band, hugging its plane, plus
+    # PERP_SLAB_PAD of room-side context; grown PERP_GROW in-plane.
+    # Design decision: the band spans from the PLANE to the box's own
+    # far face (whichever is further out) rather than starting at the
+    # plane — an opening (glass door, window) carries its mass AT or
+    # BEYOND the wall, and a plane-anchored band would exclude exactly
+    # the dots we need.
+    glo = np.asarray(lo0, float).copy()
+    ghi = np.asarray(hi0, float).copy()
+    for k in ip:
+        glo[k] -= PERP_GROW
+        ghi[k] += PERP_GROW
+    nlo_s = min(float(lo0[axi]), plane_val) - 0.02
+    nhi_s = max(float(hi0[axi]), plane_val) + 0.02
+    if inward > 0:
+        nhi_s += PERP_SLAB_PAD
+    else:
+        nlo_s -= PERP_SLAB_PAD
+    glo[axi], ghi[axi] = nlo_s, nhi_s
+    slab = np.all((xyz >= glo) & (xyz <= ghi), axis=1)
+    n_slab = int(slab.sum())
+    rec["slab_dots"] = n_slab
+    if n_slab < PERP_MIN_CLAIM:
+        rec["result"] = f"kept - slab too thin ({n_slab} dots)"
+        print(f"[carve]  perp: slab too thin ({n_slab} dots) - "
+              "original box kept", flush=True)
+        return None, None, rec, ""
+    sdots = xyz[slab]
+
+    # ---- CAMERA: pushed off the object into the room along the normal,
+    # far enough that the in-plane extent (+40%) fits in FOV_GOOD.
+    ctr = 0.5 * (np.asarray(lo0, float) + np.asarray(hi0, float))
+    span = float(max(hi0[k] - lo0[k] for k in ip))
+    dist_need = max(PERP_MARGIN * 0.5 * max(span, 0.2)
+                    / math.tan(math.radians(FOV_GOOD) / 2), 1.0)
+    eye = ctr.copy()
+    eye[axi] = ctr[axi] + inward * dist_need
+    lim = [(XLO + WALL_PAD, XHI - WALL_PAD),
+           (CEIL + WALL_PAD, FLOOR - WALL_PAD),
+           (ZLO + WALL_PAD, ZHI - WALL_PAD)]
+    eye = np.array([float(np.clip(eye[k], lim[k][0], lim[k][1]))
+                    for k in range(3)])
+    dist_act = float((eye[axi] - ctr[axi]) * inward)
+    rec["dist_m"] = round(dist_act, 3)
+    if dist_act < dist_need - 1e-3:
+        rec["dist_clamped"] = {"need": round(dist_need, 3),
+                               "got": round(dist_act, 3)}
+        print(f"[carve]  perp: room too shallow - stand-off {dist_act:.2f} m "
+              f"of {dist_need:.2f} m needed", flush=True)
+    if dist_act < 0.15:
+        rec["result"] = "kept - no room for a face-on camera"
+        print("[carve]  perp: no room for a face-on camera - "
+              "original box kept", flush=True)
+        return None, None, rec, ""
+
+    # ---- RENDER, view-tunnel style (same math as ctx_render_jobs, but
+    # standalone: an exempt object has no slice, the slab plays its part)
+    cam = make_cam([float(v) for v in eye], [float(v) for v in ctr],
+                   FOV_GOOD, RES)
+    vdir = ctr - eye
+    vdir = vdir / np.linalg.norm(vdir)
+    t_far = float(((sdots - eye) @ vdir).max())
+    uu, vv_, zz = cam.project(xyz)
+    in_cone = ((zz > 0.05) & (uu >= -40) & (uu < RES + 40)
+               & (vv_ >= -40) & (vv_ < RES + 40))
+    hole = in_cone & (((xyz - eye) @ vdir) < (t_far + 0.05)) & ~slab
+    vname = f"vote_{nid}_perp"
+    cply = sdir / f"votectx_{vname}.ply"
+    write_subset_ply(~hole, cply)
+    tf = sdir / f"votetgt_{vname}.json"
+    tf.write_text(json.dumps([{"name": vname,
+                               "label": f"{nid} {name} perp ({pid})",
+                               "eye": [float(v) for v in eye],
+                               "aim": [float(v) for v in ctr],
+                               "fov": FOV_GOOD}], indent=1))
+    perp_run_renders(tf, cply)
+    cply.unlink(missing_ok=True)
+    png = sdir / f"{vname}.png"
+    if not png.exists():
+        rec["result"] = "kept - perp render missing"
+        print("[carve]  perp: render missing - original box kept",
+              flush=True)
+        return None, None, rec, ""
+    strip = _fig(png.name, f"PERP RE-BOX &middot; face-on view ({pid})")
+
+    # ---- DETECT, gated to the original box's screen footprint
+    img = Image.open(png).convert("RGB")
+    cn = np.array([[x, y, z] for x in (lo0[0], hi0[0])
+                   for y in (lo0[1], hi0[1]) for z in (lo0[2], hi0[2])])
+    cu, cv, cz = cam.project(cn)
+    ok = cz > 0.2
+    pb = ([float(np.clip(cu[ok].min() - PERP_DET_PAD, 0, RES)),
+           float(np.clip(cv[ok].min() - PERP_DET_PAD, 0, RES)),
+           float(np.clip(cu[ok].max() + PERP_DET_PAD, 0, RES)),
+           float(np.clip(cv[ok].max() + PERP_DET_PAD, 0, RES))]
+          if ok.any() else None)
+    best = gdino_best(img, name, prior_box=pb)
+    if best is None:
+        rec["result"] = "no detection - kept"
+        print("[carve]  perp: no detection - original box kept", flush=True)
+        return None, None, rec, strip
+    rec["score"] = round(float(best[0]), 3)
+    mask = sam_mask(img, best[1], DIL_ISO)
+    ov = img.convert("RGBA")
+    layer = Image.new("RGBA", ov.size, (0, 0, 0, 0))
+    px = layer.load()
+    ys, xs = np.nonzero(mask)
+    for yy, xx in zip(ys[::4], xs[::4]):
+        px[int(xx), int(yy)] = (0, 255, 90, 100)
+    ov = Image.alpha_composite(ov, layer).convert("RGB")
+    ImageDraw.Draw(ov).rectangle(best[1], outline=(255, 40, 40), width=4)
+    ov.save(sdir / f"{vname}_det.png")
+    strip += _fig(f"{vname}_det.png",
+                  f"PERP RE-BOX &middot; mask+box ok({best[0]:.2f})")
+
+    # ---- CLAIM the slab's dots through the mask (mirrors card_votes)
+    u2, v2, z2 = cam.project(sdots)
+    inb = ((z2 > 0.05) & (u2 >= 0) & (u2 < RES - 1)
+           & (v2 >= 0) & (v2 < RES - 1))
+    cl = np.zeros(len(sdots), bool)
+    cl[np.nonzero(inb)[0]] = mask[v2[inb].astype(np.int64),
+                                  u2[inb].astype(np.int64)]
+    nc = int(cl.sum())
+    rec["claimed"] = nc
+    if nc < PERP_MIN_CLAIM:
+        rec["result"] = f"kept - only {nc} claimed dots (< {PERP_MIN_CLAIM})"
+        print(f"[carve]  perp: only {nc} claimed dots - original box kept",
+              flush=True)
+        return None, None, rec, strip
+
+    # ---- RE-BOX: in-plane extents only, normal axis untouched
+    K = sdots[cl]
+    new_lo = np.asarray(lo0, float).copy()
+    new_hi = np.asarray(hi0, float).copy()
+    for k in ip:
+        new_lo[k] = float(np.percentile(K[:, k], 1))
+        new_hi[k] = float(np.percentile(K[:, k], 99))
+    rec["from"] = [[k, round(float(lo0[k]), 3), round(float(hi0[k]), 3)]
+                   for k in ip]
+    rec["to"] = [[k, round(float(new_lo[k]), 3), round(float(new_hi[k]), 3)]
+                 for k in ip]
+    # SANITY GUARDS (user rule): a re-box may refine, never jump. Wild
+    # candidates are RECORDED, never shipped.
+    oc = np.array([0.5 * (lo0[k] + hi0[k]) for k in ip])
+    ncn = np.array([0.5 * (new_lo[k] + new_hi[k]) for k in ip])
+    shift = float(np.linalg.norm(ncn - oc))
+    ratios = [float((new_hi[k] - new_lo[k])
+                    / max(float(hi0[k] - lo0[k]), 1e-6)) for k in ip]
+    rec["center_shift_m"] = round(shift, 3)
+    rec["extent_ratio"] = [round(r, 3) for r in ratios]
+    why = []
+    if shift > PERP_MAX_SHIFT:
+        why.append(f"in-plane center moved {shift:.2f} m "
+                   f"(> {PERP_MAX_SHIFT:.2f})")
+    for k, r in zip(ip, ratios):
+        if r > PERP_MAX_RATIO or r < 1.0 / PERP_MAX_RATIO:
+            why.append(f"axis {k} extent x{r:.2f} "
+                       f"(> {PERP_MAX_RATIO:.0f}x either way)")
+    if why:
+        rec["result"] = "REJECTED - " + "; ".join(why) + " - original kept"
+        print("[carve]  perp: REJECTED (" + "; ".join(why)
+              + ") - original box kept", flush=True)
+        return None, None, rec, strip
+    rec["result"] = "reboxed"
+    print("[carve]  perp: reboxed in-plane from "
+          + " x ".join(f"{hi0[k]-lo0[k]:.2f}" for k in ip) + " to "
+          + " x ".join(f"{new_hi[k]-new_lo[k]:.2f}" for k in ip)
+          + f" m ({nc} claimed dots)", flush=True)
+    return new_lo, new_hi, rec, strip
+
+
+def perp_for_exempt(nid, name, lo0, hi0, plane):
+    """Run the perp re-box and package it for add_exempt. `plane` is the
+    (axis, plane_value, side, id) tuple — WALLS row for a wall,
+    (1, CEIL, -1, 'CEIL') for the ceiling (interior lies ABOVE the
+    ceiling value in this y-DOWN frame)."""
+    axi, pv, side, pid = plane
+    try:
+        slo, shi, rec, strip = perp_rebox(nid, name, lo0, hi0,
+                                          axi, float(pv), side, pid)
+    except Exception as e:                                   # noqa: BLE001
+        slo, shi, strip = None, None, ""
+        rec = {"view": "perp", "plane": pid,
+               "result": f"kept - perp re-box failed: {e}"}
+        print(f"[carve]  perp: FAILED ({e}) - original box kept", flush=True)
+    if strip:
+        exempt_rows_html.append(f"""
+<section>
+<h2>{nid} — {name} <span style='font-weight:400;font-size:13px'>
+(carve-exempt, perp re-box)</span></h2>
+<p>plane {pid} &nbsp;·&nbsp; {rec.get('result', '?')}
+&nbsp;·&nbsp; slab {rec.get('slab_dots', 0):,} dots, claimed
+{rec.get('claimed', 0):,}</p>
+<div class='strip'>{strip}</div>
+</section>""")
+    return slo, shi, rec
+
+
 # ================= per-object: slice -> render -> detect -> vote =======
 rows_html = []
+exempt_rows_html = []
 cm_objects = []
 kept_exempt = []
+
+
+def add_exempt(nid, name, lo0, hi0, status, kept, extra=None,
+               ship_lo=None, ship_hi=None):
+    """Record a carve-exempt node. The ORIGINAL box is kept verbatim as
+    evidence; the box that SHIPS is the shell-clipped one (step 6) —
+    of the perp RE-BOXED extents when the face-on view produced them
+    (ship_lo/ship_hi), otherwise of the original."""
+    rule = {"kept": kept}
+    if extra:
+        rule.update(extra)
+    boxes = {"original": {"lo": [round(float(v), 3) for v in lo0],
+                          "hi": [round(float(v), 3) for v in hi0]}}
+    if ship_lo is not None:
+        boxes["rebox"] = {"lo": [round(float(v), 3) for v in ship_lo],
+                          "hi": [round(float(v), 3) for v in ship_hi]}
+    boxes["shipping"] = ship_box(lo0 if ship_lo is None else ship_lo,
+                                 hi0 if ship_hi is None else ship_hi, rule)
+    kept_exempt.append({"id": nid, "name": name, "nviews_vote": 0,
+                        "status": status, "boxes": boxes, "rule": rule})
+
+
 for n in nodes:
     nid, name = n["id"], n["name"]
     geo = n["geometry"]
@@ -430,44 +772,48 @@ for n in nodes:
     room_h = FLOOR - CEIL
     if (lo0[1] - CEIL) < 0.35 and (hi0[1] - CEIL) < 0.5 * room_h:
         print("[carve]  ceiling-mounted — carve exempt, resolved box "
-              "kept verbatim", flush=True)
-        kept_exempt.append({
-            "id": nid, "name": name, "nviews_vote": 0,
-            "status": "kept_ceiling",
-            "boxes": {"original":
-                      {"lo": [round(float(v), 3) for v in lo0],
-                       "hi": [round(float(v), 3) for v in hi0]}},
-            "rule": {"kept": "ceiling-mounted — carve exempt "
-                             "(geometric: top within 0.35 m of the "
-                             "shell ceiling, bottom in the upper half "
-                             "of the room)"}})
+              "kept (in-plane extents from the perp re-box)", flush=True)
+        # PERP RE-BOX: the carve is skipped, but one face-on view still
+        # fixes the drifted in-plane (x,z) extents. Ceiling plane in the
+        # y-DOWN frame: axis 1 at CEIL, interior ABOVE it -> side -1.
+        _slo, _shi, _rec = perp_for_exempt(nid, name, lo0, hi0,
+                                           (1, CEIL, -1, "CEIL"))
+        add_exempt(nid, name, lo0, hi0, "kept_ceiling",
+                   "ceiling-mounted — carve exempt (geometric: top "
+                   "within 0.35 m of the shell ceiling, bottom in the "
+                   "upper half of the room)",
+                   {"rebox": _rec}, ship_lo=_slo, ship_hi=_shi)
         continue
 
-    # WALL-FLUSH EXEMPTION (user ruling 2026-08-06b after R-S2-28):
-    # same disease on walls — a wall-flush object has no plan-view
-    # footprint, so the top detection can't start and the full-height
-    # wedge slices a room column in front of the wall (obj_002 x369).
-    # Geometric only: flush to a measured shell wall (< 0.20 m) AND
-    # thin along that wall's normal axis (< 0.30 m). A deep bookshelf
-    # against the wall is flush but not thin -> still carved.
-    _wall_hit = None
-    for _axi, _planes in ((0, (XLO, XHI)), (2, (ZLO, ZHI))):
-        for _v in _planes:
-            if (min(abs(lo0[_axi] - _v), abs(hi0[_axi] - _v)) < 0.20
-                    and (hi0[_axi] - lo0[_axi]) < 0.30):
-                _wall_hit = (_axi, _v)
+    # WALL PROTRUSION EXEMPTION (user ruling 2026-08-07 late, REPLACING
+    # the 2026-08-06b flush+thin test). Same disease as the ceiling one:
+    # a wall-hugging object has no plan-view footprint, so the top
+    # detection can't start and the full-height wedge slices a room
+    # column in front of the wall (obj_002 x369). New geometric test:
+    # the box TOUCHES OR CROSSES a shell wall plane AND protrudes into
+    # the room interior <= WALL_PROTRUDE_MAX. Depth beyond the plane is
+    # ignored on purpose — openings (glass door, window) have their mass
+    # at or beyond the wall and the thin test dropped them (obj_034
+    # regression). It also un-exempts the thin test's false exempts
+    # (plant, shelf magazines, R-S2-30), which are now carved.
+    _wall_hit = wall_protrusion(lo0, hi0)
     if _wall_hit is not None:
-        print("[carve]  wall-flush — carve exempt, resolved box kept "
-              "verbatim", flush=True)
-        kept_exempt.append({
-            "id": nid, "name": name, "nviews_vote": 0,
-            "status": "kept_wall",
-            "boxes": {"original":
-                      {"lo": [round(float(v), 3) for v in lo0],
-                       "hi": [round(float(v), 3) for v in hi0]}},
-            "rule": {"kept": "wall-flush — carve exempt (geometric: "
-                             "within 0.20 m of a shell wall plane and "
-                             "< 0.30 m thin along its normal)"}})
+        _wid, _protr = _wall_hit
+        print(f"[carve]  wall-protrusion {_protr:.2f} m at {_wid} — carve "
+              "exempt, resolved box kept (in-plane extents from the perp "
+              "re-box)", flush=True)
+        # PERP RE-BOX: same treatment as the ceiling, on this object's
+        # own wall plane — the drifting glass door is the motivating case.
+        _wrow = next(w for w in WALLS if w[3] == _wid)
+        _slo, _shi, _rec = perp_for_exempt(nid, name, lo0, hi0,
+                                           (_wrow[0], _wrow[1], _wrow[2],
+                                            _wid))
+        add_exempt(nid, name, lo0, hi0, "kept_wall",
+                   "wall protrusion — carve exempt (geometric: touches "
+                   "or crosses a shell wall plane and protrudes "
+                   f"<= {WALL_PROTRUDE_MAX:.2f} m into the room)",
+                   {"wall": _wid, "protrusion_m": round(_protr, 3),
+                    "rebox": _rec}, ship_lo=_slo, ship_hi=_shi)
         continue
 
     # FLOOR-FLUSH EXEMPTION (user ruling 2026-08-07, with the shell
@@ -479,21 +825,17 @@ for n in nodes:
     if (FLOOR - hi0[1]) < 0.20 and (hi0[1] - lo0[1]) < 0.30:
         print("[carve]  floor-flush — carve exempt, resolved box kept "
               "verbatim", flush=True)
-        kept_exempt.append({
-            "id": nid, "name": name, "nviews_vote": 0,
-            "status": "kept_floor",
-            "boxes": {"original":
-                      {"lo": [round(float(v), 3) for v in lo0],
-                       "hi": [round(float(v), 3) for v in hi0]}},
-            "rule": {"kept": "floor-flush — carve exempt (geometric: "
-                             "bottom within 0.20 m of the shell floor "
-                             "and < 0.30 m tall)"}})
+        add_exempt(nid, name, lo0, hi0, "kept_floor",
+                   "floor-flush — carve exempt (geometric: bottom "
+                   "within 0.20 m of the shell floor and < 0.30 m "
+                   "tall)")
         continue
 
     # ---- SLICE: prism primary, wedge fallback ----
     slice_mask, slice_info = None, ""
     top_ctx = None          # (cam, box, img, view name, score, eye)
-    tcands, c0 = top_cam_for(n)
+    tcands, c0 = top_cam_for(n["geometry"], eye0, CEIL, WALL_PAD,
+                             in_bounds, empty_at, EMPTY_MAX)
     for vname, teye, tfov in tcands:
         png = rdir / f"{nid}_{vname}.png"
         if not png.exists():
@@ -566,13 +908,13 @@ for n in nodes:
                 nb += 1
         slice_mask &= below_ceil
         slice_info = f"FALLBACK WEDGE ({nb} sp0 boxes; {slice_info})"
-    # SLICE SHELL CLAMP (user ruling 2026-08-07 late, obj_014 wall-leak
-    # finding): the slice may never extend past the measured shell — a
-    # fallback wedge cast from a wall-poking original box put a wall
-    # slab on the ballot and in every card.
-    slice_mask &= ((xyz[:, 1] < FLOOR) & (xyz[:, 0] > XLO)
-                   & (xyz[:, 0] < XHI) & (xyz[:, 2] > ZLO)
-                   & (xyz[:, 2] < ZHI))
+    # NOTE: a SLICE SHELL CLAMP (slice_mask &= shell-interior) was tried
+    # here 2026-08-07 and REVERTED the same day (user ruling: renders
+    # keep wall context for segmentation — the clamp turned excluded
+    # wall dots into cone-minus-slice "occluders" and blanked them from
+    # the tiles; ballot safety = the half-space electorate filter at
+    # tally; geometry cleanup = protrusion exemption + shell clip at
+    # shipping). Do not re-add it.
     cidx = np.nonzero(slice_mask)[0]
     dots = xyz[cidx]
     # SHELL ELECTORATE FILTER (user ruling 2026-08-07; HALF-SPACE form
@@ -592,6 +934,13 @@ for n in nodes:
           f"(shell-plane ineligible: {n_shell_dots:,})", flush=True)
     if len(dots) < 100:
         print("[carve]   too few dots, skipping", flush=True)
+        # TIER-4 doctrine: never silent — carve is impossible on this
+        # slice, so the ORIGINAL box ships as a kept row (recorded like
+        # the exemption rows, obj_017_c00 vanish fix 2026-08-07).
+        add_exempt(nid, name, lo0, hi0, "kept",
+                   "slice too thin (< 100 dots) — "
+                   "carve impossible, resolved box ships",
+                   {"n_dots": int(len(dots))})
         continue
     plyp = sdir / f"vote_{nid}.ply"
     write_subset_ply(slice_mask, plyp)
@@ -1160,14 +1509,27 @@ inside the camera cone and nearer than the slice are culled; side and
 background context intact; re-detect gated to the slice's screen
 footprint) \u2192 detector+SAM per render \u2192 6-voter election. Boxes: gray
 dashed = original, red = all cardinals agree, orange = the vote gate,
-cyan = pano-filtered. Ceiling-mounted and wall-flush objects are CARVE-EXEMPT
-(geometric tests) and keep their resolved box; a carved box growing
-past the outlier guard (8x original volume) also falls back to the
-original (kept_outlier), with the vote box recorded as doubt.</p>
+cyan = pano-filtered. Ceiling-mounted, wall-protruding (touches a wall
+plane and protrudes ≤ 0.20 m into the room) and floor-flush objects
+are CARVE-EXEMPT (geometric tests) and keep their resolved box; a
+carved box growing past the outlier guard (8x original volume) also
+falls back to the original (kept_outlier), with the vote box recorded
+as doubt. Every SHIPPING box is finally clipped to the measured shell
+interior (strictly external volume booleaned out); the boxes drawn
+here are the unclipped evidence.</p>
 {("<p><b>carve-exempt (resolved box kept):</b> "
   + ", ".join(f"{k['id']} {k['name']} [{k['status']}]"
               for k in kept_exempt) + "</p>")
  if kept_exempt else ""}
+{("<p>WALL / CEILING exempt objects additionally get a PERP RE-BOX (user "
+  "design 2026-08-07): one face-on view-tunnel render perpendicular to "
+  "their own plane, detector+SAM, and the mask's claimed slab dots set "
+  "the two IN-PLANE extents (the normal axis is untouched — a face-on "
+  "view cannot see depth). Guards: a candidate whose in-plane center "
+  f"moves &gt; {PERP_MAX_SHIFT:.1f} m or whose extent changes by more "
+  f"than {PERP_MAX_RATIO:.0f}x is recorded and REJECTED, original ships. "
+  "Their rows are below.</p>" + ''.join(exempt_rows_html))
+ if exempt_rows_html else ""}
 {''.join(rows_html)}
 """
 (sd / "cone_map.html").write_text(html, encoding="utf-8")
@@ -1185,7 +1547,11 @@ for o in cm_objects:
         status = ("carved_pano" if o["boxes"].get("pano")
                   else ("carved" if o["boxes"].get("vote2") else "kept"))
     by_status[status] = by_status.get(status, 0) + 1
-    lo, hi = box["lo"], box["hi"]
+    # SHELL CLIP (step 6): only the box that SHIPS is clipped — the
+    # original/vote2/pano boxes above stay recorded unclipped (evidence)
+    ship = ship_box(box["lo"], box["hi"], o["rule"])
+    o["boxes"]["shipping"] = ship
+    lo, hi = ship["lo"], ship["hi"]
     flags = [status] + [f for f in (o["rule"]["flag"],
                                     o["rule"]["pano_flag"],
                                     o["rule"].get("outlier", "")) if f]
@@ -1200,7 +1566,7 @@ for o in cm_objects:
                  "n_detections": 1, "views": [], "flags": flags})
 for kc in kept_exempt:
     by_status[kc["status"]] = by_status.get(kc["status"], 0) + 1
-    b = kc["boxes"]["original"]
+    b = kc["boxes"].get("shipping") or kc["boxes"]["original"]
     lo, hi = b["lo"], b["hi"]
     objs.append({"id": kc["id"],
                  "label": kc["name"] + f" ({kc['status']})",
@@ -1215,8 +1581,12 @@ for kc in kept_exempt:
      "source": "carve_slicevote.py — slice-vote carve (top-box prism / "
                "wedge fallback; view-tunnel context cards; 6-voter "
                f"election, gate {a.gate}; per-node pano-mask filter; "
-               "ceiling/wall-flush exempt = kept_ceiling/kept_wall; "
-               f"outlier guard {OUTLIER_K:.0f}x = kept_outlier). "
+               "ceiling / wall-protrusion / floor-flush exempt = "
+               "kept_ceiling/kept_wall/kept_floor, wall+ceiling exempts "
+               "re-boxed IN-PLANE from one perpendicular face-on view; "
+               "outlier guard "
+               f"{OUTLIER_K:.0f}x = kept_outlier; every shipped box "
+               "clipped to the measured shell interior). "
                "Preview only; not on the pipeline map.",
      "frame": {"space": "raw", "up": [0.0, -1.0, 0.0]},
      "n_objects": len(objs), "objects": objs}, indent=2))
@@ -1225,7 +1595,15 @@ for kc in kept_exempt:
      "status": "UNTESTED-PREVIEW", "gate": a.gate,
      "params": {"DET_THR": DET_THR, "PAD": PAD, "CAP_M": CAP_M,
                 "FOV_GOOD": FOV_GOOD, "OFF_AXIS": OFF_AXIS,
-                "DIL_ISO": DIL_ISO, "OUTLIER_K": OUTLIER_K},
+                "DIL_ISO": DIL_ISO, "OUTLIER_K": OUTLIER_K,
+                "SHELL_EPS": SHELL_EPS, "WALL_TOUCH": WALL_TOUCH,
+                "WALL_PROTRUDE_MAX": WALL_PROTRUDE_MAX,
+                "MIN_SLAB": MIN_SLAB,
+                "PERP_GROW": PERP_GROW, "PERP_SLAB_PAD": PERP_SLAB_PAD,
+                "PERP_MIN_CLAIM": PERP_MIN_CLAIM,
+                "PERP_MAX_SHIFT": PERP_MAX_SHIFT,
+                "PERP_MAX_RATIO": PERP_MAX_RATIO,
+                "PERP_MARGIN": PERP_MARGIN},
      "by_status": by_status,
      "results": [{k: o[k] for k in ("id", "name", "nviews_vote",
                                     "boxes", "rule")}

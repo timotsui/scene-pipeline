@@ -44,19 +44,24 @@ def box_sources(sc):
     # 2026-08-06 TEMPORARY streak-surgery previews (R-S2-22 gate): remove
     # both when ruled.
     return [
-        ("slicevote", "slice-vote carve · run 5 (BOX CANON)", "current",
+        ("slicevote", "slice-vote carve · run 10 (BOX CANON)", "current",
          sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
-         "Slice-vote carve RUN 5 (2026-08-07 overnight; mechanism "
-         "user-PASSED R-S2-29/30, canonized 08-07; cyan to match the "
+         "Slice-vote carve RUN 10 (2026-08-07 late; user-PASSED "
+         "R-S2-35..39, the canonical carve state; cyan to match the "
          "cone map's pano-filtered box): per resolved node — top-box "
          "prism slice, view-tunnel cards, 3-tier escalation ladder, "
-         "6-voter election gate 3, pano-mask filter. Run-5 additions: shell "
-         "electorate filter (floor/wall dots ineligible), kept_floor "
-         "exemption (0 firings on living), plan_fill recorded (rule-3 "
-         "calibration OPEN — R-S2-34 addendum). Exempt objects keep the "
-         "resolved box (kept_ceiling / kept_wall / kept_floor); outlier "
-         "guard 8×. Per-box status + doubt flags in each object's flags "
-         "field. Preview manifest — runner wiring pending"),
+         "6-voter election gate 3, pano-mask filter. Runs 6-10 rules: "
+         "half-space shell electorate filter, winning-blob pano filter, "
+         "plan-fill v2 record, large_empty_notch doubt (>=0.5 m2), "
+         "PROTRUSION wall exemption (<=0.20 m into the room), SHELL "
+         "CLIP on every shipping box (outside openings ship as 0.02 m "
+         "wall panels), never-silent kept path (<100-dot slices ship "
+         "original as 'kept'), perp-cam re-box for kept_wall/"
+         "kept_ceiling flat objects (13/14 re-boxed; glass door "
+         "corrected 0.53 m). Statuses: 28 carved_pano / 2 carved / "
+         "7 kept_wall / 2 kept / 7 kept_ceiling = 46 objects; outlier "
+         "guard 8x. Per-box status + doubt flags in each object's "
+         "flags field. Preview manifest — runner wiring pending"),
         ("parallax_carved", "parallax retake · carved (preview)", "current",
          sd / "scene_manifest_parallax_preview.json", "#65ff8f",
          "PREVIEW — experiments/parallax_retake.py: per-node side view "
@@ -383,6 +388,19 @@ class H(BaseHTTPRequestHandler):
             else:
                 self._send(404, b"no scene_graph.json; run "
                                 b"graph/build_graph.py --scene " + sc.encode())
+        elif p == "/multiplicity.json":
+            # graph/judge_multiplicity.py output (J8): per doubt-flagged
+            # carved node a one-vs-many verdict (outcome + box_ruling or
+            # identity+parts). Verdicts REFERENCE nodes — materialize
+            # (Phase C) is the editor; the viewer just shows them on the
+            # judged card. sc sanitized by _scene(), no traversal.
+            f = paths.scene_dir(sc) / "graph" / "multiplicity.json"
+            if f.exists():
+                self._send(200, f.read_bytes(), "application/json")
+            else:
+                self._send(404, b"no graph/multiplicity.json; run "
+                                b"graph/judge_multiplicity.py --scene "
+                                + sc.encode())
         elif p == "/supported_by.json":
             # compose/supported_by.py output (STEP 3 module 1): per object
             # the superseding supported_by options; RAW frame ids only (no

@@ -64,7 +64,10 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
+from rederive_carved_edges import (layer_of,          # noqa: E402
+                                   overlay_carved_geometry)
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -158,7 +161,7 @@ def node_crops(node, crops_dir):
     return out
 
 
-def node_facts(node, graph, floor_y):
+def node_facts(node, edges_list, floor_y):
     g = node["geometry"]
     s = g["size"]
     bottom = round(floor_y - g["aabb_max"][1], 2)   # height above floor
@@ -167,7 +170,7 @@ def node_facts(node, graph, floor_y):
                      for m in node["evidence"].get("members", [])},
                     key=lambda t: -t[1])
     own, contains = [], 0
-    for e in graph["edges"]:
+    for e in edges_list:
         if e["type"] in ("ON", "IN", "IN_WALL", "ATTACHED"):
             if e["a"] == node["id"]:
                 own.append(f'{e["type"]} {e["b"]}')
@@ -185,7 +188,8 @@ def node_facts(node, graph, floor_y):
     return facts
 
 
-def pair_prompt(edge, na, nb, crops_a, crops_b, floor_y, graph, firm=False):
+def pair_prompt(edge, na, nb, crops_a, crops_b, floor_y, edges_list,
+                firm=False):
     ev = edge["evidence"]
     lines = []
     if firm:
@@ -203,10 +207,10 @@ def pair_prompt(edge, na, nb, crops_a, crops_b, floor_y, graph, firm=False):
         "",
         f"Detection A = {edge['a']}:",
     ]
-    lines += ["  " + f for f in node_facts(na, graph, floor_y)]
+    lines += ["  " + f for f in node_facts(na, edges_list, floor_y)]
     lines += ["  crop image(s):"] + [f"    {p}" for p in crops_a]
     lines += ["", f"Detection B = {edge['b']}:"]
-    lines += ["  " + f for f in node_facts(nb, graph, floor_y)]
+    lines += ["  " + f for f in node_facts(nb, edges_list, floor_y)]
     lines += ["  crop image(s):"] + [f"    {p}" for p in crops_b]
     lines += [
         "",
@@ -251,6 +255,11 @@ def main():
     ap.add_argument("--pair", default=None,
                     help='re-judge one edge, e.g. "obj_007|obj_057" '
                          "(cache entry overwritten)")
+    ap.add_argument("--edges-from", choices=("record", "carved_edges"),
+                    default="record",
+                    help="which layer to judge: the record (default, "
+                         "lifted boxes) or graph['carved_edges'] (the "
+                         "Phase-B2 loop-back re-derive on carved boxes)")
     args = ap.parse_args()
 
     gdir = paths.scene_dir(args.scene)
@@ -261,7 +270,16 @@ def main():
     nodes = {n["id"]: n for n in graph["nodes"]}
     floor_y = nodes["arch_floor"]["geometry"]["plane"]["value_raw"]
 
-    queue = [e for e in graph["edges"] if e["type"] == "SAME_CANDIDATE"]
+    # LAYER: the record's edges, or the carved loop-back layer's (node
+    # facts then quote the carved boxes those edges were derived from).
+    layer = layer_of(graph, args.edges_from)
+    if layer is None:
+        edges_list = graph["edges"]
+    else:
+        edges_list = layer.setdefault("edges", [])
+        nodes = overlay_carved_geometry(nodes, gdir, layer)
+
+    queue = [e for e in edges_list if e["type"] == "SAME_CANDIDATE"]
     if args.pair:
         a, b = args.pair.split("|")
         queue = [e for e in queue if {e["a"], e["b"]} == {a, b}]
@@ -296,7 +314,8 @@ def main():
         e, key, ehash, ca, cb = job
         na, nb = nodes[e["a"]], nodes[e["b"]]
         for attempt, firm in ((1, False), (2, True)):
-            prompt = pair_prompt(e, na, nb, ca, cb, floor_y, graph, firm=firm)
+            prompt = pair_prompt(e, na, nb, ca, cb, floor_y, edges_list,
+                                firm=firm)
             try:
                 out = call_claude(prompt, crops_dir, args.model)
             except (RuntimeError, subprocess.TimeoutExpired) as ex:
@@ -339,7 +358,9 @@ def main():
 
     cache["meta"]["calls"] = cache["meta"].get("calls", 0) + calls
     cache_path.write_text(json.dumps(cache, indent=1))
-    meta = graph.setdefault("judge_pairs_meta", {})
+    # meta rides with the layer that was judged (the record's stays put)
+    meta = (graph if layer is None else layer).setdefault(
+        "judge_pairs_meta", {})
     meta.update({"model": args.model, "last_run": date.today().isoformat(),
                  "cumulative_calls": cache["meta"]["calls"],
                  "judged": sum(1 for e in queue if "verdict" in e),

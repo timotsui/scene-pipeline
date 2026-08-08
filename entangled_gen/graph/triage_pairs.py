@@ -52,7 +52,10 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
+from rederive_carved_edges import (layer_of,          # noqa: E402
+                                   overlay_carved_geometry)
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -155,6 +158,11 @@ def main():
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--dry", action="store_true",
                     help="list candidates only; no LLM, no write")
+    ap.add_argument("--edges-from", choices=("record", "carved_edges"),
+                    default="record",
+                    help="which layer to triage: the record (default, "
+                         "lifted boxes) or graph['carved_edges'] (the "
+                         "Phase-B2 loop-back re-derive on carved boxes)")
     args = ap.parse_args()
 
     sdir = paths.scene_dir(args.scene)
@@ -163,8 +171,20 @@ def main():
     det = {n["id"]: n for n in graph["nodes"]
            if n.get("source") == "detection"}
 
+    # LAYER: record (nesting on the nodes, edges top-level) or the carved
+    # loop-back layer (nesting + edges inside graph["carved_edges"]).
+    layer = layer_of(graph, args.edges_from)
+    if layer is None:
+        edges_list = graph["edges"]
+        nesting_src = {nid: (n.get("nesting") or [])
+                       for nid, n in det.items()}
+    else:
+        edges_list = layer.setdefault("edges", [])
+        nesting_src = layer.get("nesting") or {}
+        det = overlay_carved_geometry(det, sdir, layer)
+
     # pairs already before the judge (any source) -- skip
-    have = {frozenset((e["a"], e["b"])) for e in graph["edges"]
+    have = {frozenset((e["a"], e["b"])) for e in edges_list
             if e["type"] == "SAME_CANDIDATE"}
     # pairs already merged into one cluster by a prior SAME -- skip
     same_cluster = set()
@@ -175,8 +195,11 @@ def main():
                 same_cluster.add(frozenset((ms[i], ms[j])))
 
     cands = []
-    for n in det.values():
-        for nest in n.get("nesting") or []:
+    for nid, nests in nesting_src.items():
+        n = det.get(nid)
+        if not n:
+            continue
+        for nest in nests:
             pair = frozenset((n["id"], nest["host"]))
             if pair in have or pair in same_cluster:
                 continue
@@ -258,7 +281,7 @@ def main():
         if not v or v["verdict"] != "NOMINATE":
             continue
         nom += 1
-        graph["edges"].append({
+        edges_list.append({
             "type": "SAME_CANDIDATE",
             "a": c["small"], "b": c["host"],
             "evidence": {"iou": c["nest"]["iou"],
@@ -273,10 +296,13 @@ def main():
             "nominated_by": "triage",
             "triage": v})
     skips = sum(1 for v in verdicts.values() if v["verdict"] == "SKIP")
-    graph["triage_meta"] = {
-        "date": str(date.today()), "prompt_version": PROMPT_VERSION,
-        "candidates": len(cands), "nominated": nom, "skipped": skips,
-        "degraded": failed}
+    meta = {"date": str(date.today()), "prompt_version": PROMPT_VERSION,
+            "candidates": len(cands), "nominated": nom, "skipped": skips,
+            "degraded": failed}
+    if layer is None:
+        graph["triage_meta"] = meta
+    else:
+        layer["triage_meta"] = meta      # the record's meta stays untouched
     gpath.write_text(json.dumps(graph, indent=1), encoding="utf-8")
     print(f"[triage] wrote {gpath} -- {nom} nominated, {skips} skipped"
           + (", DEGRADED (some candidates unjudged)" if failed else ""))

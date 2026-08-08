@@ -997,6 +997,24 @@ try {
   try { fcL = await (await fetch('fit_check.json?' + sq)).json(); }
   catch (e) { /* not built */ }
   fcL = freshOrNull(fcL, 'fit check');
+  // J8 MULTIPLICITY layer (graph/judge_multiplicity.py): per doubt-flagged
+  // carved node a one-vs-many verdict — outcome + (box_ruling | identity +
+  // parts with owners). Optional file (graph/multiplicity.json); most
+  // scenes don't have it — null then, card line simply absent.
+  let muL = null;
+  try { muL = await (await fetch('multiplicity.json?' + sq)).json(); }
+  catch (e) { /* layer not built for this scene */ }
+  const muById = {};
+  if (muL) (muL.cases || []).forEach(c => { if (c.verdict) muById[c.id] = c; });
+  // J1 pair verdicts riding the CARVED edge set (graph["carved_edges"] =
+  // edges rebuilt on carved geometry; SAME_CANDIDATE edges carry the pair
+  // judge's SAME/DISTINCT verdict object). Keyed per endpoint for the card.
+  const j1ByNode = {};
+  for (const e of (((gj.carved_edges || {}).edges) || []))
+    if (e.type === 'SAME_CANDIDATE' && e.verdict) {
+      (j1ByNode[e.a] = j1ByNode[e.a] || []).push(e);
+      (j1ByNode[e.b] = j1ByNode[e.b] || []).push(e);
+    }
   const epById = {};
   if (epL) (epL.deletes || []).forEach(d => epById[d.id] = d);
   const epRevCat = id => {
@@ -2252,6 +2270,48 @@ try {
             'title="hover: highlight · click: open its card">' + txt +
             '</span>'
           : txt;
+      // J8 multiplicity verdict (graph/multiplicity.json): one box vs
+      // several objects; full reason collapsed into the hover title,
+      // same idiom as jLink's tooltip
+      const jname = id => jById[id]
+          ? jById[id].name + ' (' + id + ')' : id;
+      const jmu = [jn.id, ...(jn.members || [])]
+          .map(m => muById[m]).find(Boolean);
+      if (jmu) {
+        const v = jmu.verdict;
+        const mhex = v.outcome === 'SPLIT' ? '#ff5ad1' : '#7fd4ff';
+        let mt = '<span style="color:' + mhex + '">' + gEsc(v.outcome) +
+                 '</span>';
+        if (v.box_ruling) mt += ' · box ' + gEsc(v.box_ruling);
+        if (v.identity) mt += ' · ' + gEsc(v.identity);
+        if ((v.parts || []).length)
+          mt += ': ' + v.parts.map(p => {
+            const own = (p.owner || '').replace('existing:', '');
+            return gEsc(p.name) + ' → ' + (own === 'this_node'
+                ? 'this node' : jLink(own, gEsc(jname(own))));
+          }).join(', ');
+        h += '<div style="color:#cfd8ff" title="' + gEsc(v.reason || '') +
+             '">J8: ' + mt + ' (' + gNum(v.confidence) +
+             ') <span class="dim">— hover for reason</span></div>';
+      }
+      // J1 pair verdicts on the CARVED edge set: SAME/DISTINCT vs the
+      // overlap partner; reason collapsed into the hover title
+      const j1es = [];
+      for (const m of [jn.id, ...(jn.members || [])])
+        for (const e of (j1ByNode[m] || []))
+          if (!j1es.includes(e)) j1es.push(e);
+      for (const e of j1es) {
+        const oid = [jn.id, ...(jn.members || [])].includes(e.a)
+            ? e.b : e.a;
+        const v = e.verdict;
+        const vhex = v.verdict === 'SAME' ? '#ff5ad1' : '#39d353';
+        h += '<div title="' + gEsc(v.reason || '') + '">J1: ' +
+             '<span style="color:' + vhex + '">' + gEsc(v.verdict) +
+             '</span>' + (v.part ? ' · part: ' + gEsc(v.part) : '') +
+             ' with ' + jLink(oid, gEsc(jname(oid))) +
+             ' (' + gNum(v.confidence) +
+             ') <span class="dim">— hover for reason</span></div>';
+      }
       const sbo = sbById[jn.id];
       if (sbo && (sbo.supported_by || sbo.none_plausible)) {
         h += '<div style="color:#7dff7d">supported by:</div>';

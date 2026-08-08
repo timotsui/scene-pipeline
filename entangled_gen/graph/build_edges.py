@@ -104,6 +104,7 @@ Run:  python graph/build_edges.py --scene bedroom_marble
 import argparse
 import json
 import sys
+from collections import namedtuple
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -157,25 +158,40 @@ def interval_plane_dist(lo, hi, value):
     return min(abs(value - lo), abs(value - hi))
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
-    args = ap.parse_args()
-    gpath = paths.scene_dir(args.scene) / "scene_graph.json"
-    graph = json.loads(gpath.read_text())
+Derived = namedtuple(
+    "Derived",
+    # edges           the edge list, in emission order
+    # nesting         {smaller node id: [nesting facts]} (already sorted);
+    #                 the caller writes these onto the nodes
+    # sc_pairs        the open_questions["same_candidate_pairs"] payload
+    # edge_summary    the graph["edge_summary"] block (carries self_check)
+    # counts_partial  the graph["counts"] keys this stage owns
+    # self_check      {"passed": bool, "details": [...]} -- the SAME dict
+    #                 object edge_summary["self_check"] holds; the caller
+    #                 decides what a failure means (build_edges exits 1)
+    "edges nesting sc_pairs edge_summary counts_partial self_check")
 
-    det = [n for n in graph["nodes"] if n["source"] == "detection"]
-    geom = {n["id"]: n["geometry"] for n in det}
+
+def derive_edges(det, env, floor_y, ceil_y, walls):
+    """Derive every edge from box geometry alone. PURE: reads the node
+    dicts, mutates nothing (the nesting facts are RETURNED, not written
+    onto the nodes) and touches no file.
+
+    det    detection nodes  [{id, label, geometry{aabb_min,aabb_max,
+           center,size}, evidence{members}}]  -- iteration order is the
+           edge order, so callers must pass a stable list
+    env    envelope nodes keyed by id (arch_floor / arch_ceiling /
+           arch_wall*), each with geometry.plane + evidence
+    floor_y / ceil_y   raw-y plane values
+    walls  {wall id: plane dict} for the x/z wall planes
+
+    Extracted from main() 2026-08-07 for the Phase-B2 loop-back
+    re-derive (graph/rederive_carved_edges.py), which runs the same
+    derivation over the resolved nodes carrying carved boxes. Pure
+    refactor: identical thresholds, iteration order, rounding and
+    self-check.
+    """
     label = {n["id"]: n["label"] for n in det}
-
-    env = {n["id"]: n for n in graph["nodes"] if n["source"] == "envelope"}
-    floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
-    ceil_y = env["arch_ceiling"]["geometry"]["plane"]["value_raw"]
-    # any wall node (measured room_shell segments OR legacy grid-bound
-    # placeholders) — id-agnostic so N-segment shells just work
-    walls = {nid: n["geometry"]["plane"] for nid, n in env.items()
-             if nid.startswith("arch_wall") and
-             n["geometry"].get("plane", {}).get("axis") in ("x", "z")}
 
     edges = []
     paired = set()          # frozenset({a,b}) for every emitted edge
@@ -225,18 +241,11 @@ def main():
                              "iou": round(iou, 3),
                              "containment": round(contain, 3),
                              "zone": zone})
-    graph.setdefault("open_questions", {})["same_candidate_pairs"] = sc_pairs
-    graph.setdefault("counts", {})["same_candidate_pairs"] = len(sc_pairs)
-
-    # ---------------- nesting facts onto nodes (record; idempotent) -------
-    for n in det:
-        ents = nesting.get(n["id"])
-        if ents:
-            ents.sort(key=lambda e: (-e["containment"], e["host"]))
-            n["nesting"] = ents
-        else:
-            n.pop("nesting", None)
-    graph["counts"]["nested_nodes"] = len(nesting)
+    # ---------------- nesting facts (sorted here; written by the caller) --
+    for ents in nesting.values():
+        ents.sort(key=lambda e: (-e["containment"], e["host"]))
+    counts_partial = {"same_candidate_pairs": len(sc_pairs),
+                      "nested_nodes": len(nesting)}
 
     # ---------------- IN (containment) ----------------
     in_pairs = set()
@@ -465,8 +474,8 @@ def main():
     for e in edges:
         counts[e["type"]] = counts.get(e["type"], 0) + 1
 
-    graph["edges"] = edges
-    graph["edge_summary"] = {
+    self_check = {"passed": bool(ok), "details": checks}
+    edge_summary = {
         "thresholds": {
             "on_air_gap_max_m": TOL_ON_AIR,
             "on_penetration_max_m": TOL_ON_PEN,
@@ -487,8 +496,52 @@ def main():
             {"a": aid, "b": bid, "labels": [label[aid], label[bid]],
              "overlap_vol_m3": round(ov, 5), "frac_of_smaller": round(fr, 3)}
             for ov, aid, bid, fr in interp[:10]],
-        "self_check": {"passed": bool(ok), "details": checks},
+        "self_check": self_check,
     }
+    return Derived(edges, nesting, sc_pairs, edge_summary, counts_partial,
+                   self_check)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--scene", default="bedroom_marble")
+    args = ap.parse_args()
+    gpath = paths.scene_dir(args.scene) / "scene_graph.json"
+    graph = json.loads(gpath.read_text())
+
+    det = [n for n in graph["nodes"] if n["source"] == "detection"]
+
+    env = {n["id"]: n for n in graph["nodes"] if n["source"] == "envelope"}
+    floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
+    ceil_y = env["arch_ceiling"]["geometry"]["plane"]["value_raw"]
+    # any wall node (measured room_shell segments OR legacy grid-bound
+    # placeholders) — id-agnostic so N-segment shells just work
+    walls = {nid: n["geometry"]["plane"] for nid, n in env.items()
+             if nid.startswith("arch_wall") and
+             n["geometry"].get("plane", {}).get("axis") in ("x", "z")}
+
+    d = derive_edges(det, env, floor_y, ceil_y, walls)
+    edges, nesting = d.edges, d.nesting
+    edge_summary, checks = d.edge_summary, d.self_check["details"]
+    ok = d.self_check["passed"]
+    counts = edge_summary["edge_counts"]
+    floating = edge_summary["floating"]
+    wall_attached = edge_summary["wall_attached"]
+    underground = edge_summary["underground"]
+
+    # ---------------- write (same key order as before the refactor) -------
+    graph.setdefault("open_questions", {})["same_candidate_pairs"] = d.sc_pairs
+    graph.setdefault("counts", {})["same_candidate_pairs"] = \
+        d.counts_partial["same_candidate_pairs"]
+    for n in det:                     # nesting facts onto nodes (idempotent)
+        ents = nesting.get(n["id"])
+        if ents:
+            n["nesting"] = ents
+        else:
+            n.pop("nesting", None)
+    graph["counts"]["nested_nodes"] = d.counts_partial["nested_nodes"]
+    graph["edges"] = edges
+    graph["edge_summary"] = edge_summary
     gpath.write_text(json.dumps(graph, indent=1))
 
     # ---------------- report ----------------
@@ -516,9 +569,11 @@ def main():
     if underground:
         print(f"[edges] underground centers: {underground}")
     print("[edges] top INTERPENETRATES by overlap volume:")
-    for ov, aid, bid, fr in interp[:10]:
-        print(f"           {aid} ({label[aid]}) x {bid} ({label[bid]}): "
-              f"{ov:.4f} m3, {fr:.0%} of smaller")
+    for t in edge_summary["top_interpenetrates"]:
+        la, lb = t["labels"]
+        print(f"           {t['a']} ({la}) x {t['b']} ({lb}): "
+              f"{t['overlap_vol_m3']:.4f} m3, "
+              f"{t['frac_of_smaller']:.0%} of smaller")
     print(f"[edges] SELF-CHECK (frame sign): "
           f"{'PASS' if ok else '*** FAIL ***'}")
     for c in checks:

@@ -1,12 +1,15 @@
 # Slice-vote carve + uniform-instances judge (2026-08-06 cone session)
 
-⚠ **STATUS: UNTESTED PROMOTION.** Everything here was designed and judged
-by the user on 8 living-room objects (sofas obj_011/obj_063 + all 6
-chairs) in one evening of ~10 preview experiments. **No bedroom
-regression has run. Nothing is wired into the canonical runner. Nothing
-is on the pipeline map** — that promotion is user-gated (map is the
-authority; see pipeline_map.html rules). Consumers (S1/support,
-shopping) are NOT wired.
+✅ **STATUS (2026-08-07 late): RUN 10 = BOX CANON** — user-passed
+R-S2-35..39 (see the runs 6–10 update at the bottom for today's rules:
+half-space electorate filter, winning-blob pano filter, plan-fill v2,
+large_empty_notch doubt, PROTRUSION exemption, SHELL CLIP, never-silent
+kept, perp-cam re-box; slice clamp tried + reverted). Statuses
+{carved_pano 28, carved 2, kept_wall 7, kept 2, kept_ceiling 7} = 46
+objects on living_marble. Still NOT wired into the canonical runner;
+consumers (S1/support, shopping) NOT wired; next = materialize (Phase C,
+PLAN_CARVE_DOWNSTREAM). The paragraphs below are the founding history
+("untested promotion" era) — kept verbatim.
 
 ## Where this came from (the experiment ladder, all on living, 1 evening)
 
@@ -178,3 +181,63 @@ at the <100-dot skip.)
 - Ops gotchas: PYTHONUTF8=1 when redirecting stdout (cp1252 vs ≥);
   transient votectx plys are big (~250 MB × 4/object) but self-delete;
   a full living run ≈ 15-20 min under the 1500 MHz clock lock.
+
+---
+
+# UPDATE 2026-08-07 late (runs 6–10, R-S2-35..39): RUN 10 = BOX CANON
+
+Six more whole-scene runs in one day, each folding in user rulings from
+reviewing the previous; run 10 user-passed as the canonical carve state.
+Statuses {carved_pano 28, carved 2, kept_wall 7, kept 2, kept_ceiling 7}
+= 46 objects.
+
+## Rules landed (all user-passed; pointers into REVIEW_LOG)
+
+- **HALF-SPACE shell electorate filter** (R-S2-35): dots at-or-behind a
+  shell plane (minus eps) are structure — one-sided test, votes zeroed
+  at tally, renders untouched. Fixed the obj_014 bookshelf wall-leak.
+- **WINNING-BLOB pano filter** (R-S2-35): the founding-mask share is
+  compared against the winning blob only (culled-blob dots out).
+- **PLAN-FILL v2 recording** (R-S2-35): winning-blob dots,
+  footprint-clipped cells, per-cell dot-count histogram. The k-sweep
+  was an honest negative — no fill threshold isolates the L.
+- **large_empty_notch doubt** (R-S2-35): largest contiguous empty
+  rectangle in the object's own plan footprint ≥ 0.50 m² fires a
+  multiplicity doubt. Blind census: sofa 1.52 m² | gap 8.4× | desk
+  0.18. The L is on the docket BY RULE.
+- **PROTRUSION wall exemption** (R-S2-37, replaces flush+thin): box
+  touches a wall plane AND protrudes ≤ 0.20 m into the room; depth
+  beyond the wall irrelevant. Un-exempted the old surprise exempts
+  (obj_022 plant, obj_017_c00 magazine).
+- **SHELL CLIP** (R-S2-37): every SHIPPING box is intersected with the
+  shell interior; a fully-outside opening ships as a 0.02 m panel flush
+  at its wall (the glass door). vote/pano/original stay recorded
+  unclipped as evidence.
+- **NEVER-SILENT kept path** (R-S2-37): the <100-dot slice skip ships
+  the original box as status `kept` with reason + dot count — recovered
+  obj_005_c00 + obj_017_c00, both previously silently dropped.
+- **PERP-CAM RE-BOX** (R-S2-39): kept_wall/kept_ceiling flat objects
+  get ONE face-on view-tunnel render → prior-gated detect → SAM claim →
+  1–99 pct re-box of the two in-plane axes only (normal axis untouched;
+  guards keep + record, never silent). 13/14 re-boxed; the glass door
+  panel corrected 0.53 m along its wall.
+- **SLICE SHELL CLAMP tried + REVERTED same day** (R-S2-38, tombstone
+  in code): the clamp made wall dots occluders and deleted them from
+  every wall-adjacent card. Order ruling: segment WITH wall context →
+  disenfranchise at tally (half-space filter) → clip at shipping
+  (shell clip).
+
+## The run 6→10 arc
+
+- **Run 6** (R-S2-35): half-space filter + clamp + winning-blob +
+  plan-fill v2 — obj_014 wall-leak fixed; notch rule adopted after.
+- **Runs 7–8** (R-S2-37): protrusion + shell clip + never-silent —
+  glass door ships as a wall panel; 46 objects (two recovered nodes).
+- **Run 9** (R-S2-38): clamp reverted; regression held (half-space
+  filter alone carries the wall-leak fix); TV stand re-entered the
+  docket full-width.
+- **Run 10** (R-S2-39): perp-cam re-box for flat objects — CANON.
+
+Downstream on run 10: loop-back B2 RUN (additive carved_edges layer,
+J0/J1 on it) + J8 v2.1 canonical verdicts on the 7-case docket — see
+PLAN_CARVE_DOWNSTREAM.md for status and the queued opens.
