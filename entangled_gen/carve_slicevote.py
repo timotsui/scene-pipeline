@@ -7,6 +7,27 @@ regression WAIVED by user 08-06. NOT yet wired into the canonical
 runner — map promotion pending. Output stays a PREVIEW manifest until
 wiring. Served in the viewer as the "slicevote" box-source layer.
 
+RENDER PRINCIPLE — GOVERNS EVERY CARVE RENDER (user ruling 2026-08-08):
+"the slice is just an INVISIBLE bounding region that tells the camera
+roughly where the object is, so we can carve out what is BETWEEN the
+camera and the object to get a clear view. Everything else stays
+rendered." The slice / slab is a LOCATOR, never the picture: it decides
+WHO MAY BE CLAIMED, never WHAT IS DRAWN. A render therefore removes one
+thing only — the gaussians inside the view cone that sit in front of the
+object — and keeps everything else: the wall the object hangs on or sits
+in, an opening's glazing, the neighbours on the same plane, the floor
+under it, the room and the landscape behind it. That is what
+segmentation needs to recognise anything.
+This applies to BOTH render families. The tier-1/2 CARD renders cut at
+the object box's nearest corner (t_near). The PERP re-box render cuts at
+the NEARER of the box's nearest corner and the object's own PLANE at the
+aim point. Both then subtract NEAR_MARGIN. Neither has a "keep only the
+slab" term any more (the perp render kept one until 2026-08-08, which is
+why the door / ceiling-light tiles were mostly black void).
+DELIBERATE EXCEPTION: the TIER 3 isolation retry — and the clean 3/4
+page view — really are the slice alone on black. That is the whole point
+of that tier: a last-resort look with every distractor removed.
+
 Per resolved graph node:
 0. EXEMPTIONS (geometric, never label lists): ceiling-mounted (top
    within 0.35 m of the shell ceiling + bottom in the upper half of
@@ -86,21 +107,16 @@ Per resolved graph node:
    dots are stopped from being ELECTED by the half-space electorate
    filter at tally time.
 2. RENDER + DETECT, escalation ladder (user design 08-07):
-   TIER 1  4 near-cardinal VIEW-TUNNEL cards at object height. The
-           tunnel CULLS ONLY WHAT IS IN FRONT OF THE OBJECT (user
-           ruling 2026-08-08): t_near = the smallest depth along the
-           view direction over the OBJECT BOX's 8 corners, and every
-           gaussian inside the view cone nearer than t_near -
-           NEAR_MARGIN is dropped. Nothing else is touched — the
-           object AND all of its surroundings that are not blocking
-           the view (the wall beside it, the floor under it, the room
-           behind it) stay in the picture, which is what segmentation
-           needs. The old rule culled up to the SLICE's FAR depth
-           minus the slice members, which deleted the walls beside and
-           behind the object and coupled the pictures to the slice
-           geometry; card renders are now DECOUPLED from the slice
-           (the slice still defines who may be claimed, never what is
-           drawn). Re-detect stays gated to the slice's screen box;
+   TIER 1  4 near-cardinal VIEW-TUNNEL cards at object height, cut by
+           the RENDER PRINCIPLE above: t_near = the smallest depth
+           along the view direction over the OBJECT BOX's 8 corners,
+           and every gaussian inside the view cone nearer than
+           t_near - NEAR_MARGIN is dropped. Nothing else is touched.
+           (The old rule culled up to the SLICE's FAR depth minus the
+           slice members, which deleted the walls beside and behind
+           the object and coupled the pictures to the slice geometry;
+           card renders have been DECOUPLED from the slice since
+           2026-08-08.) Re-detect stays gated to the slice's screen box;
    TIER 2  if >=3 of 4 cards unproductive (<50 claimed dots): add 4
            EYE-HEIGHT cardinal tunnel cards as extra voters (Marble is
            biased toward eye-height capture — proven on obj_004 book:
@@ -386,7 +402,8 @@ def write_subset_ply(mask, out_path):
 # to regenerate it. Never silent: every reuse and every delete prints.
 CULL_TUNNEL = "in_cone & depth < t_near(object box) - NEAR_MARGIN"
 CULL_SLICE = "slice members only (isolation / clean 3-4 view)"
-CULL_PERP = "in_cone & depth < t_far(slab) + 0.05 & not slab"
+CULL_PERP = ("in_cone & depth < min(t_near(object box), t_plane(aim)) "
+             "- NEAR_MARGIN")
 
 
 def _keep_sha(keep):
@@ -850,24 +867,56 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
               "original box kept", flush=True)
         return None, None, rec, ""
 
-    # ---- RENDER, view-tunnel style (same math as ctx_render_jobs, but
-    # standalone: an exempt object has no slice, the slab plays its part)
+    # ---- RENDER, view-tunnel style — SAME GOVERNING PRINCIPLE AS THE
+    # CARDS (user ruling 2026-08-08, module docstring): the slab is an
+    # INVISIBLE LOCATOR, not the picture. Cull ONLY what sits between the
+    # camera and the object; everything at or beyond the cut stays — the
+    # wall surface the object sits in, an opening's glazing, the scene
+    # beyond it, the neighbours on the same plane.
+    # THE CUT IS THE NEARER OF TWO ANCHORS, minus NEAR_MARGIN:
+    #   (a) t_box   — the OBJECT BOX's nearest corner along the view dir;
+    #   (b) t_plane — the object's own PLANE at the aim point (the aim
+    #                 already sits ON the plane at the box's in-plane
+    #                 centre, so its depth IS the plane's depth there).
+    # BOTH ANCHORS ARE NEEDED. A ceiling light HANGS BELOW its plane, so
+    # cutting at the plane alone would delete the light itself. A wall
+    # opening's box starts BEYOND its wall (obj_034: box lo_x 2.844 vs
+    # plane 2.661), so cutting at the box's near face alone would delete
+    # the wall the door sits in. The minimum of the two keeps both.
+    # The old rule (keep the slab, delete the rest of the frustum out to
+    # the slab's far face) was slice-alone-on-black in disguise and is
+    # what filled the door / ceiling-light tiles with void. Do NOT
+    # re-add the `& ~slab` term — the slab's job is CLAIMING, below.
     cam = make_cam([float(v) for v in eye], [float(v) for v in ctr],
                    FOV_GOOD, RES)
     vdir = ctr - eye
     vdir = vdir / np.linalg.norm(vdir)
-    t_far = float(((sdots - eye) @ vdir).max())
+    cn = np.array([[x, y, z] for x in (lo0[0], hi0[0])
+                   for y in (lo0[1], hi0[1])
+                   for z in (lo0[2], hi0[2])], float)
+    t_box = float(((cn - eye) @ vdir).min())
+    t_plane = float((ctr - eye) @ vdir)
+    cut_depth = min(t_box, t_plane) - NEAR_MARGIN
     uu, vv_, zz = cam.project(xyz)
     in_cone = ((zz > 0.05) & (uu >= -40) & (uu < RES + 40)
                & (vv_ >= -40) & (vv_ < RES + 40))
-    hole = in_cone & (((xyz - eye) @ vdir) < (t_far + 0.05)) & ~slab
+    hole = in_cone & (((xyz - eye) @ vdir) < cut_depth)
+    rec["cull"] = {"rule": CULL_PERP, "margin": NEAR_MARGIN,
+                   "t_box": round(t_box, 3),
+                   "t_plane": round(t_plane, 3),
+                   "cut_depth": round(cut_depth, 3),
+                   "kept": int((~hole).sum()), "of": int(len(xyz))}
+    print(f"[carve]  perp: cull t_box {t_box:.2f} / t_plane "
+          f"{t_plane:.2f} -> cut {cut_depth:.2f} m; "
+          f"{int((~hole).sum()):,} of {len(xyz):,} gaussians kept",
+          flush=True)
     vname = f"vote_{nid}_perp"
     view = {"name": vname, "label": f"{nid} {name} perp ({pid})",
             "eye": [float(v) for v in eye],
             "aim": [float(v) for v in ctr], "fov": FOV_GOOD}
     # params sidecar: this camera moves whenever the box or the plane
     # moves, so a same-named png from an earlier build must not survive
-    render_gate(view, CULL_PERP, 0.05, ~hole)
+    render_gate(view, CULL_PERP, NEAR_MARGIN, ~hole)
     cply = sdir / f"votectx_{vname}.ply"
     write_subset_ply(~hole, cply)
     tf = sdir / f"votetgt_{vname}.json"
@@ -884,9 +933,7 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
 
     # ---- DETECT, gated to the original box's screen footprint
     img = Image.open(png).convert("RGB")
-    cn = np.array([[x, y, z] for x in (lo0[0], hi0[0])
-                   for y in (lo0[1], hi0[1]) for z in (lo0[2], hi0[2])])
-    cu, cv, cz = cam.project(cn)
+    cu, cv, cz = cam.project(cn)      # box corners, built for the cull
     ok = cz > 0.2
     pb = ([float(np.clip(cu[ok].min() - PERP_DET_PAD, 0, RES)),
            float(np.clip(cv[ok].min() - PERP_DET_PAD, 0, RES)),
