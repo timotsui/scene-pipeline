@@ -172,9 +172,17 @@ rdir = sd / "pool_retake"
 rdir.mkdir(exist_ok=True)
 sdir = rdir / "slices"
 sdir.mkdir(exist_ok=True)
-# renders are slice+camera dependent: stale-cache poison — wipe det
-# overlays always; the renderer itself skips byte-identical re-renders
+# STALE-CACHE POISON (user finding 2026-08-08, obj_034): the WSL
+# renderer skips by FILENAME, not by content — a render whose CAMERA
+# changed but whose name did not is silently reused, and the stage then
+# detects on the old picture while projecting with the new camera.
+# Wipe always: det overlays, and the PERP renders (their camera is
+# derived from the slab/box, so it can change every run — only 14 of
+# them, cheap). Card renders keep the manual-wipe rule (documented in
+# the docstring): wipe slices/vote_*.png by hand on slice-geometry edits.
 for f in sdir.glob("vote_*_det.png"):
+    f.unlink()
+for f in sdir.glob("vote_*_perp.png"):
     f.unlink()
 
 
