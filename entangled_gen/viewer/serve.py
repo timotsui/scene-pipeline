@@ -114,6 +114,27 @@ def box_sources(sc):
          "pool_retake/slicevote_report.json; missing side files degrade "
          "to the plain shipping boxes"),
     ]
+    # same-product (J9): TWO composed layers, one colour each, so the set
+    # members and the one size being bought for them can be told apart and
+    # toggled independently. Both only appear once J9 has run.
+    for _k, _lab, _col, _n in (
+        ("sp_members", "same-product · set members (J9)", "#7c4dff",
+         "The members J9 ruled ONE PRODUCT, each drawn with its OWN "
+         "carved box, verbatim. The exemplar — the member whose box "
+         "became the size to buy — says EXEMPLAR in its label."),
+        ("sp_sizes", "same-product · size to buy (J9)", "#ff4081",
+         "The CANONICAL size drawn at every member of the set, so one "
+         "size can be seen against each real instance. Centred on the "
+         "member's own box centre (no up-axis assumption): read it as "
+         "same middle, whose extent is bigger. USER RULING 08-08: the "
+         "size is ONE member's measured box copied verbatim, never a "
+         "blend — the members' floor dimensions are not comparable "
+         "across differently-facing objects, and averaging a "
+         "carve-flagged box in would hide that it was flagged.")):
+        if same_product_layer(sc, _k.split("_")[1]) is not None:
+            srcs.append((_k, _lab, "current",
+                         sd / "graph" / "same_product.json", _col, _n))
+
     # materialized: COMPOSED server-side (materialized() below) from
     # scene_graph.json['carved'] — /boxes.json special-cases the key. The
     # entry only appears when that additive block exists (other scenes:
@@ -361,6 +382,113 @@ def judge_preview(sc):
 # the first real materialize output. The judge_preview layer above was the
 # hand-composed preview of exactly this; this layer supersedes it.
 _carved_cache = {}   # scene -> (scene_graph.json mtime, carved dict or None)
+
+
+def same_product_layer(sc, kind):
+    """The J9 same-product layers, composed from graph/same_product.json +
+    the carve preview manifest the sizes were measured from.
+
+    Two layers, because the client paints one colour per source and the
+    whole point is telling them apart:
+      kind="members" — each SET MEMBER's own carved box, verbatim. What
+                       the judge decided is one product.
+      kind="sizes"   — the CANONICAL box (the exemplar's measured size)
+                       drawn at every member, so "one size for the set"
+                       can be seen against each real instance.
+
+    The size box is CENTRED on the member's own box centre. That needs no
+    up-axis assumption, which is deliberate: this scene's frame is y-down
+    and sign mistakes on the up axis have bitten this pipeline before.
+    Read it as "same middle, whose extent is bigger" — not as two objects
+    standing on a floor.
+
+    Returns None when J9 has not run for this scene (route 404s)."""
+    sd = paths.scene_dir(sc)
+    try:
+        sp = json.loads((sd / "graph" / "same_product.json")
+                        .read_text(encoding="utf-8"))
+        man = json.loads((sd / "scene_manifest_slicevote_preview.json")
+                         .read_text(encoding="utf-8"))
+    except Exception:                                   # noqa: BLE001
+        return None
+    boxes = {o["id"]: o for o in man.get("objects") or []}
+
+    out, groups = [], []
+    for gi, gr in enumerate(sp.get("groups") or [], 1):
+        if not gr.get("same_object"):
+            continue
+        picked = gr.get("set_members") or []
+        if not picked:
+            continue
+        csize = gr.get("canonical_size")
+        exemplar = gr.get("canonical_size_from")
+        basis = gr.get("canonical_size_basis") or {}
+        label = f"g{gi} {gr.get('name') or ''}".strip()
+        groups.append({
+            "group": label, "n_members": len(picked),
+            "canonical_size": csize, "from": exemplar,
+            "spread_long_m": basis.get("set_spread_long_m"),
+            "spread_short_m": basis.get("set_spread_short_m"),
+            "spread_height_m": basis.get("set_spread_height_m")})
+        for mid in picked:
+            b = boxes.get(mid)
+            if not b:
+                continue
+            is_ex = (mid == exemplar)
+            if kind == "members":
+                out.append({
+                    "id": mid,
+                    "label": (f"{mid} · {label}"
+                              + (" · EXEMPLAR" if is_ex else "")),
+                    "name": gr.get("name"),
+                    "product_group": label,
+                    "is_exemplar": is_ex,
+                    "size_m": [round(float(v), 3) for v in b["size"]],
+                    "canonical_size": csize,
+                    "canonical_size_from": exemplar,
+                    "flags": (["set_member"] + (["EXEMPLAR"] if is_ex
+                                                else [])
+                              + [f"group:{label}"]),
+                    "aabb_min": list(b["aabb_min"]),
+                    "aabb_max": list(b["aabb_max"]),
+                    "center": list(b["center"]),
+                    "size": list(b["size"])})
+            elif kind == "sizes" and csize:
+                c = list(b["center"])
+                h = [float(v) / 2 for v in csize]
+                out.append({
+                    "id": f"{mid}_size",
+                    "label": (f"{mid} · size to buy"
+                              + (" (source)" if is_ex else "")),
+                    "name": gr.get("name"),
+                    "product_group": label,
+                    "is_exemplar": is_ex,
+                    "of_member": mid,
+                    "measured_size_m": [round(float(v), 3)
+                                        for v in b["size"]],
+                    "canonical_size": csize,
+                    "canonical_size_from": exemplar,
+                    "flags": ["canonical_size",
+                              f"from:{exemplar}", f"group:{label}"]
+                             + (["IS THE SOURCE BOX"] if is_ex else []),
+                    "center": c,
+                    "size": [float(v) for v in csize],
+                    "aabb_min": [c[i] - h[i] for i in range(3)],
+                    "aabb_max": [c[i] + h[i] for i in range(3)]})
+
+    if not out:
+        return None
+    return {"scene": sc,
+            "status": sp.get("status") or "UNTESTED",
+            "kind": kind,
+            "source": "viewer/serve.py same_product_layer(): "
+                      "graph/same_product.json set_members + "
+                      "scene_manifest_slicevote_preview.json boxes "
+                      "(RAW frame, like every other box layer)",
+            "note": sp.get("known_open"),
+            "groups": groups,
+            "n_objects": len(out),
+            "objects": out}
 
 
 def carved_layer(sc):
@@ -704,6 +832,16 @@ class H(BaseHTTPRequestHandler):
                                       "application/json")
                 return self._send(404, b"no scene_manifest_slicevote_"
                                        b"preview.json for this scene")
+            if src in ("sp_members", "sp_sizes"):
+                # COMPOSED layers (same_product_layer()), not files
+                data = same_product_layer(sc, src.split("_")[1])
+                if data is not None:
+                    return self._send(200, json.dumps(data).encode(),
+                                      "application/json")
+                return self._send(404, b"no graph/same_product.json with "
+                                       b"a same-product set; run graph/"
+                                       b"judge_same_product.py --scene "
+                                       + sc.encode())
             if src == "materialized":
                 # COMPOSED layer (materialized()), not a file on disk:
                 # scene_graph.json's additive 'carved' block (Phase C)

@@ -77,8 +77,11 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = Path(__file__).resolve().parent.parent
+GRAPH_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(GRAPH_DIR))   # sibling stage modules (split_cuts)
 import paths  # noqa: E402
+from carve_cams import make_cam  # noqa: E402  (THE camera math, shared)
 
 # A STAGE MUST NOT DIE ON ITS OWN LOG LINE (2026-08-08): the closing
 # "wrote ... (⚠ UNTESTED)" print raised UnicodeEncodeError under a cp1252
@@ -266,6 +269,114 @@ def build_sheet(gr, crops_by_id, out_path):
 
 def slugify(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "group"
+
+
+# ---- the box view: the set's geometry, in a real render ------------------
+# USER ASK 2026-08-08: show the size box and the selection boxes ON THE
+# SHEET. Projected into an RGB render, never drawn as an abstract plan
+# diagram — the standing ruling is that plan views are not useful and 3D
+# boxes belong projected into the views (lift-verification ruling).
+#
+# One top-down render per group, containing only the gaussians in the
+# union of the set's boxes, with two things drawn on it:
+#   VIOLET  each member's own carved box (thick + named on the exemplar)
+#   PINK    the canonical size, drawn at every member's box CENTRE
+# so "one size for the whole set" can be read against each real instance.
+# Centre-aligned on purpose: no up-axis assumption is made anywhere here
+# (this frame is y-down and sign mistakes on up have bitten before).
+BOXVIEW_PAD = 0.25           # m — breathing room around the union box
+COL_MEMBER = (124, 77, 255)      # violet — matches the viewer's sp_members
+COL_CANON = (255, 64, 129)       # pink   — matches the viewer's sp_sizes
+COL_EXEMPLAR = (255, 214, 0)     # amber  — the member the size came from
+
+
+def _union_box(boxes):
+    lo = [min(b["aabb_min"][k] for b in boxes) - BOXVIEW_PAD
+          for k in range(3)]
+    hi = [max(b["aabb_max"][k] for b in boxes) + BOXVIEW_PAD
+          for k in range(3)]
+    return {"lo": lo, "hi": hi}
+
+
+def build_box_view(sc_mod, splat, gr, verdict, boxes, out_dir, gi):
+    """Render + annotate ONE group's box view. Returns the png name, or
+    None when the pieces needed are not on disk (never a crash: the sheet
+    degrades to the crops it already had)."""
+    from PIL import ImageFont
+    picked = [m for m in (verdict.get("set_members") or []) if m in boxes]
+    if len(picked) < 1:
+        return None
+    csize = verdict.get("canonical_size")
+    exemplar = verdict.get("canonical_size_from")
+    region = _union_box([boxes[m] for m in picked])
+    stem = f"boxview_{gi}_{slugify(gr['name'])}"
+    png, tgt, n_g = sc_mod.render_region(splat, region, out_dir,
+                                         stem + "_raw", gr["name"])
+    cam = make_cam(tgt["eye"], tgt["aim"], tgt["fov"], sc_mod.RES)
+    img = Image.open(png).convert("RGB")
+    dr = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("arialbd.ttf", 22)
+    except OSError:
+        font = sheet_font(22)
+
+    def tag(lo, hi, colour, text, width):
+        u, v, z = cam.project(sc_mod.box_corners(lo, hi))
+        vis = [(u[k], v[k]) for k in range(8)
+               if z[k] > sc_mod.NEAR_Z and 0 <= u[k] < img.width
+               and 0 <= v[k] < img.height]
+        if not vis or not text:
+            return
+        tx, ty = min(p[0] for p in vis) + 6, min(p[1] for p in vis) + 4
+        tw = dr.textlength(text, font=font)
+        dr.rectangle([tx - 4, ty - 2, tx + tw + 4, ty + 26], fill=(0, 0, 0))
+        dr.text((tx, ty), text, fill=colour, font=font)
+
+    # the size box first, so a member's own box always draws on top of it
+    for mid in picked:
+        b = boxes[mid]
+        if not csize:
+            break
+        c = b["center"]
+        h = [float(v) / 2 for v in csize]
+        lo = [c[k] - h[k] for k in range(3)]
+        hi = [c[k] + h[k] for k in range(3)]
+        sc_mod.draw_box_wire(dr, cam, lo, hi, COL_CANON, 3, (10, 7))
+    for mid in picked:
+        b = boxes[mid]
+        is_ex = (mid == exemplar)
+        col = COL_EXEMPLAR if is_ex else COL_MEMBER
+        sc_mod.draw_box_wire(dr, cam, b["aabb_min"], b["aabb_max"], col,
+                             5 if is_ex else 3)
+        tag(b["aabb_min"], b["aabb_max"], col,
+            f"{mid}" + (" — SIZE COMES FROM HERE" if is_ex else ""), 5)
+
+    # legend strip: say what each colour is, in the picture, so the sheet
+    # answers in one look without scrolling back to a caption
+    lh = 84
+    strip = Image.new("RGB", (img.width, img.height + lh), (18, 18, 18))
+    strip.paste(img, (0, 0))
+    d2 = ImageDraw.Draw(strip)
+    y = img.height + 10
+    rows = [(COL_EXEMPLAR, f"{exemplar} — the member the size was copied "
+                           f"from, its own measured box", False),
+            (COL_MEMBER, "the other set members, each its own measured "
+                         "box", False),
+            (COL_CANON, f"the size being bought {csize} m, drawn at every "
+                        f"member's centre", True)]
+    for col, text, dash in rows:
+        x = 12
+        for seg in range(0, 46, 12 if dash else 46):
+            d2.line([x + seg, y + 9, x + seg + (7 if dash else 46),
+                     y + 9], fill=col, width=4)
+        d2.text((70, y), text, fill=(235, 235, 235), font=font)
+        y += 24
+    out_png = out_dir / f"{stem}.png"
+    strip.save(out_png)
+    png.unlink(missing_ok=True)
+    print(f"[same_product]   box view {out_png.name} — {len(picked)} "
+          f"members, {n_g:,} gaussians", flush=True)
+    return out_png.name
 
 
 # ---- the canonical size: CODE'S JOB, not the judge's ---------------------
@@ -467,9 +578,18 @@ def write_index(groups, sheets_dir, verdicts=None):
                 + (f' · <b>no photo: {", ".join(v["no_photo_members"])}'
                    f'</b>' if v.get("no_photo_members") else "")
                 + "</small></div>\n")
+        bv = ""
+        if gr.get("box_view"):
+            bv = ("<p><b>The boxes, from above.</b> Amber = the member "
+                  "the size was copied from. Violet = the other members, "
+                  "each its own measured box. Dashed pink = the size "
+                  "being bought, drawn at every member's centre. Centres "
+                  "are aligned, not floors — read it as "
+                  "<i>same middle, whose box is bigger</i>.</p>\n"
+                  f'<img src="{gr["box_view"]}" style="max-width:100%">\n')
         rows.append(
             f"<h2>group {i} — {gr['name']} "
-            f"({len(gr['members'])} members)</h2>\n" + card
+            f"({len(gr['members'])} members)</h2>\n" + card + bv
             + f"<p>crops per member: {cov}"
             + (f" — <b>NO CROPS: {', '.join(no_crops)}</b>"
                if no_crops else "") + "</p>\n"
@@ -536,6 +656,9 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--concurrency", type=int, default=CONCURRENCY)
+    ap.add_argument("--no-box-views", action="store_true",
+                    help="skip the per-group top renders (they go "
+                         "through WSL and take the longest)")
     ap.add_argument("--no-cache", action="store_true",
                     help="ignore cached verdicts (re-ask every group) — "
                          "the stability probe")
@@ -722,6 +845,39 @@ def main():
               f"size={verdict.get('canonical_size')}{src} "
               f"{'(cache)' if verdict.get('_cached') else ''} — "
               f"{verdict.get('reason')}", flush=True)
+
+    # BOX VIEWS — the set's geometry projected into a real top render, one
+    # per group (user ask 08-08: show the size box and the selection boxes
+    # ON THE SHEET). Optional and non-fatal: the renderer runs through WSL,
+    # and a sheet without them is still a sheet.
+    if not a.no_box_views:
+        prev = sd / "scene_manifest_slicevote_preview.json"
+        ply = sd / "gen_raw.ply"
+        if prev.exists() and ply.exists():
+            try:
+                import split_cuts as sc_mod
+                boxes = {o["id"]: o for o in
+                         json.loads(prev.read_text(encoding="utf-8"))
+                         ["objects"]}
+                splat = sc_mod.Splat(ply)
+                for gi, gr in enumerate(groups, 1):
+                    v = got[gi]
+                    if not (v.get("same_object") and v.get("set_members")):
+                        continue
+                    try:
+                        gr["box_view"] = build_box_view(
+                            sc_mod, splat, gr, v, boxes, sheets_dir, gi)
+                    except Exception as e:          # noqa: BLE001
+                        print(f"[same_product]   box view for group {gi} "
+                              f"failed: {type(e).__name__}: "
+                              f"{str(e)[:200]}", flush=True)
+            except Exception as e:                  # noqa: BLE001
+                print(f"[same_product] box views unavailable: "
+                      f"{type(e).__name__}: {str(e)[:200]}", flush=True)
+        else:
+            print("[same_product] box views skipped — need "
+                  "scene_manifest_slicevote_preview.json + gen_raw.ply",
+                  flush=True)
 
     write_index(groups, sheets_dir, got)
     outd = sd / "graph"
