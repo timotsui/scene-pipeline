@@ -122,6 +122,7 @@ def box_sources(sc):
             "scene: " + f"{n.get('resolved_in', '?')} resolved in -> "
             f"{n.get('nodes_out', '?')} boxes out, {n.get('dropped', 0)} "
             f"dropped (own ↳ toggle, ghost outlines — NOT shipping), "
+            f"{n.get('j8_box_swapped', 0)} box swap(s), "
             f"{n.get('j8s_pieces_made', 0)} split piece(s), "
             f"{n.get('j1_merged_away', 0)} merged away, "
             f"{n.get('j9_annotated', 0)} same-product annotations, "
