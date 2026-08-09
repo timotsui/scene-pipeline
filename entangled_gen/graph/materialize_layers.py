@@ -136,6 +136,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import paths          # noqa: E402
 import scene_state    # noqa: E402
+import edge_carry     # noqa: E402
 
 VOTED_MANIFEST = "scene_manifest_slicevote_preview.json"
 VOTE_REPORT = Path("pool_retake") / "slicevote_report.json"
@@ -801,149 +802,39 @@ class Materialize:
                     "source")
 
     def edges(self):
-        from build_edges import derive_edges          # sibling stage module
+        """THE EDGES FOLLOW THE NODES — delegated to graph/edge_carry.py.
 
-        # --- what this pass did to the node set, as a remap -------------
-        remap = {}          # deleted id -> [live ids that replace it]
+        This method used to hold its own copy of the logic. Two copies is
+        one too many, and it showed: the shared module later learned to
+        carry edges a JUDGE CREATED (J0 nominates pairs below the
+        geometric SAME_CANDIDATE gate and adds its own zone=semantic
+        edge) and this copy never did, so a surviving nomination would be
+        silently deleted at the settle step. Caught 2026-08-09 by an
+        audit asking whether the layer J9 consumes is complete.
+        """
+        remap = {}
         for d in self.dropped:
             nid, rule = d["id"], d.get("rule") or ""
             if rule.startswith("j1_same_merge") and d.get("survivor"):
                 remap[nid] = [d["survivor"]]
             elif rule.startswith("j8s_split") and d.get("pieces"):
-                remap[nid] = [p for p in d["pieces"] if p in self.nodes]
+                remap[nid] = [q for q in d["pieces"] if q in self.nodes]
             else:
                 remap[nid] = []
-        live = set(self.nodes) | {n["id"] for n in self.graph["nodes"]
-                                  if n.get("source") == "envelope"}
-
-        def resolve(i):
-            if i in live:
-                return [i]
-            seen, out, stack = set(), [], [i]
-            while stack:                       # merges can chain
-                cur = stack.pop()
-                if cur in seen:
-                    continue
-                seen.add(cur)
-                for nxt in remap.get(cur, []):
-                    (out if nxt in live else stack).append(nxt)
-            return out
-
-        # --- inherit the previous edge set, re-pointed ------------------
-        src_name = next((b for b in ("voted", "voted_edges", "resolved")
-                         if (self.graph.get(b) or {}).get("edges")),
-                        "resolved")
-        inherited = list((self.graph.get(src_name) or {}).get("edges") or [])
-        carried, lost, consumed = {}, [], []
-        for e in inherited:
-            payload = {k: e[k] for k in self.JUDGE_FIELDS if e.get(k)}
-            aa, bb = resolve(e["a"]), resolve(e["b"])
-            if not aa or not bb:
-                if payload:      # a judged edge must never vanish quietly
-                    lost.append({**e, "why": "an endpoint was removed by "
-                                            "this pass and has no live "
-                                            "replacement"})
-                continue
-            for a2 in aa:
-                for b2 in bb:
-                    if not payload:
-                        continue
-                    if a2 == b2:
-                        # BOTH ENDS RE-POINTED TO THE SAME NODE. The edge
-                        # did not disappear, it was CONSUMED: this is what
-                        # a J1 SAME verdict looks like after its own merge
-                        # lands (SAME_CANDIDATE obj_068 -> obj_020 becomes
-                        # obj_068 -> obj_068). Recording it, because "the
-                        # verdict that deleted a node" is exactly the
-                        # information that must not evaporate.
-                        consumed.append({**e, "became": a2,
-                                         "why": "both endpoints are now "
-                                                "the same node — the "
-                                                "verdict on this edge has "
-                                                "already been applied"})
-                        continue
-                    carried[(e["type"], a2, b2)] = payload
-
-        # --- re-derive the geometry ------------------------------------
-        env = {n["id"]: n for n in self.graph["nodes"]
-               if n.get("source") == "envelope"}
-        # the derivation's node contract wants DETECTION members (NEAR
-        # reads their truncation facts), so walk each settled node down
-        # through the resolved layer to the record nodes — a node's
-        # `members` are resolved ids, and a resolved node's are record
-        # ids. Same walk J9 needs for crops; getting it wrong is silent
-        # (an empty member list just makes truncation invisible).
-        rec = {n["id"]: n for n in self.graph["nodes"]}
-        res_src = {n["id"]: (n.get("members") or [n["id"]])
-                   for n in self.graph["resolved"]["nodes"]}
-        det = []
-        for n in self.nodes.values():
-            if not n.get("geometry"):
-                continue
-            members = []
-            for rid in (n.get("members") or [n["id"]]):
-                for sid in res_src.get(rid, [rid]):
-                    m = rec.get(sid)
-                    if m:
-                        members += ((m.get("evidence") or {})
-                                    .get("members") or [])
-            det.append({"id": n["id"], "source": "detection",
-                        "label": n.get("name") or "",
-                        "geometry": n["geometry"],
-                        "evidence": {"members": members}})
-        try:
-            floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
-            ceil_y = env["arch_ceiling"]["geometry"]["plane"]["value_raw"]
-        except KeyError:
-            self.edge_list, self.edge_meta = [], {
-                "status": "NOT DERIVED -- the scene has no arch_floor / "
-                          "arch_ceiling envelope nodes"}
-            return
-        walls = {i: n["geometry"]["plane"] for i, n in env.items()
-                 if i.startswith("arch_wall")
-                 and n["geometry"].get("plane", {}).get("axis") in ("x", "z")}
-        d = derive_edges(det, env, floor_y, ceil_y, walls)
-
-        # --- graft the judge payloads back on --------------------------
-        grafted = 0
-        out = []
-        for e in d.edges:
-            key = (e["type"], e["a"], e["b"])
-            if key in carried:
-                e = {**e, **carried[key]}
-                grafted += 1
-            out.append(e)
-        before = {(x["type"], x["a"], x["b"]) for x in inherited}
-        after = {(x["type"], x["a"], x["b"]) for x in out}
-        unplaced = [{"edge": list(k), **v} for k, v in carried.items()
-                    if k not in after]
-
-        self.edge_list = out
-        self.nesting = d.nesting
-        self.edge_meta = {
-            "inherited_from": src_name,
-            "note": "GEOMETRIC edges re-derived on THIS layer's boxes "
-                    "(build_edges.derive_edges, identical thresholds); "
-                    "judge fields (" + ", ".join(self.JUDGE_FIELDS)
-                    + ") inherited and grafted back, because geometry "
-                      "cannot regenerate them.",
-            "n_inherited": len(inherited),
-            "n_out": len(out),
-            "appeared": [list(k) for k in sorted(after - before)],
-            "dissolved": [list(k) for k in sorted(before - after)],
-            "judge_fields_grafted": grafted,
-            "judge_fields_unplaced": unplaced,
-            "judged_edges_lost_to_node_removal": lost,
-            "judged_edges_consumed_by_a_merge": consumed,
-            "summary": d.edge_summary,
-            "self_check": d.self_check,
-        }
-        self.stats.update(edges_out=len(out),
-                          edges_appeared=len(after - before),
-                          edges_dissolved=len(before - after),
-                          edges_judge_grafted=grafted,
-                          edges_judge_consumed=len(consumed),
-                          edges_judge_lost=len(lost))
+        self.edge_list, self.nesting, self.edge_meta = edge_carry.carry(
+            list(self.nodes.values()), self.graph, remap,
+            inherit_from=("judged", "resolved", "voted_edges", "voted"),
+            diff_against="voted")
+        self.stats.update(
+            edges_out=len(self.edge_list),
+            edges_appeared=len(self.edge_meta.get("appeared") or []),
+            edges_dissolved=len(self.edge_meta.get("dissolved") or []),
+            edges_judge_grafted=self.edge_meta.get(
+                "judge_fields_grafted", 0),
+            edges_judge_consumed=len(self.edge_meta.get(
+                "judged_edges_consumed_by_a_merge") or []),
+            edges_judge_lost=len(self.edge_meta.get(
+                "judged_edges_lost_to_node_removal") or []))
 
     # -- rule 5 ----------------------------------------------------------
     def same_product(self):
