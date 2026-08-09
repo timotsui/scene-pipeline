@@ -3,7 +3,7 @@
 
 ⚠ SUPERSEDED same night (user ruling): this belongs in the GRAPH judge
 chain, not compose — see graph/judge_same_product.py (same grouping,
-verdicts write graph/same_product.json, carve doubts ride as context).
+verdicts write graph/same_product.json, vote doubts ride as context).
 This file is kept only as the idea's first draft; do not wire it.
 
 ⚠ STATUS: UNTESTED — written during the promotion push, NEVER RUN.
@@ -12,7 +12,7 @@ output yet (shopping is the intended consumer). Run with --dry-run
 first: it prints the candidate groups WITHOUT any LLM call.
 
 THE PROBLEM: repeated-class instances (e.g., the chairs around one
-table) come out of detection+carve with varying sizes because splat
+table) come out of detection+vote with varying sizes because splat
 quality and masks are messy per instance. Physically they are usually
 the same product. Detection cannot fix this — it is a SEMANTIC call.
 
@@ -93,13 +93,13 @@ def main():
     # the CURRENT layer, not a hand-named one (user rule 2026-08-09)
     nodes = scene_state.nodes(g)
 
-    # prefer carved sizes when the slice-vote preview exists (UNTESTED
-    # chain: carve first, then uniformity)
-    carved = {}
+    # prefer voted sizes when the slice-vote preview exists (UNTESTED
+    # chain: vote first, then uniformity)
+    voted = {}
     prev = sd / "scene_manifest_slicevote_preview.json"
     if prev.exists():
         for o in json.loads(prev.read_text())["objects"]:
-            carved[o["id"]] = o["size"]
+            voted[o["id"]] = o["size"]
 
     # ---- 1. deterministic candidate groups ----
     by_name = {}
@@ -133,7 +133,7 @@ def main():
                 "name": name,
                 "members": [{
                     "id": m["id"],
-                    "size": carved.get(m["id"], m["geometry"]["size"]),
+                    "size": voted.get(m["id"], m["geometry"]["size"]),
                     "center": [round(float(v), 2)
                                for v in m["geometry"]["center"]]}
                     for m in cluster],

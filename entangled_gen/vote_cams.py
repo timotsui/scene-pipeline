@@ -1,21 +1,21 @@
-"""SHARED CARVE CAMERAS — the ONE definition of the carve's camera math.
+"""SHARED VOTE CAMERAS — the ONE definition of the vote's camera math.
 
-Lifted verbatim out of carve_slicevote.py on 2026-08-07 for the J8
-split-cell judge (PLAN_CARVE_DOWNSTREAM Phase A, "Stimuli v2"): the
-judge's sheets project the carve's 3D boxes ONTO the carve's own card
+Lifted verbatim out of slicevote.py on 2026-08-07 for the J8
+split-cell judge (PLAN_VOTEBOX_DOWNSTREAM Phase A, "Stimuli v2"): the
+judge's sheets project the vote's 3D boxes ONTO the vote's own card
 and plan renders, so the overlay must be drawn with the SAME camera the
 renderer used. Two copies of that math is one copy too many — the
 anti-drift requirement in the design is literally this module. Importers:
 
-    carve_slicevote.py          renders + votes (the producer)
+    slicevote.py          renders + votes (the producer)
     graph/judge_multiplicity.py annotates those renders (the consumer)
 
 CONTRACT: pure camera math only — takes explicit arguments, closes over
 nothing, touches no files. Frame = the pipeline BUNDLE frame (y-DOWN;
 world up = [0, -1, 0]), so "raise the camera" means DECREASE y.
-Carve thresholds (SHELL_EPS, PAD, CAP_M, OUTLIER_K, EMPTY_R/EMPTY_MAX,
-WALL_PAD, DET_THR, DIL_ISO) are carve policy, not camera math, and stay
-in carve_slicevote.py — the ones here are the lens itself.
+Vote thresholds (SHELL_EPS, PAD, CAP_M, OUTLIER_K, EMPTY_R/EMPTY_MAX,
+WALL_PAD, DET_THR, DIL_ISO) are vote policy, not camera math, and stay
+in slicevote.py — the ones here are the lens itself.
 """
 import math
 import sys
@@ -28,7 +28,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 from sweep_recenter import c2w_from_eye_aim  # noqa: E402
 
-RES = 768        # square render resolution the carve's cameras assume
+RES = 768        # square render resolution the vote's cameras assume
 FOV_GOOD = 55.0  # natural-perspective lens; stand-off derives from it
 OFF_AXIS = 10.0  # cardinal cards are nudged off-axis by this many degrees
 WALL_PAD = 0.30  # m — camera-standpoint keep-out from the shell planes
@@ -82,7 +82,7 @@ def top_cam_for(geo, eye0, ceil_y, wall_pad, in_bounds, empty_at,
     clip creates the free space) and is added whenever 'top' was culled
     or cannot frame the object. Both candidates' PARAMETERS depend only
     on geo/eye0/ceil_y/wall_pad, never on the cull — so a consumer that
-    knows WHICH view the carve used can rebuild that exact camera with
+    knows WHICH view the vote used can rebuild that exact camera with
     permissive stand-ins for in_bounds/empty_at.
     """
     c = np.array(geo["center"], float)

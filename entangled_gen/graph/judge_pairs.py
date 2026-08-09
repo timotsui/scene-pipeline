@@ -66,8 +66,8 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
-from rederive_carved_edges import (layer_of,          # noqa: E402
-                                   overlay_carved_geometry)
+from rederive_voted_edges import (layer_of,          # noqa: E402
+                                   overlay_voted_geometry)
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -255,11 +255,11 @@ def main():
     ap.add_argument("--pair", default=None,
                     help='re-judge one edge, e.g. "obj_007|obj_057" '
                          "(cache entry overwritten)")
-    ap.add_argument("--edges-from", choices=("record", "carved_edges"),
+    ap.add_argument("--edges-from", choices=("record", "voted_edges"),
                     default="record",
                     help="which layer to judge: the record (default, "
-                         "lifted boxes) or graph['carved_edges'] (the "
-                         "Phase-B2 loop-back re-derive on carved boxes)")
+                         "lifted boxes) or graph['voted_edges'] (the "
+                         "Phase-B2 loop-back re-derive on voted boxes)")
     args = ap.parse_args()
 
     gdir = paths.scene_dir(args.scene)
@@ -270,14 +270,14 @@ def main():
     nodes = {n["id"]: n for n in graph["nodes"]}
     floor_y = nodes["arch_floor"]["geometry"]["plane"]["value_raw"]
 
-    # LAYER: the record's edges, or the carved loop-back layer's (node
-    # facts then quote the carved boxes those edges were derived from).
+    # LAYER: the record's edges, or the voted loop-back layer's (node
+    # facts then quote the voted boxes those edges were derived from).
     layer = layer_of(graph, args.edges_from)
     if layer is None:
         edges_list = graph["edges"]
     else:
         edges_list = layer.setdefault("edges", [])
-        nodes = overlay_carved_geometry(nodes, gdir, layer)
+        nodes = overlay_voted_geometry(nodes, gdir, layer)
 
     queue = [e for e in edges_list if e["type"] == "SAME_CANDIDATE"]
     if args.pair:

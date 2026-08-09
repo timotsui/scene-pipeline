@@ -1,16 +1,16 @@
-"""Phase C -- MATERIALIZE the carve: ONE proposed node set from the
-resolved layer plus EVERY verdict the carve loop produced.
+"""Phase C -- MATERIALIZE the vote: ONE proposed node set from the
+resolved layer plus EVERY verdict the vote loop produced.
 
-Contract (docs/PLAN_CARVE_DOWNSTREAM.md, Phase C):
-  GETS   graph["resolved"] (identity canon) + the carve's SHIPPING boxes
+Contract (docs/PLAN_VOTEBOX_DOWNSTREAM.md, Phase C):
+  GETS   graph["resolved"] (identity canon) + the vote's SHIPPING boxes
          (scene_manifest_slicevote_preview.json) + the four verdict
          sidecars (J8 graph/multiplicity.json, J8s graph/split_cuts.json,
-         J9 graph/same_product.json, graph/carve_doubts.json) + the J1
-         SAME verdicts riding on graph["carved_edges"] SAME_CANDIDATE
+         J9 graph/same_product.json, graph/vote_doubts.json) + the J1
+         SAME verdicts riding on graph["voted_edges"] SAME_CANDIDATE
          edges.
-  WRITES one ADDITIVE layer graph["carved"] = {nodes, dropped, conflicts,
+  WRITES one ADDITIVE layer graph["grouped"] = {nodes, dropped, conflicts,
          open_questions, counts, provenance per node}. It NEVER touches
-         graph[nodes|edges|judged|resolved|carve|carved_edges], the carve
+         graph[nodes|edges|judged|resolved|vote|voted_edges], the vote
          outputs, or any sidecar -- and it verifies that by diffing every
          other top-level key before/after the write.
   A MISTAKE looks like: a silently recomputed box (boxes are COPIED, never
@@ -20,7 +20,7 @@ Contract (docs/PLAN_CARVE_DOWNSTREAM.md, Phase C):
 PRECEDENCE -- the rules are applied in this order and every rule that
 fires is recorded on the node's `provenance` list:
 
-  1. GEOMETRY BASE. Each resolved node takes its carve SHIPPING box
+  1. GEOMETRY BASE. Each resolved node takes its vote SHIPPING box
      VERBATIM from the preview manifest (aabb_min/aabb_max/center/size
      copied, never recomputed). A resolved node with no manifest entry
      keeps its resolved box and is recorded
@@ -30,21 +30,21 @@ fires is recorded on the node's `provenance` list:
      case's own candidate-box list ("ship"); the retired enum
      (ship_vote|ship_pano|either) is still accepted on an old sidecar and
      mapped onto the same keys. The NAMED BOX IS APPLIED when it exists,
-     copied verbatim from the CARVE's own records -- never from the J8
+     copied verbatim from the VOTE's own records -- never from the J8
      sidecar, which is a verdict file, not a geometry source:
-       "vote"            -> the carve report's boxes.vote2
-       "pano"            -> the carve report's boxes.pano
-       "rebox_candidate" -> the rejected face-on re-box the carve recorded
+       "vote"            -> the vote report's boxes.vote2
+       "pano"            -> the vote report's boxes.pano
+       "rebox_candidate" -> the rejected face-on re-box the vote recorded
                             on its own rebox_rejected_smaller doubt. On a
-                            carve-EXEMPT node this is the judge ADOPTING
-                            the smaller MEASURED box over the pre-carve
+                            vote-EXEMPT node this is the judge ADOPTING
+                            the smaller MEASURED box over the pre-vote
                             prior that ships today.
        "current"|"either"-> explicit NO-OPs: the shipping box stands
                             (rule `j8_box_ruling_noop`).
      Applying = `j8_box_swap` when the named box differs from the shipping
      box, `j8_box_ruling_noop` when it is already the same geometry.
      A key that names a box THIS NODE DOES NOT HAVE (e.g. "vote" on a
-     carve-exempt node, whose report entry only carries
+     vote-exempt node, whose report entry only carries
      original/rebox/shipping) is recorded as `j8_ruling_not_applicable` --
      never as a ruling that applied -- and raised as an open question.
      UNCLEAR -> the node ships unchanged (`j8_unclear_ship_unchanged`)
@@ -54,7 +54,7 @@ fires is recorded on the node's `provenance` list:
      geometry (nothing is dropped, no box is invented), records rule
      `j8_no_good_box` with the judge's reason, and lands in
      `open_questions` so it is loud and reviewable rather than silently
-     accepted. Its carve doubts also stay open (rule 6): a kill is not
+     accepted. Its vote doubts also stay open (rule 6): a kill is not
      an answer to the doubt.
   3. J8s SPLIT PIECES.
        resolution `split_chain`      -> the case node is REPLACED by its
@@ -69,19 +69,19 @@ fires is recorded on the node's `provenance` list:
        resolution `covered_by_existing` -> the node is dropped entirely,
            the owner list recorded, the owners annotated the same way
            (again: no box growth).
-  4. J1 SAME MERGES. Every SAME_CANDIDATE edge in graph["carved_edges"]
+  4. J1 SAME MERGES. Every SAME_CANDIDATE edge in graph["voted_edges"]
      with verdict SAME merges its pair: the SMALLER-VOLUME node is
      removed and its id lands on the survivor as `merged_from`. Chains
      resolve transitively (connected components; survivor = the largest
-     carved volume in the component, ties broken lexicographically and
-     recorded). The survivor's BOX IS NOT UNIONED -- it keeps its carved
+     voted volume in the component, ties broken lexicographically and
+     recorded). The survivor's BOX IS NOT UNIONED -- it keeps its voted
      box verbatim; only identity bookkeeping moves.
   5. J9 SAME-PRODUCT. Every group with same_object true annotates each of
      its set members with {product_group, canonical_size}. NO BOX IS
      RESIZED: the canonical size is SHOPPING's input, an annotation only
      (open decision 3 in the plan: per-node boxes stay honest).
   6. UNCLEAR / OPEN DOUBTS. A node whose J8 outcome is UNCLEAR, or which
-     still carries unresolved carve doubts, ships UNCHANGED and is listed
+     still carries unresolved vote doubts, ships UNCHANGED and is listed
      in open_questions. A doubt counts as CLOSED only when the node got a
      J8 verdict other than UNCLEAR and the doubt's kind is one J8 is
      asked about (J8_ADMITTING); `exemption` doubts are provenance, not
@@ -118,9 +118,9 @@ splits created (a piece inherits its parent's description, which is a
 guess) -- listed as an open question on the report.
 
 Run:
-  python graph/materialize_carve.py --scene living_marble
-  python graph/materialize_carve.py --scene living_marble --report-only
-  python graph/materialize_carve.py --scene living_marble --apply
+  python graph/materialize_layers.py --scene living_marble
+  python graph/materialize_layers.py --scene living_marble --report-only
+  python graph/materialize_layers.py --scene living_marble --apply
 """
 import argparse
 import copy
@@ -137,10 +137,10 @@ sys.path.insert(0, str(HERE))
 import paths          # noqa: E402
 import scene_state    # noqa: E402
 
-CARVED_MANIFEST = "scene_manifest_slicevote_preview.json"
-CARVE_REPORT = Path("pool_retake") / "slicevote_report.json"
+VOTED_MANIFEST = "scene_manifest_slicevote_preview.json"
+VOTE_REPORT = Path("pool_retake") / "slicevote_report.json"
 GEOM_KEYS = ("aabb_min", "aabb_max", "center", "size")
-LAYER = "carved"
+LAYER = "grouped"
 
 # doubt kinds J8 is actually asked about -- a non-UNCLEAR J8 verdict
 # closes these and only these; `exemption` is provenance, not a question
@@ -158,7 +158,7 @@ LEGACY_SHIP = {"ship_vote": "vote", "ship_pano": "pano", "either": "either"}
 
 
 # --------------------------------------------------------------------------
-# small geometry helpers -- COPY boxes, never recompute a carve number
+# small geometry helpers -- COPY boxes, never recompute a vote number
 # --------------------------------------------------------------------------
 
 
@@ -221,24 +221,24 @@ def load_json(p, what, required=True):
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def carve_report_boxes(sdir, graph):
-    """{id: {box_name: {lo,hi}}} from the carve's own report (the only
+def vote_report_boxes(sdir, graph):
+    """{id: {box_name: {lo,hi}}} from the vote's own report (the only
     place vote2 lives). Preferred location is the scene's pool_retake/;
-    the carve block's recorded absolute built_from is the fallback."""
-    p = sdir / CARVE_REPORT
+    the vote block's recorded absolute built_from is the fallback."""
+    p = sdir / VOTE_REPORT
     if not p.exists():
-        rec = (graph.get("carve") or {}).get("built_from")
+        rec = (graph.get("vote") or {}).get("built_from")
         if rec and Path(rec).exists():
             p = Path(rec)
-    rep = load_json(p, "carve report (slicevote_report.json)")
+    rep = load_json(p, "vote report (slicevote_report.json)")
     return ({r["id"]: (r.get("boxes") or {}) for r in rep["results"]},
             str(p))
 
 
 def same_verdict_pairs(graph):
-    """SAME_CANDIDATE edges of graph['carved_edges'] whose J1 verdict is
+    """SAME_CANDIDATE edges of graph['voted_edges'] whose J1 verdict is
     SAME. Returns [(a, b, verdict)]."""
-    layer = (graph.get("voted") or graph.get("carved_edges")
+    layer = (graph.get("voted") or graph.get("voted_edges")
              or {})
     out = []
     for e in layer.get("edges", []):
@@ -251,14 +251,14 @@ def same_verdict_pairs(graph):
 
 
 def doubts_by_node(sdir, graph):
-    """{id: [doubt]} -- the carve's typed doubts. carve_doubts.json is
-    the sidecar; graph['carve']['nodes'] is the same content folded in."""
-    p = sdir / "graph" / "carve_doubts.json"
+    """{id: [doubt]} -- the vote's typed doubts. vote_doubts.json is
+    the sidecar; graph['vote']['nodes'] is the same content folded in."""
+    p = sdir / "graph" / "vote_doubts.json"
     if p.exists():
         d = json.loads(p.read_text(encoding="utf-8"))
         return {n["id"]: n.get("doubts") or [] for n in d.get("nodes", [])}
     return {i: n.get("doubts") or []
-            for i, n in ((graph.get("carve") or {}).get("nodes") or {}).items()}
+            for i, n in ((graph.get("vote") or {}).get("nodes") or {}).items()}
 
 
 # --------------------------------------------------------------------------
@@ -274,9 +274,9 @@ class Materialize:
         self.graph = load_json(gp, "scene_graph.json")
         if not (self.graph.get("resolved") or {}).get("nodes"):
             raise SystemExit("[materialize] no resolved layer")
-        man = load_json(self.sdir / CARVED_MANIFEST, "carve preview manifest")
+        man = load_json(self.sdir / VOTED_MANIFEST, "vote preview manifest")
         self.manifest = {o["id"]: o for o in man["objects"]}
-        self.report, self.report_path = carve_report_boxes(self.sdir,
+        self.report, self.report_path = vote_report_boxes(self.sdir,
                                                            self.graph)
         gdir = self.sdir / "graph"
         self.mult = load_json(gdir / "multiplicity.json", "J8 verdicts")
@@ -354,40 +354,40 @@ class Materialize:
             }
             if mo:
                 self.nodes[nid]["geometry"] = {k: mo[k] for k in GEOM_KEYS}
-                self.prov(nid, "geometry_base_carved",
-                          source=CARVED_MANIFEST,
-                          carve_status=(mo.get("flags") or [None])[0],
-                          note="carve SHIPPING box copied VERBATIM")
+                self.prov(nid, "geometry_base_voted",
+                          source=VOTED_MANIFEST,
+                          vote_status=(mo.get("flags") or [None])[0],
+                          note="vote SHIPPING box copied VERBATIM")
             else:
                 self.nodes[nid]["geometry"] = dict(rn["geometry"])
                 self.prov(nid, "geometry_base_resolved_fallback",
-                          note="no entry in the carve preview manifest -- "
-                               "the resolved (pre-carve) box stands")
-                self.open_q(nid, "uncarved",
-                            "node has no carved box; it ships its "
-                            "pre-carve resolved geometry")
+                          note="no entry in the vote preview manifest -- "
+                               "the resolved (pre-vote) box stands")
+                self.open_q(nid, "unvoted",
+                            "node has no voted box; it ships its "
+                            "pre-vote resolved geometry")
                 fallbacks += 1
-        self.stats["base_carved"] = len(self.nodes) - fallbacks
+        self.stats["base_voted"] = len(self.nodes) - fallbacks
         self.stats["base_resolved_fallback"] = fallbacks
 
     # -- rule 2 ----------------------------------------------------------
     def named_box(self, nid, key):
-        """The box a J8 ship key names, from the CARVE's own records.
+        """The box a J8 ship key names, from the VOTE's own records.
         Returns (box|None, source). `None` means this node does not have
         that box -- the ruling is then not-applicable, never guessed."""
         boxes = self.report.get(nid) or {}
         if key == "vote":
-            return boxes.get("vote2"), str(CARVE_REPORT).replace("\\", "/")
+            return boxes.get("vote2"), str(VOTE_REPORT).replace("\\", "/")
         if key == "pano":
-            return boxes.get("pano"), str(CARVE_REPORT).replace("\\", "/")
+            return boxes.get("pano"), str(VOTE_REPORT).replace("\\", "/")
         if key == "rebox_candidate":
             for d in self.doubts.get(nid, []):
                 if d.get("kind") == "rebox_rejected_smaller" \
                         and d.get("proposed_box"):
-                    return d["proposed_box"], ("graph/carve_doubts.json "
+                    return d["proposed_box"], ("graph/vote_doubts.json "
                                                "rebox_rejected_smaller."
                                                "proposed_box")
-            return None, "graph/carve_doubts.json"
+            return None, "graph/vote_doubts.json"
         return None, ""
 
     def available_keys(self, nid):
@@ -489,7 +489,7 @@ class Materialize:
                               now={"aabb_min": new["aabb_min"],
                                    "aabb_max": new["aabb_max"]},
                               confidence=v.get("confidence"),
-                              note="box COPIED verbatim from the carve's own "
+                              note="box COPIED verbatim from the vote's own "
                                    "record -- never from the J8 sidecar")
                     swapped += 1
             else:
@@ -546,7 +546,7 @@ class Materialize:
                 owners = case.get("owners") or []
                 self.drop(nid, "j8s_covered_by_existing",
                           "J8 ruled SPLIT/distinct and every part maps to an "
-                          "existing node whose carved box already covers it",
+                          "existing node whose voted box already covers it",
                           owners=owners, coverage=case.get("coverage"))
                 for o in owners:
                     self.annotate_owner(o, nid, "(whole node)",
@@ -775,7 +775,7 @@ class Materialize:
     # graph, and it has to inherit all the properties and information.
     # only modify, add, edit, delete etc. but overall structure should be
     # the same." This layer used to hand on nodes with NO edges while
-    # graph['carved_edges'] held edges with no nodes -- two half-layers,
+    # graph['voted_edges'] held edges with no nodes -- two half-layers,
     # neither of them a scene graph. On living run 17 that left 15 edges
     # pointing at nodes this pass had deleted, the split piece obj_011#1
     # with none at all, and all 9 pillows' only relation aimed at a node
@@ -830,7 +830,7 @@ class Materialize:
             return out
 
         # --- inherit the previous edge set, re-pointed ------------------
-        src_name = next((b for b in ("voted", "carved_edges", "resolved")
+        src_name = next((b for b in ("voted", "voted_edges", "resolved")
                          if (self.graph.get(b) or {}).get("edges")),
                         "resolved")
         inherited = list((self.graph.get(src_name) or {}).get("edges") or [])
@@ -1030,14 +1030,14 @@ class Materialize:
                 if decided and kind in J8_ADMITTING:
                     continue                       # J8 answered this doubt
                 opens.append({"kind": kind, "text": d.get("text"),
-                              "source": "carve_doubts"})
+                              "source": "vote_doubts"})
             if opens:
                 n["open_doubts"] = opens
                 n_open += 1
                 for d in opens:
-                    if d.get("source") == "carve_doubts":
+                    if d.get("source") == "vote_doubts":
                         self.open_q(nid, d["kind"], d.get("text"),
-                                    source="carve_doubts")
+                                    source="vote_doubts")
         self.stats["nodes_with_open_doubts"] = n_open
 
     # -- drive -----------------------------------------------------------
@@ -1045,7 +1045,7 @@ class Materialize:
         """TWO PHASES (user ruling 2026-08-08). SETTLE first, ANNOTATE
         after.
 
-        J9 used to read the raw carve manifest while running AFTER J8/J8s/
+        J9 used to read the raw vote manifest while running AFTER J8/J8s/
         J1 in the chain — so it judged boxes those verdicts had already
         superseded. On living run 17 that was 3 of the 11 members in its
         sets: obj_011 was still the UNCUT 2.80 m L (J8s had split it),
@@ -1177,12 +1177,12 @@ class Materialize:
     def layer(self):
         return {
             "built": date.today().isoformat(),
-            "built_from": "resolved nodes + carve SHIPPING boxes + J8/J8s/"
+            "built_from": "resolved nodes + vote SHIPPING boxes + J8/J8s/"
                           "J1/J9 verdicts (Phase C materialize)",
             "status": "UNTESTED-TRIAL",
-            "note": "ADDITIVE layer: record/judged/resolved/carve/"
-                    "carved_edges are untouched. Boxes are COPIES (carve "
-                    "manifest, carve report vote2, J8s cut record) -- "
+            "note": "ADDITIVE layer: record/judged/resolved/vote/"
+                    "voted_edges are untouched. Boxes are COPIES (vote "
+                    "manifest, vote report vote2, J8s cut record) -- "
                     "nothing recomputed. Merges and dropped pieces move "
                     "IDENTITY only: no box is ever grown. THE EDGES "
                     "FOLLOW THE NODES (user design rule 2026-08-08: a "
@@ -1191,9 +1191,9 @@ class Materialize:
                     "geometric edges re-derived on these boxes, judge "
                     "fields inherited and grafted back -- see edge_meta.",
             "precedence": [
-                "1 geometry base = carve shipping box verbatim",
+                "1 geometry base = vote shipping box verbatim",
                 "2 J8 ship ruling (the named candidate box is APPLIED from "
-                "the carve's own record: vote -> boxes.vote2, pano -> "
+                "the vote's own record: vote -> boxes.vote2, pano -> "
                 "boxes.pano, rebox_candidate -> the rejected face-on "
                 "re-box; current/either -> unchanged; a key this node has "
                 "no box for -> ruling_not_applicable; NO_GOOD_BOX -> the "
@@ -1211,13 +1211,13 @@ class Materialize:
                 "6 UNCLEAR / open doubts ship unchanged",
             ],
             "sources": {
-                "geometry": CARVED_MANIFEST,
+                "geometry": VOTED_MANIFEST,
                 "vote_boxes": self.report_path,
                 "j8": "graph/multiplicity.json",
                 "j8s": "graph/split_cuts.json",
                 "j9": "graph/same_product.json",
-                "doubts": "graph/carve_doubts.json",
-                "j1_same": "graph['carved_edges'] SAME_CANDIDATE verdicts",
+                "doubts": "graph/vote_doubts.json",
+                "j1_same": "graph['voted_edges'] SAME_CANDIDATE verdicts",
             },
             "nodes": list(self.nodes.values()),
             "edges": self.edge_list,
@@ -1235,7 +1235,7 @@ class Materialize:
               f"{s['nodes_out']} proposed nodes "
               f"({s['dropped']} dropped, {s['j8s_pieces_made']} new pieces)")
         base = (f"base voted {s['base_voted']}" if 'base_voted' in s
-                else f"base carved {s.get('base_carved', 0)}"
+                else f"base voted {s.get('base_voted', 0)}"
                      f" / resolved-fallback "
                      f"{s.get('base_resolved_fallback', 0)}")
         print(f"[materialize] rules fired: {base} · "
@@ -1375,7 +1375,7 @@ def write_report(m, out):
         "<tr><td colspan='3' class='meta'>none</td></tr>"
     doc = f"""<!doctype html><meta charset='utf-8'>
 <title>Phase C materialize - {esc(m.scene)}</title><style>{CSS}</style>
-<h1>PHASE C &middot; MATERIALIZE THE CARVE &mdash; {esc(m.scene)}</h1>
+<h1>PHASE C &middot; MATERIALIZE THE VOTE &mdash; {esc(m.scene)}</h1>
 <p class='meta'>{esc(m.layer()['built'])} &middot; TRIAL (non-destructive:
 the layer is additive, nothing else in scene_graph.json is touched)
 &middot; precedence: geometry base &rarr; J8 box ruling &rarr; J8s split
@@ -1404,7 +1404,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--apply", action="store_true",
-                    help="write graph['carved'] (ADDITIVE) + the report")
+                    help="write graph['grouped'] (ADDITIVE) + the report")
     ap.add_argument("--report-only", action="store_true",
                     help="write graph/materialize_report.html but NOT the "
                          "graph")
@@ -1412,7 +1412,7 @@ def main():
                     help="PHASE 1: settle geometry + the node set (J8 box "
                          "rulings, J8s splits, J1 merges) and stop, so J9 "
                          "can judge the settled layer instead of the raw "
-                         "carve manifest. Run again without this flag "
+                         "vote manifest. Run again without this flag "
                          "afterwards to fold J9's annotations in.")
     a = ap.parse_args()
 
@@ -1438,7 +1438,7 @@ def main():
         print("[materialize] --report-only: graph NOT written")
         return
 
-    # PHASE 1 writes its OWN layer: resolved -> voted -> settled -> carved.
+    # PHASE 1 writes its OWN layer: resolved -> voted -> settled -> voted.
     # Each stage's output is a whole graph named for the stage that made
     # it, so "the newest layer" is always unambiguous.
     out_layer = "settled" if a.settle_only else LAYER

@@ -292,7 +292,7 @@ def main():
             continue
         lo = np.percentile(P[keep], 1, axis=0)
         hi = np.percentile(P[keep], 99, axis=0)
-        rec["status"] = "carved"
+        rec["status"] = "voted"
         rec["n_prisms"] = len(prisms)
         rec["after"] = {"aabb_min": [round(float(v), 4) for v in lo],
                         "aabb_max": [round(float(v), 4) for v in hi],
@@ -313,12 +313,12 @@ def main():
               "by_status": by, "results": results}
     (outdir / "bubble_report.json").write_text(json.dumps(report, indent=1))
 
-    # full-scene preview manifest (carved where carved, original else)
+    # full-scene preview manifest (voted where voted, original else)
     objs = []
     for r in results:
-        if r["status"] == "carved":
+        if r["status"] == "voted":
             lo, hi = r["after"]["aabb_min"], r["after"]["aabb_max"]
-            label = r["name"] + f" (carved x{r['n_prisms']})"
+            label = r["name"] + f" (voted x{r['n_prisms']})"
         else:
             lo, hi = r["before"]["aabb_min"], r["before"]["aabb_max"]
             label = r["name"] + f" (kept: {r['status']})"

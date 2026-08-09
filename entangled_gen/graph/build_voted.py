@@ -1,10 +1,10 @@
 """THE VOTE-BOX LAYER — graph["voted"]: the scene graph AFTER the boxes
 were elected.
 
-NAMING (user, 2026-08-08): this stage does not carve anything. It renders
+NAMING (user, 2026-08-08): this stage does not vote anything. It renders
 views of a node, lets the detections in them VOTE, and elects a box. The
 result is a NEW box, not a trimmed one. So: the vote-box stage, and the
-boxes it produces are VOTED boxes. The old `carve*` names survive in file
+boxes it produces are VOTED boxes. The old `vote*` names survive in file
 names and stored keys and are being retired separately.
 
 WHY THIS LAYER EXISTS (user, 2026-08-08): "after vote box we should
@@ -26,7 +26,7 @@ WHAT THIS MODULE DOES — one edit, on the whole graph:
   GETS   graph["resolved"] (the last full layer), the elected boxes
          (scene_manifest_slicevote_preview.json), the vote record
          (pool_retake/slicevote_report.json) and the typed doubts
-         (graph/carve_doubts.json).
+         (graph/vote_doubts.json).
   WRITES one ADDITIVE layer graph["voted"] = {nodes, edges, nesting,
          edge_meta, run, counts, open_questions} — a WHOLE graph, the
          thing the next stage edits.
@@ -80,7 +80,7 @@ VOTE_RULE_KEYS = ("need_votes", "flag", "pano_flag", "outlier", "tiers",
                   "culled_clusters", "shell_ineligible_dots", "plan_fill",
                   "plan_fill2", "slice", "top_frame", "top_shots",
                   "top_choice", "top_choice_overruled_score")
-STATUSES = ("carved", "carved_pano", "kept", "kept_wall", "kept_ceiling",
+STATUSES = ("voted", "voted_pano", "kept", "kept_wall", "kept_ceiling",
             "kept_outlier")
 
 
@@ -104,7 +104,7 @@ def build(scene):
     rec = {r["id"]: r for r in results} if isinstance(results, list) \
         else dict(results)
     doubts = {}
-    dp = sd / "graph" / "carve_doubts.json"
+    dp = sd / "graph" / "vote_doubts.json"
     if dp.exists():
         for nd in load(dp, "the doubts").get("nodes") or []:
             doubts[nd["id"]] = nd.get("doubts") or []
@@ -175,7 +175,7 @@ def build(scene):
     # case that needs a re-derive rather than a carried-over edge list.
     edges, nesting, emeta = edge_carry.carry(
         nodes, graph, remap={},
-        inherit_from=("judged", "resolved", "carved_edges"),
+        inherit_from=("judged", "resolved", "voted_edges"),
         diff_against="resolved")   # this layer supersedes resolved
 
     stats.update(nodes=len(nodes), edges=len(edges),
@@ -188,7 +188,7 @@ def build(scene):
     layer = {
         "built": date.today().isoformat(),
         "built_from": f"graph['resolved'] + {MANIFEST} + {REPORT} + "
-                      "graph/carve_doubts.json",
+                      "graph/vote_doubts.json",
         "supersedes": "resolved",
         "note": "THE SCENE GRAPH AFTER THE BOXES WERE ELECTED. This is a "
                 "WHOLE layer, not a sidecar: nodes carry every property "

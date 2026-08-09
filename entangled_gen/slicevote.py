@@ -1,4 +1,4 @@
-"""SLICE-VOTE CARVE — the box-repair stage (USER-DESIGNED 2026-08-06
+"""SLICE-VOTE VOTE — the box-repair stage (USER-DESIGNED 2026-08-06
 cone-map session; hardened over 4 whole-scene living runs 08-06/07,
 REVIEW_LOG R-S2-26..30, all USER-PASSED).
 
@@ -7,9 +7,9 @@ regression WAIVED by user 08-06. NOT yet wired into the canonical
 runner — map promotion pending. Output stays a PREVIEW manifest until
 wiring. Served in the viewer as the "slicevote" box-source layer.
 
-RENDER PRINCIPLE — GOVERNS EVERY CARVE RENDER (user ruling 2026-08-08):
+RENDER PRINCIPLE — GOVERNS EVERY VOTE RENDER (user ruling 2026-08-08):
 "the slice is just an INVISIBLE bounding region that tells the camera
-roughly where the object is, so we can carve out what is BETWEEN the
+roughly where the object is, so we can vote out what is BETWEEN the
 camera and the object to get a clear view. Everything else stays
 rendered." The slice / slab is a LOCATOR, never the picture: it decides
 WHO MAY BE CLAIMED, never WHAT IS DRAWN. A render therefore removes one
@@ -46,7 +46,7 @@ Per resolved graph node:
    0.26 (plant) then 0.35+ (magazines, bookshelves) — 0.20 sits in
    open water. The rule also deliberately UN-exempts the old test's
    false exempts (plant, shelf magazines — the R-S2-30 "surprise
-   wall exemptions" carried open), which are now carved. Recorded
+   wall exemptions" carried open), which are now voted. Recorded
    with protrusion_m + the wall id.
    floor-flush (bottom within 0.20 m of the shell floor + < 0.30 m
    tall) -> kept_floor (user ruling 2026-08-07: rugs/mats are the
@@ -54,7 +54,7 @@ Per resolved graph node:
    no class names). All keep the resolved box — flat objects have no
    side silhouette and their slices degenerate.
 0a. PERP CAM RE-BOX (user design 2026-08-07) for the WALL and CEILING
-   exempts only: skipping the carve leaves them on the ORIGINAL one-shot
+   exempts only: skipping the vote leaves them on the ORIGINAL one-shot
    pano-lift box, which DRIFTS ALONG its own plane (glass door). Their
    two IN-PLANE extents are, however, exactly what ONE face-on view
    shows. So each runs a single view-tunnel render perpendicular to its
@@ -170,7 +170,7 @@ Per resolved graph node:
 4. PANO-MASK FILTER (user option-2, formerly "arm assignment"). PANO
    MASKS = the node's founding masks from the original pano-funnel
    views (rig_sp0 crops) — the graph's identity evidence, as opposed
-   to the carve's fresh identity-blind card detections. Each node
+   to the vote's fresh identity-blind card detections. Each node
    keeps the vote survivors ITS OWN pano masks vouch for (L-sectional
    split); cluster-box fallback when sp0 coverage is thin;
    <50%-volume flag -> judge.
@@ -179,7 +179,7 @@ Per resolved graph node:
 6. SHELL CLIP on every SHIPPED box (user ruling 2026-08-07 late,
    "boolean out all the strictly external volume"): at output time
    every box that SHIPS — the kept_* exemption entries AND the final
-   carved/outlier box — is intersected with the shell interior
+   voted/outlier box — is intersected with the shell interior
    [XLO..XHI] x [CEIL..FLOOR] x [ZLO..ZHI]. If the intersection
    collapses on an axis (< MIN_SLAB = 0.02 m) a MIN_SLAB-thick slab
    is kept FLUSH against the plane the box sat at/beyond, the other
@@ -242,7 +242,7 @@ overlays are still wiped unconditionally (scoped to this run's ids):
 they are drawn by this stage, not by the renderer, so a run whose
 detection now fails must not leave last run's overlay behind.
 
-Run:  PYTHONUTF8=1 HF_HUB_OFFLINE=1 python carve_slicevote.py
+Run:  PYTHONUTF8=1 HF_HUB_OFFLINE=1 python slicevote.py
       --scene living_marble [--only obj_004,...] [--gate 3] [--res 768]
       [--run-id r20260808-0130]
       (PYTHONUTF8 required when stdout is redirected — cp1252 chokes
@@ -268,9 +268,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
 from pano_lift import crop_cam_raw  # noqa: E402
-# camera math lives in ONE place (carve_cams.py) so the J8 sheet builder
+# camera math lives in ONE place (vote_cams.py) so the J8 sheet builder
 # can annotate these renders with the very cameras that made them
-from carve_cams import (FOV_GOOD, OFF_AXIS, RES, WALL_PAD,  # noqa: E402
+from vote_cams import (FOV_GOOD, OFF_AXIS, RES, WALL_PAD,  # noqa: E402
                         make_cam, roty, top_cam_for)
 
 ap = argparse.ArgumentParser()
@@ -302,7 +302,7 @@ SOURCE_SHA = hashlib.sha256(
 # ids named on the command line — needed BEFORE the graph is read so the
 # startup wipe can be scoped to them (see below)
 ONLY_IDS = [s.strip() for s in a.only.split(",") if s.strip()]
-RES = a.res        # this run's resolution (default = carve_cams.RES)
+RES = a.res        # this run's resolution (default = vote_cams.RES)
 DET_THR = 0.20
 PAD = 0.30
 CAP_M = 0.35
@@ -477,7 +477,7 @@ def _wipe_ids(ids):
 _nwiped = _wipe_ids(ONLY_IDS or None)
 _scope = (f"{len(ONLY_IDS)} requested id(s)" if ONLY_IDS
           else "the whole scene")
-print(f"[carve] run {RUN_ID} src {SOURCE_SHA} — wiped {_nwiped} stale "
+print(f"[vote] run {RUN_ID} src {SOURCE_SHA} — wiped {_nwiped} stale "
       f"det overlay(s) for {_scope}; render staleness is decided by the "
       f".params.json sidecars", flush=True)
 
@@ -489,7 +489,7 @@ def to_wsl(p):
 
 # ---- raw ply rows (subset writing keeps every gaussian attribute) ----
 PLY = paths.ply(SCENE)
-print("[carve] reading raw ply rows ...", flush=True)
+print("[vote] reading raw ply rows ...", flush=True)
 _f = open(PLY, "rb")
 _header = [_f.readline(), _f.readline()]
 _names, _n = [], None
@@ -511,7 +511,7 @@ alpha_all = 1 / (1 + np.exp(-ROWS[:, col["opacity"]]))
 KEEP = alpha_all > 0.3
 ROWS_K = ROWS[KEEP]
 xyz = ROWS_K[:, [col["x"], col["y"], col["z"]]].astype(np.float32)
-print(f"[carve] {len(xyz):,} gaussians after opacity filter", flush=True)
+print(f"[vote] {len(xyz):,} gaussians after opacity filter", flush=True)
 
 
 def write_subset_ply(mask, out_path):
@@ -572,15 +572,15 @@ def render_gate(view, cull_rule, cull_margin, keep):
         try:
             old = json.loads(side.read_text(encoding="utf-8")).get("hash")
         except Exception as e:                               # noqa: BLE001
-            print(f"[carve] sidecar {side.name} unreadable ({e}) — "
+            print(f"[vote] sidecar {side.name} unreadable ({e}) — "
                   "treating the render as stale", flush=True)
     fresh = (old == h)
     if png.exists() and not fresh:
         png.unlink()
-        print(f"[carve] render {name}: params {old or 'MISSING sidecar'} "
+        print(f"[vote] render {name}: params {old or 'MISSING sidecar'} "
               f"-> {h} — png DELETED, will regenerate", flush=True)
     elif png.exists():
-        print(f"[carve] render {name}: params match ({h}) — reusing png",
+        print(f"[vote] render {name}: params match ({h}) — reusing png",
               flush=True)
     side.write_text(json.dumps({"hash": h, **payload}, indent=1),
                     encoding="utf-8")
@@ -598,11 +598,11 @@ if ONLY_IDS:
     nodes = [n for n in nodes if n["id"] in want]
     _missing = sorted(want - set(ALL_IDS))
     if _missing:
-        print(f"[carve] --only: {_missing} not in the resolved graph "
+        print(f"[vote] --only: {_missing} not in the resolved graph "
               "— ignored", flush=True)
 PROCESSED_IDS = [n["id"] for n in nodes]
 RUN_KIND = "full" if set(PROCESSED_IDS) == set(ALL_IDS) else "partial"
-print(f"[carve] run_kind={RUN_KIND} — processing {len(PROCESSED_IDS)} of "
+print(f"[vote] run_kind={RUN_KIND} — processing {len(PROCESSED_IDS)} of "
       f"{len(ALL_IDS)} resolved node(s)", flush=True)
 eye0 = np.array(json.loads((sd / "rig_sp0" / "pano_selfrender_meta.json")
                            .read_text())["eye_raw"])
@@ -698,7 +698,7 @@ def empty_at(eye):
     return int((np.einsum("ij,ij->i", d, d) < EMPTY_R * EMPTY_R).sum())
 
 
-# MatCamLite / make_cam / roty / top_cam_for now live in carve_cams.py
+# MatCamLite / make_cam / roty / top_cam_for now live in vote_cams.py
 # (imported above) — ONE definition, shared with the J8 sheet builder.
 
 import torch  # noqa: E402
@@ -706,7 +706,7 @@ dev = "cuda" if torch.cuda.is_available() else "cpu"
 from transformers import (AutoProcessor,  # noqa: E402
                           GroundingDinoForObjectDetection,
                           SamModel, SamProcessor)
-print("[carve] loading detector ...", flush=True)
+print("[vote] loading detector ...", flush=True)
 gd_proc = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-base")
 gd = GroundingDinoForObjectDetection.from_pretrained(
     "IDEA-Research/grounding-dino-base").to(dev)
@@ -940,10 +940,10 @@ def draw_box(ax, lo, hi, ax0, ax1, color, ls, lw, label=None, flip1=False):
 
 
 # ================= PERP CAM RE-BOX (user design 2026-08-07) ===========
-# The exempt objects (kept_wall / kept_ceiling) skip the carve entirely,
+# The exempt objects (kept_wall / kept_ceiling) skip the vote entirely,
 # so they still carry the ORIGINAL one-shot pano-lift box — which drifts
 # ALONG its own plane (the glass door is the motivating case: the box
-# slides sideways along the wall it hangs on). The carve's slice/vote
+# slides sideways along the wall it hangs on). The vote's slice/vote
 # machinery cannot help them (a flat object has no side silhouette), but
 # ONE FACE-ON view can: seen perpendicular to its plane, the object's
 # two IN-PLANE extents are exactly what the image shows. So: render one
@@ -998,7 +998,7 @@ PARAMS_HASH = hashlib.sha256(
     json.dumps(PARAMS, sort_keys=True).encode()).hexdigest()[:12]
 PROV = {"run_id": RUN_ID, "run_at": RUN_AT,
         "params_hash": PARAMS_HASH, "source_sha": SOURCE_SHA}
-print(f"[carve] params_hash {PARAMS_HASH}", flush=True)
+print(f"[vote] params_hash {PARAMS_HASH}", flush=True)
 
 # NOTE on the camera's up vector: make_cam / the WSL renderer share ONE
 # c2w_from_eye_aim with world up [0,-1,0] AND the same degenerate
@@ -1116,7 +1116,7 @@ def reframe_cam(aim, eye, fov, cn):
 
 
 def top_fit_render(nid, name, vname, eye, aim, fov, clip_ceiling):
-    """Render ONE re-framed plan view with the carve's own renderer.
+    """Render ONE re-framed plan view with the vote's own renderer.
     CONTENT IS A COPY OF THE PLAN RENDER IT REPLACES — nothing new is
     culled: the whole scene for a 'top' view, the ceiling clipped
     exactly as 'ctop' does (clip_y_gt CEIL+0.08) when the camera ends up
@@ -1140,7 +1140,7 @@ def top_fit_render(nid, name, vname, eye, aim, fov, clip_ceiling):
 
 
 def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
-    """One face-on view -> new IN-PLANE extents for a carve-exempt
+    """One face-on view -> new IN-PLANE extents for a vote-exempt
     object. `axi` is the plane's NORMAL axis, `plane_val` the plane's
     coordinate, `side` the WALLS-table sign (+1 = room interior lies
     BELOW the plane), `pid` its id. Returns
@@ -1174,7 +1174,7 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     rec["slab_dots"] = n_slab
     if n_slab < PERP_MIN_CLAIM:
         rec["result"] = f"kept - slab too thin ({n_slab} dots)"
-        print(f"[carve]  perp: slab too thin ({n_slab} dots) - "
+        print(f"[vote]  perp: slab too thin ({n_slab} dots) - "
               "original box kept", flush=True)
         return None, None, rec, ""
     sdots = xyz[slab]
@@ -1213,11 +1213,11 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
         rec["dist_clamped"] = {"need": round(dist_need, 3),
                                "got": round(dist_act, 3),
                                "cap_m": PERP_MAX_DIST}
-        print(f"[carve]  perp: stand-off capped at {dist_act:.2f} m "
+        print(f"[vote]  perp: stand-off capped at {dist_act:.2f} m "
               f"of {dist_need:.2f} m needed", flush=True)
     if dist_act < 0.15:
         rec["result"] = "kept - no room for a face-on camera"
-        print("[carve]  perp: no room for a face-on camera - "
+        print("[vote]  perp: no room for a face-on camera - "
               "original box kept", flush=True)
         return None, None, rec, ""
 
@@ -1260,7 +1260,7 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
                    "t_plane": round(t_plane, 3),
                    "cut_depth": round(cut_depth, 3),
                    "kept": int((~hole).sum()), "of": int(len(xyz))}
-    print(f"[carve]  perp: cull t_box {t_box:.2f} / t_plane "
+    print(f"[vote]  perp: cull t_box {t_box:.2f} / t_plane "
           f"{t_plane:.2f} -> cut {cut_depth:.2f} m; "
           f"{int((~hole).sum()):,} of {len(xyz):,} gaussians kept",
           flush=True)
@@ -1280,7 +1280,7 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     png = sdir / f"{vname}.png"
     if not png.exists():
         rec["result"] = "kept - perp render missing"
-        print("[carve]  perp: render missing - original box kept",
+        print("[vote]  perp: render missing - original box kept",
               flush=True)
         return None, None, rec, ""
     strip = _fig(png.name, f"PERP RE-BOX &middot; face-on view ({pid})")
@@ -1297,7 +1297,7 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     best = gdino_best(img, name, prior_box=pb)
     if best is None:
         rec["result"] = "no detection - kept"
-        print("[carve]  perp: no detection - original box kept", flush=True)
+        print("[vote]  perp: no detection - original box kept", flush=True)
         return None, None, rec, strip
     rec["score"] = round(float(best[0]), 3)
     mask = sam_mask(img, best[1], DIL_ISO)
@@ -1335,12 +1335,12 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
             trunc.add("bottom")
     if trunc:
         rec["truncated_edges"] = sorted(trunc)
-        print(f"[carve]  perp: mask touches image border(s) "
+        print(f"[vote]  perp: mask touches image border(s) "
               f"{sorted(trunc)} - those sides keep the original extent",
               flush=True)
     if len(trunc) == 4:
         rec["result"] = "frame truncated on all sides — kept"
-        print("[carve]  perp: frame truncated on all sides - "
+        print("[vote]  perp: frame truncated on all sides - "
               "original box kept", flush=True)
         return None, None, rec, strip
 
@@ -1355,7 +1355,7 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     rec["claimed"] = nc
     if nc < PERP_MIN_CLAIM:
         rec["result"] = f"kept - only {nc} claimed dots (< {PERP_MIN_CLAIM})"
-        print(f"[carve]  perp: only {nc} claimed dots - original box kept",
+        print(f"[vote]  perp: only {nc} claimed dots - original box kept",
               flush=True)
         return None, None, rec, strip
 
@@ -1412,11 +1412,11 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
                        f"(> {PERP_MAX_RATIO:.0f}x either way)")
     if why:
         rec["result"] = "REJECTED - " + "; ".join(why) + " - original kept"
-        print("[carve]  perp: REJECTED (" + "; ".join(why)
+        print("[vote]  perp: REJECTED (" + "; ".join(why)
               + ") - original box kept", flush=True)
         return None, None, rec, strip
     rec["result"] = "reboxed"
-    print("[carve]  perp: reboxed in-plane from "
+    print("[vote]  perp: reboxed in-plane from "
           + " x ".join(f"{hi0[k]-lo0[k]:.2f}" for k in ip) + " to "
           + " x ".join(f"{new_hi[k]-new_lo[k]:.2f}" for k in ip)
           + f" m ({nc} claimed dots)", flush=True)
@@ -1436,12 +1436,12 @@ def perp_for_exempt(nid, name, lo0, hi0, plane):
         slo, shi, strip = None, None, ""
         rec = {"view": "perp", "plane": pid,
                "result": f"kept - perp re-box failed: {e}"}
-        print(f"[carve]  perp: FAILED ({e}) - original box kept", flush=True)
+        print(f"[vote]  perp: FAILED ({e}) - original box kept", flush=True)
     if strip:
         save_row(nid, "exempt", f"""
 <section>
 <h2>{nid} — {name} <span style='font-weight:400;font-size:13px'>
-(carve-exempt, perp re-box)</span></h2>
+(vote-exempt, perp re-box)</span></h2>
 <p>plane {pid} &nbsp;·&nbsp; {rec.get('result', '?')}
 &nbsp;·&nbsp; slab {rec.get('slab_dots', 0):,} dots, claimed
 {rec.get('claimed', 0):,}</p>
@@ -1462,7 +1462,7 @@ kept_exempt = []
 # the fragments of ALL resolved ids in node order, so an unprocessed
 # object keeps its row (and its pictures, which the scoped wipe spared).
 # Two kinds keep the page's existing two-section structure: "exempt"
-# (the perp re-box rows) and "carve" (the slice+vote rows).
+# (the perp re-box rows) and "vote" (the slice+vote rows).
 def _row_path(nid, kind):
     return rowdir / (f"{nid}.exempt.html" if kind == "exempt"
                      else f"{nid}.html")
@@ -1470,9 +1470,9 @@ def _row_path(nid, kind):
 
 def clear_rows(nid):
     """Drop both fragments for an id that is about to be reprocessed —
-    a status flip (carved <-> exempt) must not leave two rows behind,
+    a status flip (voted <-> exempt) must not leave two rows behind,
     and an object that now produces no row must lose its old one."""
-    for kind in ("carve", "exempt"):
+    for kind in ("vote", "exempt"):
         _row_path(nid, kind).unlink(missing_ok=True)
 
 
@@ -1485,7 +1485,7 @@ def read_row(nid, kind):
     try:
         return p.read_text(encoding="utf-8") if p.exists() else ""
     except OSError as e:                                     # noqa: BLE001
-        print(f"[carve] row sidecar {p.name} unreadable ({e})", flush=True)
+        print(f"[vote] row sidecar {p.name} unreadable ({e})", flush=True)
         return ""
 
 
@@ -1504,7 +1504,7 @@ def backfill_rows_from_page():
     try:
         txt = page.read_text(encoding="utf-8")
     except OSError as e:                                     # noqa: BLE001
-        print(f"[carve] row backfill: cone_map.html unreadable ({e})",
+        print(f"[vote] row backfill: cone_map.html unreadable ({e})",
               flush=True)
         return 0
     n = 0
@@ -1513,7 +1513,7 @@ def backfill_rows_from_page():
         h2 = re.search(r"<h2>\s*([^\s<]+)", sec)
         if not h2:
             continue
-        kind = ("exempt" if "carve-exempt, perp re-box" in sec else "carve")
+        kind = ("exempt" if "vote-exempt, perp re-box" in sec else "vote")
         p = _row_path(h2.group(1), kind)
         if p.exists():
             continue
@@ -1521,7 +1521,7 @@ def backfill_rows_from_page():
         p.write_text("\n" + sec, encoding="utf-8")
         n += 1
     if n:
-        print(f"[carve] row backfill: recovered {n} cone-map row(s) from "
+        print(f"[vote] row backfill: recovered {n} cone-map row(s) from "
               "the existing cone_map.html", flush=True)
     return n
 
@@ -1531,7 +1531,7 @@ backfill_rows_from_page()
 
 def add_exempt(nid, name, lo0, hi0, status, kept, extra=None,
                ship_lo=None, ship_hi=None):
-    """Record a carve-exempt node. The ORIGINAL box is kept verbatim as
+    """Record a vote-exempt node. The ORIGINAL box is kept verbatim as
     evidence; the box that SHIPS is the shell-clipped one (step 6) —
     of the perp RE-BOXED extents when the face-on view produced them
     (ship_lo/ship_hi), otherwise of the original."""
@@ -1556,7 +1556,7 @@ for n in nodes:
     hi0 = np.array(geo["aabb_max"])
     corners = np.array([[x, y, z] for x in (lo0[0], hi0[0])
                         for y in (lo0[1], hi0[1]) for z in (lo0[2], hi0[2])])
-    print(f"[carve] {nid} {name}", flush=True)
+    print(f"[vote] {nid} {name}", flush=True)
     clear_rows(nid)     # this run owns this id's cone-map row from here
 
     # CEILING EXEMPTION (user ruling 2026-08-06 after R-S2-27): a flat
@@ -1567,15 +1567,15 @@ for n in nodes:
     # (y-down frame: CEIL < FLOOR) — never a label list.
     room_h = FLOOR - CEIL
     if (lo0[1] - CEIL) < 0.35 and (hi0[1] - CEIL) < 0.5 * room_h:
-        print("[carve]  ceiling-mounted — carve exempt, resolved box "
+        print("[vote]  ceiling-mounted — vote exempt, resolved box "
               "kept (in-plane extents from the perp re-box)", flush=True)
-        # PERP RE-BOX: the carve is skipped, but one face-on view still
+        # PERP RE-BOX: the vote is skipped, but one face-on view still
         # fixes the drifted in-plane (x,z) extents. Ceiling plane in the
         # y-DOWN frame: axis 1 at CEIL, interior ABOVE it -> side -1.
         _slo, _shi, _rec = perp_for_exempt(nid, name, lo0, hi0,
                                            (1, CEIL, -1, "CEIL"))
         add_exempt(nid, name, lo0, hi0, "kept_ceiling",
-                   "ceiling-mounted — carve exempt (geometric: top "
+                   "ceiling-mounted — vote exempt (geometric: top "
                    "within 0.35 m of the shell ceiling, bottom in the "
                    "upper half of the room)",
                    {"rebox": _rec}, ship_lo=_slo, ship_hi=_shi)
@@ -1591,11 +1591,11 @@ for n in nodes:
     # ignored on purpose — openings (glass door, window) have their mass
     # at or beyond the wall and the thin test dropped them (obj_034
     # regression). It also un-exempts the thin test's false exempts
-    # (plant, shelf magazines, R-S2-30), which are now carved.
+    # (plant, shelf magazines, R-S2-30), which are now voted.
     _wall_hit = wall_protrusion(lo0, hi0)
     if _wall_hit is not None:
         _wid, _protr = _wall_hit
-        print(f"[carve]  wall-protrusion {_protr:.2f} m at {_wid} — carve "
+        print(f"[vote]  wall-protrusion {_protr:.2f} m at {_wid} — vote "
               "exempt, resolved box kept (in-plane extents from the perp "
               "re-box)", flush=True)
         # PERP RE-BOX: same treatment as the ceiling, on this object's
@@ -1605,7 +1605,7 @@ for n in nodes:
                                            (_wrow[0], _wrow[1], _wrow[2],
                                             _wid))
         add_exempt(nid, name, lo0, hi0, "kept_wall",
-                   "wall protrusion — carve exempt (geometric: touches "
+                   "wall protrusion — vote exempt (geometric: touches "
                    "or crosses a shell wall plane and protrudes "
                    f"<= {WALL_PROTRUDE_MAX:.2f} m into the room)",
                    {"wall": _wid, "protrusion_m": round(_protr, 3),
@@ -1619,10 +1619,10 @@ for n in nodes:
     # would otherwise gut a flat floor object's entire electorate.
     # y-down frame: an object's bottom is hi0[1]; FLOOR > CEIL.
     if (FLOOR - hi0[1]) < 0.20 and (hi0[1] - lo0[1]) < 0.30:
-        print("[carve]  floor-flush — carve exempt, resolved box kept "
+        print("[vote]  floor-flush — vote exempt, resolved box kept "
               "verbatim", flush=True)
         add_exempt(nid, name, lo0, hi0, "kept_floor",
-                   "floor-flush — carve exempt (geometric: bottom "
+                   "floor-flush — vote exempt (geometric: bottom "
                    "within 0.20 m of the shell floor and < 0.30 m "
                    "tall)")
         continue
@@ -1675,13 +1675,13 @@ for n in nodes:
             # fits FRAME_TARGET_FILL. The eye may leave the room (point
             # cloud; the perp camera has the same licence), and the
             # picture keeps whatever the cached plan render kept.
-            print(f"[carve]  top frame: {vname} cannot frame the object "
+            print(f"[vote]  top frame: {vname} cannot frame the object "
                   f"({frec['fit_before']}) — re-framing along the same "
                   "view direction", flush=True)
             rf = reframe_cam(c0, teye, tfov, corners)
             if rf is None:
                 frec["reframe"] = "skipped — degenerate view direction"
-                print("[carve]  top frame: degenerate view direction — "
+                print("[vote]  top frame: degenerate view direction — "
                       "cached plan render used as-is", flush=True)
             else:
                 rdist, rcam, rfx, rfy, rcap = rf
@@ -1702,7 +1702,7 @@ for n in nodes:
                              else round(float(rfy), 3)})
                 if rcap:
                     frec["dist_capped_m"] = TOP_FIT_MAX_DIST
-                print(f"[carve]  top frame: re-framed to {rdist:.2f} m "
+                print(f"[vote]  top frame: re-framed to {rdist:.2f} m "
                       f"(fill {rfx:.2f} x {rfy:.2f}, fov {tfov:.1f} kept"
                       + (", ceiling clipped" if clip_ceiling else "")
                       + f") -> {rpng.name}", flush=True)
@@ -1712,7 +1712,7 @@ for n in nodes:
                     frec["reframed"] = False
                     frec["reframe"] = ("render missing — cached plan "
                                        "render used")
-                    print("[carve]  top frame: re-frame render MISSING — "
+                    print("[vote]  top frame: re-frame render MISSING — "
                           "falling back to the cached plan render",
                           flush=True)
         top_frame_rec = frec
@@ -1772,7 +1772,7 @@ for n in nodes:
                              "truncated_sides": None,
                              "action": "no detection"})
                 shots.append(srec)
-                print(f"[carve]  top shot {shot_k}: {s_png.name} — no "
+                print(f"[vote]  top shot {shot_k}: {s_png.name} — no "
                       "detection", flush=True)
                 break
             s_tb = s_best[1]
@@ -1830,7 +1830,7 @@ for n in nodes:
             img, cam, png, teye = s_img, s_cam, s_png, s_eye
             top_choice_rec = _choice
             top_choice_overruled = bool(_cd["overruled_score"])
-            print(f"[carve]  top pick: {_cd['n_candidates']} candidate(s), "
+            print(f"[vote]  top pick: {_cd['n_candidates']} candidate(s), "
                   f"chose #{_ci} match "
                   + ("n/a" if _cl[_ci]["match"] is None
                      else f"{_cl[_ci]['match']:.3f}")
@@ -1838,7 +1838,7 @@ for n in nodes:
                   f"{_cd['decided_by']}"
                   + ("  [OVERRULED the highest score]"
                      if _cd["overruled_score"] else ""), flush=True)
-            print(f"[carve]  top shot {shot_k}: {s_png.name} @ "
+            print(f"[vote]  top shot {shot_k}: {s_png.name} @ "
                   f"{srec['dist_m']:.2f} m det {srec['det_box']} "
                   f"score {srec['score']:.2f} fill "
                   f"{srec['fill_x']:.2f}x{srec['fill_y']:.2f} prior "
@@ -1888,13 +1888,13 @@ for n in nodes:
                 srec["action"] = ("re-shoot render MISSING — this shot "
                                   "stands")
                 shots.append(srec)
-                print("[carve]  top det: re-shoot render MISSING — "
+                print("[vote]  top det: re-shoot render MISSING — "
                       "keeping this shot", flush=True)
                 break
             srec["action"] = (f"truncated on {'/'.join(s_trunc)} — "
                               f"re-shot at {n_dist:.2f} m (x{grow:.2f})")
             shots.append(srec)
-            print(f"[carve]  top det: truncated on {'/'.join(s_trunc)} "
+            print(f"[vote]  top det: truncated on {'/'.join(s_trunc)} "
                   f"— RE-SHOOT {shot_k + 1}/{TOP_FIT_RETRIES} at "
                   f"{n_dist:.2f} m (x{grow:.2f}"
                   + (", capped" if n_cap else "")
@@ -1925,7 +1925,7 @@ for n in nodes:
                                        "fallback" + _after}
             slice_info = (f"{vname}: detection touches all four borders "
                           "— unusable")
-            print(f"[carve]  top det: {vname} detection touches ALL FOUR "
+            print(f"[vote]  top det: {vname} detection touches ALL FOUR "
                   "borders" + _after + " — unusable, falling through to "
                   "the wedge", flush=True)
             continue
@@ -1953,7 +1953,7 @@ for n in nodes:
                                            [round(v, 1) for v in praw]),
                              "reshoots": n_reshoots,
                              "extended": moved, "action": note + _after}
-            print(f"[carve]  top det: still truncated on "
+            print(f"[vote]  top det: still truncated on "
                   f"{'/'.join(trunc)}" + _after + f" — {note}"
                   + (" " + str(moved) if moved else ""), flush=True)
         top_ctx = (cam, tb, img, vname, best[0], teye)
@@ -2042,11 +2042,11 @@ for n in nodes:
             & (dots[:, 2] > ZLO + SHELL_EPS)
             & (dots[:, 2] < ZHI - SHELL_EPS))
     n_shell_dots = int((~elig).sum())
-    print(f"[carve] slice: {len(dots):,} dots  [{slice_info}]  "
+    print(f"[vote] slice: {len(dots):,} dots  [{slice_info}]  "
           f"(shell-plane ineligible: {n_shell_dots:,})", flush=True)
     if len(dots) < 100:
-        print("[carve]   too few dots, skipping", flush=True)
-        # TIER-4 doctrine: never silent — carve is impossible on this
+        print("[vote]   too few dots, skipping", flush=True)
+        # TIER-4 doctrine: never silent — vote is impossible on this
         # slice, so the ORIGINAL box ships as a kept row (recorded like
         # the exemption rows, obj_017_c00 vanish fix 2026-08-07).
         _x = {"n_dots": int(len(dots))}
@@ -2062,7 +2062,7 @@ for n in nodes:
             _x["top_det_extend"] = top_trunc_rec
         add_exempt(nid, name, lo0, hi0, "kept",
                    "slice too thin (< 100 dots) — "
-                   "carve impossible, resolved box ships", _x)
+                   "vote impossible, resolved box ships", _x)
         continue
     plyp = sdir / f"vote_{nid}.ply"
     write_subset_ply(slice_mask, plyp)
@@ -2173,7 +2173,7 @@ for n in nodes:
             if best is None:
                 info["why"] = "no_redetect"
                 out.append((None, info))
-                print(f"[carve] {vname} no_redetect", flush=True)
+                print(f"[vote] {vname} no_redetect", flush=True)
                 continue
             mask = sam_mask(img, best[1], DIL_ISO)
             ov = img.convert("RGBA")
@@ -2193,7 +2193,7 @@ for n in nodes:
             info["why"] = f"ok({best[0]:.2f})"
             info["claimed"] = int(cl.sum())
             out.append((cl, info))
-            print(f"[carve] {vname} ok({best[0]:.2f}) claims "
+            print(f"[vote] {vname} ok({best[0]:.2f}) claims "
                   f"{int(cl.sum())}/{len(dots)}", flush=True)
         return out
 
@@ -2212,12 +2212,12 @@ for n in nodes:
     # and the detector are both strongest from eye-height viewpoints.
     # When MOST object-height cardinals are unproductive (>=3 of 4 with
     # no detection or <50 claimed dots), add 4 eye-height cardinals
-    # (same tunnel carve) as EXTRA voters.
+    # (same tunnel vote) as EXTRA voters.
     productive = sum(1 for cl, inf in card_res
                      if cl is not None and inf.get("claimed", 0) >= 50)
     if productive <= 1:
         tiers.append("eyeheight")
-        print("[carve]  escalate: eye-height cardinals", flush=True)
+        print("[vote]  escalate: eye-height cardinals", flush=True)
         eye_y = max(CEIL + WALL_PAD, FLOOR - 1.6)
         eviews = []
         for k, base in enumerate([np.array([1.0, 0, 0]),
@@ -2260,7 +2260,7 @@ for n in nodes:
         tinfo = {"view": "top", "why": f"ok({tscore:.2f})",
                  "eye": [float(v) for v in teye_v],
                  "claimed": int(cl.sum())}
-        print(f"[carve] top   ok({tscore:.2f}) claims "
+        print(f"[vote] top   ok({tscore:.2f}) claims "
               f"{int(cl.sum())}/{len(dots)}", flush=True)
     # ---- v4: the ORIGINAL standpoint votes too (union of pano masks)
     ocl = np.zeros(len(dots), bool)
@@ -2294,7 +2294,7 @@ for n in nodes:
                  "why": f"{n_msk} pano mask(s)",
                  "eye": [float(v) for v in eye0],
                  "claimed": int(ocl.sum())}
-        print(f"[carve] sp0   {n_msk} masks   claims "
+        print(f"[vote] sp0   {n_msk} masks   claims "
               f"{int(ocl.sum())}/{len(dots)}", flush=True)
 
     # ---- ELECTION (assemble + tally; re-runnable for tier 3) ----
@@ -2345,7 +2345,7 @@ for n in nodes:
     # original box ship.
     if prim_v2 is None:
         tiers.append("isolation")
-        print("[carve]  escalate: isolation retry (slice on black)",
+        print("[vote]  escalate: isolation retry (slice on black)",
               flush=True)
         iviews = [{"name": f"vote_{nid}_iso{k}",
                    "label": f"{nid} {name} iso{k}",
@@ -2403,7 +2403,7 @@ for n in nodes:
             np.array(_fin["hi"]) - np.array(_fin["lo"]), 1e-6))
         _vo = np.prod(np.maximum(hi0 - lo0, 1e-6))
         if _vf > OUTLIER_K * _vo:
-            outlier_flag = (f"carved box is {_vf/_vo:.0f}x the original "
+            outlier_flag = (f"voted box is {_vf/_vo:.0f}x the original "
                             f"volume (> {OUTLIER_K:.0f}x) — outlier "
                             "guard: original box ships, vote box "
                             "recorded as doubt")
@@ -2412,7 +2412,7 @@ for n in nodes:
     # elected dots' 10 cm-voxel footprint coverage of the vote box. Low
     # fill = the dots don't cover their own footprint — non-box shape
     # (L-sectional) or sparse giant. Recorded here; the doubt fires in
-    # record_carve_doubts.py; the split-cell judge rules.
+    # record_vote_doubts.py; the split-cell judge rules.
     plan_fill = None
     if prim_v2 is not None:
         _el = dots[votes >= need_votes]
@@ -2446,7 +2446,7 @@ for n in nodes:
         plan_cells = {"cell_m": 0.10, "nx": _nx, "nz": _nz,
                       "counts": [[int(cx), int(cz), int(c)]
                                  for (cx, cz), c in zip(_cells, _cnt)]}
-        print(f"[carve]  plan_fill {plan_fill} | v2 {plan_fill2}",
+        print(f"[vote]  plan_fill {plan_fill} | v2 {plan_fill2}",
               flush=True)
     ur = ("empty" if prim_v2 is None else
           " x ".join(f"{prim_v2['hi'][i]-prim_v2['lo'][i]:.2f}"
@@ -2455,7 +2455,7 @@ for n in nodes:
           "  pano " + " x ".join(
               f"{prim_pano['hi'][i]-prim_pano['lo'][i]:.2f}"
               for i in range(3)))
-    print(f"[carve]  VOTE ≥{need_votes} of {n_ok}: {ur} m{ua}"
+    print(f"[vote]  VOTE ≥{need_votes} of {n_ok}: {ur} m{ua}"
           + (f"  (culled {len(frags_v2)-1})" if len(frags_v2) > 1 else "")
           + (f"  ⚠ {rule_flag}" if rule_flag else "")
           + (f"  ⚠ {pano_flag}" if pano_flag else "")
@@ -2637,7 +2637,7 @@ for n in nodes:
             strip += (f"<figure><img src='pool_retake/slices/{src}' "
                       f"loading='lazy'><figcaption>{vn} "
                       f"\u00b7 {i.get('why', '?')}</figcaption></figure>")
-    save_row(nid, "carve", f"""
+    save_row(nid, "vote", f"""
 <section>
 <h2>{nid} \u2014 {name}</h2>
 <p>{' &nbsp;\u00b7&nbsp; '.join(stats)}</p>
@@ -2658,7 +2658,7 @@ PROCESSED_SET = set(PROCESSED_IDS)
 def _load_list(path, listkey):
     """Existing document's entry list, or [] with a spoken reason."""
     if not path.exists():
-        print(f"[carve] merge: {path.name} absent — writing THIS RUN'S "
+        print(f"[vote] merge: {path.name} absent — writing THIS RUN'S "
               "entries only", flush=True)
         return []
     try:
@@ -2668,7 +2668,7 @@ def _load_list(path, listkey):
             raise ValueError(f"no '{listkey}' list")
         return lst
     except Exception as e:                                   # noqa: BLE001
-        print(f"[carve] merge: {path.name} corrupt/unreadable ({e}) — "
+        print(f"[vote] merge: {path.name} corrupt/unreadable ({e}) — "
               "writing THIS RUN'S entries only", flush=True)
         return []
 
@@ -2682,7 +2682,7 @@ def merge_entries(path, listkey, run_entries):
         oid = o.get("id")
         # a PROCESSED id is this run's to say — its old entry goes even
         # when the run produced none for THIS document (an object that
-        # turned carve-exempt has no conemap entry any more)
+        # turned vote-exempt has no conemap entry any more)
         if oid is None or oid in PROCESSED_SET:
             continue
         merged[oid] = o
@@ -2690,7 +2690,7 @@ def merge_entries(path, listkey, run_entries):
     out = sorted(merged.values(),
                  key=lambda o: (ALL_RANK.get(o["id"], len(ALL_IDS)),
                                 o["id"]))
-    print(f"[carve] merge {path.name}: {len(fresh)} from this run + "
+    print(f"[vote] merge {path.name}: {len(fresh)} from this run + "
           f"{len(out) - len(fresh)} kept verbatim = {len(out)} entries",
           flush=True)
     return out
@@ -2728,7 +2728,7 @@ for _o in cm_objects:
 for _kc in kept_exempt:
     _kc["prov"] = dict(PROV)
 
-# ---- conemap.json (carved objects only) ------------------------------
+# ---- conemap.json (voted objects only) ------------------------------
 # written BEFORE the shell clip below, exactly as before: the cone-map
 # layer carries the unclipped evidence boxes.
 cm_path = rdir / "conemap.json"
@@ -2744,8 +2744,8 @@ for o in cm_objects:
     else:
         box = (o["boxes"].get("pano") or o["boxes"].get("vote2")
                or o["boxes"]["original"])
-        status = ("carved_pano" if o["boxes"].get("pano")
-                  else ("carved" if o["boxes"].get("vote2") else "kept"))
+        status = ("voted_pano" if o["boxes"].get("pano")
+                  else ("voted" if o["boxes"].get("vote2") else "kept"))
     # SHELL CLIP (step 6): only the box that SHIPS is clipped — the
     # original/vote2/pano boxes above stay recorded unclipped (evidence)
     ship = ship_box(box["lo"], box["hi"], o["rule"])
@@ -2785,7 +2785,7 @@ for _mo in man_objs:
     by_status[_s] = by_status.get(_s, 0) + 1
 man_path.write_text(json.dumps(
     {"scene": SCENE, "status": "UNTESTED-PREVIEW",
-     "source": "carve_slicevote.py — slice-vote carve (top-box prism / "
+     "source": "slicevote.py — slice-vote vote (top-box prism / "
                "wedge fallback; view-tunnel context cards; 6-voter "
                f"election, gate {a.gate}; per-node pano-mask filter; "
                "ceiling / wall-protrusion / floor-flush exempt = "
@@ -2805,7 +2805,7 @@ results = merge_entries(rep_path, "results",
                                             "boxes", "rule", "prov")}
                          for o in cm_objects] + kept_exempt)
 rep_path.write_text(json.dumps(
-    {"scene": SCENE, "stage": "carve_slicevote",
+    {"scene": SCENE, "stage": "slicevote",
      "status": "UNTESTED-PREVIEW", "gate": a.gate,
      **prov_header(results),
      "params": dict(PARAMS, FOV_GOOD=FOV_GOOD, OFF_AXIS=OFF_AXIS),
@@ -2817,7 +2817,7 @@ rep_path.write_text(json.dumps(
 # node order — this run's were just rewritten, everyone else's are the
 # ones on disk (whose pictures the scoped wipe deliberately spared).
 exempt_frag = "".join(read_row(_i, "exempt") for _i in ALL_IDS)
-carve_frag = "".join(read_row(_i, "carve") for _i in ALL_IDS)
+vote_frag = "".join(read_row(_i, "vote") for _i in ALL_IDS)
 exempt_list = [e for e in results
                if isinstance(e.get("rule"), dict) and "kept" in e["rule"]]
 _mixed, _summ = prov_stats(results)
@@ -2835,7 +2835,7 @@ prov_banner = ("" if not _mixed else
                + f"); {len(_summ.get(SOURCE_SHA, []))} came from this "
                f"{RUN_KIND} run {RUN_ID} (source_sha {SOURCE_SHA}, "
                f"params_hash {PARAMS_HASH}). Nothing is hidden &mdash; "
-               "re-run the full carve to make this page canon.</p>")
+               "re-run the full vote to make this page canon.</p>")
 
 html = f"""<!doctype html><meta charset='utf-8'>
 <title>v3 slice+vote \u2014 {SCENE}</title>
@@ -2864,13 +2864,13 @@ footprint) \u2192 detector+SAM per render \u2192 6-voter election. Boxes: gray
 dashed = original, red = all cardinals agree, orange = the vote gate,
 cyan = pano-filtered. Ceiling-mounted, wall-protruding (touches a wall
 plane and protrudes ≤ 0.20 m into the room) and floor-flush objects
-are CARVE-EXEMPT (geometric tests) and keep their resolved box; a
-carved box growing past the outlier guard (8x original volume) also
+are VOTE-EXEMPT (geometric tests) and keep their resolved box; a
+voted box growing past the outlier guard (8x original volume) also
 falls back to the original (kept_outlier), with the vote box recorded
 as doubt. Every SHIPPING box is finally clipped to the measured shell
 interior (strictly external volume booleaned out); the boxes drawn
 here are the unclipped evidence.</p>
-{("<p><b>carve-exempt (resolved box kept):</b> "
+{("<p><b>vote-exempt (resolved box kept):</b> "
   + ", ".join(f"{e['id']} {e['name']} [{e['status']}]"
               for e in exempt_list) + "</p>")
  if exempt_list else ""}
@@ -2883,11 +2883,11 @@ here are the unclipped evidence.</p>
   f"than {PERP_MAX_RATIO:.0f}x is recorded and REJECTED, original ships. "
   "Their rows are below.</p>" + exempt_frag)
  if exempt_frag else ""}
-{carve_frag}
+{vote_frag}
 """
 (sd / "cone_map.html").write_text(html, encoding="utf-8")
 _hdr = prov_header(results)
-print(f"[carve] statuses {by_status}; run_kind={RUN_KIND} "
+print(f"[vote] statuses {by_status}; run_kind={RUN_KIND} "
       f"mixed_provenance={_hdr['mixed_provenance']} "
       f"canon_eligible={_hdr['canon_eligible']}; wrote cone_map.html "
       f"+ conemap.json + scene_manifest_slicevote_preview.json "

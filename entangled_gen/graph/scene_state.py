@@ -28,7 +28,7 @@ a mismatch means a stage wrote a layer and did not stamp it, which is a
 bug in that stage.
 
 A layer is only eligible to be current when it is WHOLE — it has nodes.
-A half-layer (the retired `carve` node-sidecar, `carved_edges` with no
+A half-layer (the retired `vote` node-sidecar, `voted_edges` with no
 nodes) can never become the state of the scene.
 """
 
@@ -39,7 +39,7 @@ CHAIN = (
     ("resolved", "identity settled — duplicates merged, names fixed"),
     ("voted",    "the vote-box stage: boxes elected"),
     ("settled",  "J8 box rulings, J8s splits, J1 merges"),
-    ("carved",   "J9 same-product annotations"),
+    ("grouped",  "J9: instances grouped into products"),
 )
 NAMES = tuple(n for n, _ in CHAIN)
 DESCRIPTIONS = dict(CHAIN)

@@ -1,7 +1,7 @@
 """MULTIPLICITY JUDGE (J8) — one box or several? Which box ships?
-(PLAN_CARVE_DOWNSTREAM Phase A; DESIGN v2.1 ADOPTED 2026-08-07 R-S2-35.)
+(PLAN_VOTEBOX_DOWNSTREAM Phase A; DESIGN v2.1 ADOPTED 2026-08-07 R-S2-35.)
 
-CONTRACT: GETS one docket case = a resolved node + the AUTO carve doubts
+CONTRACT: GETS one docket case = a resolved node + the AUTO vote doubts
 that admitted it (large_empty_notch / pano_vs_cluster / culled_clusters /
 low_plan_fill / rebox_rejected_smaller / rebox_truncated — Rule #1: no
 user-routing channel, the pipeline raises its own questions) plus the
@@ -21,17 +21,17 @@ current shipping geometry and raises it as an open question.
 
 THE SHIP CHOICE IS PER CASE (v2.2, user ruling 2026-08-08 ~04:30 — "allow
 it to ship the boxes it is able to evaluate"). The old fixed enum
-(ship_pano | ship_vote | either) was a CARVED node's vocabulary: it named
-two boxes a carve-EXEMPT node does not have, so obj_018 — which had
+(ship_pano | ship_vote | either) was a VOTED node's vocabulary: it named
+two boxes a vote-EXEMPT node does not have, so obj_018 — which had
 correctly seen that its box over-reaches into ceiling architecture and
 that the REJECTED magenta candidate is the actual fixture — had no legal
 way to say "ship the magenta one" and was forced to answer UNCLEAR. So
 every case now carries its OWN CANDIDATE BOX LIST, built from the boxes
 that actually exist for that node, each with a stable key, its dimensions
 and its provenance sentence:
-    carved node  "vote" (boxes.vote2, the elected cluster)
+    voted node  "vote" (boxes.vote2, the elected cluster)
                  "pano" (boxes.pano, the founding-mask share)
-    exempt node  "current" (the shipping box = the ORIGINAL pre-carve box
+    exempt node  "current" (the shipping box = the ORIGINAL pre-vote box
                  after the shell clip — it never voted)
                  "rebox_candidate" (the face-on re-box the guard REJECTED;
                  shipping it ADOPTS the smaller measured box)
@@ -51,9 +51,9 @@ splitting a real single object, blessing one box around two real
 instances, or picking the occlusion-shaved box over the true extent.
 
 FACTS FROM THE GRAPH'S OWN EDGES (v2.1, the obj_063 rule): every
-relational fact in the docket line is READ from graph["carved_edges"]
-— the 4g2 edges re-derived on the CARVED boxes by the Phase-B2
-loop-back (graph/rederive_carved_edges.py), carrying J0 triage and J1
+relational fact in the docket line is READ from graph["voted_edges"]
+— the 4g2 edges re-derived on the VOTED boxes by the Phase-B2
+loop-back (graph/rederive_voted_edges.py), carrying J0 triage and J1
 SAME_CANDIDATE verdicts. J8 computes NO private overlap lists: the v2
 private top-6 list dropped obj_063 (the other sofa, ~85% of its volume
 inside obj_011's box) behind six pillows and the judge ruled the sofa
@@ -61,17 +61,17 @@ case without the decisive fact. Same-class neighbours are NEVER
 truncated; unrelated-class facts are capped at FACT_CAP by relevance.
 
 STIMULI v2.1 (the anti-drift design, one-look rule): the object's OWN
-carve renders — the four view-tunnel cards (+ eye-height / isolation
-cards when the ladder escalated) and the plan render the carve detected
-on — with the carve's 3D boxes PROJECTED onto them:
+vote renders — the four view-tunnel cards (+ eye-height / isolation
+cards when the ladder escalated) and the plan render the vote detected
+on — with the vote's 3D boxes PROJECTED onto them:
     ORANGE  = boxes.vote2 (the gate-3 vote-cluster box)
     CYAN    = boxes.pano  (this node's pano-mask-filtered box)
-    GREEN   = a SAME-CLASS neighbour node's carved box, labelled with its
+    GREEN   = a SAME-CLASS neighbour node's voted box, labelled with its
               id (v2.1) — the is-the-rest-another-object evidence made
               visible, not just numeric. Boxes come VERBATIM from
               scene_manifest_slicevote_preview.json.
     RED DASHED (plan view only) = the large_empty_notch rectangle
-    MAGENTA = the face-on re-box candidate the carve REJECTED (exempt
+    MAGENTA = the face-on re-box candidate the vote REJECTED (exempt
               cases only, see below)
 
 THE BOX-CONTENT PANEL (v2.2, exempt cases only — the evidence gap traced
@@ -88,13 +88,13 @@ hash (camera + res + region + the source ply's identity) matches, and is
 deleted and regenerated otherwise. A failed render is a BUILD NOTE and a
 missing panel — never a fabricated one.
 
-CARVE-EXEMPT CASES (2026-08-08, the rebox_rejected_smaller and
-rebox_truncated doubts — a re-box the carve threw away for being far too
+VOTE-EXEMPT CASES (2026-08-08, the rebox_rejected_smaller and
+rebox_truncated doubts — a re-box the vote threw away for being far too
 small, and a re-box it accepted after the frame clipped most of the
 sides it was meant to measure): a kept_wall / kept_ceiling node skipped
-the carve, so it has NO cone-map entry, NO cards and NO plan detection —
+the vote, so it has NO cone-map entry, NO cards and NO plan detection —
 the stimulus above cannot be built for it. Its one real observation is
-the carve's FACE-ON (perp) render, whose camera the carve wrote to its
+the vote's FACE-ON (perp) render, whose camera the vote wrote to its
 own params sidecar
 (pool_retake/slices/vote_<id>_perp.params.json: eye/aim/fov/res as
 rendered). That render is the case's single panel, annotated with the
@@ -104,12 +104,12 @@ rejection kind only — a truncated re-box was ACCEPTED, so it has no
 rejected candidate and no magenta wireframe; its opening says so). The
 camera is READ from the sidecar, never recomputed; a missing sidecar or
 png means NO panel and a build note, never a guessed camera.
-The projection uses carve_cams.py — the SAME camera module the carve's
+The projection uses vote_cams.py — the SAME camera module the vote's
 renderer used — so an overlay cannot drift from the render it annotates.
 Card cameras come from each render's own votetgt sidecar (fallback: the
 conemap views record); the plan camera is rebuilt with
-carve_cams.top_cam_for and is only drawn when its eye VALIDATES against
-the eye the carve recorded (within EYE_TOL). No guessed projections.
+vote_cams.top_cam_for and is only drawn when its eye VALIDATES against
+the eye the vote recorded (within EYE_TOL). No guessed projections.
 
 DEPENDENCY-ORDERED JUDGING (v2.4, user ruling 2026-08-08 — "judge INNER
 BEFORE OUTER"): a case's verdict is placed against its NEIGHBOURS' boxes,
@@ -120,10 +120,10 @@ obj_063's edge; the two nodes ended up overlapping by 0.30 m. Every case
 was built up front and judged in parallel, so no case could ever see
 another's result. Now:
   * ONE SETTLED MAP is the geometry every case reads. It starts as the
-    carve's SHIPPING boxes (scene_manifest_slicevote_preview.json,
+    vote's SHIPPING boxes (scene_manifest_slicevote_preview.json,
     verbatim) and each ONE_BOX verdict REPLACES its own node's entry with
-    the box it NAMED, resolved from the CARVE's own records exactly as
-    materialize resolves it (vote -> the carve report's boxes.vote2, pano
+    the box it NAMED, resolved from the VOTE's own records exactly as
+    materialize resolves it (vote -> the vote report's boxes.vote2, pano
     -> boxes.pano, rebox_candidate -> the rejected face-on re-box on the
     node's own doubt). SPLIT / UNCLEAR / NO_GOOD_BOX leave the entry
     untouched. It ships in the sidecar as `settled_boxes`.
@@ -174,7 +174,7 @@ GRAPH_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(GRAPH_DIR))   # sibling stage modules (split_cuts)
 import paths  # noqa: E402
-from carve_cams import (FOV_GOOD, RES, WALL_PAD,  # noqa: E402
+from vote_cams import (FOV_GOOD, RES, WALL_PAD,  # noqa: E402
                         make_cam, top_cam_for)
 
 MODEL = "sonnet"
@@ -198,7 +198,7 @@ DEP_FRAC = 0.5     # v2.4 — two docket boxes whose overlap is at least this
 #                    share of the SMALLER box's volume are a containment-ish
 #                    pair: the SMALLER one is judged FIRST (inner before
 #                    outer), so the bigger one sees a settled box.
-SETTLED_BASE = ("carve shipping box (scene_manifest_slicevote_preview.json)"
+SETTLED_BASE = ("vote shipping box (scene_manifest_slicevote_preview.json)"
                 ", verbatim")   # the settled map's starting provenance
 
 # ---- the box-content panel (exempt cases; machinery from split_cuts.py) --
@@ -211,7 +211,7 @@ BOXC_OPEN = 0.30     # m — and opened this much along the plane NORMAL, into
 #                      sliced off by the box that is under question
 BOXC_STANDOFF = 0.50  # m — minimum clearance between the camera and the
 #                       room-side face of the region it is looking at
-BOXC_AXIS_TOL = 1e-3  # m — the carve's face-on camera must be axis-aligned
+BOXC_AXIS_TOL = 1e-3  # m — the vote's face-on camera must be axis-aligned
 #                       to this, or the normal is not recoverable and no
 #                       panel is built (a camera is never guessed)
 
@@ -219,11 +219,11 @@ BOXC_AXIS_TOL = 1e-3  # m — the carve's face-on camera must be axis-aligned
 COL_VOTE = (255, 153, 0)     # orange — boxes.vote2 (matches the cone map)
 COL_PANO = (0, 188, 212)     # cyan   — boxes.pano
 COL_NOTCH = (255, 40, 40)    # red dashed — the large_empty_notch rectangle
-COL_NEIGH = (0, 230, 90)     # green  — a same-class neighbour's carved box
+COL_NEIGH = (0, 230, 90)     # green  — a same-class neighbour's voted box
 COL_REJECT = (255, 0, 200)   # magenta — the REJECTED face-on re-box candidate
 NEAR_Z = 0.05                # clip box edges to this camera-space depth
 EYE_TOL = 1e-3               # m — plan-camera reconstruction must match the
-#                              eye the carve recorded, or no overlay ships
+#                              eye the vote recorded, or no overlay ships
 
 
 # ---- claude bridge (judge-chain pattern) ---------------------------------
@@ -411,12 +411,12 @@ def same_box(a, b):
 
 
 def named_box(nid, key, report, doubts):
-    """The box a J8 ship key NAMES, resolved from the CARVE's own records —
-    the same lookup materialize_carve.named_box does, so the map J8 judges
+    """The box a J8 ship key NAMES, resolved from the VOTE's own records —
+    the same lookup materialize_layers.named_box does, so the map J8 judges
     against and the geometry materialize will actually apply cannot drift:
-        "vote"            -> the carve report's boxes.vote2
-        "pano"            -> the carve report's boxes.pano
-        "rebox_candidate" -> the rejected face-on re-box the carve recorded
+        "vote"            -> the vote report's boxes.vote2
+        "pano"            -> the vote report's boxes.pano
+        "rebox_candidate" -> the rejected face-on re-box the vote recorded
                              on this node's rebox_rejected_smaller doubt
         "current"/"either"-> NO-OPs: they name the box that already ships
     Returns (box|None, source). None means there is nothing to apply — the
@@ -430,25 +430,25 @@ def named_box(nid, key, report, doubts):
         for d in doubts.get(nid) or []:
             if d.get("kind") == "rebox_rejected_smaller" \
                     and d.get("proposed_box"):
-                return d["proposed_box"], ("carve doubt rebox_rejected_"
+                return d["proposed_box"], ("vote doubt rebox_rejected_"
                                            "smaller.proposed_box")
-        return None, "carve doubts (no rebox_rejected_smaller.proposed_box)"
+        return None, "vote doubts (no rebox_rejected_smaller.proposed_box)"
     return None, ""          # "current" / "either" — the shipping box stands
 
 
-def init_settled(carved_boxes):
-    """The settled map at the start of a run: the carve's SHIPPING boxes,
+def init_settled(voted_boxes):
+    """The settled map at the start of a run: the vote's SHIPPING boxes,
     verbatim, for EVERY id in the preview manifest (not just the docket —
     a case's neighbours and a later stage's cover boxes are often
     non-docket nodes)."""
     return {i: {"lo": list(lo), "hi": list(hi), "source": SETTLED_BASE}
-            for i, (lo, hi) in carved_boxes.items()}
+            for i, (lo, hi) in voted_boxes.items()}
 
 
 def settle_verdict(settled, nid, v, report, doubts):
     """Fold ONE case's verdict into the settled map and return the record
     of what happened. ONLY a ONE_BOX verdict moves a box — it NAMES one,
-    and the named box is resolved from the carve's own records (never from
+    and the named box is resolved from the vote's own records (never from
     the J8 sidecar). SPLIT / UNCLEAR / NO_GOOD_BOX leave the entry exactly
     as it was. Each verdict touches only its OWN node's entry, so the
     order verdicts are applied in cannot change the final map."""
@@ -593,7 +593,7 @@ def post_judge_conflicts(ids, before, after, verdicts):
     return out
 
 
-# ---- relational facts: READ from graph["carved_edges"] -------------------
+# ---- relational facts: READ from graph["voted_edges"] -------------------
 # J8 computes NO private overlap lists (the obj_063 rule, v2.1). Everything
 # below only FORMATS the loop-back's own edges.
 
@@ -658,7 +658,7 @@ def _ev_bits(ev, keys):
 
 def settled_note(o, settled):
     """The SETTLED-BOX addendum for a fact line (v2.4). An edge's evidence
-    numbers were measured by the loop-back on the CARVED boxes; if an
+    numbers were measured by the loop-back on the VOTED boxes; if an
     EARLIER case in this same run has since moved `o`'s box, the judge must
     be told the number it is reading is about the old box and what the box
     is NOW. Returns "" when the box has not moved — so an unaffected case's
@@ -671,11 +671,11 @@ def settled_note(o, settled):
             f"in this same run ({e['source']}). It is NOW x {lo[0]:.3f}.."
             f"{hi[0]:.3f}, y {lo[1]:.3f}..{hi[1]:.3f}, z {lo[2]:.3f}.."
             f"{hi[2]:.3f} — that is the box drawn on the panels. The numbers "
-            "on this edge were measured on its PRE-verdict carve box.")
+            "on this edge were measured on its PRE-verdict vote box.")
 
 
 def edge_fact_line(nid, e, names, neighbor_ids, settled=None):
-    """One fact line for one edge of graph['carved_edges'] that touches
+    """One fact line for one edge of graph['voted_edges'] that touches
     this node — the relation phrased from THIS node's side, with the
     edge's own evidence numbers, plus the J1 verdict when the edge is a
     judged SAME_CANDIDATE, plus (v2.4) the SETTLED-BOX addendum when an
@@ -757,7 +757,7 @@ def fmt_box(b):
 # ---- the per-case CANDIDATE BOX LIST (v2.2) ------------------------------
 # The ONE_BOX answer is a choice AMONG THE BOXES THAT EXIST FOR THIS NODE.
 # Nothing is invented here: every candidate is a box already on record
-# (the carve report via the cone-map stand-in, or the carve's own doubt),
+# (the vote report via the cone-map stand-in, or the vote's own doubt),
 # copied verbatim. A node with one candidate is offered one; a node with
 # none is not asked the question at all.
 
@@ -778,10 +778,10 @@ def build_candidates(c):
             out.append({
                 "key": "current", "box": bx["shipping"], "colour": "ORANGE",
                 "what": "this node's CURRENT box — the one that ships "
-                        "today. It is the ORIGINAL pre-carve detection box "
+                        "today. It is the ORIGINAL pre-vote detection box "
                         "after the room-shell clip, NOT a measurement: this "
                         "node never voted, because flat wall/ceiling "
-                        "objects skip the slice-and-vote carve. Shipping "
+                        "objects skip the slice-and-vote vote. Shipping "
                         "it changes nothing."})
         if bx.get("rejected"):
             d = next((d for d in c["doubts"]
@@ -789,7 +789,7 @@ def build_candidates(c):
             out.append({
                 "key": "rebox_candidate", "box": bx["rejected"],
                 "colour": "MAGENTA",
-                "what": "the FACE-ON RE-BOX the carve measured in the "
+                "what": "the FACE-ON RE-BOX the vote measured in the "
                         f"panel and then THREW AWAY (detection score "
                         f"{float(d.get('score', 0.0)):.2f}, "
                         f"{d.get('claimed', '?')} claimed dots; it spans "
@@ -804,7 +804,7 @@ def build_candidates(c):
             out.append({
                 "key": "vote", "box": bx["vote2"], "colour": "ORANGE",
                 "what": "WHERE IT CAME FROM: the ELECTED CLUSTER box "
-                        "(boxes.vote2) — the points most carve cameras "
+                        "(boxes.vote2) — the points most vote cameras "
                         "agreed on. (HINT, NOT THE TEST: of the two, this "
                         "is usually the fuller box, because the cyan cut "
                         "can be occlusion-shaved down to a partial view. "
@@ -840,7 +840,7 @@ def candidate_block(cands, indent="    "):
     return "\n".join(lines)
 
 
-# ---- box projection (cameras from carve_cams — never re-derived here) ----
+# ---- box projection (cameras from vote_cams — never re-derived here) ----
 
 def box_corners(lo, hi):
     return np.array([[hi[0] if i & 4 else lo[0],
@@ -950,15 +950,15 @@ def panel_caption(view):
     if view.startswith("iso"):
         return f"{view} — isolation retry, slice alone on black (tier 3)"
     if view in ("top", "ctop"):
-        return ("plan view — the render the carve ran its top detection on"
+        return ("plan view — the render the vote ran its top detection on"
                 if view == "top" else
                 "plan view (clip-top) — camera above the clipped ceiling")
     return view
 
 
 def perp_params(c, sd, notes):
-    """(params dict, path) of the carve's FACE-ON render sidecar for a
-    carve-exempt node — carve_slicevote.render_gate wrote eye/aim/fov/res
+    """(params dict, path) of the vote's FACE-ON render sidecar for a
+    vote-exempt node — slicevote.render_gate wrote eye/aim/fov/res
     there. (None, path) plus a build note when it is missing or unusable:
     this pipeline never invents a camera for a picture it cannot place."""
     nid = c["id"]
@@ -979,7 +979,7 @@ def perp_params(c, sd, notes):
 
 
 def perp_panels(c, sd, sheets_dir, notes):
-    """The stimuli for a CARVE-EXEMPT node: (1) its one FACE-ON (perp)
+    """The stimuli for a VOTE-EXEMPT node: (1) its one FACE-ON (perp)
     render of the SCENE, camera READ from that render's own params
     sidecar, and (2) the BOX-CONTENT render — only what is inside its own
     box. Either may be missing; a missing one is a build note, never a
@@ -988,7 +988,7 @@ def perp_panels(c, sd, sheets_dir, notes):
     png = sd / "pool_retake" / "slices" / f"vote_{nid}_perp.png"
     p, side = perp_params(c, sd, notes)
     if not png.exists():
-        notes.append(f"{nid}: carve-exempt, and no face-on render "
+        notes.append(f"{nid}: vote-exempt, and no face-on render "
                      f"({png.name}) on disk — panel SKIPPED")
         panels = []
     elif p is None:
@@ -1001,7 +1001,7 @@ def perp_panels(c, sd, sheets_dir, notes):
         plane = next((d.get("plane") for d in c["doubts"]
                       if d["kind"] in ("rebox_rejected_smaller",
                                        "rebox_truncated")), None)
-        cap = ("perp — the FACE-ON view the carve re-boxed this exempt node "
+        cap = ("perp — the FACE-ON view the vote re-boxed this exempt node "
                "from" + (f" (plane {plane})" if plane else ""))
         panels = [annotate(png, sheets_dir, f"{nid}_perp.png", cam,
                            c["cm"]["boxes"], None, cap,
@@ -1044,7 +1044,7 @@ def _splat(ply):
 def boxcontent_region(box, axis, sign):
     """The node's box grown BOXC_MARGIN on its two IN-PLANE axes and
     opened BOXC_OPEN along the plane normal INTO the room (the +sign
-    side, where the carve's own face-on camera stands)."""
+    side, where the vote's own face-on camera stands)."""
     lo = [float(v) for v in box["lo"]]
     hi = [float(v) for v in box["hi"]]
     for i in range(3):
@@ -1137,7 +1137,7 @@ def boxcontent_render(scene, region, tgt, out_dir, notes, nid):
 def boxcontent_panels(c, sd, sheets_dir, notes, p=None):
     """The exempt case's box-content panel, or [] plus a build note.
 
-    The plane NORMAL is READ from the carve's own face-on camera (eye
+    The plane NORMAL is READ from the vote's own face-on camera (eye
     minus aim): that camera was built perpendicular to the plane, so its
     axis IS the normal and its side IS the room side. Nothing is
     estimated — if that camera is not axis-aligned to BOXC_AXIS_TOL, or
@@ -1152,14 +1152,14 @@ def boxcontent_panels(c, sd, sheets_dir, notes, p=None):
         p, _ = perp_params(c, sd, notes)
     if p is None:
         notes.append(f"{nid}: box-content panel SKIPPED — the plane normal "
-                     "is read from the carve's face-on camera and that "
+                     "is read from the vote's face-on camera and that "
                      "camera is not on record")
         return []
     d = np.array(p["eye"], float) - np.array(p["aim"], float)
     axis = int(np.argmax(np.abs(d)))
     off = float(np.linalg.norm(np.delete(d, axis)))
     if off > BOXC_AXIS_TOL or abs(d[axis]) < 1e-6:
-        notes.append(f"{nid}: the carve's face-on camera is not axis-aligned "
+        notes.append(f"{nid}: the vote's face-on camera is not axis-aligned "
                      f"(off-axis {off:.4f} m) — the plane normal is not "
                      "recoverable, box-content panel SKIPPED")
         return []
@@ -1226,7 +1226,7 @@ def build_panels(c, sd, sheets_dir, notes):
                                boxes, None, panel_caption(view), prov,
                                c["neighbors"]))
 
-    # --- the plan render the carve detected on ---
+    # --- the plan render the vote detected on ---
     tv, tcam, prov = plan_cam(c, sd, notes)
     if tv is not None:
         png = rdir / f"{nid}_{tv}.png"
@@ -1243,8 +1243,8 @@ def build_panels(c, sd, sheets_dir, notes):
 
 
 def plan_cam(c, sd, notes):
-    """Rebuild the plan camera with carve_cams.top_cam_for and VALIDATE
-    it against the eye the carve recorded for this node. Returns
+    """Rebuild the plan camera with vote_cams.top_cam_for and VALIDATE
+    it against the eye the vote recorded for this node. Returns
     (view_name, cam, provenance) or (None, None, why). The cull
     predicates are stand-ins: a candidate's PARAMETERS never depend on
     the cull, only its presence in the list does — and we then pick the
@@ -1256,7 +1256,7 @@ def plan_cam(c, sd, notes):
     # yields the in-room 'top' standpoint, pass=False forces the
     # clip-top 'ctop' fallback. Parameters are identical either way —
     # only which candidates EXIST depends on the cull, and the record
-    # check below decides which one the carve actually used.
+    # check below decides which one the vote actually used.
     cands = []
     for allow in (True, False):
         got, _c0 = top_cam_for(c["geo"], np.array(c["eye0"], float),
@@ -1266,7 +1266,7 @@ def plan_cam(c, sd, notes):
             if cand[0] not in [x[0] for x in cands]:
                 cands.append(cand)
     rec = {v["view"]: v["eye"] for v in c["cm"]["views"]}
-    # eyes the carve itself recorded for a plan standpoint: the top
+    # eyes the vote itself recorded for a plan standpoint: the top
     # voter's eye, and the "slice" row (= tcands[0]'s eye by construction)
     known = [rec[k] for k in ("top", "slice") if k in rec]
     tgt = {}
@@ -1286,7 +1286,7 @@ def plan_cam(c, sd, notes):
             if float(np.linalg.norm(eye - np.array(k, float))) <= EYE_TOL:
                 ok = True
         if ok:
-            src.append("eye matches the carve's recorded plan standpoint")
+            src.append("eye matches the vote's recorded plan standpoint")
         t = tgt.get(f"{nid}_{name}")
         if t is not None:
             de = float(np.linalg.norm(eye - np.array(t["eye"], float)))
@@ -1302,7 +1302,7 @@ def plan_cam(c, sd, notes):
         if not ok:
             continue
         return name, make_cam(eye, c["geo"]["center"], fov, RES), \
-            "carve_cams.top_cam_for, validated (" + "; ".join(src) + ")"
+            "vote_cams.top_cam_for, validated (" + "; ".join(src) + ")"
     notes.append(f"{nid}: no plan render whose camera validates — plan "
                  "panel omitted")
     return None, None, "no validated plan camera"
@@ -1312,7 +1312,7 @@ def annotate(src_png, sheets_dir, out_name, cam, boxes, notch, caption,
              prov, neighbors=()):
     """Copy a render into the sheet dir with the boxes drawn on it.
 
-    `neighbors` = the SAME-CLASS neighbour nodes' CARVED boxes (verbatim
+    `neighbors` = the SAME-CLASS neighbour nodes' VOTED boxes (verbatim
     from scene_manifest_slicevote_preview.json), drawn GREEN and labelled
     with the neighbour id near a visible corner (v2.1). Only same-class
     neighbours are ever drawn — the caller does that filtering."""
@@ -1332,7 +1332,7 @@ def annotate(src_png, sheets_dir, out_name, cam, boxes, notch, caption,
                           boxes["vote2"]["hi"], COL_VOTE, 3)
             overlay.append("orange vote2")
         elif boxes.get("shipping"):
-            # carve-EXEMPT node: there is no elected vote box, so ORANGE
+            # vote-EXEMPT node: there is no elected vote box, so ORANGE
             # is the box that actually ships (the one under question)
             draw_box_wire(dr, cam, boxes["shipping"]["lo"],
                           boxes["shipping"]["hi"], COL_VOTE, 3)
@@ -1390,9 +1390,9 @@ OPENINGS = {
         "several objects with empty floor between them?",
     "rebox_rejected_smaller":
         "THE DOUBT THAT OPENED THIS CASE — THE FACE-ON VIEW FOUND SOMETHING "
-        "MUCH SMALLER THAN THIS BOX. This node is CARVE-EXEMPT ({status}): "
+        "MUCH SMALLER THAN THIS BOX. This node is VOTE-EXEMPT ({status}): "
         "it was never sliced or voted on, so its box is still the one the "
-        "original detection produced. To check that box, the carve rendered "
+        "original detection produced. To check that box, the vote rendered "
         "ONE view looking straight at plane {plane} — the panel below — and "
         "detected the object in it (score {score:.2f}, {claimed} claimed "
         "dots). What it found spans only {shrink} of this box's two in-plane "
@@ -1409,12 +1409,12 @@ OPENINGS = {
     "rebox_truncated":
         "THE DOUBT THAT OPENED THIS CASE — THE FACE-ON VIEW COULD NOT SEE "
         "THE WHOLE OBJECT, SO MOST OF THIS BOX IS STILL A GUESS. This node "
-        "is CARVE-EXEMPT ({status}): it was never sliced or voted on, so "
+        "is VOTE-EXEMPT ({status}): it was never sliced or voted on, so "
         "the only measurement it has ever had is ONE view looking straight "
         "at plane {plane} — the panel below — in which the object was "
         "detected (score {score:.2f}, {claimed} claimed dots). But that "
         "detection's mask ran OFF THE EDGE OF THE FRAME on {edges}. Those "
-        "sides therefore were NOT measured: the carve left them on the "
+        "sides therefore were NOT measured: the vote left them on the "
         "extents the ORIGINAL detection had already assumed. Only "
         "{n_measured} of the {n_sides} in-plane sides of the ORANGE box — "
         "the box that ships — rests on evidence from this view; the rest "
@@ -1436,22 +1436,22 @@ TRIGGER_ORDER = ("rebox_rejected_smaller", "rebox_truncated",
 
 # ---- THE LEGEND IS PER NODE TYPE (v2.2 rule) ----------------------------
 # Never describe a colour that will not appear on THIS case's panels. The
-# carved legend is the vote/pano vocabulary; an exempt node has neither a
+# voted legend is the vote/pano vocabulary; an exempt node has neither a
 # vote nor a pano box (it never voted), so its legend must not mention
 # them — that vocabulary is exactly what pushed obj_018 into UNCLEAR.
 
-NEIGHBOUR_LEGEND = """  GREEN wireframe  = a SAME-CLASS NEIGHBOUR node's own carved box,
+NEIGHBOUR_LEGEND = """  GREEN wireframe  = a SAME-CLASS NEIGHBOUR node's own voted box,
                      labelled with that neighbour's id. It is a DIFFERENT
                      node of the same class that the graph says touches
                      or overlaps this one — if the extent you are ruling
                      on already belongs to a green box, say so."""
 
-CARVED_LEGEND = """Every panel is one of THIS object's own carve renders with 3D boxes
+VOTED_LEGEND = """Every panel is one of THIS object's own vote renders with 3D boxes
 projected on it by the same camera that made the render:
   ORANGE wireframe = the VOTE box (boxes.vote2) — the elected cluster.
   CYAN wireframe   = the PANO box (boxes.pano) — the part of the elected
                      cluster this node's own founding masks vouch for.
-                     (Absent when the carve produced no pano box.)
+                     (Absent when the vote produced no pano box.)
 {neighbour}
   RED DASHED (plan panel only) = the large empty notch rectangle.
 The cards are "view tunnels": the full scene is rendered minus the
@@ -1461,10 +1461,10 @@ what sits INSIDE the wireframes is what you are ruling on."""
 EXEMPT_LEGEND = """The boxes are projected onto each panel by the same camera that made
 that render:
   ORANGE wireframe = this node's CURRENT box — the box that ships today.
-                     It is this node's ORIGINAL pre-carve detection box
+                     It is this node's ORIGINAL pre-vote detection box
                      after the room-shell clip. THIS NODE NEVER VOTED:
                      flat wall- and ceiling-mounted objects skip the
-                     slice-and-vote carve entirely, so there is no elected
+                     slice-and-vote vote entirely, so there is no elected
                      cluster here and no founding-mask share — the orange
                      box is a prior, not a measurement.{magenta}
 {neighbour}
@@ -1476,18 +1476,18 @@ NOTHING but the gaussians inside this node's own box, so it answers "how
 many things are in this box" without the room around them arguing."""
 
 EXEMPT_MAGENTA = """
-  MAGENTA wireframe = the FACE-ON RE-BOX CANDIDATE the carve's guard
+  MAGENTA wireframe = the FACE-ON RE-BOX CANDIDATE the vote's guard
                      REJECTED for being far smaller than the current box
                      ({size}). It is the ONLY measurement this node has
                      ever had."""
 
 
 def legend_for(c):
-    """The legend block for THIS case — carved or exempt, and only the
+    """The legend block for THIS case — voted or exempt, and only the
     colours its own panels actually carry."""
     neigh = NEIGHBOUR_LEGEND if c["neighbors"] else ""
     if not c.get("exempt"):
-        return CARVED_LEGEND.format(
+        return VOTED_LEGEND.format(
             neighbour=neigh or
             "  (No same-class neighbour touches this node, so no green "
             "wireframe appears.)")
@@ -1566,7 +1566,7 @@ ONE_BOX_HEAD = """OUTCOME — REPRESENTATION FIRST. Choose exactly ONE:
   reason to reject a box. If BOTH candidates are reasonable, ship the one
   that is MORE COMPLETE without being loose.
   The keys below are THE BOXES THAT EXIST FOR THIS NODE — the complete
-  list for this case, built from what the carve actually recorded. Each
+  list for this case, built from what the vote actually recorded. Each
   says WHERE ITS BOX CAME FROM; any bracketed HINT is only how that box
   usually goes wrong and is NOT the test. The test is the two criteria
   above, applied to what you SEE in the panels. Answer with exactly one
@@ -1577,7 +1577,7 @@ ONE_BOX_HEAD = """OUTCOME — REPRESENTATION FIRST. Choose exactly ONE:
 ONE_BOX_HEAD_NONE = """OUTCOME — REPRESENTATION FIRST. Choose exactly ONE:
 
 - ONE_BOX — ONE box represents this node. This case has NO alternative
-  box on record (the carve recorded only the box that already ships), so
+  box on record (the vote recorded only the box that already ships), so
   omit "ship"."""
 
 
@@ -1593,12 +1593,12 @@ def taxonomy_for(cands):
 
 
 PROMPT = """You are the MULTIPLICITY JUDGE (J8) in a 3D scene-understanding
-pipeline. A carve stage repaired one detected object's 3D box by slicing
+pipeline. A vote stage repaired one detected object's 3D box by slicing
 the splat, re-rendering it from several sides, detecting in each render
-and electing the points most cameras agree on. The carve recorded a DOUBT
+and electing the points most cameras agree on. The vote recorded a DOUBT
 about this node and cannot settle it from geometry. You settle it.
 
-CASE {nid} — "{name}"  (carve status {status}; escalation {tiers})
+CASE {nid} — "{name}"  (vote status {status}; escalation {tiers})
 
 {opening}
 
@@ -1682,10 +1682,10 @@ def case_opening(c):
 def case_facts(c):
     lines = []
     lines.append(("- current (shipping) box size: " if c.get("exempt")
-                  else "- carved (shipping) box size: ") + str(c['carved_size']))
+                  else "- voted (shipping) box size: ") + str(c['voted_size']))
     lines.append(f"- original resolved box size: {c['original_size']}"
                  + ("  (the shipping box is this box after the room-shell "
-                    "clip — the carve measured neither)" if c.get("exempt")
+                    "clip — the vote measured neither)" if c.get("exempt")
                     else ""))
     lines.append(f"- resolved cluster: {c['n_members']} member "
                  f"detections across views")
@@ -1706,7 +1706,7 @@ def case_facts(c):
         lines.append(f'- CYAN "pano" box (boxes.pano): {fmt_box(bx["pano"])}'
                      f"  lo {bx['pano']['lo']} hi {bx['pano']['hi']}")
     elif not c.get("exempt"):
-        lines.append("- CYAN pano box: none produced by the carve")
+        lines.append("- CYAN pano box: none produced by the vote")
     lines.append(f"- slice provenance: {c['slice']}")
     for d in c["doubts"]:
         if d["kind"] in ("pano_vs_cluster", "arm_vs_cluster"):
@@ -1736,8 +1736,8 @@ def case_facts(c):
             pb = d.get("proposed_box")
             sh = d.get("center_shift_m")
             lines.append(
-                f"- CARVE-EXEMPT ({c['status']}) on plane {d.get('plane')}: "
-                "this node skipped the slice/vote carve entirely — no cards, "
+                f"- VOTE-EXEMPT ({c['status']}) on plane {d.get('plane')}: "
+                "this node skipped the slice/vote vote entirely — no cards, "
                 "no plan detection, no elected cluster. Its observations "
                 "are the panels listed above.")
             lines.append(
@@ -1750,7 +1750,7 @@ def case_facts(c):
                    if sh is not None else "")
                 + (f"; MAGENTA proposed box {fmt_box(pb)}  lo {pb['lo']} "
                    f"hi {pb['hi']}" if pb else "")
-                + ". The carve's guard: \""
+                + ". The vote's guard: \""
                 + str(d.get("rejected_because", "")).strip()
                 + "\" — so the orange box is what ships today. That guard "
                 "is mechanical, not a judgement: if the magenta box IS the "
@@ -1759,8 +1759,8 @@ def case_facts(c):
             fb = d.get("final_box")
             kept = d.get("truncation_kept_sides") or []
             lines.append(
-                f"- CARVE-EXEMPT ({c['status']}) on plane {d.get('plane')}: "
-                "this node skipped the slice/vote carve entirely — no cards, "
+                f"- VOTE-EXEMPT ({c['status']}) on plane {d.get('plane')}: "
+                "this node skipped the slice/vote vote entirely — no cards, "
                 "no plan detection, no elected cluster. Its observations "
                 "are the panels listed above.")
             lines.append(
@@ -1776,7 +1776,7 @@ def case_facts(c):
                 + ". A side on a prior is a guess, not an observation.")
     lines.append("")
     lines.append("RELATIONS — read VERBATIM from the scene graph's own "
-                 "edges (re-derived on the CARVED boxes; this judge "
+                 "edges (re-derived on the VOTED boxes; this judge "
                  "computes no overlaps of its own):")
     lines += c["fact_lines"]
     return "\n".join(lines)
@@ -1791,7 +1791,7 @@ def edge_fact_lines(nid, edges, names, neighbor_ids, settled=None):
     box an earlier verdict has already moved says so, verbatim."""
     touching = edges_touching(nid, edges)
     if not touching:
-        return ["- (this node has no edges in the carved-edge layer: it "
+        return ["- (this node has no edges in the voted-edge layer: it "
                 "neither contains, sits in, touches nor duplicates any "
                 "other node)"]
     mine = node_class(nid, names)
@@ -1812,8 +1812,8 @@ def edge_fact_lines(nid, edges, names, neighbor_ids, settled=None):
 
 
 def same_class_neighbors(nid, edges, names, settled, notes):
-    """The SAME-CLASS nodes joined to this node by ANY carved edge, with
-    their boxes taken from the run's SETTLED MAP (v2.4) — the carve's
+    """The SAME-CLASS nodes joined to this node by ANY voted edge, with
+    their boxes taken from the run's SETTLED MAP (v2.4) — the vote's
     shipping box verbatim until an EARLIER verdict in this run has named a
     different one, in which case the settled box is what gets drawn GREEN.
     These are the nodes that get a green wireframe on every panel; only
@@ -1861,7 +1861,7 @@ white-space:pre-wrap;line-height:1.35}
 """
 
 
-SW_CARVED = """
+SW_VOTED = """
 <span><i class='sw' style='border-color:#ff9900'></i>"vote" box
 (boxes.vote2) — the elected cluster</span>
 <span><i class='sw' style='border-color:#00bcd4'></i>"pano" box
@@ -1871,23 +1871,23 @@ SW_CARVED = """
 
 SW_EXEMPT = """
 <span><i class='sw' style='border-color:#ff9900'></i>"current" box — this
-node's original pre-carve box, shell-clipped (it never voted)</span>
+node's original pre-vote box, shell-clipped (it never voted)</span>
 <span><i class='sw' style='border-color:#ff00c8'></i>"rebox_candidate" —
-the face-on re-box the carve REJECTED</span>"""
+the face-on re-box the vote REJECTED</span>"""
 
 SW_NEIGH = """
 <span><i class='sw' style='border-color:#00e65a'></i>same-class neighbour
-node's carved box (labelled with its id)</span>"""
+node's voted box (labelled with its id)</span>"""
 
 
 def build_sheet(c, sheets_dir):
     neigh_txt = ", ".join(
         f"{n['id']} ({n['name']}, via {n['via']}; box: {n.get('box_source', SETTLED_BASE)})"
         for n in c["neighbors"]) or (
-        "none — this node has no same-class neighbour in the carved edges")
+        "none — this node has no same-class neighbour in the voted edges")
     # the sheet's legend follows the SAME per-node-type rule as the
     # prompt's: never a swatch for a colour this case's panels lack
-    swatches = SW_EXEMPT if c.get("exempt") else SW_CARVED
+    swatches = SW_EXEMPT if c.get("exempt") else SW_VOTED
     if c["neighbors"]:
         swatches += SW_NEIGH
     cand_txt = "<br>".join(
@@ -1905,7 +1905,7 @@ def build_sheet(c, sheets_dir):
 <title>J8 multiplicity — {c['id']} {c['name']}</title>
 <style>{SHEET_CSS}</style>
 <h1>J8 · MULTIPLICITY CASE — {c['id']} “{c['name']}”</h1>
-<p class='meta'>carve status <b>{c['status']}</b> · escalation
+<p class='meta'>vote status <b>{c['status']}</b> · escalation
 {'→'.join(c['tiers']) or 'none'} · admitting doubts:
 {', '.join(d['kind'] for d in c['doubts'])} · {len(c['panels'])}
 panel(s)</p>
@@ -1913,7 +1913,7 @@ panel(s)</p>
 <p class='meta'>same-class neighbours drawn: {neigh_txt}</p>
 <h2>CANDIDATE BOXES — the complete "ship" vocabulary for THIS case</h2>
 <p class='meta'>{cand_txt}</p>
-<h2>STIMULI — this node's own carve renders, boxes projected by the
+<h2>STIMULI — this node's own vote renders, boxes projected by the
 camera that made each render</h2>
 <div class='grid'>{figs}</div>
 <h2>THE PROMPT (verbatim — also written as {c['id']}_prompt.txt)</h2>
@@ -1932,7 +1932,7 @@ def build_stimuli(c, sd, sheets_dir, settled, edges, names, notes):
 
     This is the whole point of the dependency order: sheets used to be
     built for the entire docket up front, so a case could only ever see the
-    carve's boxes, never a neighbour box an earlier verdict had already
+    vote's boxes, never a neighbour box an earlier verdict had already
     moved. A moved neighbour changes the prompt text AND the panel pixels,
     so the case cache key misses — that is CORRECT, not a bug: it is a
     different question than the one that was cached.
@@ -1999,7 +1999,7 @@ a{{color:#8ec7ff}}</style>
 <h1>J8 · MULTIPLICITY DOCKET — {scene}</h1>
 <p class='meta'>{len(cases)} case(s), AUTO doubts only (Rule #1).
 Sheets-only build — zero model calls. USER GATE A1.</p>
-<table><tr><th>case</th><th>name</th><th>carve status</th>
+<table><tr><th>case</th><th>name</th><th>vote status</th>
 <th>admitting doubts</th><th>panels</th><th>plan overlay</th>
 <th>candidate boxes ("ship" keys)</th>
 <th>green same-class neighbours</th></tr>
@@ -2021,30 +2021,30 @@ def main():
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
     g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
-    carve = g.get("carve") or {}
-    if not carve:
-        raise SystemExit("[multiplicity] no carve block — run "
-                         "record_carve_doubts.py --apply first")
+    vote = g.get("vote") or {}
+    if not vote:
+        raise SystemExit("[multiplicity] no vote block — run "
+                         "record_vote_doubts.py --apply first")
     nodes = g["resolved"]["nodes"]
     by_id = {n["id"]: n for n in nodes}
-    # v2.1: relational facts come from the loop-back's carved-edge layer.
+    # v2.1: relational facts come from the loop-back's voted-edge layer.
     # No layer -> no facts -> the judge would rule blind, so this is fatal.
-    ce = g.get("carved_edges") or {}
+    ce = g.get("voted_edges") or {}
     if not ce.get("edges"):
-        raise SystemExit("[multiplicity] no graph['carved_edges'] — run "
-                         "graph/rederive_carved_edges.py --apply (Phase B2 "
+        raise SystemExit("[multiplicity] no graph['voted_edges'] — run "
+                         "graph/rederive_voted_edges.py --apply (Phase B2 "
                          "loop-back) first; J8 v2.1 reads its relational "
                          "facts from that layer and computes none itself")
     edges = ce["edges"]
     names = {n["id"]: n["name"] for n in nodes}
-    carved_boxes = {}
+    voted_boxes = {}
     prev = sd / "scene_manifest_slicevote_preview.json"
-    carved_sizes = {}
+    voted_sizes = {}
     if prev.exists():
         for o in json.loads(prev.read_text())["objects"]:
-            carved_boxes[o["id"]] = (o["aabb_min"], o["aabb_max"])
-            carved_sizes[o["id"]] = [round(v, 2) for v in o["size"]]
-    # v2.4 — the CARVE's own records, the only place a J8 ship key's box may
+            voted_boxes[o["id"]] = (o["aabb_min"], o["aabb_max"])
+            voted_sizes[o["id"]] = [round(v, 2) for v in o["size"]]
+    # v2.4 — the VOTE's own records, the only place a J8 ship key's box may
     # be resolved from (the same two sources materialize reads).
     report = {}
     rep_f = sd / "pool_retake" / "slicevote_report.json"
@@ -2052,11 +2052,11 @@ def main():
         report = {r["id"]: (r.get("boxes") or {}) for r in json.loads(
             rep_f.read_text(encoding="utf-8"))["results"]}
     all_doubts = {i: (n.get("doubts") or [])
-                  for i, n in (carve.get("nodes") or {}).items()}
+                  for i, n in (vote.get("nodes") or {}).items()}
     cm_f = sd / "pool_retake" / "conemap.json"
     if not cm_f.exists():
         raise SystemExit("[multiplicity] no pool_retake/conemap.json — run "
-                         "carve_slicevote.py first (the stimuli come from "
+                         "slicevote.py first (the stimuli come from "
                          "its renders + view records)")
     cm_by_id = {o["id"]: o for o in json.loads(
         cm_f.read_text(encoding="utf-8"))["objects"]}
@@ -2066,15 +2066,15 @@ def main():
     # docket: multiplicity-relevant AUTO doubts only (Rule #1).
     # Admission triggers (user 08-07): ownership gap, discarded
     # candidate, shape gap (plan-fill rule 3 / the notch); plus
-    # (2026-08-08) two EVIDENCE gaps on a carve-EXEMPT node, both from
+    # (2026-08-08) two EVIDENCE gaps on a vote-EXEMPT node, both from
     # its single face-on view: the size gap (a confident detection at
-    # under a third of the box's extents, thrown away by the carve's 3x
+    # under a third of the box's extents, thrown away by the vote's 3x
     # guard) and the measurement gap (the mask ran off the frame, so
     # most of the box's sides ship on priors — user ruling: the same
     # routing carries both). Without them the exempt paths raise no
     # doubt at all and never reach this judge.
     docket = {}
-    for nid, cn in carve.get("nodes", {}).items():
+    for nid, cn in vote.get("nodes", {}).items():
         kinds = {d["kind"] for d in cn.get("doubts", [])}
         if kinds & {"pano_vs_cluster", "arm_vs_cluster",   # old name too
                     "culled_clusters", "low_plan_fill",
@@ -2090,7 +2090,7 @@ def main():
     # Wipe only what THIS run rebuilds (2026-08-08): an --only run used to
     # wipe every sheet and then write a sidecar holding just its own
     # case(s), silently destroying the rest of the docket — the same
-    # clobber bug the carve had before merge-on-write. A full run still
+    # clobber bug the vote had before merge-on-write. A full run still
     # clears everything (the v2.1 sheet form must not mix with older).
     _keep_ids = set(docket) if a.only else None
     for old in list(sheets_dir.glob("*.png")) + \
@@ -2107,7 +2107,7 @@ def main():
             print(f"[multiplicity] {nid}: not in resolved — skipped")
             continue
         doubts = cn.get("doubts", [])
-        # CARVE-EXEMPT node: the carve skipped it, so conemap.json has no
+        # VOTE-EXEMPT node: the vote skipped it, so conemap.json has no
         # entry, there are no cards and no plan detection. Stand a minimal
         # cone-map record in for it — its CURRENT (shipping) box verbatim
         # from the preview manifest as the ORANGE box, plus the rejected
@@ -2116,9 +2116,9 @@ def main():
         # shipping box has no stimulus at all and is still skipped.
         cm, exempt = cm_by_id.get(nid), False
         if cm is None:
-            box = carved_boxes.get(nid)
+            box = voted_boxes.get(nid)
             if box is None:
-                print(f"[multiplicity] {nid}: not in conemap.json — no carve "
+                print(f"[multiplicity] {nid}: not in conemap.json — no vote "
                       "renders, case skipped")
                 notes.append(f"{nid}: absent from conemap.json (no renders) "
                              "and from the preview manifest (no box)")
@@ -2134,7 +2134,7 @@ def main():
         c = {"id": nid, "name": rn["name"], "scene": a.scene,
              "status": cn.get("status", "?"),
              "tiers": cn.get("tiers", []),
-             "slice": cn.get("slice") or ("none — carve exempt, never "
+             "slice": cn.get("slice") or ("none — vote exempt, never "
                                           "sliced" if exempt else "?"),
              "doubts": doubts,
              "geo": rn["geometry"],
@@ -2142,7 +2142,7 @@ def main():
              "ceil_y": shell["ceiling_y_raw"],
              "cm": cm,
              "exempt": exempt,
-             "carved_size": carved_sizes.get(nid, "n/a"),
+             "voted_size": voted_sizes.get(nid, "n/a"),
              "original_size": [round(v, 2) for v in rn["geometry"]["size"]],
              "n_members": len(rn.get("members", []))}
         # v2.2: the ONE_BOX vocabulary is built PER CASE from the boxes
@@ -2154,10 +2154,10 @@ def main():
 
     # ---- v2.4: THE SETTLED MAP + THE DEPENDENCY ORDER -------------------
     # Everything the cases read comes from this one map; it starts as the
-    # carve's shipping boxes and moves only where a ONE_BOX verdict names
+    # vote's shipping boxes and moves only where a ONE_BOX verdict names
     # a different box. Sheets are built INSIDE the per-case work so a case
     # judged later sees the boxes earlier cases settled.
-    settled = init_settled(carved_boxes)
+    settled = init_settled(voted_boxes)
     pre_judging = {i: {"lo": list(e["lo"]), "hi": list(e["hi"])}
                    for i, e in settled.items()}
     order = dependency_levels([c["id"] for c in cases], settled, notes)
@@ -2278,7 +2278,7 @@ def main():
     out_f = sd / "graph" / "multiplicity.json"
     fresh = [{k: v for k, v in c.items() if k not in ("prompt", "cm", "geo")}
              for c in results]
-    # MERGE-ON-WRITE (2026-08-08, same rule as the carve): an --only run
+    # MERGE-ON-WRITE (2026-08-08, same rule as the vote): an --only run
     # REPAIRS its cases and keeps every other case on disk verbatim, so
     # debugging one node can never destroy the rest of the docket.
     if a.only and out_f.exists():
@@ -2295,12 +2295,12 @@ def main():
                   "writing THIS RUN'S cases only", flush=True)
 
     # ---- v2.4: the SETTLED MAP that ships ------------------------------
-    # Rebuilt from the carve's shipping boxes + EVERY case on the record
+    # Rebuilt from the vote's shipping boxes + EVERY case on the record
     # (this run's and, on an --only run, the ones kept verbatim). A verdict
     # only ever touches its OWN node's entry, so the order they are applied
     # in cannot change the result — which is what lets an --only run write
     # a COMPLETE map instead of regressing the cases it did not judge.
-    settled_out = init_settled(carved_boxes)
+    settled_out = init_settled(voted_boxes)
     for c in sorted(fresh, key=lambda c: c.get("id", "")):
         settle_verdict(settled_out, c["id"], c.get("verdict"), report,
                        all_doubts)
@@ -2319,13 +2319,13 @@ def main():
         "scene": a.scene, "built": date.today().isoformat(),
         "source": "graph/judge_multiplicity.py (J8) — verdicts REFERENCE "
                   "nodes; materialize (Phase C) is the editor. Consumers: "
-                  "materialize_carve.py + same-product judge (membership). "
+                  "materialize_layers.py + same-product judge (membership). "
                   "v2.2: a ONE_BOX verdict carries \"ship\" = one key from "
                   "that case's own `candidates` list (vote|pano|current|"
                   "rebox_candidate|either), NOT the retired ship_pano/"
                   "ship_vote/either enum. `candidates` is recorded per case "
                   "for audit; materialize resolves the named box from the "
-                  "CARVE's own records, never from this file. v2.3: the "
+                  "VOTE's own records, never from this file. v2.3: the "
                   "ONE_BOX ask is a COMPARISON with error tolerance (pick "
                   "the BETTER box — COMPLETE first, then TIGHT ENOUGH), and "
                   "a fourth outcome NO_GOOD_BOX carries a required "
@@ -2337,8 +2337,8 @@ def main():
                   "DEPENDENCY-ORDERED JUDGING (judge INNER before OUTER). "
                   "`settled_boxes` is the geometry every case was judged "
                   "AGAINST and the geometry downstream stages must use: the "
-                  "carve's shipping boxes with every ONE_BOX verdict's named "
-                  "box already applied (resolved from the CARVE's own "
+                  "vote's shipping boxes with every ONE_BOX verdict's named "
+                  "box already applied (resolved from the VOTE's own "
                   "records, exactly as materialize resolves it). "
                   "`judge_order` records the levels the docket ran in. "
                   "`post_judge_conflicts` is a pure-arithmetic post-pass: "
@@ -2346,8 +2346,8 @@ def main():
                   "— RECORDED ONLY, never acted on.",
         "settled_boxes": settled_out,
         "settled_boxes_note": "{id: {lo, hi, source}} for EVERY id in the "
-                              "carve preview manifest. `source` says whether "
-                              "the box is the carve's shipping box or the "
+                              "vote preview manifest. `source` says whether "
+                              "the box is the vote's shipping box or the "
                               "box a J8 verdict NAMED. SPLIT / UNCLEAR / "
                               "NO_GOOD_BOX never move an entry.",
         "judge_order": order,

@@ -1,4 +1,4 @@
-"""Parallax retake — carve ray-streak boxes with a second standpoint
+"""Parallax retake — vote ray-streak boxes with a second standpoint
 (PROTOTYPE 2026-08-06, user idea "different viewpoint, only the overlap
 is the object").
 
@@ -21,7 +21,7 @@ tuned trigger — prime directive). Per node:
   4. GroundingDINO re-detect the node's name in the retake, best overlap
      with the reprojected box; SAM -> mask
   5. lift the mask (lift_frame: same cluster+trim rules) -> side box
-  6. carved = intersection(original, side box)
+  6. voted = intersection(original, side box)
 Degrades conservatively at every step: corr fail / no re-detection /
 empty intersection -> keep the original box, record status. Output is a
 PREVIEW (report + viewer manifest); nothing canonical is touched.
@@ -441,7 +441,7 @@ def main():
             continue
         ilo = np.percentile(P[keep], 1, axis=0)
         ihi = np.percentile(P[keep], 99, axis=0)
-        rec["status"] = "carved"
+        rec["status"] = "voted"
         rec["n_views"] = len(cons)
         rec["after"] = {"aabb_min": [round(float(v), 4) for v in ilo],
                         "aabb_max": [round(float(v), 4) for v in ihi],
@@ -455,7 +455,7 @@ def main():
     report = {"scene": a.scene, "stage": "parallax_retake", "res": a.res,
               "params": {"CORR_MIN": CORR_MIN, "DET_THR": DET_THR},
               "n_nodes": len(plans),
-              "n_carved": sum(1 for r in results if r["status"] == "carved"),
+              "n_voted": sum(1 for r in results if r["status"] == "voted"),
               "by_status": {},
               "results": results}
     for r in results:
@@ -465,22 +465,22 @@ def main():
 
     objs = []
     for r in results:
-        if r["status"] != "carved":
+        if r["status"] != "voted":
             continue
         af = r["after"]
-        objs.append({"id": r["id"], "label": r["name"] + " (carved)",
+        objs.append({"id": r["id"], "label": r["name"] + " (voted)",
                      "score": 1.0, "aabb_min": af["aabb_min"],
                      "aabb_max": af["aabb_max"],
                      "center": [round((l + h) / 2, 4) for l, h in
                                 zip(af["aabb_min"], af["aabb_max"])],
                      "size": af["size"], "n_detections": 2, "views": [],
-                     "flags": ["parallax_carved"]})
+                     "flags": ["parallax_voted"]})
     man = {"scene": a.scene, "source": "experiments/parallax_retake.py preview",
            "frame": {"space": "raw", "up": [0.0, -1.0, 0.0]},
            "n_objects": len(objs), "objects": objs}
     (sd / "scene_manifest_parallax_preview.json").write_text(
         json.dumps(man, indent=2))
-    print(f"[retake] {report['n_carved']}/{len(plans)} carved; statuses "
+    print(f"[retake] {report['n_voted']}/{len(plans)} voted; statuses "
           f"{report['by_status']}; report -> parallax_retake/retake_report.json")
 
 

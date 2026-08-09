@@ -1,18 +1,18 @@
-# Slice-vote carve + uniform-instances judge (2026-08-06 cone session)
+# Slice-vote vote + uniform-instances judge (2026-08-06 cone session)
 
 ✅ **STATUS (2026-08-07 late): RUN 10 = BOX CANON** — user-passed
 R-S2-35..39 (see the runs 6–10 update at the bottom for today's rules:
 half-space electorate filter, winning-blob pano filter, plan-fill v2,
 large_empty_notch doubt, PROTRUSION exemption, SHELL CLIP, never-silent
 kept, perp-cam re-box; slice clamp tried + reverted). Statuses
-{carved_pano 28, carved 2, kept_wall 7, kept 2, kept_ceiling 7} = 46
+{voted_pano 28, voted 2, kept_wall 7, kept 2, kept_ceiling 7} = 46
 objects on living_marble. Still NOT wired into the canonical runner;
 consumers (S1/support, shopping) NOT wired; next = materialize (Phase C,
-PLAN_CARVE_DOWNSTREAM). The paragraphs below are the founding history
+PLAN_VOTEBOX_DOWNSTREAM). The paragraphs below are the founding history
 ("untested promotion" era) — kept verbatim.
 
 ➡ **CURRENT STATE (2026-08-08): RUN 17** (`r20260808-203800`,
-canon-eligible, 46 objects, statuses {carved_pano 28, kept_wall 7,
+canon-eligible, 46 objects, statuses {voted_pano 28, kept_wall 7,
 kept_ceiling 7, kept 2, kept_outlier 2}) — the mechanism above is
 unchanged; what changed is HOW THE TOP-VIEW DETECTION IS CHOSEN
 (ranking + framing check + re-shoot ladder). See the 2026-08-08 update
@@ -35,7 +35,7 @@ at the bottom of this file.
    finally chair-sized) — isolation makes the detector's job easy. But
    the PANO MASKS carry junk (pano masks = a node's founding masks from
    the original pano-funnel views, i.e. the rig_sp0 f30 crops — the
-   graph's identity evidence, as opposed to the carve's fresh
+   graph's identity evidence, as opposed to the vote's fresh
    identity-blind card detections; the user found a pano mask that
    segmented FLOOR, labeled sofa — nothing in the pipeline ever re-checks
    a mask against its label).
@@ -58,7 +58,7 @@ at the bottom of this file.
    claim-everything camera outvoted) AND obj_028's unstable-detection
    regression, while keeping the sofas' recovery.
 
-## The promoted stage: `carve_slicevote.py`
+## The promoted stage: `slicevote.py`
 
 Slice (prism/wedge, capped margins, height-band footprint) → subset .ply
 → 4 near-cardinal WSL renders → GDINO+SAM per render → 6-voter election,
@@ -102,7 +102,7 @@ asset per group at the canonical size) NOT done.
   `compose/uniform_instances.py` becomes that pass's candidate
   generator; the compose module dissolves once wired; shopping only
   consumes the graph verdict (SAME_PRODUCT group + canonical size).
-- The carve's doubt flags (pano-vs-cluster ratio, culled clusters) are
+- The vote's doubt flags (pano-vs-cluster ratio, culled clusters) are
   RECORDED, never decided on: they enter the graph record via the
   description-making pass so node cards carry the doubt, and the judge
   passes consume them as typed open questions — the standard
@@ -118,12 +118,12 @@ asset per group at the canonical size) NOT done.
 4. Degenerate-ballot rule (a mask claiming ~100% of the slice = abstain)
    — discussed, NOT implemented; gate-3 currently contains the damage.
 5. Multiplicity judge (PART_OF_STRUCTURE) for flagged pano_vs_cluster
-   cases; its typed evidence NOW EXISTS: `graph/record_carve_doubts.py`
-   → `graph/carve_doubts.json` (pano_vs_cluster / culled_clusters /
+   cases; its typed evidence NOW EXISTS: `graph/record_vote_doubts.py`
+   → `graph/vote_doubts.json` (pano_vs_cluster / culled_clusters /
    slice_fallback; 6 living nodes emitted, mechanics-verified).
 6. Same-product judge: NOW ITS OWN GRAPH-CHAIN PASS
    (`graph/judge_same_product.py`, judge-chain claude.exe pattern,
-   carve doubts ride as context; grouping dry-run verified — the
+   vote doubts ride as context; grouping dry-run verified — the
    6-chair group found; VERDICTS NEVER RUN). Then: user-review verdicts,
    wire shopping (one asset per SAME_PRODUCT group at canonical size).
    `compose/uniform_instances.py` = superseded first draft, do not wire.
@@ -145,7 +145,7 @@ preview as the "slicevote" box-source layer (cyan). NOTHING COMMITTED.
 ## Design deltas over the original promotion (all user-ruled)
 
 1. **VIEW TUNNEL cards** (run 2): cards render the FULL scene minus a
-   carved hole — gaussians in the camera cone, nearer than the slice,
+   voted hole — gaussians in the camera cone, nearer than the slice,
    not slice members. Replaced black isolation: on black the detector
    inflates the object to the whole blob (and run 1's ceiling lights
    exploded ×288–×5027). Card re-detect is gated to the slice's screen
@@ -170,9 +170,9 @@ preview as the "slicevote" box-source layer (cyan). NOTHING COMMITTED.
 
 ## Final living numbers (run 4)
 
-45 objects: 28 carved_pano / 2 carved / 8 kept_wall / 7 kept_ceiling,
+45 objects: 28 voted_pano / 2 voted / 8 kept_wall / 7 kept_ceiling,
 zero kept-by-failure. (The run-4/5 data on disk predates the rename and
-spells that status `carved_arm`; readers accept both.) (Count is 45 vs
+spells that status `voted_arm`; readers accept both.) (Count is 45 vs
 the earlier 44: exemptions catch an object that previously died silently
 at the <100-dot skip.)
 
@@ -181,7 +181,7 @@ at the <100-dot skip.)
 - R-S2-30 lists carried opens: thin boxes (obj_010/020/041), the two
   surprise wall exemptions, sofa L → multiplicity judge (unbuilt),
   same-product verdicts (never run).
-- NEXT (user 08-07): run the carved output ALONG THE PIPELINE — doubts
+- NEXT (user 08-07): run the voted output ALONG THE PIPELINE — doubts
   into the record via the description pass, the two judge passes, then
   S1/compose consuming scene_manifest_slicevote_preview.json, then
   runner wiring + map promotion (draw the node solid).
@@ -194,8 +194,8 @@ at the <100-dot skip.)
 # UPDATE 2026-08-07 late (runs 6–10, R-S2-35..39): RUN 10 = BOX CANON
 
 Six more whole-scene runs in one day, each folding in user rulings from
-reviewing the previous; run 10 user-passed as the canonical carve state.
-Statuses {carved_pano 28, carved 2, kept_wall 7, kept 2, kept_ceiling 7}
+reviewing the previous; run 10 user-passed as the canonical vote state.
+Statuses {voted_pano 28, voted 2, kept_wall 7, kept 2, kept_ceiling 7}
 = 46 objects.
 
 ## Rules landed (all user-passed; pointers into REVIEW_LOG)
@@ -245,9 +245,9 @@ Statuses {carved_pano 28, carved 2, kept_wall 7, kept 2, kept_ceiling 7}
   docket full-width.
 - **Run 10** (R-S2-39): perp-cam re-box for flat objects — CANON.
 
-Downstream on run 10: loop-back B2 RUN (additive carved_edges layer,
+Downstream on run 10: loop-back B2 RUN (additive voted_edges layer,
 J0/J1 on it) + J8 v2.1 canonical verdicts on the 7-case docket — see
-PLAN_CARVE_DOWNSTREAM.md for status and the queued opens.
+PLAN_VOTEBOX_DOWNSTREAM.md for status and the queued opens.
 
 ---
 
@@ -381,7 +381,7 @@ re-running anything.
   now raises the multi-node flag, so the chair duplicate is caught
   again downstream (J0 nominated it, J1 ruled SAME).
 - obj_034 glass door: back to 0.02 × 3.06 × 2.94 m.
-- Statuses: {carved_pano 28, kept_wall 7, kept_ceiling 7, kept 2,
+- Statuses: {voted_pano 28, kept_wall 7, kept_ceiling 7, kept 2,
   **kept_outlier 2**} = 46.
 
 ## The two outlier-guard trips (RECORDED AS DOUBTS, not fixed)
@@ -402,7 +402,7 @@ Neither is a threshold question — both are honest carried opens
 
 ## Viewer rule (from the same session)
 
-The carve layer's HUD label is now composed LIVE from the manifest's
+The vote layer's HUD label is now composed LIVE from the manifest's
 own provenance (run id, `canon_eligible`, object count). A hard-coded
 "run 10" caption had been on screen while the file already held run 16
 boxes. **Never hand-write a run number in a label** — if a caption

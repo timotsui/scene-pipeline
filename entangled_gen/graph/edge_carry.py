@@ -35,7 +35,7 @@ THE SPLIT, and why it is not a compromise:
   2026-08-08) and `lost` (an endpoint was removed with no replacement).
 
 INHERIT FROM EVERY PREVIOUS EDGE SET, not just the newest one. J6's edge
-fields live on `resolved.edges`; `carved_edges` was derived later and had
+fields live on `resolved.edges`; `voted_edges` was derived later and had
 already dropped them, so inheriting only from the newest layer lost 5
 fields on 2 edges. Sources are unioned, earlier ones filling gaps the
 later ones do not have.
@@ -80,7 +80,7 @@ def _overlap_facts(ga, gb):
             "refreshed_on": "this layer's boxes"}
 
 
-def carry(nodes, graph, remap, inherit_from=("resolved", "carved_edges"),
+def carry(nodes, graph, remap, inherit_from=("resolved", "voted_edges"),
           diff_against=None):
     """Re-derive this node set's edges and re-attach the judgements.
 

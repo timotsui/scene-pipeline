@@ -41,7 +41,7 @@ over one file, `scene_graph.json`.
 ### 0a.0 AMENDMENT 2026-07-26 (late, user: "record both objects and
 ### indicate their relationship faithfully") — NO pre-merges at all
 
-The earlier carve-out (geometry-only dedup doing confident IoU ≥ 0.6
+The earlier vote-out (geometry-only dedup doing confident IoU ≥ 0.6
 merges BEFORE the record) is REVOKED after the user saw obj_057 absorbed
 into obj_007 on the record card. Since even a confident merge is a
 commitment about object identity, it belongs to the judge:

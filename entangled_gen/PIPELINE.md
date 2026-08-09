@@ -305,14 +305,14 @@ shelf on bedroom_marble) and the open deep-box flags inside the layer's
 provenance. There is NO iteration loop at the graph stage — J1–J5
 fixed, J4 once, J6 once, J7 deterministic+cached, ship.
 
-## REPAIR (candidate) · Slice-vote carve — ⚠ UNTESTED PROMOTION (2026-08-06, the cone-map session)
+## REPAIR (candidate) · Slice-vote vote — ⚠ UNTESTED PROMOTION (2026-08-06, the cone-map session)
 
 Position: between the graph handoff (graph["resolved"], boxes verbatim)
 and S1. NOT in the canonical runner; dashed node on pipeline_map.html;
-preview outputs only. Design lineage: docs/CARVE_SLICEVOTE.md; evidence
+preview outputs only. Design lineage: docs/SLICEVOTE.md; evidence
 trail: docs/REVIEW_LOG.md R-S2-26.
 
-- `carve_slicevote.py --scene <s> [--only ids] [--gate 3]`
+- `slicevote.py --scene <s> [--only ids] [--gate 3]`
   - reads: scene_graph.json (resolved), cached pool top/ctop renders,
     rig_sp0 masks + lift pool, gen_raw.ply, room_shell.json
   - method: top-box vertical prism slice (height-band footprint, margins
@@ -325,9 +325,9 @@ trail: docs/REVIEW_LOG.md R-S2-26.
     UNTESTED-PREVIEW), pool_retake/slicevote_report.json,
     pool_retake/conemap.json (+ cone_map.html, the viewer's TEMPORARY
     cone-map layer)
-- `graph/record_carve_doubts.py --scene <s>` — typed open questions
+- `graph/record_vote_doubts.py --scene <s>` — typed open questions
   (pano_vs_cluster / culled_clusters / slice_fallback) ->
-  graph/carve_doubts.json (SIDECAR; record-proper integration via the
+  graph/vote_doubts.json (SIDECAR; record-proper integration via the
   describe pass rides the gated map promotion)
 - `graph/judge_same_product.py --scene <s> [--dry-run]` — OWN judge-chain
   pass (user ruling: NOT inside the multiplicity judge): same-name

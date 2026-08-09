@@ -12,11 +12,11 @@ to see groups without any LLM call.
 1. CANDIDATE GROUPS (deterministic, scene-agnostic — Rule #1, no class
    lists): same-name resolved nodes, greedy plan-proximity clusters
    (2.5 m), geometric shared-anchor detection (nearest node with >=2x
-   footprint area). Sizes prefer the slice-vote carve preview when it
-   exists. Carve doubts (graph/carve_doubts.json) ride along as context.
-2. CONTACT SHEETS (PLAN_CARVE_DOWNSTREAM.md Phase B upgrade): per group
+   footprint area). Sizes prefer the slice-vote vote preview when it
+   exists. Vote doubts (graph/vote_doubts.json) ride along as context.
+2. CONTACT SHEETS (PLAN_VOTEBOX_DOWNSTREAM.md Phase B upgrade): per group
    one image, graph/same_product_sheets/group_<n>_<label>.png — one row
-   per member (id + carved size at left, up to 2 evidence crops resized
+   per member (id + voted size at left, up to 2 evidence crops resized
    to a uniform 200 px height side by side; crops resolved via the
    judge_pairs.py pattern: resolved node -> source nodes ->
    evidence.members[*].crop under graph/crops/). Plus an index.html.
@@ -81,12 +81,12 @@ GRAPH_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(GRAPH_DIR))   # sibling stage modules (split_cuts)
 import paths  # noqa: E402
-from carve_cams import make_cam  # noqa: E402  (THE camera math, shared)
+from vote_cams import make_cam  # noqa: E402  (THE camera math, shared)
 
 # A STAGE MUST NOT DIE ON ITS OWN LOG LINE (2026-08-08): the closing
 # "wrote ... (⚠ UNTESTED)" print raised UnicodeEncodeError under a cp1252
 # console AFTER same_product.json was already on disk — the work was done
-# and the run still exited non-zero. Same latent bug in carve_slicevote.py
+# and the run still exited non-zero. Same latent bug in slicevote.py
 # (≥), graph/build_edges.py (→) and compose/uniform_instances.py (⚠).
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -104,7 +104,7 @@ CALL_TIMEOUT_S = 600   # s — raised from 180 (2026-08-08): image-heavy
                        # contact sheets legitimately run long
 CROPS_PER_MEMBER = 2       # judge_pairs.py pattern: up to 2 crops/node
 CROP_H = 200               # uniform crop height on the contact sheet
-LABEL_W = 260              # left text column (id + carved size)
+LABEL_W = 260              # left text column (id + voted size)
 PAD = 12
 
 
@@ -287,7 +287,7 @@ def sheet_font(size):
 
 
 def build_sheet(gr, crops_by_id, out_path):
-    """One contact sheet: one row per member — id + carved size in the
+    """One contact sheet: one row per member — id + voted size in the
     left column, up to 2 crops (uniform CROP_H height) side by side."""
     font = sheet_font(18)
     font_small = sheet_font(15)
@@ -336,7 +336,7 @@ def slugify(name):
 #
 # One top-down render per group, containing only the gaussians in the
 # union of the set's boxes, with two things drawn on it:
-#   VIOLET  each member's own carved box (thick + named on the exemplar)
+#   VIOLET  each member's own voted box (thick + named on the exemplar)
 #   PINK    the canonical size, drawn at every member's box CENTRE
 # so "one size for the whole set" can be read against each real instance.
 # Centre-aligned on purpose: no up-axis assumption is made anywhere here
@@ -448,7 +448,7 @@ def build_box_view(sc_mod, splat, gr, verdict, boxes, out_dir, gi):
 # obj_026 measured 0.494 x 0.257 on the floor while obj_013/015 measured
 # ~0.38 x ~0.46 — same product, axes swapped). And when the members simply
 # disagree — the chairs' floor extents spread 0.44 m, with two of the five
-# already flagged by the carve — a median launders flagged measurements into
+# already flagged by the vote — a median launders flagged measurements into
 # a confident-looking number. So: pick the member we measured best and copy
 # its box. Same shape as the settled J8s ruling (the judge speaks the
 # vocabulary; code does the snapping).
@@ -458,7 +458,7 @@ def build_box_view(sc_mod, splat, gr, verdict, boxes, out_dir, gi):
 # a doubt only counts against a member relative to its group-mates. (Every
 # ceiling light carries `exemption` — a blanket "no doubts" rule would have
 # disqualified all of them and left the group with no exemplar at all.)
-NEVER_MEASURED = ("kept", "kept_outlier")   # the carve shipped the ORIGINAL
+NEVER_MEASURED = ("kept", "kept_outlier")   # the vote shipped the ORIGINAL
 #                                             box: no measurement was taken
 
 
@@ -471,7 +471,7 @@ def plan_long_short(size):
 def canonical_from_exemplar(members, picked, status_by, doubts_by):
     """One member's box, verbatim, plus the disagreement it hides.
 
-    Rank: measured before never-measured, then fewest carve doubts, then
+    Rank: measured before never-measured, then fewest vote doubts, then
     closest to the set's MEDIAN HEIGHT (height is the one axis that is
     directly comparable — every object shares "up"), then id, so the pick
     is deterministic.
@@ -702,7 +702,7 @@ def anchors_from_edges(edges, nodes_by_id):
 def pick(table, node):
     """Look a per-object record up for a pool member.
 
-    Everything J6 and the carve recorded is keyed by PRE-SETTLEMENT ids,
+    Everything J6 and the vote recorded is keyed by PRE-SETTLEMENT ids,
     and a settled node may be a split piece (obj_011#1) or a merge
     survivor that swallowed another node. So: try the node's own id, then
     the id it came from, then anything it absorbed. Returns the first
@@ -715,7 +715,7 @@ def pick(table, node):
     return None
 
 
-def candidate_pools(nodes, carved, appearance, anchors):
+def candidate_pools(nodes, voted, appearance, anchors):
     """ONE POOL PER KIND — every node of that name in the scene.
 
     USER RULING 2026-08-08: grouping must be SEMANTIC, and product
@@ -747,7 +747,7 @@ def candidate_pools(nodes, carved, appearance, anchors):
             "name": name,
             "members": [{
                 "id": m["id"],
-                "size": carved.get(m["id"], m["geometry"]["size"]),
+                "size": voted.get(m["id"], m["geometry"]["size"]),
                 "center": [round(float(v), 2)
                            for v in m["geometry"]["center"]],
                 "appearance": pick(appearance, m) or {},
@@ -774,15 +774,15 @@ def main():
     sd = paths.scene_dir(a.scene)
     g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
 
-    # JUDGE THE SETTLED LAYER, NOT THE RAW CARVE (user ruling 2026-08-08).
-    # graph['carved'] is the node set and the boxes AFTER J8's box
-    # rulings, J8s's splits and J1's merges. Reading the carve manifest
+    # JUDGE THE SETTLED LAYER, NOT THE RAW VOTE (user ruling 2026-08-08).
+    # graph['grouped'] is the node set and the boxes AFTER J8's box
+    # rulings, J8s's splits and J1's merges. Reading the vote manifest
     # instead meant judging geometry those verdicts had already replaced —
     # on living run 17, obj_011 was still the uncut 2.80 m L, obj_020 had
     # been merged away and was nonetheless a set's EXEMPLAR, and obj_021's
     # box had been swapped. Build it with:
-    #     graph/materialize_carve.py --scene <s> --settle-only --apply
-    # Fallback (no settled layer yet): the resolved nodes + carve manifest,
+    #     graph/materialize_layers.py --scene <s> --settle-only --apply
+    # Fallback (no settled layer yet): the resolved nodes + vote manifest,
     # the old behaviour, announced so it is never a silent downgrade.
     # a resolved node's members are RECORD ids — the second hop the crop
     # walk needs when a pool member is a split piece or a merge survivor
@@ -799,15 +799,15 @@ def main():
 
     # the NEWEST whole layer wins: settled (J8/J8s/J1 applied) before the
     # older combined one, before none at all
-    # name the block we ACTUALLY read — a hard-coded "graph['carved']" in
+    # name the block we ACTUALLY read — a hard-coded "graph['grouped']" in
     # the log below was still printing while this had already switched to
     # `settled` (the same never-hand-write-a-label rule that bit the
     # viewer's run caption)
-    cv_name = next((b for b in ("settled", "carved")
+    cv_name = next((b for b in ("settled", "grouped")
                     if (g.get(b) or {}).get("nodes")), None)
     cv = (g.get(cv_name) or {}) if cv_name else {}
     settled = [n for n in (cv.get("nodes") or []) if n.get("geometry")]
-    carved = {}
+    voted = {}
     if settled:
         nodes = []
         for n in settled:
@@ -822,7 +822,7 @@ def main():
                                 else (mem[0] if mem else n["id"]))),
                 "_merged": list(merged),
                 "_src_ids": src_ids(list(mem) + list(merged))})
-        carved = {n["id"]: n["geometry"]["size"] for n in nodes}
+        voted = {n["id"]: n["geometry"]["size"] for n in nodes}
         print(f"[same_product] geometry = graph['{cv_name}'] (SETTLED): "
               f"{len(nodes)} nodes, built {cv.get('built')}", flush=True)
     else:
@@ -832,24 +832,24 @@ def main():
         prev = sd / "scene_manifest_slicevote_preview.json"
         if prev.exists():
             for o in json.loads(prev.read_text())["objects"]:
-                carved[o["id"]] = o["size"]
-        print("[same_product] ⚠ no graph['carved'] — falling back to the "
-              "RAW carve manifest, which J8/J8s/J1 may have superseded. "
-              "Run materialize_carve.py --settle-only --apply first.",
+                voted[o["id"]] = o["size"]
+        print("[same_product] ⚠ no graph['grouped'] — falling back to the "
+              "RAW vote manifest, which J8/J8s/J1 may have superseded. "
+              "Run materialize_layers.py --settle-only --apply first.",
               flush=True)
     doubts = {}
-    df = sd / "graph" / "carve_doubts.json"
+    df = sd / "graph" / "vote_doubts.json"
     if df.exists():
         for nd in json.loads(df.read_text())["nodes"]:
             doubts[nd["id"]] = [d["kind"] for d in nd["doubts"]]
 
-    # the carve's own record is keyed by PRE-SETTLEMENT ids; re-key it onto
+    # the vote's own record is keyed by PRE-SETTLEMENT ids; re-key it onto
     # the node set actually being judged, so a split piece or a merge
     # survivor still carries the doubts and the status of what it came
     # from. Without this every settled piece looks doubt-free, which would
     # quietly make it eligible to become the size exemplar.
     status_src = {}
-    cnodes = (g.get("carve") or {}).get("nodes") or {}
+    cnodes = (g.get("vote") or {}).get("nodes") or {}
     if isinstance(cnodes, dict):
         for nid, c in cnodes.items():
             if isinstance(c, dict):
@@ -858,7 +858,7 @@ def main():
     status_by = {n["id"]: pick(status_src, n) for n in nodes}
 
     # the J6 descriptions (graph/describe_nodes.py) — written from the
-    # crops and keyed by an EVIDENCE hash, so carve re-runs do not stale
+    # crops and keyed by an EVIDENCE hash, so vote re-runs do not stale
     # them; J6's appearance phase is geometry-blind by design
     appearance = {}
     apf = sd / "graph" / "appearance_cache_v2.json"
@@ -867,12 +867,12 @@ def main():
                          .get("nodes") or {}).items():
             if isinstance(ent, dict) and ent.get("appearance"):
                 appearance[nid] = ent["appearance"]
-    # the recorded relations (post-carve layer when it exists)
-    edges = ((g.get("carved_edges") or {}).get("edges")
+    # the recorded relations (post-vote layer when it exists)
+    edges = ((g.get("voted_edges") or {}).get("edges")
              or g.get("edges") or [])
     anchors = anchors_from_edges(edges, {n["id"]: n for n in nodes})
 
-    groups = candidate_pools(nodes, carved, appearance, anchors)
+    groups = candidate_pools(nodes, voted, appearance, anchors)
     print(f"[same_product] {len(groups)} pool(s) — ONE PER KIND, whole "
           f"scene, no distance rule", flush=True)
     for gr in groups:
@@ -899,7 +899,7 @@ def main():
     def build_prompt(gi, gr):
         lines = []
         for m in gr["members"]:
-            dstr = (f"\n      carve doubts: {', '.join(doubts[m['id']])}"
+            dstr = (f"\n      vote doubts: {', '.join(doubts[m['id']])}"
                     if m["id"] in doubts else "")
             ap = m.get("appearance") or {}
             desc = ap.get("description")
@@ -1086,7 +1086,7 @@ def main():
 
     # LEGACY VIEW — one entry per SET, in the shape consumers already
     # read (same_object / set_members / canonical_size). Emitted so
-    # materialize_carve.py rule 5 keeps working unchanged; `pools` above
+    # materialize_layers.py rule 5 keeps working unchanged; `pools` above
     # is the full record, including every member left alone and why.
     results = []
     for p in pools:
@@ -1110,7 +1110,7 @@ def main():
     if not a.no_box_views:
         ply = sd / "gen_raw.ply"
         # boxes come from THE SAME geometry the verdicts were made on —
-        # the settled layer when there is one. Reading the carve manifest
+        # the settled layer when there is one. Reading the vote manifest
         # here would silently drop every node the judges created (the
         # split piece obj_011#1 is not in it), and drawing a set minus
         # one of its members is exactly the stale picture that started

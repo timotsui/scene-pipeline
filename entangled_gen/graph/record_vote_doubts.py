@@ -1,14 +1,14 @@
-"""RECORD CARVE DOUBTS — typed open questions from the slice-vote carve
-(USER RULING 2026-08-06 late: the carve's doubt flags are RECORDED, never
+"""RECORD VOTE DOUBTS — typed open questions from the slice-vote vote
+(USER RULING 2026-08-06 late: the vote's doubt flags are RECORDED, never
 decided on; judges consume them. USER GO 2026-08-07: record-proper
 integration — the description-making pass — is no longer gated; --apply
-folds the doubts into scene_graph.json as the additive `carve` block).
+folds the doubts into scene_graph.json as the additive `vote` block).
 
 Two outputs:
-1. SIDECAR graph/carve_doubts.json (always) — the typed doubt list.
-2. --apply: scene_graph.json gains a top-level additive `carve` block
+1. SIDECAR graph/vote_doubts.json (always) — the typed doubt list.
+2. --apply: scene_graph.json gains a top-level additive `vote` block
    (record-then-judge pattern, same as triage_meta etc.: nodes are NEVER
-   mutated; the block references them by id). Per node: carve status,
+   mutated; the block references them by id). Per node: vote status,
    escalation tiers, slice provenance, typed doubts each with a
    mechanical plain-English sentence (no LLM — judges do the judging).
    Consumers: multiplicity judge + same-product judge + viewer cards.
@@ -31,7 +31,7 @@ preview manifest's status flags):
   the object's own plan footprint >= 0.50 m2 (user rule, 2026-08-07
   late; run-6 census: sofa 1.52 m2 vs next 0.18 m2) — the notch where a
   missing/other limb would park; multiplicity-judge territory
-- rebox_rejected_smaller: a carve-EXEMPT node's face-on (perp) re-box
+- rebox_rejected_smaller: a vote-EXEMPT node's face-on (perp) re-box
   found the object at < 1/3 of the current box on BOTH in-plane axes and
   the 3x sanity guard threw the proposal away, so the oversized box
   ships. A confident detection (score present, >= 200 claimed dots) that
@@ -42,7 +42,7 @@ preview manifest's status flags):
   fixture AND a 0.7 m strip). Growth rejections never fire this.
 - rebox_truncated: the face-on (perp) re-box was ACCEPTED, but the mask
   ran OFF THE FRAME on >= 2 of the 4 in-plane sides, so those sides kept
-  their PRIOR extents instead of being measured (carve_slicevote's
+  their PRIOR extents instead of being measured (slicevote's
   border-truncation guard, recorded as truncated_edges +
   truncation_kept_sides). Most of the shipping box is then still a
   guess, which is an open QUESTION rather than a result — what the box
@@ -51,9 +51,9 @@ preview manifest's status flags):
   truncated one; motivating case obj_038 "window", 3 of 4 in-plane sides
   on priors). One truncated side is normal for a wall-flush object and
   does NOT fire this.
-- exemption: box kept verbatim, never carved (kept_wall / kept_ceiling
+- exemption: box kept verbatim, never voted (kept_wall / kept_ceiling
   / kept_floor / kept_outlier / kept) — recorded so judges know which
-  geometry the carve never touched
+  geometry the vote never touched
 
 RULE #1 (no human in the loop): the docket is AUTO-DOUBTS ONLY. A
 user_routed channel existed for ~an hour on 2026-08-07 (hardcoded
@@ -64,7 +64,7 @@ source. If the auto rules miss a real case, that is an honest miss for
 downstream/eval to reveal, or a scene-agnostic rule-design decision
 taken with the user at a gate.
 
-Run:  python graph/record_carve_doubts.py --scene living_marble [--apply]
+Run:  python graph/record_vote_doubts.py --scene living_marble [--apply]
 """
 import argparse
 import json
@@ -87,24 +87,24 @@ import paths  # noqa: E402
 NOTCH_K = 2      # a plan cell counts as OCCUPIED only with >= K dots
 NOTCH_M2 = 0.50  # doubt when the largest empty rectangle >= this area
 
-# rebox_rejected_smaller thresholds. These MIRROR carve_slicevote.py's
+# rebox_rejected_smaller thresholds. These MIRROR slicevote.py's
 # own perp constants (PERP_MAX_RATIO 3.0 -> the 1/3 shrink bound,
-# PERP_MIN_CLAIM 200) — the carve is a script with side effects at import
+# PERP_MIN_CLAIM 200) — the vote is a script with side effects at import
 # (argparse, ply read), so its values are restated here rather than
-# imported. This rule only READS a rejection the carve already recorded;
+# imported. This rule only READS a rejection the vote already recorded;
 # it never re-decides one, so a drift between the two files can at worst
 # widen or narrow which rejections raise a doubt.
 REBOX_SHRINK_MAX = 1.0 / 3.0   # every in-plane ratio must be under this
 REBOX_MIN_CLAIM = 200          # dots the face-on mask claimed
 
 # rebox_truncated. A face-on re-box measures the two IN-PLANE axes, i.e.
-# 4 sides (lo/hi each); carve_slicevote's border-truncation guard makes
+# 4 sides (lo/hi each); slicevote's border-truncation guard makes
 # every side whose mask ran off the frame keep the ORIGINAL (prior)
 # extent instead. At >= 2 of 4 sides on priors, most of the box is a
 # guess and the question "what is in it" is open. One truncated side is
 # routine for a wall-flush object (the frame clips the wall it lies on)
 # and is not a doubt. Like the rejection rule above, this only READS
-# what the carve already recorded; it never re-decides a re-box.
+# what the vote already recorded; it never re-decides a re-box.
 REBOX_IN_PLANE_SIDES = 4       # lo + hi on each of the two in-plane axes
 REBOX_TRUNC_MIN_EDGES = 2      # doubt when this many image borders clipped
 
@@ -148,7 +148,7 @@ def pano_box(boxes):
 
 
 def rebox_proposed_box(orig, to):
-    """Full lo/hi of the face-on re-box candidate the carve REJECTED.
+    """Full lo/hi of the face-on re-box candidate the vote REJECTED.
     `to` = the perp re-box's two IN-PLANE extents, [[axis, lo, hi], ...];
     the remaining (normal) axis keeps the ORIGINAL box's extent, because
     depth is exactly what a face-on view cannot measure."""
@@ -162,7 +162,7 @@ def rebox_proposed_box(orig, to):
 
 def rebox_final_box(boxes, to):
     """The box an ACCEPTED face-on re-box left behind — the one that
-    ships. The carve records it as boxes["shipping"] (the re-box after
+    ships. The vote records it as boxes["shipping"] (the re-box after
     any wall clip), so it is read VERBATIM and never recomputed; only if
     that is missing is it rebuilt from the original box + the re-box's
     in-plane extents, exactly as the rejected path does."""
@@ -213,7 +213,7 @@ def doubt_text(d):
                                "volume cap; vote box recorded as doubt)",
                "kept": "escalation ladder exhausted (no election)"}
         return (f"{why.get(d['status'], d['status'])} — resolved box kept "
-                "verbatim, never carved")
+                "verbatim, never voted")
     return k
 
 
@@ -222,13 +222,13 @@ def main():
     ap.add_argument("--scene", required=True)
     ap.add_argument("--apply", action="store_true",
                     help="fold the doubts into scene_graph.json as the "
-                         "additive `carve` block")
+                         "additive `vote` block")
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
     rep_f = sd / "pool_retake" / "slicevote_report.json"
     if not rep_f.exists():
         raise SystemExit("[doubts] no slicevote_report.json — run "
-                         "carve_slicevote.py first")
+                         "slicevote.py first")
     rep = json.loads(rep_f.read_text())
     man_f = sd / "scene_manifest_slicevote_preview.json"
     status_by_id = {}
@@ -279,11 +279,11 @@ def main():
                                      round(lo_z + z0 * cm, 3),
                                      round(lo_x + x1 * cm, 3),
                                      round(lo_z + z1 * cm, 3)]})
-        # A carve-EXEMPT node's face-on (perp) re-box that was REJECTED
+        # A vote-EXEMPT node's face-on (perp) re-box that was REJECTED
         # for being far SMALLER than the box it was measuring. Growth
         # rejections and centre-jump-only rejections are NOT this doubt:
         # every recorded in-plane ratio must be under the shrink bound.
-        # Confidence gate: the same claim floor the carve itself demands
+        # Confidence gate: the same claim floor the vote itself demands
         # before it will even try a re-box, plus a recorded detection
         # score — a weak/absent detection says nothing about multiplicity.
         rb = r["rule"].get("rebox")
@@ -306,7 +306,7 @@ def main():
                           "rejected_because": rb.get("result", "")})
         # An ACCEPTED face-on re-box that had almost nothing to measure:
         # the mask ran off the frame on >= 2 of the 4 in-plane sides, so
-        # the carve's border-truncation guard left those sides on the
+        # the vote's border-truncation guard left those sides on the
         # ORIGINAL box's prior extents. The re-box "succeeded", but most
         # of the shipping box is still a guess — an open question about
         # what the box contains, not a measurement (user ruling
@@ -335,12 +335,12 @@ def main():
 
     outd = sd / "graph"
     outd.mkdir(exist_ok=True)
-    out = outd / "carve_doubts.json"
+    out = outd / "vote_doubts.json"
     out.write_text(json.dumps(
         {"scene": a.scene,
-         "source": "graph/record_carve_doubts.py — typed open questions "
-                   "from the slice-vote carve. Consumers: multiplicity "
-                   "judge + same-product judge (+ scene_graph.json carve "
+         "source": "graph/record_vote_doubts.py — typed open questions "
+                   "from the slice-vote vote. Consumers: multiplicity "
+                   "judge + same-product judge (+ scene_graph.json vote "
                    "block via --apply).",
          "n_nodes_with_doubts": len(doubts), "nodes": doubts}, indent=1))
     print(f"[doubts] {len(doubts)} node(s) with doubts -> {out}",
@@ -364,12 +364,12 @@ def main():
         }
     for n in doubts:
         nodes_block[n["id"]]["doubts"] = n["doubts"]
-    g["carve"] = {
+    g["vote"] = {
         "built": datetime.now().isoformat(timespec="seconds"),
         "built_from": str(rep_f),
         "report_status": rep.get("status", ""),
         "by_status": rep.get("by_status", {}),
-        "note": "ADDITIVE block (record-then-judge): slice-vote carve "
+        "note": "ADDITIVE block (record-then-judge): slice-vote vote "
                 "provenance + typed doubts per resolved node; nodes are "
                 "never mutated. Boxes live in "
                 "scene_manifest_slicevote_preview.json until the "
@@ -381,7 +381,7 @@ def main():
     tmp.write_text(json.dumps(g, indent=1))
     tmp.replace(gf)
     n_doubt = sum(1 for v in nodes_block.values() if v.get("doubts"))
-    print(f"[doubts] applied: scene_graph.json `carve` block — "
+    print(f"[doubts] applied: scene_graph.json `vote` block — "
           f"{len(nodes_block)} nodes ({n_doubt} with doubts)", flush=True)
 
 

@@ -186,8 +186,8 @@ def derive_edges(det, env, floor_y, ceil_y, walls):
     walls  {wall id: plane dict} for the x/z wall planes
 
     Extracted from main() 2026-08-07 for the Phase-B2 loop-back
-    re-derive (graph/rederive_carved_edges.py), which runs the same
-    derivation over the resolved nodes carrying carved boxes. Pure
+    re-derive (graph/rederive_voted_edges.py), which runs the same
+    derivation over the resolved nodes carrying voted boxes. Pure
     refactor: identical thresholds, iteration order, rounding and
     self-check.
     """

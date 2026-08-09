@@ -28,7 +28,7 @@ The S4 design itself gets written only when the step is reached
 5. **`loop.py apply_add()` (lines 137–211) is the working re-shop template**
    (shortlist → measure → refresh_sizes → RE-shortlist → gate) — lift into
    `reshop_one()`; judge-driven replaces DO have crops + a complaint, so the
-   old no-CLIP-for-adds carve-out dies.
+   old no-CLIP-for-adds vote-out dies.
 
 ## 1. The old chain, module by module (verified against code)
 

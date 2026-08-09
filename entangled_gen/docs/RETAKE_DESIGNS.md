@@ -1,4 +1,4 @@
-# Retake designs — the carve lineage (2026-08-06, R-S2-22..25)
+# Retake designs — the vote lineage (2026-08-06, R-S2-22..25)
 
 The problem all of these attack: splat POROSITY (rays slip through thin
 objects onto a depth-continuous background — 41% of the book's mask
@@ -26,7 +26,7 @@ the file has since evolved; that commit is the runnable v1):
 3. GroundingDINO re-detect of the node's name in the render, best
    overlap with the reprojected original box; SAM → mask; z-buffer lift
    → side box.
-4. Carve = interval on the ORIGINAL's dominant ray axis (the one axis
+4. Vote = interval on the ORIGINAL's dominant ray axis (the one axis
    the side view measures laterally = trusts).
 5. **Point refilter** (the part every later design kept): the original
    sp0 masks' 3D points, restricted to the established ray interval,
@@ -35,7 +35,7 @@ the file has since evolved; that commit is the runnable v1):
    else. Kills the vertical streak too.
 6. Other-side fallback on failure; keep + flag when both fail.
 
-Results on living (46 nodes): 27 carved / 19 kept. Desk
+Results on living (46 nodes): 27 voted / 19 kept. Desk
 [2.53,0.79,2.40]→[1.91,0.75,1.38] (legs+height preserved), plant →
 [0.14,0.33,0.17], window depth 2.30→1.85, floor lamp 0.88→0.42.
 **Idempotence: known-good boxes moved ±3 cm** — safe to run uniformly.
@@ -76,7 +76,7 @@ detection side contributes nothing ("extends beyond one square").
 **Claim model (user): "the projection ray volume votes, not the box"** —
 a view's claim is the cone of sight-lines through its SAM mask;
 membership = projects-inside-mask; NO side-view lift/depth (side-view
-porosity drops out). Coalition carve: most-agreeing pair seeds
+porosity drops out). Coalition vote: most-agreeing pair seeds
 ("2+ intersecting ⇒ a fragment of the object is there"), concurring
 views join, wrong-instance dissenters dropped, strict intersection;
 consensus fragments beyond the primary ship as multiplicity evidence.
@@ -84,13 +84,13 @@ consensus fragments beyond the primary ship as multiplicity evidence.
 ## OPEN: the k-rule knob (calibrate with the user, then bedroom-verify,
 then living BLIND)
 
-Strict coalition-AND: book [0.38,0.06,0.31] (best ever) but overcarves
+Strict coalition-AND: book [0.38,0.06,0.31] (best ever) but overvotes
 soft many-view objects (SAM masks are PARTIAL silhouettes; intersecting
 7 partials < object: pillow 0.23/0.15/0.17). 2-of-N voting: robust to
 outliers but pairwise cone crossings readmit streak segments (book 0.75
 deep). Candidates: visibility-normalized supermajority
 (claims ÷ eligible viewers per point), agreement-adaptive k, per-class
-softness. v1's axis-interval carve is the fallback that never had this
+softness. v1's axis-interval vote is the fallback that never had this
 knob — one more reason it stays the documented baseline.
 
 ## Standing regression set (living)

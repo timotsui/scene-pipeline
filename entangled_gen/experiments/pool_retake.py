@@ -428,7 +428,7 @@ def main():
         # view that concurs joins; dissenters (wrong same-class instance)
         # are dropped as outliers; the coalition is intersected STRICTLY
         # (voting alone is too generous where views agree - pairwise cone
-        # crossings keep streak segments AND-carving kills).
+        # crossings keep streak segments AND-voting kills).
         if len(claims) == 1:
             keep = claims[0]
             rec["coalition"] = 1
@@ -509,7 +509,7 @@ def main():
             continue
         frags.sort(key=lambda f: (-round(f["overlap_prior"], 2), -f["n_pts"]))
         primary = frags[0]
-        rec["status"] = "carved"
+        rec["status"] = "voted"
         rec["n_fragments"] = len(frags)
         rec["fragments"] = frags
         rec["after"] = {"aabb_min": primary["aabb_min"],
@@ -536,9 +536,9 @@ def main():
 
     objs = []
     for r in results:
-        if r["status"] == "carved":
+        if r["status"] == "voted":
             lo, hi = r["after"]["aabb_min"], r["after"]["aabb_max"]
-            label = r["name"] + f" (carved {r['n_ok']}v)"
+            label = r["name"] + f" (voted {r['n_ok']}v)"
         else:
             lo, hi = r["before"]["aabb_min"], r["before"]["aabb_max"]
             label = r["name"] + f" (kept: {r['status']})"

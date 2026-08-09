@@ -45,22 +45,22 @@ def box_sources(sc):
     # the user eyeball — RULED same day, prior promoted, entries removed.)
     # 2026-08-06 TEMPORARY streak-surgery previews (R-S2-22 gate): remove
     # both when ruled.
-    # The carve layer's label is composed LIVE from the manifest's own
+    # The vote layer's label is composed LIVE from the manifest's own
     # provenance header (2026-08-08): a hard-coded "run 10" caption was
     # still showing while the file already held run 16 boxes. Never
     # hand-write a run number in a label again — read it.
     #
     # 2026-08-08 (user): "46 obj" read as "46 SLICED boxes", and it is not
     # — the layer draws each object's SHIPPING box, and only the
-    # carved/carved_pano ones came out of a slice election at all. The
+    # voted/voted_pano ones came out of a slice election at all. The
     # rest are geometric exemptions (flat wall/ceiling objects, perp-cam
-    # re-boxed) or the ORIGINAL pre-carve box shipped because the slice
+    # re-boxed) or the ORIGINAL pre-vote box shipped because the slice
     # was too thin or the election blew past the outlier guard. The label
     # now says shipped / sliced / not-sliced, counted from the file.
     _sv = sd / "scene_manifest_slicevote_preview.json"
-    _svlab = "slice-vote carve"
+    _svlab = "slice-vote vote"
     _svstat = "unreadable"
-    _SLICED = ("carved", "carved_pano")   # went through the election
+    _SLICED = ("voted", "voted_pano")   # went through the election
     _STATUSES = _SLICED + ("kept", "kept_wall", "kept_ceiling",
                            "kept_outlier")
     try:
@@ -76,7 +76,7 @@ def box_sources(sc):
                                                            key=lambda x:
                                                            -x[1]))
         _cut = sum(_tally.get(s, 0) for s in _SLICED)
-        _svlab = ("slice-vote carve · " + str(_h.get("run_id") or "?")
+        _svlab = ("slice-vote vote · " + str(_h.get("run_id") or "?")
                   + (" · CANON-ELIGIBLE" if _h.get("canon_eligible")
                      else " · partial/mixed — NOT canon")
                   + f" · {_n} shipped ({_cut} sliced, {_n - _cut} "
@@ -85,22 +85,22 @@ def box_sources(sc):
         pass
     # LATEST-AND-GREATEST ORDER (user ruling 2026-08-08, restating the
     # 08-01 rule): the MATERIALIZED layer is the one current view — it is
-    # the whole chain folded into one state (carve boxes + J8 swaps + J8s
+    # the whole chain folded into one state (vote boxes + J8 swaps + J8s
     # pieces + J1 merges + J9 product annotations). Everything that feeds
-    # it is an INPUT, not a competing answer, so the carve manifest and
+    # it is an INPUT, not a competing answer, so the vote manifest and
     # the hand-composed judge preview move to the collapsed archive
     # section. Files stay on disk; nothing is deleted.
     srcs = [
         ("slicevote", _svlab, "archive",
          sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
          "SUPERSEDED 2026-08-08 by the materialized layer (it is this "
-         "layer's boxes with every verdict applied) — kept as the carve "
+         "layer's boxes with every verdict applied) — kept as the vote "
          "stage's raw output for side-by-side. NOTE the counts in the "
          "label: 'shipped' is every object, 'sliced' is only the ones "
          "that went through the vote election; the rest are geometric "
-         "exemptions or the ORIGINAL pre-carve box. "
-         "Slice-vote carve (2026-08-07 late; user-PASSED "
-         "R-S2-35..39, the canonical carve state; cyan to match the "
+         "exemptions or the ORIGINAL pre-vote box. "
+         "Slice-vote vote (2026-08-07 late; user-PASSED "
+         "R-S2-35..39, the canonical vote state; cyan to match the "
          "cone map's pano-filtered box): per resolved node — top-box "
          "prism slice, view-tunnel cards, 3-tier escalation ladder, "
          "6-voter election gate 3, pano-mask filter. Runs 6-10 rules: "
@@ -115,19 +115,19 @@ def box_sources(sc):
          + _svstat +                      # counted, never hand-written
          ". Per-box status + doubt flags in each object's "
          "flags field. Preview manifest — runner wiring pending"),
-        ("parallax_carved", "parallax retake · carved (preview)", "archive",
+        ("parallax_voted", "parallax retake · voted (preview)", "archive",
          sd / "scene_manifest_parallax_preview.json", "#65ff8f",
          "PREVIEW — experiments/parallax_retake.py: per-node side view "
-         "from a second standpoint; original ray axis carved, then the "
+         "from a second standpoint; original ray axis voted, then the "
          "original masks' points refiltered through the established depth "
-         "slab (all axes re-derived). Uncarved nodes keep the record box "
+         "slab (all axes re-derived). Unvoted nodes keep the record box "
          "(flagged) and are absent from this layer"),
         # set A / set B (two-standpoint experiment) REMOVED from the HUD
         # 2026-08-06 cone session (user: "we no longer need those");
         # manifests stay on disk (scene_manifest_pano2c.json /
         # scene_manifest_pano2_sp1.json).
         # ("support_clipped", ...) removed from HUD — wiring premature
-        # until support judgment runs on carved geometry (R-S2-22 note)
+        # until support judgment runs on voted geometry (R-S2-22 note)
         # judge_preview: COMPOSED server-side (judge_preview() below), not
         # a file — the path here is its base input, used for the exists()
         # gate; /boxes.json special-cases the key.
@@ -135,7 +135,7 @@ def box_sources(sc):
          sd / "scene_manifest_slicevote_preview.json", "#b388ff",
          "SUPERSEDED 2026-08-08 by the 'materialized' layer (amber): this "
          "was the hand-composed PREVIEW of what materialize would do; the "
-         "real Phase C output now exists in scene_graph.json['carved'] and "
+         "real Phase C output now exists in scene_graph.json['grouped'] and "
          "is served as src=materialized. Kept as-is (behaviour unchanged) "
          "for side-by-side comparison of preview vs actual. — "
          "judge preview: J8 ship rulings + J8s split pieces + coverage "
@@ -143,7 +143,7 @@ def box_sources(sc):
          "the judges would ship: shipping box by default; a J8 ONE_BOX "
          "verdict naming a box swaps it in (ship=vote -> the report's "
          "vote2, ship=pano -> its pano, ship=rebox_candidate -> the "
-         "rejected face-on re-box on the carve doubt; current/either "
+         "rejected face-on re-box on the vote doubt; current/either "
          "keep shipping); J8s split_chain replaces the case node's box "
          "with its final piece boxes; J8s covered_by_existing shows the "
          "case node's box tagged dropped:covered (would NOT ship — its "
@@ -159,7 +159,7 @@ def box_sources(sc):
     for _k, _lab, _col, _n in (
         ("sp_members", "same-product · set members (J9)", "#7c4dff",
          "The members J9 ruled ONE PRODUCT, each drawn with its OWN "
-         "carved box, verbatim. The exemplar — the member whose box "
+         "voted box, verbatim. The exemplar — the member whose box "
          "became the size to buy — says EXEMPLAR in its label."),
         ("sp_sizes", "same-product · size to buy (J9)", "#ff4081",
          "The CANONICAL size drawn at every member of the set, so one "
@@ -169,32 +169,32 @@ def box_sources(sc):
          "size is ONE member's measured box copied verbatim, never a "
          "blend — the members' floor dimensions are not comparable "
          "across differently-facing objects, and averaging a "
-         "carve-flagged box in would hide that it was flagged.")):
+         "vote-flagged box in would hide that it was flagged.")):
         if same_product_layer(sc, _k.split("_")[1]) is not None:
             srcs.append((_k, _lab, "current",
                          sd / "graph" / "same_product.json", _col, _n))
 
     # materialized: COMPOSED server-side (materialized() below) from
-    # scene_graph.json['carved'] — /boxes.json special-cases the key. The
+    # scene_graph.json['grouped'] — /boxes.json special-cases the key. The
     # entry only appears when that additive block exists (other scenes:
     # no entry, and the route 404s), and its note carries THIS scene's
     # real counts rather than a hard-coded summary.
-    cv = carved_layer(sc)
+    cv = voted_layer(sc)
     if cv is not None:
         n = cv.get("counts") or {}
         srcs.append((
             "materialized",
-            "★ LATEST — the whole chain through J9 (graph.carved)",
+            "★ LATEST — the whole chain through J9 (graph.voted)",
             "current", sd / "scene_graph.json", "#ffb300",
             "THE CURRENT STATE (user ruling 2026-08-08): every stage "
             "folded into ONE layer, so this is the thing to look at — the "
             "layers below it are its inputs, not rival answers. "
-            "graph/materialize_carve.py (Phase C), status "
+            "graph/materialize_layers.py (Phase C), status "
             + str(cv.get("status") or "?")
             + ": an ADDITIVE block in scene_graph.json, NOT promoted to "
-            "canon (record/judged/resolved/carve/carved_edges untouched). "
+            "canon (record/judged/resolved/vote/voted_edges untouched). "
             "Boxes are "
-            "COPIES, never recomputed: carve shipping box -> J8 box ruling "
+            "COPIES, never recomputed: vote shipping box -> J8 box ruling "
             "-> J8s split pieces -> J1 SAME merges -> J9 same-product "
             "annotation (no resize) -> unclear ships unchanged. This "
             "scene: " + f"{n.get('resolved_in', '?')} resolved in -> "
@@ -285,7 +285,7 @@ def judge_preview(sc):
     (graph/multiplicity.json) and the J8s split executions
     (graph/split_cuts.json), vote2 boxes from pool_retake/
     slicevote_report.json, plus the J1 SAME merges from
-    scene_graph.json carved_edges (duplicate pairs: the smaller box is
+    scene_graph.json voted_edges (duplicate pairs: the smaller box is
     tagged merged into its survivor, geometry unchanged). Materialize (Phase C) stays the only editor —
     this just previews what it would do. Every side file is optional
     (other scenes): absent ones simply leave boxes unchanged. Returns a
@@ -312,10 +312,10 @@ def judge_preview(sc):
               for c in load(sd / "graph" / "split_cuts.json", "cases")
               if c.get("id")}
     # J8 v2.2 ship keys name a box; "rebox_candidate" is the rejected
-    # face-on re-box the carve recorded on its own doubt (same source
+    # face-on re-box the vote recorded on its own doubt (same source
     # materialize reads — the verdict file is never a geometry source).
     rejected = {}
-    for n in load(sd / "graph" / "carve_doubts.json", "nodes"):
+    for n in load(sd / "graph" / "vote_doubts.json", "nodes"):
         for d in n.get("doubts") or []:
             if d.get("kind") == "rebox_rejected_smaller" \
                     and d.get("proposed_box"):
@@ -345,7 +345,7 @@ def judge_preview(sc):
     merged = {}   # loser id -> survivor id
     try:
         gedges = (json.loads((sd / "scene_graph.json").read_text())
-                  .get("carved_edges") or {}).get("edges") or []
+                  .get("voted_edges") or {}).get("edges") or []
     except Exception:
         gedges = []
     for e in gedges:
@@ -420,7 +420,7 @@ def judge_preview(sc):
                       "graph/multiplicity.json (J8) + "
                       "graph/split_cuts.json (J8s) + "
                       "pool_retake/slicevote_report.json + "
-                      "scene_graph.json carved_edges (J1 SAME merges)",
+                      "scene_graph.json voted_edges (J1 SAME merges)",
             "frame": man.get("frame"),
             "not_shipping": not_shipping,
             "n_objects": len(out),
@@ -428,19 +428,19 @@ def judge_preview(sc):
 
 
 # ---- materialized layer (Phase C) -------------------------------------
-# scene_graph.json's ADDITIVE `carved` block (graph/materialize_carve.py):
+# scene_graph.json's ADDITIVE `voted` block (graph/materialize_layers.py):
 # the first real materialize output. The judge_preview layer above was the
 # hand-composed preview of exactly this; this layer supersedes it.
-_carved_cache = {}   # scene -> (scene_graph.json mtime, carved dict or None)
+_voted_cache = {}   # scene -> (scene_graph.json mtime, voted dict or None)
 
 
 def same_product_layer(sc, kind):
     """The J9 same-product layers, composed from graph/same_product.json +
-    the carve preview manifest the sizes were measured from.
+    the vote preview manifest the sizes were measured from.
 
     Two layers, because the client paints one colour per source and the
     whole point is telling them apart:
-      kind="members" — each SET MEMBER's own carved box, verbatim. What
+      kind="members" — each SET MEMBER's own voted box, verbatim. What
                        the judge decided is one product.
       kind="sizes"   — the CANONICAL box (the exemplar's measured size)
                        drawn at every member, so "one size for the set"
@@ -460,12 +460,12 @@ def same_product_layer(sc, kind):
     except Exception:                                   # noqa: BLE001
         return None
     # THE SAME GEOMETRY THE VERDICTS WERE MADE ON. J9 judges the settled
-    # layer, whose node set includes ids the carve manifest has never
+    # layer, whose node set includes ids the vote manifest has never
     # heard of (split pieces like obj_011#1) and excludes ones it still
     # lists (merged-away nodes). Reading the manifest here drew a set
     # minus its own members.
     boxes = {}
-    cv = carved_layer(sc)
+    cv = voted_layer(sc)
     for n in (cv or {}).get("nodes") or []:
         if n.get("geometry"):
             boxes[n["id"]] = n["geometry"]
@@ -555,9 +555,9 @@ def same_product_layer(sc, kind):
             "objects": out}
 
 
-def carved_layer(sc):
-    """Read scene_graph.json['carved'] (or None when the scene has no
-    graph / no carved block / an unreadable one). mtime-cached because
+def voted_layer(sc):
+    """Read scene_graph.json['grouped'] (or None when the scene has no
+    graph / no voted block / an unreadable one). mtime-cached because
     both the registry gate (box_sources) and the box composer
     (materialized) need the same 0.5 MB parse."""
     p = paths.scene_dir(sc) / "scene_graph.json"
@@ -565,7 +565,7 @@ def carved_layer(sc):
         mt = p.stat().st_mtime
     except OSError:
         return None
-    ent = _carved_cache.get(sc)
+    ent = _voted_cache.get(sc)
     if ent and ent[0] == mt:
         return ent[1]
     try:
@@ -573,7 +573,7 @@ def carved_layer(sc):
         # would otherwise decode them through the Windows locale codepage
         g = json.loads(p.read_text(encoding="utf-8"))
         # THE CURRENT LAYER, asked for rather than named (user rule
-        # 2026-08-09). Hard-coding "carved" meant the viewer would keep
+        # 2026-08-09). Hard-coding "voted" meant the viewer would keep
         # drawing it after a newer stage landed.
         name, cv = scene_state.current(g)
         if cv is not None:
@@ -582,13 +582,13 @@ def carved_layer(sc):
         cv = None
     if not isinstance(cv, dict) or not cv.get("nodes"):
         cv = None
-    _carved_cache[sc] = (mt, cv)
+    _voted_cache[sc] = (mt, cv)
     return cv
 
 
 # rules that only restate where the box CAME from (no edit of its own):
 # skipped when picking the box label's tag, still listed in flags.
-MAT_BASE_RULES = ("geometry_base_carved", "geometry_base_resolved_fallback",
+MAT_BASE_RULES = ("geometry_base_voted", "geometry_base_resolved_fallback",
                   "inherited_from_parent")
 
 
@@ -614,7 +614,7 @@ def _mat_tag(rule, pv, node):
 
 
 def _mat_box(g):
-    """center/size from a carved geometry block (both are recorded; this
+    """center/size from a voted geometry block (both are recorded; this
     only fills them in if an older record left them out). Returns None
     when there is no box to draw."""
     lo, hi = (g or {}).get("aabb_min"), (g or {}).get("aabb_max")
@@ -628,7 +628,7 @@ def _mat_box(g):
 
 
 def materialized(sc):
-    """Compose the MATERIALIZED box layer: the carved block's nodes drawn
+    """Compose the MATERIALIZED box layer: the voted block's nodes drawn
     VERBATIM (geometry copied, nothing recomputed here either), each box
     carrying its provenance rule trail plus any conflict / open question
     filed against it — seeing which boxes still carry unresolved
@@ -640,8 +640,8 @@ def materialized(sc):
     `dropped` list with their former geometry + why, which the client
     renders behind its own default-off ghost toggle.
 
-    Returns None when the scene has no carved block (route 404s)."""
-    cv = carved_layer(sc)
+    Returns None when the scene has no voted block (route 404s)."""
+    cv = voted_layer(sc)
     if cv is None:
         return None
     confl, opens = {}, {}
@@ -700,7 +700,7 @@ def materialized(sc):
     return {"scene": sc,
             "status": cv.get("status") or "UNTESTED-TRIAL",
             "source": "viewer/serve.py materialized(): scene_graph.json "
-                      "['carved'] verbatim (graph/materialize_carve.py, "
+                      "['voted'] verbatim (graph/materialize_layers.py, "
                       "Phase C) — RAW frame, like every other box layer",
             "built": cv.get("built"),
             "built_from": cv.get("built_from"),
@@ -914,14 +914,14 @@ class H(BaseHTTPRequestHandler):
                                        + sc.encode())
             if src == "materialized":
                 # COMPOSED layer (materialized()), not a file on disk:
-                # scene_graph.json's additive 'carved' block (Phase C)
+                # scene_graph.json's additive 'voted' block (Phase C)
                 data = materialized(sc)
                 if data is not None:
                     return self._send(200, json.dumps(data).encode(),
                                       "application/json")
-                return self._send(404, b"no scene_graph.json['carved'] for "
+                return self._send(404, b"no scene_graph.json['grouped'] for "
                                        b"this scene; run graph/"
-                                       b"materialize_carve.py --scene "
+                                       b"materialize_layers.py --scene "
                                        + sc.encode())
             f = next((f for k, _, _, f, _, _ in box_sources(sc) if k == src), None)
             if f is not None and f.exists():
@@ -994,7 +994,7 @@ class H(BaseHTTPRequestHandler):
                                 b"graph/build_graph.py --scene " + sc.encode())
         elif p == "/multiplicity.json":
             # graph/judge_multiplicity.py output (J8): per doubt-flagged
-            # carved node a one-vs-many verdict (outcome + box_ruling or
+            # voted node a one-vs-many verdict (outcome + box_ruling or
             # identity+parts). Verdicts REFERENCE nodes — materialize
             # (Phase C) is the editor; the viewer just shows them on the
             # judged card. sc sanitized by _scene(), no traversal.

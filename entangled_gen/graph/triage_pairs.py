@@ -54,8 +54,8 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
-from rederive_carved_edges import (layer_of,          # noqa: E402
-                                   overlay_carved_geometry)
+from rederive_voted_edges import (layer_of,          # noqa: E402
+                                   overlay_voted_geometry)
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -158,11 +158,11 @@ def main():
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--dry", action="store_true",
                     help="list candidates only; no LLM, no write")
-    ap.add_argument("--edges-from", choices=("record", "carved_edges"),
+    ap.add_argument("--edges-from", choices=("record", "voted_edges"),
                     default="record",
                     help="which layer to triage: the record (default, "
-                         "lifted boxes) or graph['carved_edges'] (the "
-                         "Phase-B2 loop-back re-derive on carved boxes)")
+                         "lifted boxes) or graph['voted_edges'] (the "
+                         "Phase-B2 loop-back re-derive on voted boxes)")
     args = ap.parse_args()
 
     sdir = paths.scene_dir(args.scene)
@@ -171,8 +171,8 @@ def main():
     det = {n["id"]: n for n in graph["nodes"]
            if n.get("source") == "detection"}
 
-    # LAYER: record (nesting on the nodes, edges top-level) or the carved
-    # loop-back layer (nesting + edges inside graph["carved_edges"]).
+    # LAYER: record (nesting on the nodes, edges top-level) or the voted
+    # loop-back layer (nesting + edges inside graph["voted_edges"]).
     layer = layer_of(graph, args.edges_from)
     if layer is None:
         edges_list = graph["edges"]
@@ -181,7 +181,7 @@ def main():
     else:
         edges_list = layer.setdefault("edges", [])
         nesting_src = layer.get("nesting") or {}
-        det = overlay_carved_geometry(det, sdir, layer)
+        det = overlay_voted_geometry(det, sdir, layer)
 
     # pairs already before the judge (any source) -- skip
     have = {frozenset((e["a"], e["b"])) for e in edges_list

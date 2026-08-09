@@ -1,16 +1,16 @@
-# PLAN — CARVE DOWNSTREAM: judges → materialize → compose (the wiring road)
+# PLAN — VOTE DOWNSTREAM: judges → materialize → compose (the wiring road)
 
 **Written 2026-08-07** (session after the four-run night). Continues the
-R-S2-30 directive ("keep running the carved output along the pipeline")
-and the END-STATE CONTRACT on the map's carve card: the handoff stays
-ONE canonical graph; carved boxes + new-judge verdicts materialize into
+R-S2-30 directive ("keep running the voted output along the pipeline")
+and the END-STATE CONTRACT on the map's vote card: the handoff stays
+ONE canonical graph; voted boxes + new-judge verdicts materialize into
 it; the preview manifest retires; THEN the runner is wired and the
-carve's outgoing edge is drawn solid.
+vote's outgoing edge is drawn solid.
 
 **Map rule (user 08-07): every phase that lands gets DRAWN on
 pipeline_map.html as part of landing — no invisible stages.** Nodes
 appear when implemented (dashed if preview, solid at canon), same as
-the carve node's own history. Step-3 shift-down script pattern from
+the vote node's own history. Step-3 shift-down script pattern from
 the 08-07 main-lane move (dry-run the threshold crossing first).
 
 Protocol: pipeline_map.html is the authority; every checkpoint = USER
@@ -18,11 +18,11 @@ GATE with review stimuli (module contract first); verdicts land in
 REVIEW_LOG.md; Claude does not conclude from images. Rule #1: no
 scene-specific tuning; fixes at the source.
 
-## STATE ENTERING THIS PLAN (updated 2026-08-08 evening, carve run 17)
+## STATE ENTERING THIS PLAN (updated 2026-08-08 evening, vote run 17)
 
-- **Carve run 17 is the current carve state** (`r20260808-203800`,
+- **Vote run 17 is the current vote state** (`r20260808-203800`,
   canon_eligible, commit 99070ab): scene_manifest_slicevote_preview.json
-  — 46 objects; **{carved_pano 28, kept_wall 7, kept_ceiling 7, kept 2,
+  — 46 objects; **{voted_pano 28, kept_wall 7, kept_ceiling 7, kept 2,
   kept_outlier 2}**. The MECHANISM is the run-10 box canon (user-passed
   R-S2-35..39: half-space shell filter, winning-blob pano filter,
   plan-fill v2, large_empty_notch doubt, PROTRUSION wall exemption,
@@ -48,14 +48,14 @@ scene-specific tuning; fixes at the source.
   detections overruled, 13 re-framed, 2 re-shot, ~20 boxes moved >2 cm;
   obj_020 0.32 → 0.47 m wide (original 0.47), obj_068 0.09 → 0.25 ×
   0.68 × 0.28 (now raises the multi-node flag), obj_034 glass door back
-  to 0.02 × 3.06 × 2.94. Details: docs/CARVE_SLICEVOTE.md, 08-08 update.
+  to 0.02 × 3.06 × 2.94. Details: docs/SLICEVOTE.md, 08-08 update.
 - **⚠ TWO OUTLIER-GUARD TRIPS on run 17** (both ship their ORIGINAL box,
   oversized vote box recorded as a doubt): obj_019 pillow at exactly 8×
   (pano coverage too thin to pull it back; it sits in the overlapping
   pillow pile) and obj_029 magazine at 40× (its top view finds NO
   detection, so the slice falls back to the full-height wedge and the
   bookshelf wins the election). Carried opens, not threshold questions.
-- scene_graph.json `carve` block re-applied per carve run (46 nodes);
+- scene_graph.json `vote` block re-applied per vote run (46 nodes);
   docket = AUTO doubts only (the 08-07 user_routed channel was a Rule-1
   violation, removed; obj_011 admits via large_empty_notch BY RULE).
 - **THE CHAIN RE-RAN END-TO-END ON RUN 17** — J0 nominated 1 pair
@@ -68,26 +68,26 @@ scene-specific tuning; fixes at the source.
   {020, 021, 028, 041} at 0.458 × 0.747 × 0.383, pillows {015, 016,
   026}. **Materialize**: 46 resolved → 45 nodes, 3 dropped, 1 new
   piece, 1 conflict, 9 open questions.
-- **Phase B2 loop-back: RUN** (R-S2-36..39) — additive carved_edges
+- **Phase B2 loop-back: RUN** (R-S2-36..39) — additive voted_edges
   layer + J0/J1 on it; **Phase A J8: CANONICAL VERDICTS RUN** on the
   v2.4 docket, USER-ACCEPTED on the run-10 geometry (status lines in
   each phase below; the run-17 re-run above is the same bench on the
   newer boxes and has NOT been through a user gate).
-- Resolved layer = identity canon; its boxes pre-carve (stale); the
-  poisoned ON edges are superseded by the rebuilt carved_edges layer.
+- Resolved layer = identity canon; its boxes pre-vote (stale); the
+  poisoned ON edges are superseded by the rebuilt voted_edges layer.
 - **J8 v2.4 = CANON (user ruling 2026-08-08, "they all make sense.
   this is the one we use")** — the comparison ask, per-node candidate
-  boxes, NO_GOOD_BOX, carve-exempt routing and dependency-ordered
+  boxes, NO_GOOD_BOX, vote-exempt routing and dependency-ordered
   judging all landed and the living_marble verdicts are USER-ACCEPTED.
   Details in Phase A below.
 - **Phase C materialize: BUILT + RUN ONCE** (R-S2-43) as an UNTESTED
-  TRIAL — additive `graph["carved"]`, status UNTESTED-TRIAL, not
+  TRIAL — additive `graph["voted"]`, status UNTESTED-TRIAL, not
   promoted to canon.
 - **NEXT: J9 GATES** — sheets + verdicts user review, and the J9
   INSTABILITY first (two runs 20 min apart gave disjoint sets; J9 has
   no verdict cache, so every run re-decides) — **then PHASE C
   promotion**: close the six materialize gaps listed in R-S2-43
-  before the carved layer becomes the handoff. Carried opens:
+  before the voted layer becomes the handoff. Carried opens:
   post_judge_conflicts (Phase A); eyeballs — obj_042 TV-stand extent
   + curtain re-box under the dist-clamped camera; J8 confidence
   spread (watch for anchoring).
@@ -97,7 +97,7 @@ scene-specific tuning; fixes at the source.
 **STATUS 08-08: v2.4 IS CANON — VERDICTS USER-ACCEPTED for
 living_marble** (user ruling: "they all make sense. this is the one we
 use"). The bench ran inside the Phase-B2 loop-back pass as the order
-ruling requires (facts read from the rebuilt carved_edges), on a
+ruling requires (facts read from the rebuilt voted_edges), on a
 10-case docket sorted into 3 dependency levels.
 
 **What v2.4 is, in one line:** J8 no longer diagnoses what went wrong
@@ -125,16 +125,16 @@ neighbours' settled geometry.
   ship the boxes it is able to evaluate").** Each case carries its OWN
   candidate list, built from the boxes that node actually HAS, each
   with a stable key, its dimensions and a provenance sentence:
-  - carved node — `vote` (boxes.vote2, the elected cluster) |
+  - voted node — `vote` (boxes.vote2, the elected cluster) |
     `pano` (boxes.pano, the founding-mask share)
-  - carve-EXEMPT node — `current` (the shipping box = the ORIGINAL
-    pre-carve box after the shell clip; it never voted) |
-    `rebox_candidate` (the face-on re-box the carve's guard REJECTED;
+  - vote-EXEMPT node — `current` (the shipping box = the ORIGINAL
+    pre-vote box after the shell clip; it never voted) |
+    `rebox_candidate` (the face-on re-box the vote's guard REJECTED;
     shipping it ADOPTS that smaller measured box)
   - `either` is offered ONLY when two candidates agree within
     AGREE_TOL = 5 cm on every face.
   This REPLACED the fixed ship_pano/ship_vote/either enum, which was a
-  carved node's vocabulary. obj_018 is the case that proved it: the
+  voted node's vocabulary. obj_018 is the case that proved it: the
   judge had correctly seen that the box over-reaches into ceiling
   architecture and that the rejected magenta candidate is the actual
   fixture, and had no legal way to say so — it was forced to answer
@@ -148,13 +148,13 @@ neighbours' settled geometry.
   shipping geometry while recording rule `j8_no_good_box` + an open
   question. **Unused on living_marble (0 cases) — the outcome exists,
   the materialize path is unexercised on real data.**
-- **CARVE-EXEMPT NODES CAN NOW BE JUDGED (the obj_018 gap).**
-  wall/ceiling nodes skip the carve, so they produced no doubts and
+- **VOTE-EXEMPT NODES CAN NOW BE JUDGED (the obj_018 gap).**
+  wall/ceiling nodes skip the vote, so they produced no doubts and
   could never reach the docket. Two new doubt kinds route them in:
   `rebox_rejected_smaller` (the face-on detection is >3× smaller than
   the box, so the guard threw the re-box away) and `rebox_truncated`
   (>= 2 of 4 in-plane sides ran off the frame and kept their priors).
-  Their stimulus is the carve's FACE-ON (perp) render — camera READ
+  Their stimulus is the vote's FACE-ON (perp) render — camera READ
   from its params sidecar, never recomputed — **PLUS a BOX-CONTENT
   PANEL:** an isolated render of only the gaussians inside the node's
   OWN box, grown a margin in-plane and opened along the plane normal
@@ -168,9 +168,9 @@ neighbours' settled geometry.
   placed against its NEIGHBOURS' boxes, and another case's verdict can
   MOVE one of those boxes.
   - **ONE SETTLED GEOMETRY MAP** is what every case reads. It starts
-    as the carve's shipping boxes (preview manifest, VERBATIM) and
+    as the vote's shipping boxes (preview manifest, VERBATIM) and
     each ONE_BOX verdict REPLACES its own node's entry with the box it
-    NAMED, resolved from the carve's own records exactly as
+    NAMED, resolved from the vote's own records exactly as
     materialize resolves it. SPLIT / UNCLEAR / NO_GOOD_BOX never move
     an entry. It ships in the sidecar as `settled_boxes`.
   - **LEVELS** come from geometry only: where one docket box sits
@@ -193,7 +193,7 @@ neighbours' settled geometry.
     open below.
 - **`--only` MERGES INSTEAD OF CLOBBERING (08-08).** A partial re-run
   repairs one case and keeps every other verdict verbatim in the same
-  documents — the same merge-on-write rule the carve adopted. Related:
+  documents — the same merge-on-write rule the vote adopted. Related:
   a call timeout is a failed ATTEMPT (retry, then UNCLEAR), never an
   exception that kills the whole docket; timeout 240 -> 600 s.
 
@@ -269,15 +269,15 @@ not a claim to carry.)
   this object?" / exempt cases: "this box is much larger than what the
   face-on view found in it — one fixture or several?". Same evidence,
   matched question.
-- **Stimuli for a CARVED case (one-look rule; cone-map tile OUT):**
+- **Stimuli for a VOTED case (one-look rule; cone-map tile OUT):**
   the object's real card renders + the plan view it was detected on,
-  with the carve's 3D boxes PROJECTED on them by carve_cams — the SAME
+  with the vote's 3D boxes PROJECTED on them by vote_cams — the SAME
   camera module the renderer used, so an overlay cannot drift from the
   render it annotates. ORANGE = vote · CYAN = pano · GREEN wireframe +
   id = a same-class neighbour's SETTLED box · RED DASHED (plan only) =
   the large_empty_notch rectangle · MAGENTA = the rejected face-on
   re-box. The plan camera is drawn ONLY when its eye validates against
-  the eye the carve recorded — no guessed projections.
+  the eye the vote recorded — no guessed projections.
 - **Verdict schema (sidecar graph/multiplicity.json):** per case:
   {node, outcome (ONE_BOX|SPLIT|NO_GOOD_BOX|UNCLEAR), ship? (ONE_BOX
   only — a key from THIS case's candidate list), identity? + count?
@@ -298,7 +298,7 @@ not a claim to carry.)
   verbatim prompt with ZERO model calls — tool-up = format wrong).
   GATE A2: CANONICAL verdicts — **PASSED 08-08 (v2.4, all 10).**
 - **Map:** "J8 · multiplicity" node drawn in the main lane under the
-  carve node; still DASHED, because materialize is a trial.
+  vote node; still DASHED, because materialize is a trial.
 
 ## PHASE A3 — SPLIT CUTS (fixed 3-round chain)
 (build: graph/split_cuts.py — J8s. **USER RULING 08-07: NO RECURSION
@@ -317,7 +317,7 @@ drawn gray dashed, never cover. One-cut-per-call chain (k=3 cap, early
 termination). CONVERGENCE: the L resolved in ONE cut / zero doubts —
 representation achieved as the union of one new piece + obj_063's +
 obj_006's existing boxes. CLOSED open: other-class cover refinement
-(subsumed by eligibility). NEW open: the 4g2 pillow-ON gap — the carve
+(subsumed by eligibility). NEW open: the 4g2 pillow-ON gap — the vote
 turns resting relations into IN edges; support re-derivation needed
 pre-compose.
 
@@ -337,7 +337,7 @@ CANNOT be settled now — with the measured comparison stated in the
 prompt so the instruction carries its own evidence. Result: **1 call, 1
 cut, 1 piece, confidence 0.85, ~3 min instead of ~10**, and the
 reasoning now names both discarded regions in one pass ("the back-run
-cushions that exactly fill obj_063's own carved box, plus the bare-rug
+cushions that exactly fill obj_063's own voted box, plus the bare-rug
 inner-corner notch under the coffee table"). **This generalizes beyond
 this judge: stating a retry budget changes how much a model attempts
 per turn** — a lesson for every bench in the chain that advertises its
@@ -346,9 +346,9 @@ retries.
 **08-08 — SPLIT CUTS CONSUME J8's SETTLED MAP.** The case's region
 box, the same-class neighbour boxes it draws, the S-lines it measures
 and the eligible cover it tests a discard against ALL come from
-graph/multiplicity.json `settled_boxes` (the carve's shipping boxes
+graph/multiplicity.json `settled_boxes` (the vote's shipping boxes
 with every J8 ONE_BOX verdict's named box applied), with the preview
-manifest as the per-id FALLBACK — see `settled_carved()`. Living: 46
+manifest as the per-id FALLBACK — see `settled_voted()`. Living: 46
 settled entries, 4 MOVED by a verdict (obj_018, obj_019, obj_021,
 obj_063). This is the second half of the v2.4 dependency ruling and it
 fixed a real defect: the cut had landed on obj_063's PRE-verdict edge
@@ -367,7 +367,7 @@ doubts, ZERO guard trips.
   the node's SETTLED box (see above; preview manifest as fallback).
   DECIDES, one region at a time, WHERE the box is cut and WHO owns
   each piece.
-  NEVER edits the graph, the carve or multiplicity.json — verdicts are a
+  NEVER edits the graph, the vote or multiplicity.json — verdicts are a
   SIDECAR and materialize (Phase C) is the editor. A mistake looks like:
   cutting one physical object in half, leaving two objects inside one
   piece, or landing a cut a few cm off a real boundary that the S-lines
@@ -395,15 +395,15 @@ doubts, ZERO guard trips.
   same-class union-cover >= 0.60 rule AND the mostly-empty exemption
   with ONE rule):** a side may be discarded iff its UNREPRESENTED-
   CONTENT RESIDUE is small — residue = (occupied plan cells, >= 2 dots
-  from the carve's own plan_cells grid, covered by NO ELIGIBLE existing
+  from the vote's own plan_cells grid, covered by NO ELIGIBLE existing
   box) / max(1, occupied cells) <= 0.25. ELIGIBLE = SETTLED boxes
   (08-08; preview manifest per-id fallback) overlapping the side, ANY
   class, plan footprints
   grown 0.10 m on all sides — EXCLUDING RIDERS (the `a` of an ON edge
-  whose `b` is the case node in carved_edges: resting objects never
+  whose `b` is the case node in voted_edges: resting objects never
   represent the region beneath them). Cover must be independently
   supported — an ON edge to something other than the case node; the
-  carved-edge layer's missing pillow ON edges is a recorded 4g2 open.
+  voted-edge layer's missing pillow ON edges is a recorded 4g2 open.
   Mostly-empty sides pass automatically (few
   occupied cells => tiny residue — no separate rule). On failure the
   discard is DOWNGRADED to keep {this_node, more_cut: false} with doubt
@@ -419,14 +419,14 @@ doubts, ZERO guard trips.
   BOX-CONTENT top render — ONLY the gaussians inside this region's box,
   camera straight above and OUTSIDE the room, fov 50 — with
   (a) projected boxes: the region box (orange), same-class neighbours'
-  carved boxes (green), overlapping other-class carved boxes (red),
+  voted boxes (green), overlapping other-class voted boxes (red),
   RIDER boxes thin dashed gray labeled "resting — not cover",
-  drawn by the SAME camera that made the render (carve_cams.make_cam,
+  drawn by the SAME camera that made the render (vote_cams.make_cam,
   the anti-drift module); (b) a DYNAMIC named lattice — pitch chosen
   from {0.1, 0.2, 0.25, 0.5, 1.0} so the longer plan extent carries <= 9
   lines, chess chips at BOTH ends + the world coordinate; (c) MAGENTA
   S-LINES at measured boundaries inside the region (same-class neighbour
-  box edges + notch-rect edges from the carve doubts, deduped at
+  box edges + notch-rect edges from the vote doubts, deduped at
   0.15 m), named S1.. with a LEGEND STRIP appended below the render;
   (d) the object's existing J8 card renders as side context.
 - **Snapping is CODE's job, never the judge's:** an S-line pick takes its
@@ -459,7 +459,7 @@ doubts, ZERO guard trips.
   sides live in the rounds list (with their notes) and never appear in
   final pieces.
 - **Docket:** SPLIT-outcome cases from graph/multiplicity.json. A
-  SPLIT/distinct case whose parts ALL map to existing nodes whose carved
+  SPLIT/distinct case whose parts ALL map to existing nodes whose voted
   boxes cover the region needs NO cuts: record
   {"resolution": "covered_by_existing", owners} MECHANICALLY, zero model
   calls. Only cases needing real geometry (one_structure, copies, or any
@@ -493,29 +493,29 @@ multiple of the same to fill the box")
 - **USER GATE A2:** attribute sheet (crop + verdict per node).
 - **Map:** draw as a J-lane node when it lands.
 
-## PHASE B2 — THE LOOP-BACK: carved state re-enters the graph chain
+## PHASE B2 — THE LOOP-BACK: voted state re-enters the graph chain
 (user ARCHITECTURE RULING 08-07, superseding the "incremental pair
 facts" framing: "after slice vote the scene goes all the way back up to
 geometric edges and down the judges again — just with two more judges
 at the end")
 
 **STATUS 08-07 late (R-S2-36..39): IMPLEMENTED + RUN.**
-graph/rederive_carved_edges.py (derive_edges() extracted from
+graph/rederive_voted_edges.py (derive_edges() extracted from
 build_edges.py, regression = field-identical re-derivation) writes the
-ADDITIVE graph["carved_edges"] layer — 46 resolved nodes × carved
+ADDITIVE graph["voted_edges"] layer — 46 resolved nodes × voted
 boxes verbatim from the preview manifest; 84 edges, self-check PASS.
 Gate-B2 diff delivered (pairs appeared/dissolved per run). J0/J1 run
-ON the layer via --edges-from carved_edges: chair-merge obj_020 ↔
+ON the layer via --edges-from voted_edges: chair-merge obj_020 ↔
 obj_041 SAME .75 (merge pending materialize) · window-vs-curtain
-obj_038 ↔ obj_053 DISTINCT .68 — both on the record. Re-run per carve
+obj_038 ↔ obj_053 DISTINCT .68 — both on the record. Re-run per vote
 run (runs 8/9/10), J4/J6 pure cache hits throughout.
 
-- Carved boxes re-enter at 4g2: geometric edge facts re-derived
+- Voted boxes re-enter at 4g2: geometric edge facts re-derived
   mechanically; the SAME judge chain runs down (J0 triage on the new
   nesting candidates; J1 only on genuinely new pairs; J4 names / J6
   appearance+existence are pure cache hits — crop stimuli unchanged by
-  the carve); then the two NEW benches (J8 split, J9 same-product);
-  then materialize. Second pass, not a cycle (carve needed resolved
+  the vote); then the two NEW benches (J8 split, J9 same-product);
+  then materialize. Second pass, not a cycle (vote needed resolved
   identity to exist). Support is NOT graph business (user: compose
   derives it, Phase D).
 - **ORDER EXPLICIT (user-adopted 08-07 late): B2 runs BEFORE the
@@ -525,7 +525,7 @@ run (runs 8/9/10), J4/J6 pure cache hits throughout.
   stimulus-gap lesson, Phase A). The 08-07 J8 verdict runs (obj_011 /
   obj_019 / obj_024) were DESIGN TRIALS of the machinery, not
   canonical verdicts; canon runs inside this pass.
-- Drawn on the map: dashed loop-back edge carve -> 4g2 (legend:
+- Drawn on the map: dashed loop-back edge vote -> 4g2 (legend:
   dashed = loop-back).
 - **USER GATE B2:** edge/triage diff (pairs appeared/dissolved) + any
   new J1 verdicts.
@@ -543,11 +543,11 @@ repeat-vote consensus, or PAIRWISE comparisons instead of asking one
 call to pick a subset out of 9. Set-member id normalization was fixed
 at source (some groups returned bare ints).
 
-- **Contract:** GETS the 6 deterministic groups + carved sizes + carve
+- **Contract:** GETS the 6 deterministic groups + voted sizes + vote
   doubts as context. DECIDES per group: same product? which members
   excluded? ONE canonical size. A mistake looks like: unifying
   different products (magazine ≠ book on the same shelf) or letting
-  one bad carve set the group's size.
+  one bad vote set the group's size.
 - **OPEN DECISION (user) before running:** current draft is TEXT-ONLY
   (names + sizes + doubts). Add crop evidence (member contact sheet
   per group, one image per call) or run text-only first and see?
@@ -560,7 +560,7 @@ at source (some groups returned bare ints).
 - **PASS PLACEMENT RULED (user 08-07): second pass ONLY, never the
   first flow-through.** Rationale: the verdict binds identity to SIZE
   (canonical size = shopping's input) and sizes are only trustworthy
-  post-carve; membership is only final post-J8; one call per group
+  post-vote; membership is only final post-J8; one call per group
   makes a split visual/size run pointless. General rule: geometry-bound
   judges (J8/J9/pair-fact rerun) = second pass; pixel-only judges
   (names, existence, appearance, Probe A count) = first pass, cached
@@ -569,17 +569,17 @@ at source (some groups returned bare ints).
   NOT this phase (wire at S4 when compose runs).
 - **Map:** draw "J9 · same-product" beside J8 when verdicts run.
 
-## PHASE C — MATERIALIZE v2 (build: graph/materialize_carve.py)
+## PHASE C — MATERIALIZE v2 (build: graph/materialize_layers.py)
 
 **STATUS 08-08: BUILT + RUN ONCE, status UNTESTED-TRIAL.** The
-additive `graph["carved"]` block exists and the viewer serves it
+additive `graph["voted"]` block exists and the viewer serves it
 (amber layer). On living_marble, after the v2.4 J8 pass: **45 boxes
 out of 46 resolved · 4 box swaps · 1 split piece · 1 merged away · 12
 same-product annotations · 1 conflict** (J1 merged obj_029 <-> obj_036
 which J9 ruled NOT the same product — recorded, merge wins, J9's false
 has no effect) + 9 open questions on 8 nodes. Additivity verified
 twice, idempotent, backup written. **NOT promoted to canon** — the box
-canon is still the slice-vote carve layer.
+canon is still the slice-vote vote layer.
 
 **⚠ THE GAPS (from R-S2-43, all still open):** (1) the L loses its
 one_structure linkage — obj_063 and obj_011#1 ship as two unrelated
@@ -587,50 +587,50 @@ sofas, so shopping would buy two; (2) obj_063 carries no
 machine-readable pointer that it represents the discarded back run
 (the ownership lives in a discard note's free text); (3) piece ids
 contain "#", which will break path-shaped consumers; (4) edges are NOT
-re-derived, so carved_edges still references nodes the carved set no
+re-derived, so voted_edges still references nodes the voted set no
 longer has; (5) 3 of 6 materialize rules never fired on real data
 (ship_vote swap, existing:<id> piece drop, covered_by_existing) —
 synthetic-only, treat as unproven, and `j8_no_good_box` joins them
 (0 cases on living); (6) J9 canonical sizes diverge sharply from
-carved boxes (pillow 0.376 vs shipping 0.56) — shopping needs an
+voted boxes (pillow 0.376 vs shipping 0.56) — shopping needs an
 explicit precedence rule.
 
-- **Contract:** GETS resolved layer + carve block + preview manifest +
+- **Contract:** GETS resolved layer + vote block + preview manifest +
   multiplicity/same-product verdicts. WRITES the new additive layer =
-  THE canonical handoff (working name graph["carved"] — LAYER NAME =
-  USER DECISION): carved boxes folded in; node set edited per
-  multiplicity verdicts (splits get part nodes with carve arm/cluster
+  THE canonical handoff (working name graph["voted"] — LAYER NAME =
+  USER DECISION): voted boxes folded in; node set edited per
+  multiplicity verdicts (splits get part nodes with vote arm/cluster
   geometry); same-product groups recorded (canonical size rides the
   group, per-node boxes stay honest); contact-edge facts RE-DERIVED
-  mechanically from carved geometry (the 08-09 poisoned-edge ruling);
+  mechanically from voted geometry (the 08-09 poisoned-edge ruling);
   poisoned resolved edges + preview manifest RETIRED to audit status.
   Targeted appearance pass (describe_nodes --appearance-only) for
   nodes multiplicity created — nothing else re-judged.
 - A mistake looks like: any silent geometry edit (boxes must be
-  VERBATIM carve outputs), or an old-layer mutation (record-then-judge:
+  VERBATIM vote outputs), or an old-layer mutation (record-then-judge:
   layers are append-only).
-- **USER GATE C:** the carved layer in the viewer as the new "scene
+- **USER GATE C:** the voted layer in the viewer as the new "scene
   model" default + a diff sheet (node set changes, edge rebuild counts).
-- **Map:** draw "4g5 · CARVED = CANONICAL handoff" node; carve card's
+- **Map:** draw "4g5 · VOTED = CANONICAL handoff" node; vote card's
   END-STATE CONTRACT marked delivered; preview-manifest mentions
   flipped to audit.
 
-## PHASE D — S1/COMPOSE ON CARVED GEOMETRY
+## PHASE D — S1/COMPOSE ON VOTED GEOMETRY
 
-- Point S1 supported_by at the carved layer; run the compose chain in
+- Point S1 supported_by at the voted layer; run the compose chain in
   true meters on honest boxes for the first time. The chairs' shaved
   bottoms are the user's predicted snap/supported-by test case.
 - **USER GATE D:** standard compose review surfaces.
-- **Map:** step-3 cards get their input line updated (carved layer, not
+- **Map:** step-3 cards get their input line updated (voted layer, not
   resolved).
 
 ## PHASE E — RUNNER WIRING + PROMOTION
 
-- run_scene.py stage order: … → graph judges → carve → J8/J9 →
+- run_scene.py stage order: … → graph judges → vote → J8/J9 →
   materialize → compose. Understand the 44→45 count delta before
   wiring (R-S2-30 note). Wipe-rules for slice/vote render caches
   respected by the runner.
-- **Map:** carve's outgoing edge drawn SOLID; "wiring pending" labels
+- **Map:** vote's outgoing edge drawn SOLID; "wiring pending" labels
   removed. This is the promotion gate the whole plan walks toward.
 - Commit/push checkpoints remain the user's call throughout.
 
@@ -677,7 +677,7 @@ outstanding:
    the two never-fired paths (`j8_no_good_box`, ship_vote swap).
    These gate Phase C's promotion from UNTESTED-TRIAL to the
    canonical handoff.
-4. **The two outlier-guard trips on run 17** (carve, see STATE) —
+4. **The two outlier-guard trips on run 17** (vote, see STATE) —
    obj_019 pillow at exactly 8× and obj_029 magazine at 40×. Both ship
    their original box with the oversized vote box recorded as a doubt,
    so nothing downstream is corrupted, but neither box is measured:
@@ -686,7 +686,7 @@ outstanding:
    bookshelf wins the election). Eyeball/multiplicity docket items —
    NOT a threshold to retune.
 
-Then Phase D (compose on carved geometry) and Phase E (runner wiring +
+Then Phase D (compose on voted geometry) and Phase E (runner wiring +
 the solid edge on the map).
 
 ## ORDER + WHY
@@ -715,6 +715,6 @@ recommendation")
 
 1. Phase B evidence: WITH CROPS — member contact sheet per group, one
    image per call.
-2. Phase C layer name: graph["carved"] (fourth additive layer).
+2. Phase C layer name: graph["voted"] (fourth additive layer).
 3. Canonical size: GROUP ATTRIBUTE for shopping; per-node boxes stay
-   verbatim carve outputs, never overwritten by the group size.
+   verbatim vote outputs, never overwritten by the group size.
