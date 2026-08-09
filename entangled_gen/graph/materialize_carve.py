@@ -123,6 +123,7 @@ Run:
   python graph/materialize_carve.py --scene living_marble --apply
 """
 import argparse
+import copy
 import html
 import json
 import re
@@ -158,6 +159,29 @@ LEGACY_SHIP = {"ship_vote": "vote", "ship_pano": "pano", "either": "either"}
 # --------------------------------------------------------------------------
 # small geometry helpers -- COPY boxes, never recompute a carve number
 # --------------------------------------------------------------------------
+
+
+def supersede(node, geom, stage, why):
+    """Push the box a node is about to lose onto its geometry_superseded
+    HISTORY, oldest first.
+
+    It is a LIST, not a single slot: a node can lose its box more than
+    once (the vote elects one, then J8 swaps it), and a single slot meant
+    the second edit erased the first — obj_021 ended up advertising its
+    PRE-VOTE box as "superseded" while the box the vote actually elected
+    had vanished without trace. Kept for reference, never canon.
+    """
+    if not geom:
+        return
+    hist = node.get("geometry_superseded")
+    if isinstance(hist, dict):          # the one-slot form written earlier
+        hist = [hist]
+    elif not isinstance(hist, list):
+        hist = []
+    hist.append({"stage": stage, "source": stage, "note": why,
+                 **{k: geom[k] for k in GEOM_KEYS if k in geom}})
+    node["geometry_superseded"] = hist
+
 
 def geom_from_lohi(lo, hi, ndigits=3):
     """A node geometry block from a report/cut box. lo/hi are copied
@@ -213,7 +237,8 @@ def carve_report_boxes(sdir, graph):
 def same_verdict_pairs(graph):
     """SAME_CANDIDATE edges of graph['carved_edges'] whose J1 verdict is
     SAME. Returns [(a, b, verdict)]."""
-    layer = graph.get("carved_edges") or {}
+    layer = (graph.get("voted") or graph.get("carved_edges")
+             or {})
     out = []
     for e in layer.get("edges", []):
         if e.get("type") != "SAME_CANDIDATE":
@@ -288,6 +313,33 @@ class Materialize:
 
     # -- rule 1 ----------------------------------------------------------
     def base_geometry(self):
+        """START FROM THE NEWEST WHOLE LAYER, inheriting all of it.
+
+        USER DESIGN RULE (2026-08-08): a module edits the scene graph and
+        inherits the rest. This used to rebuild each node from scratch —
+        id / name / geometry / members / from — which quietly dropped
+        everything the vote-box stage had recorded (the elected box's own
+        provenance, the superseded pre-vote box, the vote record, the
+        typed doubts) and forced every later reader to go find it in a
+        sidecar. Now graph['voted'] is copied forward WHOLE and this pass
+        only edits what its own rules touch.
+
+        Fallback, announced: no voted layer -> the old resolved + manifest
+        path, so a scene that has not been re-run still materializes.
+        """
+        voted = (self.graph.get("voted") or {}).get("nodes")
+        if voted:
+            for vn in sorted(voted, key=lambda n: n["id"]):
+                n = copy.deepcopy(vn)
+                n["from"] = "voted"
+                n.setdefault("provenance", [])
+                self.nodes[n["id"]] = n
+            self.stats["base_voted"] = len(self.nodes)
+            self.stats["base_resolved_fallback"] = 0
+            self.base_layer = "voted"
+            return
+
+        self.base_layer = "resolved+manifest"
         fallbacks = 0
         for rn in sorted(self.graph["resolved"]["nodes"], key=lambda n: n["id"]):
             nid = rn["id"]
@@ -420,6 +472,15 @@ class Materialize:
                 else:
                     old = self.nodes[nid]["geometry"]
                     new = geom_from_lohi(b["lo"], b["hi"])
+                    # NOTHING IS OVERWRITTEN WITHOUT A RECORD (user design
+                    # rule): the box this swap replaces is the one the VOTE
+                    # elected, and it was being silently dropped -- the
+                    # node's geometry_superseded still named the pre-vote
+                    # box, so "what did the vote decide for obj_021" became
+                    # unanswerable after J8 touched it.
+                    supersede(self.nodes[nid], old, "voted",
+                              "the ELECTED box, replaced by J8's ship "
+                              "ruling on this node")
                     self.nodes[nid]["geometry"] = new
                     self.prov(nid, "j8_box_swap", ship=ruling, source=src,
                               was={"aabb_min": old["aabb_min"],
@@ -507,7 +568,19 @@ class Materialize:
                     k += 1
                     pid = f"{nid}#{k}"
                     g = geom_from_lohi(p["box"]["lo"], p["box"]["hi"])
+                    # A NEW NODE INHERITS ITS PARENT'S INFORMATION
+                    # (user design rule): a piece used to be born with
+                    # id/name/geometry/members only, so it carried no vote
+                    # record and no doubts -- and a doubt-free node is
+                    # eligible to become a size exemplar. Everything the
+                    # parent held comes across, with the parent's own box
+                    # recorded as superseded for this piece, and the
+                    # inherited vote marked as the PARENT's measurement so
+                    # it is never read as this piece's own.
                     self.nodes[pid] = {
+                        **{k: copy.deepcopy(v) for k, v in parent.items()
+                           if k not in ("id", "geometry", "provenance",
+                                        "merged_from", "merged_members")},
                         "id": pid, "name": parent["name"], "geometry": g,
                         "members": list(parent["members"]),
                         "from": "split_piece", "split_from": nid,
@@ -519,6 +592,17 @@ class Materialize:
                                     "audit; this piece's BOX comes from the "
                                     "J8s cut record, not from the parent"}],
                     }
+                    if self.nodes[pid].get("vote"):
+                        self.nodes[pid]["vote"] = {
+                            **self.nodes[pid]["vote"],
+                            "measured_on": nid,
+                            "note": "INHERITED from the parent node — this "
+                                    "vote elected the parent's box, NOT "
+                                    "this piece's; the piece's box comes "
+                                    "from the J8s cut"}
+                    supersede(self.nodes[pid], parent["geometry"], "voted",
+                              f"the parent {nid}'s box, which this piece "
+                              f"was cut out of")
                     self.prov(pid, "j8s_split_piece", parent=nid,
                               piece=p.get("id"), owner=owner,
                               cut_provenance=p.get("provenance"),
@@ -745,9 +829,9 @@ class Materialize:
             return out
 
         # --- inherit the previous edge set, re-pointed ------------------
-        src_name = ("carved_edges"
-                    if (self.graph.get("carved_edges") or {}).get("edges")
-                    else "resolved")
+        src_name = next((b for b in ("voted", "carved_edges", "resolved")
+                         if (self.graph.get(b) or {}).get("edges")),
+                        "resolved")
         inherited = list((self.graph.get(src_name) or {}).get("edges") or [])
         carried, lost, consumed = {}, [], []
         for e in inherited:
@@ -1149,8 +1233,11 @@ class Materialize:
         print(f"[materialize] {self.scene}: {s['resolved_in']} resolved -> "
               f"{s['nodes_out']} proposed nodes "
               f"({s['dropped']} dropped, {s['j8s_pieces_made']} new pieces)")
-        print(f"[materialize] rules fired: base carved {s['base_carved']}"
-              f" / resolved-fallback {s['base_resolved_fallback']} · "
+        base = (f"base voted {s['base_voted']}" if 'base_voted' in s
+                else f"base carved {s.get('base_carved', 0)}"
+                     f" / resolved-fallback "
+                     f"{s.get('base_resolved_fallback', 0)}")
+        print(f"[materialize] rules fired: {base} · "
               f"J8 swap {s['j8_box_swapped']}, noop {s['j8_box_noop']}, "
               f"not-applicable {s['j8_ruling_not_applicable']}, "
               f"UNCLEAR {s['j8_unclear']}, "
@@ -1234,15 +1321,22 @@ def fate_class(f):
 
 def write_report(m, out):
     s, rows = m.stats, m.fates()
-    counts = [("resolved in", s["resolved_in"]),
-              ("proposed nodes", s["nodes_out"]),
-              ("new split pieces", s["j8s_pieces_made"]),
-              ("dropped", s["dropped"]),
-              ("box swaps", s["j8_box_swapped"]),
-              ("merged away", s["j1_merged_away"]),
-              ("product annotations", s["j9_annotated"]),
-              ("conflicts", s["conflicts"]),
-              ("open questions", s["open_questions"])]
+    # .get, not [] — PHASE 1 (--settle-only) legitimately has no J9 stats,
+    # and a KeyError here killed the run AFTER every rule had fired but
+    # BEFORE the layer was written, so graph['settled'] was never created.
+    # It was invisible too: the caller piped stdout to grep, so `set -e`
+    # saw grep's exit status and the step merely looked quiet. A REPORT
+    # MUST NEVER BE ABLE TO STOP A STAGE FROM WRITING ITS RESULT.
+    counts = [("resolved in", s.get("resolved_in", 0)),
+              ("proposed nodes", s.get("nodes_out", 0)),
+              ("new split pieces", s.get("j8s_pieces_made", 0)),
+              ("dropped", s.get("dropped", 0)),
+              ("box swaps", s.get("j8_box_swapped", 0)),
+              ("merged away", s.get("j1_merged_away", 0)),
+              ("product annotations", s.get("j9_annotated", 0)),
+              ("edges", s.get("edges_out", 0)),
+              ("conflicts", s.get("conflicts", 0)),
+              ("open questions", s.get("open_questions", 0))]
     head = "".join(f"<span class='count'><b>{v}</b>{esc(k)}</span>"
                    for k, v in counts)
     trs = []
@@ -1333,21 +1427,29 @@ def main():
         print("\n[materialize] DRY -- nothing written "
               "(--report-only for the html, --apply for the layer)")
         return
-    write_report(m, rpath)
-    print(f"\n[materialize] wrote {rpath}")
+    try:
+        write_report(m, rpath)
+        print(f"\n[materialize] wrote {rpath}")
+    except Exception as e:                              # noqa: BLE001
+        print(f"\n[materialize] REPORT FAILED ({type(e).__name__}: "
+              f"{str(e)[:160]}) -- continuing; the layer is still written")
     if not a.apply:
         print("[materialize] --report-only: graph NOT written")
         return
 
-    before = {k: v for k, v in m.graph.items() if k != LAYER}
-    m.graph[LAYER] = m.layer()
+    # PHASE 1 writes its OWN layer: resolved -> voted -> settled -> carved.
+    # Each stage's output is a whole graph named for the stage that made
+    # it, so "the newest layer" is always unambiguous.
+    out_layer = "settled" if a.settle_only else LAYER
+    before = {k: v for k, v in m.graph.items() if k != out_layer}
+    m.graph[out_layer] = m.layer()
     m.gpath.write_text(json.dumps(m.graph, indent=1), encoding="utf-8")
 
     after = json.loads(m.gpath.read_text(encoding="utf-8"))
-    changed = [k for k in set(before) | (set(after) - {LAYER})
+    changed = [k for k in set(before) | (set(after) - {out_layer})
                if json.dumps(before.get(k), sort_keys=True)
                != json.dumps(after.get(k), sort_keys=True)]
-    print(f"[materialize] wrote graph['{LAYER}'] into {m.gpath} "
+    print(f"[materialize] wrote graph['{out_layer}'] into {m.gpath} "
           f"({len(m.nodes)} nodes)")
     print(f"[materialize] additive check: "
           f"{'PASS' if not changed else '*** FAIL: ' + str(changed) + ' ***'}"

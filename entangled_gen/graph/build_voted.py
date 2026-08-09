@@ -133,13 +133,16 @@ def build(scene):
             nodes.append(n)
             continue
 
-        n["geometry_superseded"] = {
-            "source": "resolved",
+        # a LIST from the start: a node can lose its box more than once
+        # down the chain (elected here, swapped later by J8), and a single
+        # slot meant the second edit erased the first
+        n["geometry_superseded"] = [{
+            "stage": "resolved", "source": "resolved",
             "note": "PRE-VOTE box, kept for reference only. The elected "
                     "box in `geometry` supersedes it — do not read this "
                     "as a second opinion.",
             **{k: rn["geometry"][k] for k in GEOM_KEYS
-               if k in rn["geometry"]}}
+               if k in rn["geometry"]}}]
         n["geometry"] = {k: b[k] for k in GEOM_KEYS if k in b}
         n["vote"] = {
             "status": status,
@@ -180,7 +183,7 @@ def build(scene):
                      1 for n in nodes if n.get("geometry_superseded")
                      and any(abs(a - b) > 0.005 for a, b in zip(
                          n["geometry"]["size"],
-                         n["geometry_superseded"]["size"]))))
+                         n["geometry_superseded"][0]["size"]))))
     layer = {
         "built": date.today().isoformat(),
         "built_from": f"graph['resolved'] + {MANIFEST} + {REPORT} + "

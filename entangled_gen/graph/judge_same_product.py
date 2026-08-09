@@ -797,7 +797,15 @@ def main():
                     out.append(s)
         return out
 
-    cv = g.get("carved") or {}
+    # the NEWEST whole layer wins: settled (J8/J8s/J1 applied) before the
+    # older combined one, before none at all
+    # name the block we ACTUALLY read — a hard-coded "graph['carved']" in
+    # the log below was still printing while this had already switched to
+    # `settled` (the same never-hand-write-a-label rule that bit the
+    # viewer's run caption)
+    cv_name = next((b for b in ("settled", "carved")
+                    if (g.get(b) or {}).get("nodes")), None)
+    cv = (g.get(cv_name) or {}) if cv_name else {}
     settled = [n for n in (cv.get("nodes") or []) if n.get("geometry")]
     carved = {}
     if settled:
@@ -815,7 +823,7 @@ def main():
                 "_merged": list(merged),
                 "_src_ids": src_ids(list(mem) + list(merged))})
         carved = {n["id"]: n["geometry"]["size"] for n in nodes}
-        print(f"[same_product] geometry = graph['carved'] (SETTLED): "
+        print(f"[same_product] geometry = graph['{cv_name}'] (SETTLED): "
               f"{len(nodes)} nodes, built {cv.get('built')}", flush=True)
     else:
         nodes = [{**n, "_origin": n["id"], "_merged": [],
