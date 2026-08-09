@@ -184,7 +184,12 @@ def box_sources(sc):
         n = cv.get("counts") or {}
         srcs.append((
             "materialized",
-            "★ LATEST — the whole chain through J9 (graph.voted)",
+            # the layer NAMES ITSELF — a hand-written "graph.carved" here
+            # survived the rename as "graph.voted" and was pointing at the
+            # wrong layer within minutes. Read it, never type it.
+            f"★ LATEST — the whole chain through J9 "
+            f"(graph.{cv.get('_layer_name') or '?'}, "
+            f"{len(cv.get('nodes') or [])} nodes)",
             "current", sd / "scene_graph.json", "#ffb300",
             "THE CURRENT STATE (user ruling 2026-08-08): every stage "
             "folded into ONE layer, so this is the thing to look at — the "
