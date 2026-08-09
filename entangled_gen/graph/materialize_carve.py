@@ -135,6 +135,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import paths          # noqa: E402
+import scene_state    # noqa: E402
 
 CARVED_MANIFEST = "scene_manifest_slicevote_preview.json"
 CARVE_REPORT = Path("pool_retake") / "slicevote_report.json"
@@ -1443,10 +1444,12 @@ def main():
     out_layer = "settled" if a.settle_only else LAYER
     before = {k: v for k, v in m.graph.items() if k != out_layer}
     m.graph[out_layer] = m.layer()
+    scene_state.stamp(m.graph, out_layer)   # declare it IN THE FILE
     m.gpath.write_text(json.dumps(m.graph, indent=1), encoding="utf-8")
 
     after = json.loads(m.gpath.read_text(encoding="utf-8"))
     changed = [k for k in set(before) | (set(after) - {out_layer})
+               if k != "layer"
                if json.dumps(before.get(k), sort_keys=True)
                != json.dumps(after.get(k), sort_keys=True)]
     print(f"[materialize] wrote graph['{out_layer}'] into {m.gpath} "

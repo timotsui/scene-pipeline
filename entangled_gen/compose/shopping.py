@@ -47,6 +47,8 @@ import numpy as np
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'graph'))
+import scene_state  # noqa: E402
 
 sys.path.insert(0, str(paths.REPO_ROOT / "composition"))
 import retrieve2  # noqa: E402
@@ -142,7 +144,11 @@ def main():
     ep = json.loads((cdir / "edit_proposals.json")
                     .read_text(encoding="utf-8"))
 
-    nodes = {n["id"]: n for n in graph["resolved"]["nodes"]}
+    # THE CURRENT STATE OF THE SCENE, not a hand-named layer (user rule
+    # 2026-08-09). Reading "resolved" here meant shopping sized every
+    # asset from PRE-VOTE boxes — 43 of 46 disagreed with the elected
+    # one, the glass door by 300x on an axis.
+    nodes = {n["id"]: n for n in scene_state.nodes(graph)}
     top_sup = {}
     for o in sbL["objects"]:
         t = (o.get("supported_by") or [{}])[0]

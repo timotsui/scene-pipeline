@@ -47,6 +47,8 @@ import numpy as np
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'graph'))
+import scene_state  # noqa: E402
 
 GROUP_RADIUS = 2.5      # m — same-name members within this plan radius
 ANCHOR_AREA_RATIO = 2.0  # anchor = nearest node with >= 2x footprint area
@@ -88,7 +90,8 @@ def main():
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
     g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
-    nodes = g["resolved"]["nodes"]
+    # the CURRENT layer, not a hand-named one (user rule 2026-08-09)
+    nodes = scene_state.nodes(g)
 
     # prefer carved sizes when the slice-vote preview exists (UNTESTED
     # chain: carve first, then uniformity)

@@ -17,6 +17,8 @@ HERE = Path(__file__).parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 import paths  # noqa: E402
+sys.path.insert(0, str(ROOT / "graph"))
+import scene_state  # noqa: E402
 
 # set in main(); class H reads these module globals at request time
 args = None
@@ -569,7 +571,13 @@ def carved_layer(sc):
     try:
         # explicit utf-8: the judges' notes carry em-dashes, and read_text()
         # would otherwise decode them through the Windows locale codepage
-        cv = json.loads(p.read_text(encoding="utf-8")).get("carved")
+        g = json.loads(p.read_text(encoding="utf-8"))
+        # THE CURRENT LAYER, asked for rather than named (user rule
+        # 2026-08-09). Hard-coding "carved" meant the viewer would keep
+        # drawing it after a newer stage landed.
+        name, cv = scene_state.current(g)
+        if cv is not None:
+            cv = {**cv, "_layer_name": name}
     except Exception:
         cv = None
     if not isinstance(cv, dict) or not cv.get("nodes"):

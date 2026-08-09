@@ -54,6 +54,8 @@ from statistics import median
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'graph'))
+import scene_state  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -195,7 +197,8 @@ def load_pool_members(graph, scene):
         man_path.read_text(encoding="utf-8"))["objects"]}
     pool = json.loads(pool_path.read_text(encoding="utf-8"))["pool"]
     out = {}
-    for n in graph["resolved"]["nodes"]:
+    # the CURRENT layer, not a hand-named one (user rule 2026-08-09)
+    for n in scene_state.nodes(graph):
         idxs = []
         for mid in (n.get("members") or [n["id"]]):
             idxs.extend((man.get(mid) or {}).get("members") or [])

@@ -67,6 +67,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import paths            # noqa: E402
 import edge_carry       # noqa: E402
+import scene_state      # noqa: E402
 
 LAYER = "voted"
 MANIFEST = "scene_manifest_slicevote_preview.json"
@@ -244,10 +245,12 @@ def main():
         return
     before = {k: v for k, v in graph.items() if k != LAYER}
     graph[LAYER] = layer
+    scene_state.stamp(graph, LAYER)   # declare it IN THE FILE
     p = sd / "scene_graph.json"
     p.write_text(json.dumps(graph, indent=1), encoding="utf-8")
     after = json.loads(p.read_text(encoding="utf-8"))
     changed = [k for k in set(before) | (set(after) - {LAYER})
+               if k != "layer"
                if json.dumps(before.get(k), sort_keys=True)
                != json.dumps(after.get(k), sort_keys=True)]
     print(f"[voted] wrote graph['{LAYER}'] into {p}")
