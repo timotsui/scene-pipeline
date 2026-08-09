@@ -47,19 +47,56 @@ def box_sources(sc):
     # provenance header (2026-08-08): a hard-coded "run 10" caption was
     # still showing while the file already held run 16 boxes. Never
     # hand-write a run number in a label again — read it.
+    #
+    # 2026-08-08 (user): "46 obj" read as "46 SLICED boxes", and it is not
+    # — the layer draws each object's SHIPPING box, and only the
+    # carved/carved_pano ones came out of a slice election at all. The
+    # rest are geometric exemptions (flat wall/ceiling objects, perp-cam
+    # re-boxed) or the ORIGINAL pre-carve box shipped because the slice
+    # was too thin or the election blew past the outlier guard. The label
+    # now says shipped / sliced / not-sliced, counted from the file.
     _sv = sd / "scene_manifest_slicevote_preview.json"
     _svlab = "slice-vote carve"
+    _svstat = "unreadable"
+    _SLICED = ("carved", "carved_pano")   # went through the election
+    _STATUSES = _SLICED + ("kept", "kept_wall", "kept_ceiling",
+                           "kept_outlier")
     try:
         _h = json.loads(_sv.read_text(encoding="utf-8"))
+        _n = len(_h.get("objects") or [])
+        _tally = {}
+        for _o in (_h.get("objects") or []):
+            for _f in (_o.get("flags") or []):
+                if isinstance(_f, str) and _f in _STATUSES:
+                    _tally[_f] = _tally.get(_f, 0) + 1
+                    break
+        _svstat = " / ".join(f"{v} {k}" for k, v in sorted(_tally.items(),
+                                                           key=lambda x:
+                                                           -x[1]))
+        _cut = sum(_tally.get(s, 0) for s in _SLICED)
         _svlab = ("slice-vote carve · " + str(_h.get("run_id") or "?")
                   + (" · CANON-ELIGIBLE" if _h.get("canon_eligible")
                      else " · partial/mixed — NOT canon")
-                  + f" · {_h.get('n_objects', '?')} obj")
+                  + f" · {_n} shipped ({_cut} sliced, {_n - _cut} "
+                    f"exempt/kept)")
     except Exception:                                   # noqa: BLE001
         pass
+    # LATEST-AND-GREATEST ORDER (user ruling 2026-08-08, restating the
+    # 08-01 rule): the MATERIALIZED layer is the one current view — it is
+    # the whole chain folded into one state (carve boxes + J8 swaps + J8s
+    # pieces + J1 merges + J9 product annotations). Everything that feeds
+    # it is an INPUT, not a competing answer, so the carve manifest and
+    # the hand-composed judge preview move to the collapsed archive
+    # section. Files stay on disk; nothing is deleted.
     srcs = [
-        ("slicevote", _svlab, "current",
+        ("slicevote", _svlab, "archive",
          sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
+         "SUPERSEDED 2026-08-08 by the materialized layer (it is this "
+         "layer's boxes with every verdict applied) — kept as the carve "
+         "stage's raw output for side-by-side. NOTE the counts in the "
+         "label: 'shipped' is every object, 'sliced' is only the ones "
+         "that went through the vote election; the rest are geometric "
+         "exemptions or the ORIGINAL pre-carve box. "
          "Slice-vote carve (2026-08-07 late; user-PASSED "
          "R-S2-35..39, the canonical carve state; cyan to match the "
          "cone map's pano-filtered box): per resolved node — top-box "
@@ -72,11 +109,11 @@ def box_sources(sc):
          "wall panels), never-silent kept path (<100-dot slices ship "
          "original as 'kept'), perp-cam re-box for kept_wall/"
          "kept_ceiling flat objects (13/14 re-boxed; glass door "
-         "corrected 0.53 m). Statuses: 28 carved_pano / 2 carved / "
-         "7 kept_wall / 2 kept / 7 kept_ceiling = 46 objects; outlier "
-         "guard 8x. Per-box status + doubt flags in each object's "
+         "corrected 0.53 m). Outlier guard 8x. Statuses THIS run: "
+         + _svstat +                      # counted, never hand-written
+         ". Per-box status + doubt flags in each object's "
          "flags field. Preview manifest — runner wiring pending"),
-        ("parallax_carved", "parallax retake · carved (preview)", "current",
+        ("parallax_carved", "parallax retake · carved (preview)", "archive",
          sd / "scene_manifest_parallax_preview.json", "#65ff8f",
          "PREVIEW — experiments/parallax_retake.py: per-node side view "
          "from a second standpoint; original ray axis carved, then the "
@@ -92,7 +129,7 @@ def box_sources(sc):
         # judge_preview: COMPOSED server-side (judge_preview() below), not
         # a file — the path here is its base input, used for the exists()
         # gate; /boxes.json special-cases the key.
-        ("judge_preview", "judge preview · J8/J8s (SUPERSEDED)", "current",
+        ("judge_preview", "judge preview · J8/J8s (SUPERSEDED)", "archive",
          sd / "scene_manifest_slicevote_preview.json", "#b388ff",
          "SUPERSEDED 2026-08-08 by the 'materialized' layer (amber): this "
          "was the hand-composed PREVIEW of what materialize would do; the "
@@ -144,13 +181,17 @@ def box_sources(sc):
     if cv is not None:
         n = cv.get("counts") or {}
         srcs.append((
-            "materialized", "materialized · graph.carved (Phase C trial)",
+            "materialized",
+            "★ LATEST — the whole chain through J9 (graph.carved)",
             "current", sd / "scene_graph.json", "#ffb300",
-            "THE MATERIALIZE OUTPUT (graph/materialize_carve.py, Phase C) "
-            "drawn verbatim — status " + str(cv.get("status") or "?")
+            "THE CURRENT STATE (user ruling 2026-08-08): every stage "
+            "folded into ONE layer, so this is the thing to look at — the "
+            "layers below it are its inputs, not rival answers. "
+            "graph/materialize_carve.py (Phase C), status "
+            + str(cv.get("status") or "?")
             + ": an ADDITIVE block in scene_graph.json, NOT promoted to "
-            "canon (record/judged/resolved/carve/carved_edges untouched; "
-            "the box canon is still the slice-vote carve layer). Boxes are "
+            "canon (record/judged/resolved/carve/carved_edges untouched). "
+            "Boxes are "
             "COPIES, never recomputed: carve shipping box -> J8 box ruling "
             "-> J8s split pieces -> J1 SAME merges -> J9 same-product "
             "annotation (no resize) -> unclear ships unchanged. This "
@@ -165,6 +206,13 @@ def box_sources(sc):
             f"{n.get('open_questions', 0)} open question(s) on "
             f"{n.get('nodes_with_open_doubts', 0)} node(s) — click a box "
             "to read them"))
+
+    # HUD ORDER = registry order, and the current row must lead with the
+    # one canonical state. Explicit rank so adding a layer later cannot
+    # quietly push it down the row; anything unranked keeps its place
+    # after the ranked ones (stable sort).
+    rank = {"materialized": 0, "sp_members": 1, "sp_sizes": 2}
+    srcs.sort(key=lambda e: rank.get(e[0], 99))
     return srcs
     #     # ---- current: the pano-track funnel, upstream -> downstream ----
     #     # stage 1 (recentered full set) -> stage 2 (f30 score filter) ->

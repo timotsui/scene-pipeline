@@ -177,6 +177,58 @@ def normalize_ids(raw, member_ids):
     return out or None
 
 
+def parse_assignments(raw, member_ids):
+    """The assign-every-member reply -> {id: (set_label, reason)}.
+
+    Ids come back in whatever shape the judge felt like (see
+    normalize_ids); set labels are normalised to set_1/set_2/... or
+    "alone". Anything that does not resolve to a member of THIS pool is
+    dropped, and members the judge never mentioned are returned as
+    `missing` — recorded as a defect, never quietly filled in.
+    """
+    got, seen = {}, []
+    for row in (raw or []):
+        if not isinstance(row, dict):
+            continue
+        rid = normalize_ids([row.get("id")], member_ids)
+        if not rid or rid[0] in got:
+            continue
+        s = str(row.get("set") or "").strip().lower().replace(" ", "_")
+        if s in ("alone", "none", "null", "", "no", "single"):
+            lab = "alone"
+        else:
+            d = re.sub(r"\D", "", s)
+            lab = f"set_{int(d)}" if d else "alone"
+        got[rid[0]] = (lab, str(row.get("reason") or "").strip())
+        seen.append(rid[0])
+    missing = [m for m in member_ids if m not in got]
+    return got, missing
+
+
+def sets_from_assignments(got, members, status_by, doubts_by):
+    """Group the per-member assignments into sets, and give each set with
+    2+ members its exemplar size. A "set" the judge left with a single
+    member is NOT a product set — it is recorded as alone, with the
+    judge's own reason kept."""
+    by_set = {}
+    for mid, (lab, _r) in got.items():
+        if lab != "alone":
+            by_set.setdefault(lab, []).append(mid)
+    sets, alone = [], [m for m, (l, _) in got.items() if l == "alone"]
+    for lab in sorted(by_set):
+        mem = sorted(by_set[lab])
+        if len(mem) < 2:
+            alone.extend(mem)          # a set of one is not a set
+            continue
+        entry = {"set_id": lab, "members": mem,
+                 "reasons": {m: got[m][1] for m in mem}}
+        sized = canonical_from_exemplar(members, mem, status_by, doubts_by)
+        if sized:
+            entry.update(sized)
+        sets.append(entry)
+    return sets, sorted(set(alone))
+
+
 def plan_center(geo):
     return np.array([(geo["aabb_min"][0] + geo["aabb_max"][0]) / 2,
                      (geo["aabb_min"][2] + geo["aabb_max"][2]) / 2])
@@ -501,153 +553,187 @@ def build_sheets(groups, nodes, crops_dir, sheets_dir):
     return sheet_paths
 
 
+def _set_card(s, colour="#0a7d28"):
+    """One product SET: what to buy, from which member, and how much the
+    members disagree."""
+    basis = s.get("canonical_size_basis") or {}
+    size = s.get("canonical_size")
+    src = s.get("canonical_size_from")
+    tied = basis.get("n_tied_for_exemplar", 1)
+    head = (f'<b style="color:{colour}">{s["set_id"].replace("_", " ")} '
+            f'&mdash; {len(s["members"])} of the same product</b>: '
+            f'{", ".join(s["members"])}')
+    if size and src:
+        head += (f'<br><b>buy one at {size} m</b> &mdash; copied verbatim '
+                 f'from <b>{src}</b>, the member measured best'
+                 + (f' (one of {tied} equally good; height decided it)'
+                    if tied > 1 else "")
+                 + f'. These {len(s["members"])} disagree by '
+                 f'<b>{basis.get("set_spread_long_m")} m</b> on the long '
+                 f'floor side, {basis.get("set_spread_short_m")} m on the '
+                 f'short one, {basis.get("set_spread_height_m")} m on '
+                 f'height. Nothing was averaged.')
+    ranked = basis.get("ranked") or []
+    if ranked:
+        head += ('<br><small>measured, best first: ' + " &middot; ".join(
+            f'<b>{r["id"]}</b> {r["size"]} {r.get("status") or ""}'
+            + (f' [{", ".join(r["doubts"])}]' if r.get("doubts") else "")
+            for r in ranked) + "</small>")
+    reasons = s.get("reasons") or {}
+    if reasons:
+        head += ("<br><small>" + " &middot; ".join(
+            f"<b>{m}</b> {r}" for m, r in reasons.items()) + "</small>")
+    return (f'<div style="border-left:6px solid {colour};padding:6px 12px;'
+            f'margin:8px 0;background:#fafafa">{head}</div>')
+
+
 def write_index(groups, sheets_dir, verdicts=None):
-    """The review page. Built in BOTH modes: --dry-run writes the sheets
-    alone, a full run writes the same page with each group's verdict
-    above its sheet, so one scroll answers "what did the judge say, and
-    does the picture support it?"."""
+    """The review page. --dry-run writes the sheets alone; a full run
+    writes each pool's outcome above its sheet — every set, every object
+    left alone WITH ITS REASON, and the box view per set."""
     rows = []
     for i, gr in enumerate(groups, 1):
         cov = ", ".join(f"{m['id']}:{m.get('n_crops', 0)}"
                         for m in gr["members"])
         no_crops = [m["id"] for m in gr["members"]
                     if not m.get("n_crops")]
-        v = (verdicts or {}).get(i)
-        card = ""
+        v = (verdicts or {}).get(i) or {}
+        body = ""
+        reasons = {r["id"]: r.get("reason") or ""
+                   for r in (v.get("assignments") or [])}
+        for s in v.get("sets") or []:
+            body += _set_card(s)
+            png = (gr.get("box_views") or {}).get(s["set_id"])
+            if png:
+                body += (f'<p style="margin:2px 0"><small>'
+                         f'{s["set_id"].replace("_", " ")} from above '
+                         f'&mdash; amber is the member the size came '
+                         f'from, violet the others, dashed pink the size '
+                         f'being bought drawn at every member&rsquo;s '
+                         f'centre. Centres are aligned, not floors.'
+                         f'</small></p>'
+                         f'<img src="{png}" style="max-width:100%">')
+        alone = v.get("alone") or []
+        if alone:
+            body += ('<div style="border-left:6px solid #8a5a00;'
+                     'padding:6px 12px;margin:8px 0;background:#fafafa">'
+                     f'<b style="color:#8a5a00">alone &mdash; {len(alone)}'
+                     ' with nothing else here the same product</b><br>'
+                     + "<br>".join(f'<b>{m}</b> {reasons.get(m, "")}'
+                                   for m in alone) + "</div>")
+        if v.get("unassigned"):
+            body += ('<div style="border-left:6px solid #a11;padding:6px '
+                     '12px;margin:8px 0;background:#fff3f3">'
+                     '<b style="color:#a11">UNASSIGNED after a retry '
+                     '&mdash; the judge never ruled on '
+                     f'{", ".join(v["unassigned"])}</b>. Recorded, not '
+                     'guessed.</div>')
+        if not (v.get("sets") or alone) and v.get("reason"):
+            body += ('<div style="border-left:6px solid #a11;padding:6px '
+                     '12px;margin:8px 0;background:#fff3f3">'
+                     '<b style="color:#a11">no verdict</b> &mdash; '
+                     f'{v["reason"]}</div>')
         if v:
-            same = v.get("same_object")
-            tag = ("SAME PRODUCT" if same is True else
-                   "NOT the same product" if same is False else
-                   "UNCLEAR / no verdict")
-            colour = ("#0a7d28" if same is True else
-                      "#8a5a00" if same is False else "#a11")
-            picked = v.get("set_members") or []
-            left_out = [m["id"] for m in gr["members"]
-                        if m["id"] not in picked]
-            size = v.get("canonical_size")
-            basis = v.get("canonical_size_basis") or {}
-            sizeline = ""
-            if size and v.get("canonical_size_from"):
-                tied = basis.get("n_tied_for_exemplar", 1)
-                sizeline = (
-                    f'<br>\n<b>buy one at {size} m</b> — copied verbatim '
-                    f'from <b>{v["canonical_size_from"]}</b>, the member '
-                    f'we measured best'
-                    + (f' (one of {tied} equally good; height decided it)'
-                       if tied > 1 else "")
-                    + f'. The set disagrees by '
-                    f'<b>{basis.get("set_spread_long_m")} m</b> on its long '
-                    f'floor side, {basis.get("set_spread_short_m")} m on '
-                    f'the short one, {basis.get("set_spread_height_m")} m '
-                    f'on height. Nothing was averaged.'
-                    + (f' <span style="color:#a11">The judge would have '
-                       f'said {v["judge_canonical_size"]} — the per-axis '
-                       f'median, which mixes one member\'s width with '
-                       f'another\'s depth.</span>'
-                       if v.get("judge_canonical_size") else ""))
-            ranked = basis.get("ranked") or []
-            if ranked:
-                sizeline += (
-                    '<br>\n<small>measured, best first: '
-                    + " · ".join(
-                        f'<b>{r["id"]}</b> {r["size"]} {r.get("status") or ""}'
-                        + (f' [{", ".join(r["doubts"])}]'
-                           if r.get("doubts") else "")
-                        for r in ranked) + "</small>")
-            card = (
-                f'<div style="border-left:6px solid {colour};'
-                f'padding:6px 12px;margin:8px 0;background:#fafafa">'
-                f'<b style="color:{colour}">{tag}</b>'
-                + (sizeline if sizeline else
-                   (f' — buy one at <b>{size}</b> m' if size else ""))
-                + "<br>\n"
-                f'<b>in the set ({len(picked)}):</b> '
-                f'{", ".join(picked) if picked else "—"}<br>\n'
-                f'<b>left out ({len(left_out)}):</b> '
-                f'{", ".join(left_out) if left_out else "—"}'
-                + (' <i>— nothing downstream is told why. The answer form '
-                   'does not ask for a per-member decision, so anything '
-                   'the reason says about these is volunteered, and only '
-                   'the members in the set get a size to buy.</i>'
-                   if left_out else "") + '<br>\n'
-                f'<b>reason:</b> {v.get("reason", "")}<br>\n'
-                f'<small>{v.get("model", "")} · {v.get("date", "")} · '
-                f'{"from cache" if v.get("_cached") else "fresh call"}'
-                + (f' · attempts {v["attempts"]}'
-                   if v.get("attempts") else "")
-                + (f' · <b>no photo: {", ".join(v["no_photo_members"])}'
-                   f'</b>' if v.get("no_photo_members") else "")
-                + "</small></div>\n")
-        bv = ""
-        if gr.get("box_view"):
-            bv = ("<p><b>The boxes, from above.</b> Amber = the member "
-                  "the size was copied from. Violet = the other members, "
-                  "each its own measured box. Dashed pink = the size "
-                  "being bought, drawn at every member's centre. Centres "
-                  "are aligned, not floors — read it as "
-                  "<i>same middle, whose box is bigger</i>.</p>\n"
-                  f'<img src="{gr["box_view"]}" style="max-width:100%">\n')
+            body += (f'<small>{v.get("model") or "&mdash;"} &middot; '
+                     f'{v.get("date") or ""} &middot; '
+                     f'{"from cache" if v.get("_cached") else "fresh call"}'
+                     + (f' &middot; attempts {v["attempts"]}'
+                        if v.get("attempts") else "")
+                     + (f' &middot; <b>no photo: '
+                        f'{", ".join(v["no_photo_members"])}</b>'
+                        if v.get("no_photo_members") else "") + "</small>")
         rows.append(
-            f"<h2>group {i} — {gr['name']} "
-            f"({len(gr['members'])} members)</h2>\n" + card + bv
+            f"<h2>{gr['name']} &mdash; every one in the room "
+            f"({len(gr['members'])})</h2>" + body
             + f"<p>crops per member: {cov}"
-            + (f" — <b>NO CROPS: {', '.join(no_crops)}</b>"
-               if no_crops else "") + "</p>\n"
-            f'<img src="{gr["sheet"]}" style="max-width:100%">\n')
+            + (f" &mdash; <b>NO CROPS: {', '.join(no_crops)}</b>"
+               if no_crops else "") + "</p>"
+            f'<img src="{gr["sheet"]}" style="max-width:100%">')
     (sheets_dir / "index.html").write_text(
         "<!doctype html><meta charset='utf-8'>"
-        "<title>same-product contact sheets</title>\n"
+        "<title>same-product contact sheets</title>"
         "<style>body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;"
-        "margin:24px auto;padding:0 16px}</style>\n"
-        "<h1>Same-product judge (J9) — candidate groups</h1>\n"
-        "<p>Each group is a set of objects with the same name sitting "
-        "near each other. The judge answers: are these the same product, "
-        "which ones belong, and what one size should be bought.</p>\n"
-        + ("<p><b>Sheets only — no verdicts in this file.</b></p>\n"
+        "margin:24px auto;padding:0 16px}</style>"
+        "<h1>Same-product judge (J9)</h1>"
+        "<p>One block per KIND of object, holding <b>every</b> one of "
+        "them in the room &mdash; they are not split by where they "
+        "stand, because the same lamp can be bought twice and hung at "
+        "opposite ends of a room. The judge puts each one in a set with "
+        "the others that are the same product, or leaves it alone, and "
+        "says why either way. Code then picks which member's measured "
+        "box becomes the size to buy.</p>"
+        + ("<p><b>Sheets only &mdash; no verdicts in this file.</b></p>"
            if not verdicts else "")
-        + "\n".join(rows), encoding="utf-8")
+        + "".join(rows), encoding="utf-8")
     print(f"[same_product] wrote {sheets_dir / 'index.html'}", flush=True)
 
 
-def candidate_groups(nodes, carved):
+def anchors_from_edges(edges, nodes_by_id):
+    """What each node is RECORDED as attached to / resting in — read off
+    the graph's own edges, not guessed from footprint areas.
+
+    The old find_anchor (nearest node with >=2x the footprint) returned
+    NOTHING for the chairs, the pillows and both light groups — the three
+    cases that mattered — while the edge layer has the answer written
+    down: every ceiling light is ATTACHED to arch_ceiling, every pillow is
+    IN the sofa. Generic floor contact is dropped: "stands on the floor"
+    is true of half the room and is not context.
+
+    CONTEXT ONLY. This never groups anything (that was the bug) — it is a
+    line in the prompt so the judge knows four of these stand at one desk.
+    """
+    KINDS = ("ATTACHED", "IN", "ON", "IN_WALL", "INTERPENETRATES")
+    GENERIC = ("arch_floor",)
+    out = {}
+    for e in edges or []:
+        t, a, b = e.get("type"), e.get("a"), e.get("b")
+        if t not in KINDS or b in GENERIC or a == b:
+            continue
+        nm = (nodes_by_id.get(b) or {}).get("name") or b
+        out.setdefault(a, []).append((t, b, nm))
+    return out
+
+
+def candidate_pools(nodes, carved, appearance, anchors):
+    """ONE POOL PER KIND — every node of that name in the scene.
+
+    USER RULING 2026-08-08: grouping must be SEMANTIC, and product
+    identity is a different question from physical arrangement. The old
+    rule split each name into plan-proximity clusters (GROUP_RADIUS
+    2.5 m), which DECIDED identity before the judge ever spoke:
+      · the room's 7 ceiling lights fell into a 4 and a 3 because the
+        nearest pair across the two patches is 2.74 m. The judge then
+        described BOTH groups as "oval flush-mount ceiling lights" and
+        returned exemplars agreeing to 4 mm — two purchases for one
+        product;
+      · worse, bookshelf x3, door x2, sofa x2 and plant x2 never reached
+        the docket AT ALL, because no two of them were within 2.5 m.
+    Distance is a fair proxy for "is this a matched set around one table".
+    It is a poor proxy for "is this the same product": the same lamp
+    bought twice can be at opposite ends of a room.
+
+    Physical arrangement (the role layer — "these four are at the desk")
+    now rides in as CONTEXT via `anchors`, and never partitions the pool.
+    """
     by_name = {}
     for n in nodes:
         by_name.setdefault(n["name"], []).append(n)
-    groups = []
-    for name, members in by_name.items():
+    pools = []
+    for name, members in sorted(by_name.items()):
         if len(members) < 2:
             continue
-        left = list(members)
-        while left:
-            seed = left.pop(0)
-            cluster = [seed]
-            changed = True
-            while changed:
-                changed = False
-                cen = np.mean([plan_center(m["geometry"])
-                               for m in cluster], axis=0)
-                for m in list(left):
-                    if np.linalg.norm(plan_center(m["geometry"])
-                                      - cen) <= GROUP_RADIUS:
-                        cluster.append(m)
-                        left.remove(m)
-                        changed = True
-            if len(cluster) < 2:
-                continue
-            anchors = [find_anchor(m, nodes) for m in cluster]
-            anchor_ids = {x[0] for x in anchors if x}
-            groups.append({
-                "name": name,
-                "members": [{
-                    "id": m["id"],
-                    "size": carved.get(m["id"], m["geometry"]["size"]),
-                    "center": [round(float(v), 2)
-                               for v in m["geometry"]["center"]],
-                    "_res_node": m}  # sheet crop lookup; not serialized
-                    for m in cluster],
-                "shared_anchor": (anchors[0] if len(anchor_ids) == 1
-                                  and anchors[0] else None)})
-    return groups
+        pools.append({
+            "name": name,
+            "members": [{
+                "id": m["id"],
+                "size": carved.get(m["id"], m["geometry"]["size"]),
+                "center": [round(float(v), 2)
+                           for v in m["geometry"]["center"]],
+                "appearance": (appearance.get(m["id"]) or {}),
+                "anchors": anchors.get(m["id"]) or [],
+                "_res_node": m}  # sheet crop lookup; not serialized
+                for m in sorted(members, key=lambda x: x["id"])]})
+    return pools
 
 
 def main():
@@ -677,12 +763,29 @@ def main():
         for nd in json.loads(df.read_text())["nodes"]:
             doubts[nd["id"]] = [d["kind"] for d in nd["doubts"]]
 
-    groups = candidate_groups(nodes, carved)
-    print(f"[same_product] {len(groups)} candidate group(s)", flush=True)
+    # the J6 descriptions (graph/describe_nodes.py) — written from the
+    # crops and keyed by an EVIDENCE hash, so carve re-runs do not stale
+    # them; J6's appearance phase is geometry-blind by design
+    appearance = {}
+    apf = sd / "graph" / "appearance_cache_v2.json"
+    if apf.exists():
+        for nid, ent in (json.loads(apf.read_text(encoding="utf-8"))
+                         .get("nodes") or {}).items():
+            if isinstance(ent, dict) and ent.get("appearance"):
+                appearance[nid] = ent["appearance"]
+    # the recorded relations (post-carve layer when it exists)
+    edges = ((g.get("carved_edges") or {}).get("edges")
+             or g.get("edges") or [])
+    anchors = anchors_from_edges(edges, {n["id"]: n for n in nodes})
+
+    groups = candidate_pools(nodes, carved, appearance, anchors)
+    print(f"[same_product] {len(groups)} pool(s) — ONE PER KIND, whole "
+          f"scene, no distance rule", flush=True)
     for gr in groups:
+        have = sum(1 for m in gr["members"] if m.get("appearance"))
         print(f"[same_product]   {gr['name']}: "
               f"{[m['id'] for m in gr['members']]} "
-              f"anchor={gr['shared_anchor']}", flush=True)
+              f"({have}/{len(gr['members'])} described)", flush=True)
 
     src_nodes = {n["id"]: n for n in g["nodes"]}  # crop evidence here
     crops_dir = sd / "graph" / "crops"
@@ -702,42 +805,71 @@ def main():
     def build_prompt(gi, gr):
         lines = []
         for m in gr["members"]:
-            dstr = (f" [carve doubts: {', '.join(doubts[m['id']])}]"
+            dstr = (f"\n      carve doubts: {', '.join(doubts[m['id']])}"
                     if m["id"] in doubts else "")
-            seen = "" if m.get("n_crops") else " [NO PHOTO on the sheet]"
-            lines.append(f"  {m['id']}: size {m['size']} m (w x h x d), "
-                         f"center {m['center']}{dstr}{seen}")
+            ap = m.get("appearance") or {}
+            desc = ap.get("description")
+            bits = []
+            if ap.get("colors"):
+                bits.append("colours " + "/".join(ap["colors"]))
+            if ap.get("material"):
+                bits.append("material " + str(ap["material"]))
+            if ap.get("style"):
+                bits.append("style " + str(ap["style"]))
+            anc = ", ".join(f"{t.lower()} {nm}"
+                            for t, _b, nm in (m.get("anchors") or [])[:3])
+            lines.append(
+                f"  {m['id']}: size {m['size']} m (w x h x d)"
+                + ("" if m.get("n_crops") else "   [NO PHOTO — its row "
+                                               "of the sheet is empty]")
+                + (f"\n      described earlier as: \"{desc}\""
+                   if desc else "")
+                + (f"\n      {'; '.join(bits)}" if bits else "")
+                + (f"\n      in the room: {anc}" if anc else "") + dstr)
         blind = [m["id"] for m in gr["members"] if not m.get("n_crops")]
+        n = len(gr["members"])
         return (
-            "You are judging furniture/object instances found in ONE "
-            "real room by a noisy 3D reconstruction pipeline.\n"
+            "You are judging object instances found in ONE real room by a "
+            "noisy 3D reconstruction pipeline. The question is SHOPPING: "
+            "each distinct product has to be bought once, so we need to "
+            "know which of these are literally the same product.\n"
             f"First open the contact sheet image "
             f"{Path(sheet_paths[gi]).name} (in your working directory) — "
-            "each row is one member's photos (its id and carved size "
-            "are printed at the left of the row).\n"
-            f"Group — {len(gr['members'])} objects all detected as "
-            f"\"{gr['name']}\""
-            + (f", all nearest to the same larger object "
-               f"\"{gr['shared_anchor'][1]}\"" if gr["shared_anchor"]
-               else "") + ":\n" + "\n".join(lines)
-            + (f"\n\nNOTE — no photograph exists for {', '.join(blind)}: "
-               "that row of the sheet is empty. You cannot see "
+            "each row is one member's photos, with its id and measured "
+            "size printed at the left of the row.\n\n"
+            f"Here are ALL {n} objects in this room named \"{gr['name']}\""
+            ". They are NOT pre-sorted — some may be the same product, "
+            "some may be a second product of the same kind, and some may "
+            "be neither (a mis-detection, or a duplicate of another "
+            "one).\n" + "\n".join(lines)
+            + (f"\n\nNOTE — no photograph exists for {', '.join(blind)}. "
+               "You cannot see "
                + ("it" if len(blind) == 1 else "them")
-               + ", so say so in your reason rather than deciding from "
-                 "the numbers alone.\n" if blind else "")
-            + "\n\nJudge from what the objects LOOK like in the sheet "
-            "first; use the numbers to pick the canonical size. "
-            "Measured sizes vary because reconstruction is noisy. "
-            "Question: would these plausibly be THE SAME PRODUCT (a "
-            "matched set, e.g. dining chairs around one table)? Exclude "
-            "members that don't fit the set. If a set exists, choose ONE "
-            "canonical size (favor the median of plausible measurements; "
-            "ignore obvious outliers).\n"
+               + ", so leave "
+               + ("it" if len(blind) == 1 else "them")
+               + " alone and say why, rather than deciding from the "
+                 "numbers.\n" if blind else "")
+            + "\n\nJudge from what the objects LOOK like — the photos "
+            "first, the earlier descriptions second. Measured sizes vary "
+            "a lot because reconstruction is noisy, so a size difference "
+            "is weak evidence and a LOOK difference is strong evidence. "
+            "Being far apart in the room is NOT evidence against the same "
+            "product: the same lamp can be bought twice and hung at "
+            "opposite ends of a room.\n\n"
+            "ASSIGN EVERY OBJECT. Give each id exactly one of:\n"
+            "  \"set_1\", \"set_2\", ... — this object is the same "
+            "product as the others in that set (a set needs at least 2 "
+            "members; use set_2 only if there is genuinely a SECOND "
+            "distinct product here)\n"
+            "  \"alone\" — nothing else here is the same product as this "
+            "one, or you cannot tell\n"
+            f"All {n} ids must appear exactly once. Every one gets its "
+            "own short reason — the objects you leave alone matter as "
+            "much as the ones you group, because nothing downstream "
+            "learns why unless you say it.\n"
             "Answer STRICT JSON only:\n"
-            "{\"same_object\": true|false, "
-            "\"set_members\": [ids] or null, "
-            "\"canonical_size\": [w, h, d] or null, "
-            "\"reason\": \"one sentence\"}")
+            "{\"assignments\": [{\"id\": \"obj_000\", \"set\": \"set_1\" "
+            "or \"alone\", \"reason\": \"one short sentence\"}, ...]}")
 
     def group_key(gi, prompt):
         h = hashlib.sha256()
@@ -752,10 +884,9 @@ def main():
         # ANY row cannot answer a question about what things look like;
         # answering from the numbers is what produced the living-room
         # magazine verdict on an empty picture.
-        if len(blind) == len(gr["members"]):
-            return gi, {"same_object": None, "set_members": None,
-                        "canonical_size": None,
-                        "no_photo_members": blind,
+        ids = [m["id"] for m in gr["members"]]
+        if len(blind) == len(ids):
+            return gi, {"assignments": None, "no_photo_members": blind,
                         "reason": "no photos on the contact sheet — every "
                                   "row is empty, so there is nothing to "
                                   "look at (not asked)",
@@ -781,21 +912,38 @@ def main():
 
         v, err = attempt(prompt)
         tries = 1
-        if v is None:
-            v, err2 = attempt(prompt + "\n\nREPLY WITH THE JSON OBJECT "
-                                       "ONLY.")
-            err = err2 or err
+        got_a, missing = (parse_assignments(v.get("assignments"), ids)
+                          if v else ({}, ids))
+        # AN INCOMPLETE ANSWER IS A FAILED ATTEMPT. The whole point of the
+        # form is that nothing is silently left out, so a reply that skips
+        # members gets ONE retry that names them — then whatever is still
+        # missing is recorded as `unassigned`, never invented.
+        if v is None or missing:
+            extra = ("\n\nREPLY WITH THE JSON OBJECT ONLY." if v is None
+                     else "\n\nYou did not assign these ids: "
+                          + ", ".join(missing)
+                          + ". Reply again with the FULL list — every id "
+                            "exactly once, each with its own reason.")
+            v2, err2 = attempt(prompt + extra)
             tries = 2
-        if v is None:
-            v = {"same_object": None, "set_members": None,
-                 "canonical_size": None,
-                 "reason": f"judge call failed x{tries} — {err}"}
-        v["set_members"] = normalize_ids(
-            v.get("set_members"), [m["id"] for m in gr["members"]])
+            if v2 is not None:
+                g2, m2 = parse_assignments(v2.get("assignments"), ids)
+                if len(g2) > len(got_a):
+                    v, got_a, missing = v2, g2, m2
+            err = err2 if v is None else err
+        v = v if isinstance(v, dict) else {}
+        v = {"assignments": [{"id": i, "set": got_a[i][0],
+                              "reason": got_a[i][1]}
+                             for i in ids if i in got_a],
+             "unassigned": missing,
+             "reason": (f"judge call failed x{tries} — {err}"
+                        if not got_a else
+                        (f"{len(missing)} of {len(ids)} left unassigned "
+                         f"after a retry" if missing else "")),
+             "model": a.model, "date": date.today().isoformat(),
+             "attempts": tries}
         if blind:
             v["no_photo_members"] = blind
-        v = {**v, "model": a.model, "date": date.today().isoformat(),
-             "attempts": tries}
         cache[k] = v
         return gi, {**v, "_cached": False}
 
@@ -807,12 +955,7 @@ def main():
 
     cache_f.write_text(json.dumps(cache, indent=1), encoding="utf-8")
 
-    # THE SIZE IS COMPUTED HERE, AFTER THE VERDICT AND OUTSIDE THE CACHE.
-    # The prompt still ASKS for canonical_size and we still record what it
-    # said (judge_canonical_size) — not because we use it, but because
-    # dropping the ask would change the prompt, miss every cached verdict,
-    # and re-decide the classification the user has already accepted. The
-    # ask goes away when the answer form is redesigned.
+    # THE SIZE IS CODE'S JOB, computed here from the judge's assignment.
     status_by = {}
     cnodes = (g.get("carve") or {}).get("nodes") or {}
     if isinstance(cnodes, dict):
@@ -820,31 +963,57 @@ def main():
             if isinstance(c, dict):
                 status_by[nid] = c.get("status")
 
-    results = []
+    pools = []
     for gi, gr in enumerate(groups, 1):
         verdict = dict(got[gi])
-        if verdict.get("same_object") and verdict.get("set_members"):
-            sized = canonical_from_exemplar(gr["members"],
-                                            verdict["set_members"],
+        assign = {r["id"]: (r["set"], r.get("reason") or "")
+                  for r in (verdict.get("assignments") or [])}
+        sets, alone = sets_from_assignments(assign, gr["members"],
                                             status_by, doubts)
-            if sized:
-                verdict["judge_canonical_size"] = verdict.get(
-                    "canonical_size")
-                verdict.update(sized)
-        gr_out = {**gr, "members": [
-            {k: v for k, v in m.items() if k != "_res_node"}
-            for m in gr["members"]]}
-        results.append({**gr_out,
-                        **{k: v for k, v in verdict.items()
-                           if k != "_cached"}})
+        verdict["sets"] = sets
+        verdict["alone"] = alone
         got[gi] = verdict
-        src = (f" from {verdict['canonical_size_from']}"
-               if verdict.get("canonical_size_from") else "")
-        print(f"[same_product]   {gr['name']}: "
-              f"same={verdict.get('same_object')} "
-              f"size={verdict.get('canonical_size')}{src} "
-              f"{'(cache)' if verdict.get('_cached') else ''} — "
-              f"{verdict.get('reason')}", flush=True)
+        pools.append({
+            "name": gr["name"],
+            "members": [{k: v for k, v in m.items()
+                         if k not in ("_res_node", "appearance")}
+                        for m in gr["members"]],
+            "sheet": gr.get("sheet"),
+            **{k: v for k, v in verdict.items() if k != "_cached"}})
+        if verdict.get("unassigned"):
+            print(f"[same_product]   ⚠ {gr['name']}: UNASSIGNED "
+                  f"{verdict['unassigned']}", flush=True)
+        for s in sets:
+            print(f"[same_product]   {gr['name']} {s['set_id']}: "
+                  f"{s['members']} size={s.get('canonical_size')} from "
+                  f"{s.get('canonical_size_from')} "
+                  f"{'(cache)' if verdict.get('_cached') else ''}",
+                  flush=True)
+        if alone:
+            print(f"[same_product]   {gr['name']} alone: {alone}",
+                  flush=True)
+        if not sets and not alone:
+            print(f"[same_product]   {gr['name']}: no verdict — "
+                  f"{verdict.get('reason')}", flush=True)
+
+    # LEGACY VIEW — one entry per SET, in the shape consumers already
+    # read (same_object / set_members / canonical_size). Emitted so
+    # materialize_carve.py rule 5 keeps working unchanged; `pools` above
+    # is the full record, including every member left alone and why.
+    results = []
+    for p in pools:
+        for s in p.get("sets") or []:
+            results.append({
+                "name": p["name"], "set_id": s["set_id"],
+                "members": [m for m in p["members"]
+                            if m["id"] in s["members"]],
+                "same_object": True,
+                "set_members": s["members"],
+                "reason": "; ".join(f"{m}: {r}" for m, r
+                                    in (s.get("reasons") or {}).items()),
+                **{k: v for k, v in s.items()
+                   if k.startswith("canonical_size")},
+                "model": p.get("model"), "date": p.get("date")})
 
     # BOX VIEWS — the set's geometry projected into a real top render, one
     # per group (user ask 08-08: show the size box and the selection boxes
@@ -861,16 +1030,23 @@ def main():
                          ["objects"]}
                 splat = sc_mod.Splat(ply)
                 for gi, gr in enumerate(groups, 1):
-                    v = got[gi]
-                    if not (v.get("same_object") and v.get("set_members")):
-                        continue
-                    try:
-                        gr["box_view"] = build_box_view(
-                            sc_mod, splat, gr, v, boxes, sheets_dir, gi)
-                    except Exception as e:          # noqa: BLE001
-                        print(f"[same_product]   box view for group {gi} "
-                              f"failed: {type(e).__name__}: "
-                              f"{str(e)[:200]}", flush=True)
+                    gr["box_views"] = {}
+                    for s in got[gi].get("sets") or []:
+                        if not s.get("canonical_size"):
+                            continue
+                        v = {"set_members": s["members"],
+                             "canonical_size": s["canonical_size"],
+                             "canonical_size_from":
+                                 s.get("canonical_size_from")}
+                        try:
+                            gr["box_views"][s["set_id"]] = build_box_view(
+                                sc_mod, splat, gr, v, boxes, sheets_dir,
+                                f"{gi}{s['set_id'].replace('set_', '')}")
+                        except Exception as e:      # noqa: BLE001
+                            print(f"[same_product]   box view "
+                                  f"{gr['name']}/{s['set_id']} failed: "
+                                  f"{type(e).__name__}: {str(e)[:200]}",
+                                  flush=True)
             except Exception as e:                  # noqa: BLE001
                 print(f"[same_product] box views unavailable: "
                       f"{type(e).__name__}: {str(e)[:200]}", flush=True)
@@ -879,20 +1055,35 @@ def main():
                   "scene_manifest_slicevote_preview.json + gen_raw.ply",
                   flush=True)
 
+    for p, gr in zip(pools, groups):
+        p["box_views"] = gr.get("box_views") or {}
     write_index(groups, sheets_dir, got)
     outd = sd / "graph"
     outd.mkdir(exist_ok=True)
     out = outd / "same_product.json"
     out.write_text(json.dumps(
         {"scene": a.scene, "status": "UNTESTED",
+         "form": "assign-every-member v2 (2026-08-08): ONE POOL PER KIND "
+                 "(whole scene, no distance rule), the judge assigns "
+                 "EVERY member to a set or to `alone` with its own "
+                 "reason, more than one set per pool allowed, and the "
+                 "canonical size is an EXEMPLAR chosen by code.",
          "source": "graph/judge_same_product.py — SAME-PRODUCT pass "
                    "(own judge-chain pass per user ruling 2026-08-06); "
                    "consumer (shopping) NOT wired",
-         "known_open": "THE ANSWER FORM IS UNSTABLE: the judge names a "
-                       "SUBSET and never accounts for the members it "
-                       "leaves out, and each group gets ONE set slot. "
-                       "Redesign pending (2026-08-08).",
-         "groups": results}, indent=1))
+         "reading_this_file": "`pools` is the record — every member of "
+                              "every kind, with where it landed and why. "
+                              "`groups` is a derived view, one entry per "
+                              "SET in the shape older consumers read "
+                              "(same_object / set_members / "
+                              "canonical_size).",
+         "pools": pools,
+         "groups": results}, indent=1, ensure_ascii=False),
+        # EXPLICIT utf-8: ensure_ascii=False writes the judges' em-dashes
+        # as real characters, and write_text() would otherwise encode them
+        # through the Windows locale codepage and produce a file nothing
+        # downstream can read back (hit immediately, 2026-08-08).
+        encoding="utf-8")
     print(f"[same_product] wrote {out} (⚠ UNTESTED)", flush=True)
     print(f"[same_product] cache: {cache_f}", flush=True)
 
