@@ -455,11 +455,25 @@ def same_product_layer(sc, kind):
     try:
         sp = json.loads((sd / "graph" / "same_product.json")
                         .read_text(encoding="utf-8"))
-        man = json.loads((sd / "scene_manifest_slicevote_preview.json")
-                         .read_text(encoding="utf-8"))
     except Exception:                                   # noqa: BLE001
         return None
-    boxes = {o["id"]: o for o in man.get("objects") or []}
+    # THE SAME GEOMETRY THE VERDICTS WERE MADE ON. J9 judges the settled
+    # layer, whose node set includes ids the carve manifest has never
+    # heard of (split pieces like obj_011#1) and excludes ones it still
+    # lists (merged-away nodes). Reading the manifest here drew a set
+    # minus its own members.
+    boxes = {}
+    cv = carved_layer(sc)
+    for n in (cv or {}).get("nodes") or []:
+        if n.get("geometry"):
+            boxes[n["id"]] = n["geometry"]
+    if not boxes:
+        try:
+            man = json.loads((sd / "scene_manifest_slicevote_preview.json")
+                             .read_text(encoding="utf-8"))
+            boxes = {o["id"]: o for o in man.get("objects") or []}
+        except Exception:                               # noqa: BLE001
+            return None
 
     out, groups = [], []
     for gi, gr in enumerate(sp.get("groups") or [], 1):

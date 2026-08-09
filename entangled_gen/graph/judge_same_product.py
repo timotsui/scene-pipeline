@@ -253,13 +253,18 @@ def find_anchor(node, nodes):
     return (best["id"], best["name"], round(best_d, 2)) if best else None
 
 
-def member_crop_paths(res_node, src_nodes, crops_dir):
-    """Up to CROPS_PER_MEMBER crops for one resolved node, highest det
-    score first — the judge_pairs.py node_crops pattern, walked across
-    the resolved node's source nodes (node["evidence"]["members"][*]
-    ["crop"])."""
+def member_crop_paths(src_ids, src_nodes, crops_dir):
+    """Up to CROPS_PER_MEMBER crops for one pool member, highest det score
+    first — the judge_pairs.py node_crops pattern.
+
+    `src_ids` are RECORD node ids (g["nodes"]), already walked down from
+    whatever the member is: a settled node's members are RESOLVED ids and
+    a resolved node's members are record ids, so a split piece or a merge
+    survivor needs two hops, not one. Getting that wrong shows up as a
+    silent NO CROPS row, which is why the walk is done by the caller and
+    passed in."""
     dets = []
-    for sid in res_node.get("members", [res_node["id"]]):
+    for sid in src_ids:
         src = src_nodes.get(sid)
         if src:
             dets += src.get("evidence", {}).get("members", [])
@@ -538,7 +543,7 @@ def build_sheets(groups, nodes, crops_dir, sheets_dir):
         crops_by_id = {}
         for m in gr["members"]:
             crops_by_id[m["id"]] = member_crop_paths(
-                m["_res_node"], src_nodes, crops_dir)
+                m["_src_ids"], src_nodes, crops_dir)
             m["n_crops"] = len(crops_by_id[m["id"]])
         out_path = sheets_dir / f"group_{i}_{slugify(gr['name'])}.png"
         build_sheet(gr, crops_by_id, out_path)
@@ -694,6 +699,22 @@ def anchors_from_edges(edges, nodes_by_id):
     return out
 
 
+def pick(table, node):
+    """Look a per-object record up for a pool member.
+
+    Everything J6 and the carve recorded is keyed by PRE-SETTLEMENT ids,
+    and a settled node may be a split piece (obj_011#1) or a merge
+    survivor that swallowed another node. So: try the node's own id, then
+    the id it came from, then anything it absorbed. Returns the first
+    hit — never merges two objects' records into one."""
+    for key in ([node["id"], node.get("_origin")]
+                + list(node.get("_merged") or [])
+                + list(node.get("members") or [])):
+        if key and key in table:
+            return table[key]
+    return None
+
+
 def candidate_pools(nodes, carved, appearance, anchors):
     """ONE POOL PER KIND — every node of that name in the scene.
 
@@ -729,9 +750,10 @@ def candidate_pools(nodes, carved, appearance, anchors):
                 "size": carved.get(m["id"], m["geometry"]["size"]),
                 "center": [round(float(v), 2)
                            for v in m["geometry"]["center"]],
-                "appearance": (appearance.get(m["id"]) or {}),
-                "anchors": anchors.get(m["id"]) or [],
-                "_res_node": m}  # sheet crop lookup; not serialized
+                "appearance": pick(appearance, m) or {},
+                "anchors": pick(anchors, m) or [],
+                "_src_ids": m["_src_ids"],   # crop walk; not serialized
+                "_origin": m.get("_origin")}
                 for m in sorted(members, key=lambda x: x["id"])]})
     return pools
 
@@ -751,17 +773,81 @@ def main():
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
     g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
-    nodes = g["resolved"]["nodes"]
+
+    # JUDGE THE SETTLED LAYER, NOT THE RAW CARVE (user ruling 2026-08-08).
+    # graph['carved'] is the node set and the boxes AFTER J8's box
+    # rulings, J8s's splits and J1's merges. Reading the carve manifest
+    # instead meant judging geometry those verdicts had already replaced —
+    # on living run 17, obj_011 was still the uncut 2.80 m L, obj_020 had
+    # been merged away and was nonetheless a set's EXEMPLAR, and obj_021's
+    # box had been swapped. Build it with:
+    #     graph/materialize_carve.py --scene <s> --settle-only --apply
+    # Fallback (no settled layer yet): the resolved nodes + carve manifest,
+    # the old behaviour, announced so it is never a silent downgrade.
+    # a resolved node's members are RECORD ids — the second hop the crop
+    # walk needs when a pool member is a split piece or a merge survivor
+    res_src = {n["id"]: (n.get("members") or [n["id"]])
+               for n in g["resolved"]["nodes"]}
+
+    def src_ids(resolved_ids):
+        out = []
+        for r in resolved_ids:
+            for s in res_src.get(r, [r]):
+                if s not in out:
+                    out.append(s)
+        return out
+
+    cv = g.get("carved") or {}
+    settled = [n for n in (cv.get("nodes") or []) if n.get("geometry")]
     carved = {}
-    prev = sd / "scene_manifest_slicevote_preview.json"
-    if prev.exists():
-        for o in json.loads(prev.read_text())["objects"]:
-            carved[o["id"]] = o["size"]
+    if settled:
+        nodes = []
+        for n in settled:
+            mem = n.get("members") or [n["id"]]
+            merged = (n.get("merged_members")
+                      or n.get("merged_from") or [])
+            nodes.append({
+                "id": n["id"], "name": n.get("name") or "",
+                "geometry": n["geometry"], "members": mem,
+                "_origin": (n.get("split_from")
+                            or (n["id"] if n["id"] in res_src
+                                else (mem[0] if mem else n["id"]))),
+                "_merged": list(merged),
+                "_src_ids": src_ids(list(mem) + list(merged))})
+        carved = {n["id"]: n["geometry"]["size"] for n in nodes}
+        print(f"[same_product] geometry = graph['carved'] (SETTLED): "
+              f"{len(nodes)} nodes, built {cv.get('built')}", flush=True)
+    else:
+        nodes = [{**n, "_origin": n["id"], "_merged": [],
+                  "_src_ids": src_ids([n["id"]])}
+                 for n in g["resolved"]["nodes"]]
+        prev = sd / "scene_manifest_slicevote_preview.json"
+        if prev.exists():
+            for o in json.loads(prev.read_text())["objects"]:
+                carved[o["id"]] = o["size"]
+        print("[same_product] ⚠ no graph['carved'] — falling back to the "
+              "RAW carve manifest, which J8/J8s/J1 may have superseded. "
+              "Run materialize_carve.py --settle-only --apply first.",
+              flush=True)
     doubts = {}
     df = sd / "graph" / "carve_doubts.json"
     if df.exists():
         for nd in json.loads(df.read_text())["nodes"]:
             doubts[nd["id"]] = [d["kind"] for d in nd["doubts"]]
+
+    # the carve's own record is keyed by PRE-SETTLEMENT ids; re-key it onto
+    # the node set actually being judged, so a split piece or a merge
+    # survivor still carries the doubts and the status of what it came
+    # from. Without this every settled piece looks doubt-free, which would
+    # quietly make it eligible to become the size exemplar.
+    status_src = {}
+    cnodes = (g.get("carve") or {}).get("nodes") or {}
+    if isinstance(cnodes, dict):
+        for nid, c in cnodes.items():
+            if isinstance(c, dict):
+                status_src[nid] = c.get("status")
+    doubts = {n["id"]: (pick(doubts, n) or []) for n in nodes}
+    status_by = {n["id"]: pick(status_src, n) for n in nodes}
 
     # the J6 descriptions (graph/describe_nodes.py) — written from the
     # crops and keyed by an EVIDENCE hash, so carve re-runs do not stale
@@ -956,13 +1042,7 @@ def main():
     cache_f.write_text(json.dumps(cache, indent=1), encoding="utf-8")
 
     # THE SIZE IS CODE'S JOB, computed here from the judge's assignment.
-    status_by = {}
-    cnodes = (g.get("carve") or {}).get("nodes") or {}
-    if isinstance(cnodes, dict):
-        for nid, c in cnodes.items():
-            if isinstance(c, dict):
-                status_by[nid] = c.get("status")
-
+    # (status_by / doubts were re-keyed onto the settled node set above.)
     pools = []
     for gi, gr in enumerate(groups, 1):
         verdict = dict(got[gi])
@@ -1020,14 +1100,21 @@ def main():
     # ON THE SHEET). Optional and non-fatal: the renderer runs through WSL,
     # and a sheet without them is still a sheet.
     if not a.no_box_views:
-        prev = sd / "scene_manifest_slicevote_preview.json"
         ply = sd / "gen_raw.ply"
-        if prev.exists() and ply.exists():
+        # boxes come from THE SAME geometry the verdicts were made on —
+        # the settled layer when there is one. Reading the carve manifest
+        # here would silently drop every node the judges created (the
+        # split piece obj_011#1 is not in it), and drawing a set minus
+        # one of its members is exactly the stale picture that started
+        # this.
+        boxes = {n["id"]: {"aabb_min": n["geometry"]["aabb_min"],
+                           "aabb_max": n["geometry"]["aabb_max"],
+                           "center": n["geometry"]["center"],
+                           "size": n["geometry"]["size"]}
+                 for n in nodes}
+        if boxes and ply.exists():
             try:
                 import split_cuts as sc_mod
-                boxes = {o["id"]: o for o in
-                         json.loads(prev.read_text(encoding="utf-8"))
-                         ["objects"]}
                 splat = sc_mod.Splat(ply)
                 for gi, gr in enumerate(groups, 1):
                     gr["box_views"] = {}
@@ -1051,9 +1138,8 @@ def main():
                 print(f"[same_product] box views unavailable: "
                       f"{type(e).__name__}: {str(e)[:200]}", flush=True)
         else:
-            print("[same_product] box views skipped — need "
-                  "scene_manifest_slicevote_preview.json + gen_raw.ply",
-                  flush=True)
+            print("[same_product] box views skipped — need node geometry "
+                  "+ gen_raw.ply", flush=True)
 
     for p, gr in zip(pools, groups):
         p["box_views"] = gr.get("box_views") or {}

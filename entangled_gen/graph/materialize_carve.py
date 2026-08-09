@@ -95,11 +95,27 @@ stage has no vocabulary for, or a pair J1 merged as ONE OBJECT that J9
 ruled NOT the same product), BOTH claims land in `conflicts` with their
 rules. Nothing is silently resolved.
 
-NOT IN THIS PASS (honest scope): edges are NOT re-derived here. The plan's
-Phase C also calls for a mechanical edge rebuild on the materialized
-geometry and a targeted appearance pass for the nodes splits created;
-this trial builds the NODE SET only, and both are listed as open
-questions on the report.
+THE EDGES FOLLOW THE NODES (rule 4b, user design rule 2026-08-08: "each
+module is an edit on the scene graph, and it has to inherit all the
+properties and information ... but overall structure should be the
+same"). This layer is a WHOLE graph, not a node set: it carries `edges`,
+`nesting` and `edge_meta` alongside the nodes. Geometric edges are
+RE-DERIVED on this layer's boxes -- a moved box can form edges with
+nodes it never touched (obj_021 grew in a J8 swap and now
+INTERPENETRATES the desk, having had one NEAR edge to the floor before),
+so checking former neighbours cannot be correct; the full pass is 990
+pairs and ~5 ms. What geometry cannot regenerate -- judge status /
+triage / verdict and J6's edge re-examination fields -- is INHERITED,
+re-pointed through this pass's own node edits, and grafted back onto the
+surviving edges. An inherited judge payload with no surviving edge is
+recorded, never dropped: `judge_fields_unplaced` (the geometry changed
+under it), `judged_edges_consumed_by_a_merge` (both ends became the same
+node, i.e. the verdict has already been applied) or
+`judged_edges_lost_to_node_removal`.
+
+STILL NOT IN THIS PASS: the targeted appearance pass for nodes the
+splits created (a piece inherits its parent's description, which is a
+guess) -- listed as an open question on the report.
 
 Run:
   python graph/materialize_carve.py --scene living_marble
@@ -243,6 +259,9 @@ class Materialize:
         self.doubts = doubts_by_node(self.sdir, self.graph)
 
         self.nodes = {}          # id -> proposed node (insertion ordered)
+        self.edge_list = []      # rule 4b: the edges, following the nodes
+        self.edge_meta = {}
+        self.nesting = {}
         self.merge_pairs = []
         self.dropped = []
         self.conflicts = []
@@ -666,6 +685,181 @@ class Materialize:
         self.stats.update(j1_same_pairs=len(pairs),
                           j1_merged_away=removed)
 
+    # -- rule 4b: THE EDGES FOLLOW THE NODES ------------------------------
+    # USER DESIGN RULE (2026-08-08): "each module is an edit on the scene
+    # graph, and it has to inherit all the properties and information.
+    # only modify, add, edit, delete etc. but overall structure should be
+    # the same." This layer used to hand on nodes with NO edges while
+    # graph['carved_edges'] held edges with no nodes -- two half-layers,
+    # neither of them a scene graph. On living run 17 that left 15 edges
+    # pointing at nodes this pass had deleted, the split piece obj_011#1
+    # with none at all, and all 9 pillows' only relation aimed at a node
+    # that no longer existed.
+    #
+    # INHERIT WHAT ONLY INHERITANCE CAN KEEP, RE-DERIVE WHAT ONLY GEOMETRY
+    # CAN DECIDE (user: "if it inherits but its wrong then its not right").
+    # Every edge type here is derived from boxes, so once a box moves the
+    # old edge is a claim about geometry that no longer exists -- and a
+    # moved box can form edges with nodes it NEVER touched before (obj_021
+    # grew 0.42 -> 0.61 in the J8 swap and now INTERPENETRATES the desk,
+    # having previously had a single NEAR edge to the floor). Checking
+    # "what used to be near it" cannot find those, so the geometric pass
+    # is a full re-derivation: 45 nodes, 990 pairs, ~5 ms, no model calls.
+    #
+    # What re-derivation CANNOT regenerate is what a judge wrote onto an
+    # edge -- status / triage / verdict (J0 nominations, J1 SAME rulings)
+    # and J6's edge re-examination fields. Those are grafted back onto the
+    # surviving edges, and any that do NOT survive are recorded with their
+    # payload intact rather than vanishing.
+    JUDGE_FIELDS = ("status", "verdict", "nominated_by", "triage",
+                    "confidence", "was", "true_arrangement", "suspect_box",
+                    "source")
+
+    def edges(self):
+        from build_edges import derive_edges          # sibling stage module
+
+        # --- what this pass did to the node set, as a remap -------------
+        remap = {}          # deleted id -> [live ids that replace it]
+        for d in self.dropped:
+            nid, rule = d["id"], d.get("rule") or ""
+            if rule.startswith("j1_same_merge") and d.get("survivor"):
+                remap[nid] = [d["survivor"]]
+            elif rule.startswith("j8s_split") and d.get("pieces"):
+                remap[nid] = [p for p in d["pieces"] if p in self.nodes]
+            else:
+                remap[nid] = []
+        live = set(self.nodes) | {n["id"] for n in self.graph["nodes"]
+                                  if n.get("source") == "envelope"}
+
+        def resolve(i):
+            if i in live:
+                return [i]
+            seen, out, stack = set(), [], [i]
+            while stack:                       # merges can chain
+                cur = stack.pop()
+                if cur in seen:
+                    continue
+                seen.add(cur)
+                for nxt in remap.get(cur, []):
+                    (out if nxt in live else stack).append(nxt)
+            return out
+
+        # --- inherit the previous edge set, re-pointed ------------------
+        src_name = ("carved_edges"
+                    if (self.graph.get("carved_edges") or {}).get("edges")
+                    else "resolved")
+        inherited = list((self.graph.get(src_name) or {}).get("edges") or [])
+        carried, lost, consumed = {}, [], []
+        for e in inherited:
+            payload = {k: e[k] for k in self.JUDGE_FIELDS if e.get(k)}
+            aa, bb = resolve(e["a"]), resolve(e["b"])
+            if not aa or not bb:
+                if payload:      # a judged edge must never vanish quietly
+                    lost.append({**e, "why": "an endpoint was removed by "
+                                            "this pass and has no live "
+                                            "replacement"})
+                continue
+            for a2 in aa:
+                for b2 in bb:
+                    if not payload:
+                        continue
+                    if a2 == b2:
+                        # BOTH ENDS RE-POINTED TO THE SAME NODE. The edge
+                        # did not disappear, it was CONSUMED: this is what
+                        # a J1 SAME verdict looks like after its own merge
+                        # lands (SAME_CANDIDATE obj_068 -> obj_020 becomes
+                        # obj_068 -> obj_068). Recording it, because "the
+                        # verdict that deleted a node" is exactly the
+                        # information that must not evaporate.
+                        consumed.append({**e, "became": a2,
+                                         "why": "both endpoints are now "
+                                                "the same node — the "
+                                                "verdict on this edge has "
+                                                "already been applied"})
+                        continue
+                    carried[(e["type"], a2, b2)] = payload
+
+        # --- re-derive the geometry ------------------------------------
+        env = {n["id"]: n for n in self.graph["nodes"]
+               if n.get("source") == "envelope"}
+        # the derivation's node contract wants DETECTION members (NEAR
+        # reads their truncation facts), so walk each settled node down
+        # through the resolved layer to the record nodes — a node's
+        # `members` are resolved ids, and a resolved node's are record
+        # ids. Same walk J9 needs for crops; getting it wrong is silent
+        # (an empty member list just makes truncation invisible).
+        rec = {n["id"]: n for n in self.graph["nodes"]}
+        res_src = {n["id"]: (n.get("members") or [n["id"]])
+                   for n in self.graph["resolved"]["nodes"]}
+        det = []
+        for n in self.nodes.values():
+            if not n.get("geometry"):
+                continue
+            members = []
+            for rid in (n.get("members") or [n["id"]]):
+                for sid in res_src.get(rid, [rid]):
+                    m = rec.get(sid)
+                    if m:
+                        members += ((m.get("evidence") or {})
+                                    .get("members") or [])
+            det.append({"id": n["id"], "source": "detection",
+                        "label": n.get("name") or "",
+                        "geometry": n["geometry"],
+                        "evidence": {"members": members}})
+        try:
+            floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
+            ceil_y = env["arch_ceiling"]["geometry"]["plane"]["value_raw"]
+        except KeyError:
+            self.edge_list, self.edge_meta = [], {
+                "status": "NOT DERIVED -- the scene has no arch_floor / "
+                          "arch_ceiling envelope nodes"}
+            return
+        walls = {i: n["geometry"]["plane"] for i, n in env.items()
+                 if i.startswith("arch_wall")
+                 and n["geometry"].get("plane", {}).get("axis") in ("x", "z")}
+        d = derive_edges(det, env, floor_y, ceil_y, walls)
+
+        # --- graft the judge payloads back on --------------------------
+        grafted = 0
+        out = []
+        for e in d.edges:
+            key = (e["type"], e["a"], e["b"])
+            if key in carried:
+                e = {**e, **carried[key]}
+                grafted += 1
+            out.append(e)
+        before = {(x["type"], x["a"], x["b"]) for x in inherited}
+        after = {(x["type"], x["a"], x["b"]) for x in out}
+        unplaced = [{"edge": list(k), **v} for k, v in carried.items()
+                    if k not in after]
+
+        self.edge_list = out
+        self.nesting = d.nesting
+        self.edge_meta = {
+            "inherited_from": src_name,
+            "note": "GEOMETRIC edges re-derived on THIS layer's boxes "
+                    "(build_edges.derive_edges, identical thresholds); "
+                    "judge fields (" + ", ".join(self.JUDGE_FIELDS)
+                    + ") inherited and grafted back, because geometry "
+                      "cannot regenerate them.",
+            "n_inherited": len(inherited),
+            "n_out": len(out),
+            "appeared": [list(k) for k in sorted(after - before)],
+            "dissolved": [list(k) for k in sorted(before - after)],
+            "judge_fields_grafted": grafted,
+            "judge_fields_unplaced": unplaced,
+            "judged_edges_lost_to_node_removal": lost,
+            "judged_edges_consumed_by_a_merge": consumed,
+            "summary": d.edge_summary,
+            "self_check": d.self_check,
+        }
+        self.stats.update(edges_out=len(out),
+                          edges_appeared=len(after - before),
+                          edges_dissolved=len(before - after),
+                          edges_judge_grafted=grafted,
+                          edges_judge_consumed=len(consumed),
+                          edges_judge_lost=len(lost))
+
     # -- rule 5 ----------------------------------------------------------
     def same_product(self):
         annotated = groups_true = 0
@@ -762,11 +956,36 @@ class Materialize:
         self.stats["nodes_with_open_doubts"] = n_open
 
     # -- drive -----------------------------------------------------------
-    def run(self):
+    def run(self, settle_only=False):
+        """TWO PHASES (user ruling 2026-08-08). SETTLE first, ANNOTATE
+        after.
+
+        J9 used to read the raw carve manifest while running AFTER J8/J8s/
+        J1 in the chain — so it judged boxes those verdicts had already
+        superseded. On living run 17 that was 3 of the 11 members in its
+        sets: obj_011 was still the UNCUT 2.80 m L (J8s had split it),
+        obj_020 no longer existed (J1 merged it into obj_068) and was the
+        chair set's EXEMPLAR, and obj_021's box had been swapped. The two
+        conflicts this pass kept filing were the symptom.
+
+        `settle_only` runs rules 1-4 — the ones that decide GEOMETRY and
+        the NODE SET — and stops. J9 then judges that layer, and a second
+        full pass folds its annotations in. Rule order is unchanged; only
+        what J9 is handed changed.
+        """
         self.base_geometry()
         self.box_rulings()
         self.splits()
         self.same_merges()
+        self.edges()
+        if settle_only:
+            self.open_doubts()
+            self.stats.update(
+                resolved_in=len(self.graph["resolved"]["nodes"]),
+                nodes_out=len(self.nodes), dropped=len(self.dropped),
+                conflicts=len(self.conflicts),
+                open_questions=len(self.opens), phase="settle_only")
+            return self
         self.same_product()
         self.cross_checks()
         self.open_doubts()
@@ -880,8 +1099,12 @@ class Materialize:
                     "carved_edges are untouched. Boxes are COPIES (carve "
                     "manifest, carve report vote2, J8s cut record) -- "
                     "nothing recomputed. Merges and dropped pieces move "
-                    "IDENTITY only: no box is ever grown. Edges are NOT "
-                    "re-derived in this pass (open question).",
+                    "IDENTITY only: no box is ever grown. THE EDGES "
+                    "FOLLOW THE NODES (user design rule 2026-08-08: a "
+                    "module edits the graph and inherits the rest, so "
+                    "this layer is a WHOLE graph, not a node set): "
+                    "geometric edges re-derived on these boxes, judge "
+                    "fields inherited and grafted back -- see edge_meta.",
             "precedence": [
                 "1 geometry base = carve shipping box verbatim",
                 "2 J8 ship ruling (the named candidate box is APPLIED from "
@@ -894,6 +1117,11 @@ class Materialize:
                 "3 J8s split pieces (<nid>#k; existing:<id> piece dropped "
                 "with a pointer, never grows that node)",
                 "4 J1 SAME merges (smaller volume removed, transitive)",
+                "4b EDGES follow the nodes: re-derived geometrically on "
+                "this layer's boxes (a moved box can form edges with "
+                "nodes it never touched, so neighbours-only is not "
+                "enough), with judge status/verdict/triage inherited and "
+                "grafted back because geometry cannot regenerate them",
                 "5 J9 same-product annotation (canonical_size, NO resize)",
                 "6 UNCLEAR / open doubts ship unchanged",
             ],
@@ -907,6 +1135,9 @@ class Materialize:
                 "j1_same": "graph['carved_edges'] SAME_CANDIDATE verdicts",
             },
             "nodes": list(self.nodes.values()),
+            "edges": self.edge_list,
+            "edge_meta": self.edge_meta,
+            "nesting": self.nesting,
             "dropped": self.dropped,
             "conflicts": self.conflicts,
             "open_questions": self.opens,
@@ -930,8 +1161,9 @@ class Materialize:
               f"{s['j8s_covered_by_existing']}) · "
               f"J1 SAME pairs {s['j1_same_pairs']} -> merged away "
               f"{s['j1_merged_away']} · "
-              f"J9 groups {s['j9_groups_same']} -> annotated "
-              f"{s['j9_annotated']}")
+              + (f"J9 groups {s['j9_groups_same']} -> annotated "
+                 f"{s['j9_annotated']}" if "j9_groups_same" in s
+                 else "J9 NOT APPLIED (--settle-only)"))
         print(f"[materialize] conflicts: {s['conflicts']} · open questions: "
               f"{s['open_questions']} · nodes carrying open doubts: "
               f"{s['nodes_with_open_doubts']}")
@@ -1081,9 +1313,19 @@ def main():
     ap.add_argument("--report-only", action="store_true",
                     help="write graph/materialize_report.html but NOT the "
                          "graph")
+    ap.add_argument("--settle-only", action="store_true",
+                    help="PHASE 1: settle geometry + the node set (J8 box "
+                         "rulings, J8s splits, J1 merges) and stop, so J9 "
+                         "can judge the settled layer instead of the raw "
+                         "carve manifest. Run again without this flag "
+                         "afterwards to fold J9's annotations in.")
     a = ap.parse_args()
 
-    m = Materialize(a.scene).run()
+    m = Materialize(a.scene).run(settle_only=a.settle_only)
+    if a.settle_only:
+        print("\n[materialize] PHASE 1 (settle only) -- J9 annotations NOT "
+              "applied; run graph/judge_same_product.py next, then this "
+              "again without --settle-only")
     m.print_report()
 
     rpath = m.sdir / "graph" / "materialize_report.html"
