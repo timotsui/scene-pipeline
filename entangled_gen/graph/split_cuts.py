@@ -932,8 +932,15 @@ DECIDE ONE OF TWO THINGS:
     THIS cut could not separate. A more_cut side comes back to you in the
     NEXT ROUND as its own region, with a fresh render and a fresh grid —
     so do NOT try to describe more than one cut now. The chain ends the
-    moment nothing is flagged; there are at most {max_rounds} rounds in
-    total, so do not plan on a long series of cuts.
+    moment nothing is flagged.
+    FEWEST CUTS WINS. {max_rounds} rounds is a hard CEILING, not a budget
+    to spend. The best answer settles this object in as few cuts as
+    possible, and ONE cut that settles everything is the ideal outcome.
+    Do NOT defer work to a later round just because rounds are available:
+    measured on this pipeline, a judge told it had ONE round settled this
+    same object correctly in one cut at higher confidence, while the same
+    judge given three rounds spread the same decision across three. Flag
+    "more_cut" only when you genuinely cannot settle the side now.
 
 OWNER VOCABULARY (kept sides / kept regions only):
   "this_node"      — this is {nid}'s own territory ("{name}").
