@@ -43,10 +43,24 @@ def box_sources(sc):
     # the user eyeball — RULED same day, prior promoted, entries removed.)
     # 2026-08-06 TEMPORARY streak-surgery previews (R-S2-22 gate): remove
     # both when ruled.
+    # The carve layer's label is composed LIVE from the manifest's own
+    # provenance header (2026-08-08): a hard-coded "run 10" caption was
+    # still showing while the file already held run 16 boxes. Never
+    # hand-write a run number in a label again — read it.
+    _sv = sd / "scene_manifest_slicevote_preview.json"
+    _svlab = "slice-vote carve"
+    try:
+        _h = json.loads(_sv.read_text(encoding="utf-8"))
+        _svlab = ("slice-vote carve · " + str(_h.get("run_id") or "?")
+                  + (" · CANON-ELIGIBLE" if _h.get("canon_eligible")
+                     else " · partial/mixed — NOT canon")
+                  + f" · {_h.get('n_objects', '?')} obj")
+    except Exception:                                   # noqa: BLE001
+        pass
     srcs = [
-        ("slicevote", "slice-vote carve · run 10 (BOX CANON)", "current",
+        ("slicevote", _svlab, "current",
          sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
-         "Slice-vote carve RUN 10 (2026-08-07 late; user-PASSED "
+         "Slice-vote carve (2026-08-07 late; user-PASSED "
          "R-S2-35..39, the canonical carve state; cyan to match the "
          "cone map's pano-filtered box): per resolved node — top-box "
          "prism slice, view-tunnel cards, 3-tier escalation ladder, "
