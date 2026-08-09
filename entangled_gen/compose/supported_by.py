@@ -761,8 +761,15 @@ def main():
     edges = res["edges"]
     arch_planes = {n["id"]: n["geometry"]["plane"] for n in graph["nodes"]
                    if n["id"].startswith("arch_")}
+    # THE CURRENT LAYER carries appearance now (2026-08-09). Reading
+    # graph["judged"] here worked only for ids that layer still has: a
+    # split piece the judges CREATED is absent from it, and a merged-away
+    # node is gone, so this silently returned {} for exactly the nodes the
+    # pipeline changed — and support is weighed on that testimony.
     japp = {n["id"]: (n.get("appearance") or {})
-            for n in graph["judged"]["nodes"]}
+            for n in scene_state.nodes(graph)}
+    for n in graph["judged"]["nodes"]:      # older graphs, no layer yet
+        japp.setdefault(n["id"], n.get("appearance") or {})
 
     cdir = paths.compose_dir(args.scene)
     cdir.mkdir(parents=True, exist_ok=True)

@@ -103,13 +103,34 @@ def build(scene):
     results = rep.get("results") or []
     rec = {r["id"]: r for r in results} if isinstance(results, list) \
         else dict(results)
+    # APPEARANCE COMES FORWARD TOO (2026-08-09). J6 described every node
+    # -- colours, material, style, a one-line description, what it rests
+    # on, which way it faces -- and `resolved` dropped it, so compose's
+    # FIRST stage (compose/supported_by.py) had to reach back past the
+    # current layer into graph['judged'] to find it. That works only for
+    # ids `judged` still has: a split piece the judges CREATED is not
+    # there at all, and a merged-away node is gone, so the lookup
+    # silently returned {} for exactly the nodes this pipeline changed --
+    # and S1 weighs support on that testimony.
+    app = {}
+    for jn in (graph.get("judged") or {}).get("nodes") or []:
+        if jn.get("appearance"):
+            app[jn["id"]] = jn["appearance"]
+    apf = sd / "graph" / "appearance_cache_v2.json"
+    if apf.exists():                      # fallback: J6's own cache
+        for nid, ent in (load(apf, "the appearance cache").get("nodes")
+                         or {}).items():
+            if isinstance(ent, dict) and ent.get("appearance"):
+                app.setdefault(nid, ent["appearance"])
+
     doubts = {}
     dp = sd / "graph" / "vote_doubts.json"
     if dp.exists():
         for nd in load(dp, "the doubts").get("nodes") or []:
             doubts[nd["id"]] = nd.get("doubts") or []
 
-    nodes, opens, stats = [], [], {"voted": 0, "not_voted": 0}
+    nodes, opens, stats = [], [], {"voted": 0, "not_voted": 0,
+                                   "with_appearance": 0}
     by_status = {}
     for rn in graph["resolved"]["nodes"]:
         nid = rn["id"]
@@ -153,6 +174,10 @@ def build(scene):
         }
         if doubts.get(nid):
             n["doubts"] = doubts[nid]
+        seen = app.get(nid) or next(
+            (app[m] for m in (rn.get("members") or []) if m in app), None)
+        if seen:
+            n["appearance"] = seen
         n["provenance"] = [{
             "rule": "geometry_from_vote",
             "status": status,
@@ -178,6 +203,8 @@ def build(scene):
         inherit_from=("judged", "resolved", "voted_edges"),
         diff_against="resolved")   # this layer supersedes resolved
 
+    stats["with_appearance"] = sum(1 for n in nodes
+                                   if n.get("appearance"))
     stats.update(nodes=len(nodes), edges=len(edges),
                  by_status=by_status,
                  boxes_changed=sum(
@@ -227,6 +254,8 @@ def main():
           f"({c['voted']} elected, {c['not_voted']} not voted), "
           f"{c['boxes_changed']} boxes changed vs pre-vote")
     print(f"[voted] statuses: {c['by_status']}")
+    print(f"[voted] nodes carrying a J6 appearance: "
+          f"{c['with_appearance']}/{c['nodes']}")
     print(f"[voted] edges: {em.get('n_out')} "
           f"(+{len(em.get('appeared') or [])} / "
           f"-{len(em.get('dissolved') or [])}), judge fields grafted "

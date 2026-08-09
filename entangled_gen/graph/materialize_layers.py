@@ -594,6 +594,18 @@ class Materialize:
                                     "audit; this piece's BOX comes from the "
                                     "J8s cut record, not from the parent"}],
                     }
+                    if self.nodes[pid].get("appearance"):
+                        # a description of the PARENT is a guess about the
+                        # piece: same treatment as the inherited vote, so
+                        # nothing downstream reads it as first-hand
+                        self.nodes[pid]["appearance"] = {
+                            **self.nodes[pid]["appearance"],
+                            "describes": nid,
+                            "note": "INHERITED from the parent node — J6 "
+                                    "described the whole object, not this "
+                                    "piece. A targeted appearance pass "
+                                    "for judge-created nodes is still an "
+                                    "open question."}
                     if self.nodes[pid].get("vote"):
                         self.nodes[pid]["vote"] = {
                             **self.nodes[pid]["vote"],
