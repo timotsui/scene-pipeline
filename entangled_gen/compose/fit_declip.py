@@ -34,6 +34,9 @@ pushed back inside by the static shell. Constraints, all hard:
   - FLAT items (height < FLAT_H, e.g. rug / yoga mat) are exempt as
     clip participants: things standing through a rug's pile is correct
 
+ROTATION (2026-08-09) is tried BEFORE a push-apart and wins when it
+clears the clip with ZERO translation -- see the rule below.
+
 Moves are quantized to the voxel lattice so a translation is an integer
 key-shift (no re-voxelization inside the loop); the final state is
 verified by a normal fit_check pass afterwards, never by the solver
@@ -69,6 +72,65 @@ MAX_ROUNDS = 60
 KX, KY, KZ = 1 << 42, 1 << 21, 1
 KSHIFT = {0: KX, 1: KY, 2: KZ}
 
+# ROTATION AS A DE-CLIPPING MOVE (user design 2026-08-09: "if there is a
+# rotation that can solve collision with minimal translation, we might
+# prefer that" -> "rotation might even be preferred if it can minimize
+# translation").
+# 
+# THE RULE, and it has no weight to tune: MINIMISE TRANSLATION. A bounded
+# yaw is FREE in that ranking, so it wins whenever it can do the job.
+# Position is measured evidence -- sliding an item moves it away from
+# where it was actually seen -- while a small yaw leaves it where the
+# evidence put it. Concretely, before a clipping pair is pushed apart we
+# ask whether a bounded yaw on either item clears the overlap with ZERO
+# translation; zero beats any positive translation, so that rotation is
+# taken. Anything a rotation cannot clear falls through to the existing
+# push-apart, unchanged.
+# 
+# WHAT BOUNDS THE YAW (not a knob): the placement stage already snapped
+# each item to a CARDINAL facing, and rotation_check spent a model call
+# per object per camera agreeing that facing against the reference
+# photograph. So the yaw may not change which cardinal direction the item
+# faces -- |yaw| < 45 deg -- and when a witness observed the item, the
+# rotated front must stay within 45 deg of the OBSERVED direction too.
+# That is the same evidence the tucked-item exemption reads.
+# 
+# WHO MAY ROTATE: floor-mounted, non-flat items. A wall item's yaw is
+# what holds it flat against its wall, and a ceiling item's likewise, so
+# neither is eligible.
+# 
+# COST: a translation is an integer key shift on the 2 cm lattice, but a
+# rotation is not -- it needs the mesh re-voxelised. So each (item, yaw)
+# is voxelised AT MOST ONCE and cached; the item's live cells are always
+# that cached set plus its accumulated integer translation. Candidate
+# yaws are a coarse-to-fine ladder, not a continuous search.
+
+YAW_LADDER = (5, -5, 10, -10, 15, -15, 20, -20, 30, -30, 40, -40)
+YAW_MAX = 45.0        # a larger yaw would change the CARDINAL facing the
+#                       placement stage snapped to and rotation_check
+#                       confirmed -- that is a decision, not slack
+FACE_TOL_DEG = 45.0   # rotated front must stay this close to the facing a
+#                       witness observed, when one did
+
+
+def _yaw_cells(mesh, deg, pitch, cell_keys):
+    """Cells of `mesh` yawed `deg` about its own vertical axis, through
+    its footprint centre, at its ORIGINAL position. Absolute lattice
+    keys, so the caller adds the accumulated translation shift."""
+    import numpy as np
+    m = mesh.copy()
+    c = m.bounds.mean(axis=0)
+    t = np.radians(deg)
+    co, si = np.cos(t), np.sin(t)
+    R = np.eye(4)
+    R[0, 0], R[0, 2] = co, si          # yaw about +y (render frame up)
+    R[2, 0], R[2, 2] = -si, co
+    m.apply_translation(-c)
+    m.apply_transform(R)
+    m.apply_translation(c)
+    return cell_keys(m), np.array(m.bounds)
+
+
 
 def decode(keys):
     ix = keys >> 42
@@ -103,6 +165,11 @@ def main():
     cells = {i: cell_keys(by_item[i]).copy() for i in ids}
     aabb = {i: np.array(by_item[i].bounds) for i in ids}
     moved = {i: np.zeros(3) for i in ids}          # metres, (x, y, z)
+    ncell = {i: np.zeros(3, np.int64) for i in ids}  # the SAME move
+    #   as integer lattice cells, so a re-voxelised rotation can be
+    #   composed with the translation already applied
+    yaw = {i: 0.0 for i in ids}                   # applied yaw, deg
+    yaw_cache = {}                                # (id, deg) -> cells
     flat = {i for i in ids
             if (aabb[i][1][1] - aabb[i][0][1]) < FLAT_H}
 
@@ -178,8 +245,88 @@ def main():
         cells[i] = cells[i] + (n * KSHIFT[axis])
         aabb[i][:, axis] += d
         moved[i][axis] += d
+        ncell[i][axis] += n
         return d
 
+    def may_rotate(i):
+        """Floor-mounted, non-flat items only. A wall or ceiling item's
+        yaw is what holds it flat against its surface."""
+        return (place[i]["mount"] == "floor" and i not in flat)
+
+    def cells_at(i, deg):
+        """Item i's cells if it were yawed `deg`, at its CURRENT
+        position: the cached voxelisation of the yawed mesh plus the
+        integer translation applied so far."""
+        key = (i, deg)
+        if key not in yaw_cache:
+            yaw_cache[key] = _yaw_cells(by_item[i], deg, PITCH, cell_keys)
+        base, bb = yaw_cache[key]
+        sh = int(ncell[i][0]) * KX + int(ncell[i][1]) * KY             + int(ncell[i][2]) * KZ
+        return base + sh, bb + (ncell[i] * PITCH)
+
+    def facing_ok(i, deg):
+        """The yaw may not change the CARDINAL facing the placement stage
+        snapped to, nor drift from what a witness observed."""
+        if abs(yaw[i] + deg) >= YAW_MAX:
+            return False
+        obs = observed.get(i)
+        fd = place[i].get("front_dir_raw")
+        if not obs or not fd:
+            return True
+        f = np.array([fd[0] * float(r2r[0]), fd[1] * float(r2r[2])])
+        t = np.radians(yaw[i] + deg)
+        co, si = np.cos(t), np.sin(t)
+        rot = np.array([co * f[0] + si * f[1], -si * f[0] + co * f[1]])
+        o = np.array(obs, float)
+        no, nr = np.linalg.norm(o), np.linalg.norm(rot)
+        if no == 0 or nr == 0:
+            return True
+        cosang = float(np.dot(rot, o) / (nr * no))
+        return cosang >= np.cos(np.radians(FACE_TOL_DEG))
+
+    def try_rotate(a, b):
+        """Can a bounded yaw on a or b clear this clip with ZERO
+        translation? Zero beats any positive translation, so if one can,
+        it is taken. Returns the id rotated, or None."""
+        for i, other in ((a, b), (b, a)):
+            if not may_rotate(i):
+                continue
+            for deg in YAW_LADDER:
+                if not facing_ok(i, deg):
+                    continue
+                cand, bb = cells_at(i, yaw[i] + deg)
+                ov = (np.minimum(bb[1], aabb[other][1])
+                      - np.maximum(bb[0], aabb[other][0]))
+                if (ov <= 0).any():
+                    n_int = 0
+                else:
+                    n_int = len(np.intersect1d(cand, cells[other]))
+                if n_int > CONTACT_CELLS:
+                    continue
+                # it clears. Take it, and make sure it did not simply
+                # move the problem onto a third item.
+                worse = False
+                for k in ids:
+                    if k in (i, other) or k in flat:
+                        continue
+                    ov2 = (np.minimum(bb[1], aabb[k][1])
+                           - np.maximum(bb[0], aabb[k][0]))
+                    if (ov2 <= 0).any():
+                        continue
+                    before = len(np.intersect1d(cells[i], cells[k]))
+                    after = len(np.intersect1d(cand, cells[k]))
+                    if after > CONTACT_CELLS and after > before:
+                        worse = True
+                        break
+                if worse:
+                    continue
+                cells[i] = cand
+                aabb[i] = bb
+                yaw[i] += deg
+                return i
+        return None
+
+    rotated = set()
     log_rounds = []
     for rnd in range(MAX_ROUNDS):
         any_move = 0.0
@@ -219,7 +366,18 @@ def main():
                     continue
                 clips.append((len(inter), a, b, inter))
         clips.sort(key=lambda c: (-c[0], c[1], c[2]))
+        n_rot_round = 0
         for _, a, b, inter in clips:
+            # ROTATION FIRST (user rule 2026-08-09): minimise translation,
+            # and a bounded yaw is free in that ranking. If a yaw clears
+            # the clip with ZERO translation it wins outright, because
+            # zero beats any positive push.
+            r = try_rotate(a, b)
+            if r is not None:
+                rotated.add(r)
+                n_rot_round += 1
+                any_move += PITCH        # progress, so the loop continues
+                continue
             ix, iy, iz = decode(inter)
             ext = {0: (int(np.ptp(ix)) + 1) * PITCH,
                    2: (int(np.ptp(iz)) + 1) * PITCH}
@@ -241,7 +399,8 @@ def main():
                 any_move += abs(shift(b, axis, -sa * mb))
                 break
         log_rounds.append({"round": rnd, "clips": len(clips),
-                           "moved_m": round(any_move, 3)})
+                           "moved_m": round(any_move, 3),
+                           "rotated": n_rot_round})
         if not clips or any_move < PITCH / 2:
             break
 
@@ -270,8 +429,21 @@ def main():
     for gname, geom in sc.geometry.items():
         oid = gname.rsplit("_t", 1)[0]
         mv = moved.get(oid)
-        if mv is None or not mv.any():
+        if mv is None or (not mv.any() and not yaw.get(oid, 0.0)):
             continue
+        dy = yaw.get(oid, 0.0)
+        if dy:
+            # yaw about the item's own vertical axis, in the RAW frame the
+            # glb lives in, so it spins in place rather than orbiting
+            c = geom.bounds.mean(axis=0)
+            t = np.radians(dy) * float(r2r[0]) * float(r2r[2])
+            co, si = np.cos(t), np.sin(t)
+            R = np.eye(4)
+            R[0, 0], R[0, 2] = co, si
+            R[2, 0], R[2, 2] = -si, co
+            geom.apply_translation(-c)
+            geom.apply_transform(R)
+            geom.apply_translation(c)
         geom.apply_translation([mv[0] * float(r2r[0]),
                                 mv[1] * float(r2r[1]),
                                 mv[2] * float(r2r[2])])
@@ -287,6 +459,8 @@ def main():
             oob = max(max(0.0, blo[a] - lo[a], hi[a] - bhi[a])
                       for a in (0, 1, 2))
             p["out_of_box_mm"] = round(float(oob) * 1000, 0)
+        p["declip_yaw_deg"] = (round(float(yaw[p["id"]]), 1)
+                               if yaw.get(p["id"]) else None)
     fpj["note"] = fpj.get("note", "") + "; declip applied " + str(
         date.today())
     (cdir / "fitted_preview.json").write_text(
@@ -305,11 +479,23 @@ def main():
            "moves": {i: [round(float(v), 3) for v in m]
                      for i, m in sorted(moved.items()) if m.any()},
            "flat_exempt": sorted(flat),
+           "yaws_deg": {i: round(float(v), 1)
+                        for i, v in sorted(yaw.items()) if v},
+           "rotation_rule": "minimise translation; a bounded yaw is free "
+                            "in that ranking, so it is taken whenever it "
+                            "clears a clip with ZERO translation. Bounds: "
+                            f"|yaw| < {YAW_MAX} deg (a larger yaw would "
+                            "change the cardinal facing the placement "
+                            "stage snapped to) and, where a witness "
+                            f"observed the item, within {FACE_TOL_DEG} "
+                            "deg of that. Floor-mounted, non-flat only.",
            "residual_clips": residual,
            "elapsed_s": round(time.time() - t0, 1)}
     (cdir / "fit_declip.json").write_text(json.dumps(out, indent=1),
                                           encoding="utf-8")
+    n_rot = sum(1 for v in yaw.values() if v)
     print(f"[declip] {len(log_rounds)} rounds, {n_moved} items moved, "
+          f"{n_rot} rotated, "
           f"{len(residual)} residual clips, {len(flat)} flat-exempt "
           f"({time.time() - t0:.0f}s)")
     for i, m in sorted(moved.items()):
