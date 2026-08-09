@@ -28,16 +28,49 @@ to see groups without any LLM call.
    facts. Same product? canonical size? Judge may exclude members via
    set_members (a "chair" that is really something else stays out).
 
+⚠ KNOWN OPEN, NOT FIXED HERE (2026-08-08): the ANSWER FORM is unstable
+by construction. The judge is asked to name a SUBSET of the group and is
+never asked to account for the members it leaves out, and it gets ONE
+set slot per group — so a group that is really two products can only be
+answered by discarding members. Two runs 20 min apart on near-identical
+pillow data returned DISJOINT sets ({obj_024, obj_037} vs {obj_015,
+obj_016, obj_026}); both are correct answers to the question as written.
+The redesign (assign EVERY member to a set or to "alone", allow more
+than one set per group) is the next piece of work — user ruling
+2026-08-08: fix the plumbing first, review a sheet, then redesign.
+
+CHAIN ALIGNMENT LANDED 2026-08-08 — J9 was the odd one out on four
+mechanical counts, each matched to what J8/J8s already do:
+  · VERDICT CACHE (graph/judge_same_product_cache.json, key = prompt +
+    contact-sheet bytes). Every other judge had one; J9 re-decided every
+    run. This makes a re-run free — it does NOT make the answer right
+    (see the open above).
+  · MODEL = sonnet (J8/J8s constant). The old default was haiku.
+  · NO STIMULUS -> UNCLEAR WITHOUT A CALL. A group whose members have no
+    detection crops produced a picture-free sheet and the judge answered
+    anyway from the numbers, while the prompt told it to look (living
+    group 1, magazine obj_005_c00 + obj_017_c00: pano-cluster nodes,
+    evidence.members empty). Members with no photo in a MIXED group are
+    now named in the prompt as unseeable and recorded as
+    no_photo_members — recorded, not decided.
+  · RETRY ONCE, then record. A malformed reply used to be a dead group
+    (living group 2, magazine x3: "judge call failed").
+  · groups run CONCURRENTLY (the 08-04 parallelism ruling); they were
+    strictly sequential.
+
 Run:  python graph/judge_same_product.py --scene living_marble --dry-run
       python graph/judge_same_product.py --scene living_marble
 """
 import argparse
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -47,8 +80,23 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
 
+# A STAGE MUST NOT DIE ON ITS OWN LOG LINE (2026-08-08): the closing
+# "wrote ... (⚠ UNTESTED)" print raised UnicodeEncodeError under a cp1252
+# console AFTER same_product.json was already on disk — the work was done
+# and the run still exited non-zero. Same latent bug in carve_slicevote.py
+# (≥), graph/build_edges.py (→) and compose/uniform_instances.py (⚠).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:                       # noqa: BLE001 — piped/older
+        pass
+
 GROUP_RADIUS = 2.5
 ANCHOR_AREA_RATIO = 2.0
+MODEL = "sonnet"       # the judge-chain constant (J8, J8s). J9 had been
+                       # defaulting to haiku — an undocumented outlier, not
+                       # a recorded decision (2026-08-08)
+CONCURRENCY = 8        # user ruling 08-04: independent calls run concurrently
 CALL_TIMEOUT_S = 600   # s — raised from 180 (2026-08-08): image-heavy
                        # contact sheets legitimately run long
 CROPS_PER_MEMBER = 2       # judge_pairs.py pattern: up to 2 crops/node
@@ -221,13 +269,12 @@ def slugify(name):
 
 
 def build_sheets(groups, nodes, crops_dir, sheets_dir):
-    """Build every group's contact sheet + index.html. Returns
-    {group_index: sheet_path} and prints crop coverage; annotates each
-    group dict with its sheet filename and per-member crop counts."""
+    """Build every group's contact sheet. Returns {group_index:
+    sheet_path} and prints crop coverage; annotates each group dict with
+    its sheet filename and per-member crop counts."""
     src_nodes = nodes  # id -> top-level node (crop evidence lives here)
     sheets_dir.mkdir(parents=True, exist_ok=True)
     sheet_paths = {}
-    index_rows = []
     for i, gr in enumerate(groups, 1):
         crops_by_id = {}
         for m in gr["members"]:
@@ -244,20 +291,76 @@ def build_sheets(groups, nodes, crops_dir, sheets_dir):
         print(f"[same_product]   sheet {out_path.name} -- crops {cov}"
               + (f"  WARNING NO CROPS: {no_crops}" if no_crops else ""),
               flush=True)
-        index_rows.append(
+    return sheet_paths
+
+
+def write_index(groups, sheets_dir, verdicts=None):
+    """The review page. Built in BOTH modes: --dry-run writes the sheets
+    alone, a full run writes the same page with each group's verdict
+    above its sheet, so one scroll answers "what did the judge say, and
+    does the picture support it?"."""
+    rows = []
+    for i, gr in enumerate(groups, 1):
+        cov = ", ".join(f"{m['id']}:{m.get('n_crops', 0)}"
+                        for m in gr["members"])
+        no_crops = [m["id"] for m in gr["members"]
+                    if not m.get("n_crops")]
+        v = (verdicts or {}).get(i)
+        card = ""
+        if v:
+            same = v.get("same_object")
+            tag = ("SAME PRODUCT" if same is True else
+                   "NOT the same product" if same is False else
+                   "UNCLEAR / no verdict")
+            colour = ("#0a7d28" if same is True else
+                      "#8a5a00" if same is False else "#a11")
+            picked = v.get("set_members") or []
+            left_out = [m["id"] for m in gr["members"]
+                        if m["id"] not in picked]
+            size = v.get("canonical_size")
+            card = (
+                f'<div style="border-left:6px solid {colour};'
+                f'padding:6px 12px;margin:8px 0;background:#fafafa">'
+                f'<b style="color:{colour}">{tag}</b>'
+                + (f' — buy one at <b>{size}</b> m'
+                   if size else "") + "<br>\n"
+                f'<b>in the set ({len(picked)}):</b> '
+                f'{", ".join(picked) if picked else "—"}<br>\n'
+                f'<b>left out ({len(left_out)}):</b> '
+                f'{", ".join(left_out) if left_out else "—"}'
+                + (' <i>— nothing downstream is told why. The answer form '
+                   'does not ask for a per-member decision, so anything '
+                   'the reason says about these is volunteered, and only '
+                   'the members in the set get a size to buy.</i>'
+                   if left_out else "") + '<br>\n'
+                f'<b>reason:</b> {v.get("reason", "")}<br>\n'
+                f'<small>{v.get("model", "")} · {v.get("date", "")} · '
+                f'{"from cache" if v.get("_cached") else "fresh call"}'
+                + (f' · attempts {v["attempts"]}'
+                   if v.get("attempts") else "")
+                + (f' · <b>no photo: {", ".join(v["no_photo_members"])}'
+                   f'</b>' if v.get("no_photo_members") else "")
+                + "</small></div>\n")
+        rows.append(
             f"<h2>group {i} — {gr['name']} "
-            f"({len(gr['members'])} members)</h2>\n"
-            f"<p>crops per member: {cov}"
+            f"({len(gr['members'])} members)</h2>\n" + card
+            + f"<p>crops per member: {cov}"
             + (f" — <b>NO CROPS: {', '.join(no_crops)}</b>"
                if no_crops else "") + "</p>\n"
-            f'<img src="{out_path.name}" style="max-width:100%">\n')
+            f'<img src="{gr["sheet"]}" style="max-width:100%">\n')
     (sheets_dir / "index.html").write_text(
         "<!doctype html><meta charset='utf-8'>"
         "<title>same-product contact sheets</title>\n"
-        "<h1>same-product candidate groups</h1>\n"
-        + "\n".join(index_rows), encoding="utf-8")
+        "<style>body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;"
+        "margin:24px auto;padding:0 16px}</style>\n"
+        "<h1>Same-product judge (J9) — candidate groups</h1>\n"
+        "<p>Each group is a set of objects with the same name sitting "
+        "near each other. The judge answers: are these the same product, "
+        "which ones belong, and what one size should be bought.</p>\n"
+        + ("<p><b>Sheets only — no verdicts in this file.</b></p>\n"
+           if not verdicts else "")
+        + "\n".join(rows), encoding="utf-8")
     print(f"[same_product] wrote {sheets_dir / 'index.html'}", flush=True)
-    return sheet_paths
 
 
 def candidate_groups(nodes, carved):
@@ -305,7 +408,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--model", default="haiku")
+    ap.add_argument("--model", default=MODEL)
+    ap.add_argument("--concurrency", type=int, default=CONCURRENCY)
+    ap.add_argument("--no-cache", action="store_true",
+                    help="ignore cached verdicts (re-ask every group) — "
+                         "the stability probe")
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
     g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
@@ -334,19 +441,25 @@ def main():
     sheet_paths = build_sheets(groups, src_nodes, crops_dir, sheets_dir)
 
     if a.dry_run:
+        write_index(groups, sheets_dir)
         print("[same_product] dry run — sheets built, no LLM calls, "
               "no same_product.json", flush=True)
         return
 
-    results = []
-    for gi, gr in enumerate(groups, 1):
+    cache_f = sd / "graph" / "judge_same_product_cache.json"
+    cache = (json.loads(cache_f.read_text(encoding="utf-8"))
+             if cache_f.exists() and not a.no_cache else {})
+
+    def build_prompt(gi, gr):
         lines = []
         for m in gr["members"]:
             dstr = (f" [carve doubts: {', '.join(doubts[m['id']])}]"
                     if m["id"] in doubts else "")
+            seen = "" if m.get("n_crops") else " [NO PHOTO on the sheet]"
             lines.append(f"  {m['id']}: size {m['size']} m (w x h x d), "
-                         f"center {m['center']}{dstr}")
-        prompt = (
+                         f"center {m['center']}{dstr}{seen}")
+        blind = [m["id"] for m in gr["members"] if not m.get("n_crops")]
+        return (
             "You are judging furniture/object instances found in ONE "
             "real room by a noisy 3D reconstruction pipeline.\n"
             f"First open the contact sheet image "
@@ -358,6 +471,11 @@ def main():
             + (f", all nearest to the same larger object "
                f"\"{gr['shared_anchor'][1]}\"" if gr["shared_anchor"]
                else "") + ":\n" + "\n".join(lines)
+            + (f"\n\nNOTE — no photograph exists for {', '.join(blind)}: "
+               "that row of the sheet is empty. You cannot see "
+               + ("it" if len(blind) == 1 else "them")
+               + ", so say so in your reason rather than deciding from "
+                 "the numbers alone.\n" if blind else "")
             + "\n\nJudge from what the objects LOOK like in the sheet "
             "first; use the numbers to pick the canonical size. "
             "Measured sizes vary because reconstruction is noisy. "
@@ -371,27 +489,90 @@ def main():
             "\"set_members\": [ids] or null, "
             "\"canonical_size\": [w, h, d] or null, "
             "\"reason\": \"one sentence\"}")
-        try:
-            verdict = parse_json_obj(
-                call_claude(prompt, a.model,
-                            cwd=Path(sheet_paths[gi]).parent))
-            if verdict is None:
-                raise ValueError("no JSON in judge output")
-        except Exception as e:  # noqa: BLE001 — external judge output
-            verdict = {"same_object": None, "set_members": None,
-                       "canonical_size": None,
-                       "reason": f"judge call failed: {e}"}
-        verdict["set_members"] = normalize_ids(
-            verdict.get("set_members"), [m["id"] for m in gr["members"]])
+
+    def group_key(gi, prompt):
+        h = hashlib.sha256()
+        h.update(prompt.encode())
+        h.update(Path(sheet_paths[gi]).read_bytes())
+        return h.hexdigest()[:24]
+
+    def run_group(item):
+        gi, gr = item
+        blind = [m["id"] for m in gr["members"] if not m.get("n_crops")]
+        # NO STIMULUS -> NO CALL (the J8 rule). A sheet with no photo on
+        # ANY row cannot answer a question about what things look like;
+        # answering from the numbers is what produced the living-room
+        # magazine verdict on an empty picture.
+        if len(blind) == len(gr["members"]):
+            return gi, {"same_object": None, "set_members": None,
+                        "canonical_size": None,
+                        "no_photo_members": blind,
+                        "reason": "no photos on the contact sheet — every "
+                                  "row is empty, so there is nothing to "
+                                  "look at (not asked)",
+                        "model": None, "date": date.today().isoformat(),
+                        "attempts": 0, "_cached": False}
+        prompt = build_prompt(gi, gr)
+        k = group_key(gi, prompt)
+        if k in cache:
+            return gi, {**cache[k], "_cached": True}
+
+        # A call failure is a failed ATTEMPT, never a crash and never a
+        # dead group: retry once telling it to reply with JSON only, then
+        # record the failure (the J8 pattern).
+        def attempt(p):
+            try:
+                v = parse_json_obj(call_claude(
+                    p, a.model, cwd=Path(sheet_paths[gi]).parent))
+                if v is None:
+                    raise ValueError("no JSON in judge output")
+                return v, None
+            except Exception as e:              # noqa: BLE001
+                return None, f"{type(e).__name__}: {str(e)[:160]}"
+
+        v, err = attempt(prompt)
+        tries = 1
+        if v is None:
+            v, err2 = attempt(prompt + "\n\nREPLY WITH THE JSON OBJECT "
+                                       "ONLY.")
+            err = err2 or err
+            tries = 2
+        if v is None:
+            v = {"same_object": None, "set_members": None,
+                 "canonical_size": None,
+                 "reason": f"judge call failed x{tries} — {err}"}
+        v["set_members"] = normalize_ids(
+            v.get("set_members"), [m["id"] for m in gr["members"]])
+        if blind:
+            v["no_photo_members"] = blind
+        v = {**v, "model": a.model, "date": date.today().isoformat(),
+             "attempts": tries}
+        cache[k] = v
+        return gi, {**v, "_cached": False}
+
+    print(f"[same_product] judging {len(groups)} group(s), model "
+          f"{a.model}, concurrency {a.concurrency}"
+          + (" (cache ignored)" if a.no_cache else ""), flush=True)
+    with ThreadPoolExecutor(max_workers=a.concurrency) as ex:
+        got = dict(ex.map(run_group, list(enumerate(groups, 1))))
+
+    cache_f.write_text(json.dumps(cache, indent=1), encoding="utf-8")
+    results = []
+    for gi, gr in enumerate(groups, 1):
+        verdict = got[gi]
         gr_out = {**gr, "members": [
             {k: v for k, v in m.items() if k != "_res_node"}
             for m in gr["members"]]}
-        results.append({**gr_out, **verdict})
+        results.append({**gr_out,
+                        **{k: v for k, v in verdict.items()
+                           if k != "_cached"}})
         print(f"[same_product]   {gr['name']}: "
               f"same={verdict.get('same_object')} "
-              f"size={verdict.get('canonical_size')} — "
+              f"size={verdict.get('canonical_size')} "
+              f"{'(cache)' if verdict.get('_cached') else ''} — "
               f"{verdict.get('reason')}", flush=True)
 
+    write_index(groups, sheets_dir, got)
     outd = sd / "graph"
     outd.mkdir(exist_ok=True)
     out = outd / "same_product.json"
@@ -400,8 +581,13 @@ def main():
          "source": "graph/judge_same_product.py — SAME-PRODUCT pass "
                    "(own judge-chain pass per user ruling 2026-08-06); "
                    "consumer (shopping) NOT wired",
+         "known_open": "THE ANSWER FORM IS UNSTABLE: the judge names a "
+                       "SUBSET and never accounts for the members it "
+                       "leaves out, and each group gets ONE set slot. "
+                       "Redesign pending (2026-08-08).",
          "groups": results}, indent=1))
     print(f"[same_product] wrote {out} (⚠ UNTESTED)", flush=True)
+    print(f"[same_product] cache: {cache_f}", flush=True)
 
 
 if __name__ == "__main__":
