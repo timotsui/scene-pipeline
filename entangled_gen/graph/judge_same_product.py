@@ -268,6 +268,102 @@ def slugify(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "group"
 
 
+# ---- the canonical size: CODE'S JOB, not the judge's ---------------------
+# USER RULING 2026-08-08: EXEMPLAR, NOT BLEND. The size shopping buys is ONE
+# member's measured box, verbatim.
+#
+# Why the judge stopped deciding this: its canonical_size was, in all four
+# living groups, EXACTLY the per-axis median of the members it kept — it was
+# doing arithmetic, and we were taking it on trust. Worse, the per-axis
+# median is the WRONG arithmetic: the boxes are aligned to the ROOM's axes,
+# not to each object, so one member's width is another's depth (pillow
+# obj_026 measured 0.494 x 0.257 on the floor while obj_013/015 measured
+# ~0.38 x ~0.46 — same product, axes swapped). And when the members simply
+# disagree — the chairs' floor extents spread 0.44 m, with two of the five
+# already flagged by the carve — a median launders flagged measurements into
+# a confident-looking number. So: pick the member we measured best and copy
+# its box. Same shape as the settled J8s ruling (the judge speaks the
+# vocabulary; code does the snapping).
+#
+# The rank is computed WITHIN THE GROUP, against its own members, so no
+# global list of "bad" doubt kinds is needed and no threshold is introduced:
+# a doubt only counts against a member relative to its group-mates. (Every
+# ceiling light carries `exemption` — a blanket "no doubts" rule would have
+# disqualified all of them and left the group with no exemplar at all.)
+NEVER_MEASURED = ("kept", "kept_outlier")   # the carve shipped the ORIGINAL
+#                                             box: no measurement was taken
+
+
+def plan_long_short(size):
+    """The two floor dimensions, largest first. Comparable across members;
+    raw w and d are not, because the objects face different ways."""
+    return max(size[0], size[2]), min(size[0], size[2])
+
+
+def canonical_from_exemplar(members, picked, status_by, doubts_by):
+    """One member's box, verbatim, plus the disagreement it hides.
+
+    Rank: measured before never-measured, then fewest carve doubts, then
+    closest to the set's MEDIAN HEIGHT (height is the one axis that is
+    directly comparable — every object shares "up"), then id, so the pick
+    is deterministic.
+    """
+    sizes = {m["id"]: m["size"] for m in members}
+    chosen = [p for p in picked if p in sizes]
+    if not chosen:
+        return None
+    heights = sorted(sizes[p][1] for p in chosen)
+    n = len(heights)
+    med_h = (heights[n // 2] if n % 2 else
+             (heights[n // 2 - 1] + heights[n // 2]) / 2)
+
+    def rank(mid):
+        return (1 if status_by.get(mid) in NEVER_MEASURED else 0,
+                len(doubts_by.get(mid, [])),
+                abs(sizes[mid][1] - med_h),
+                mid)
+
+    ordered = sorted(chosen, key=rank)
+    best = ordered[0]
+    best_rank = rank(best)[:2]
+    eligible = [m for m in ordered if rank(m)[:2] == best_rank]
+    ls = [plan_long_short(sizes[p]) for p in chosen]
+    spread = lambda v: round(max(v) - min(v), 3)          # noqa: E731
+    med = lambda v: round(sorted(v)[len(v) // 2], 3)      # noqa: E731
+    return {
+        "canonical_size": [round(float(v), 3) for v in sizes[best]],
+        "canonical_size_from": best,
+        "canonical_size_rule":
+            "EXEMPLAR — this member's measured box, verbatim, in its own "
+            "world-axis order (w, h, d). No blending: the members' floor "
+            "dimensions are not comparable across differently-facing "
+            "objects, and averaging a flagged box into the answer hides "
+            "that it was flagged.",
+        "canonical_size_basis": {
+            "n_members": len(members),
+            "n_in_set": len(chosen),
+            "n_tied_for_exemplar": len(eligible),
+            "tied_for_exemplar": eligible,
+            "ranked": [{"id": p, "status": status_by.get(p),
+                        "doubts": doubts_by.get(p, []),
+                        "size": [round(float(v), 3) for v in sizes[p]]}
+                       for p in ordered],
+            "set_spread_long_m": spread([a for a, _ in ls]),
+            "set_spread_short_m": spread([b for _, b in ls]),
+            "set_spread_height_m": spread([sizes[p][1] for p in chosen]),
+            "set_median_long_short_height": [med([a for a, _ in ls]),
+                                             med([sizes[p][1]
+                                                  for p in chosen]),
+                                             med([b for _, b in ls])],
+            "note": "set_spread_* is how much the members of this set "
+                    "disagree, after sorting each member's two floor "
+                    "dimensions by size. Large spread does NOT invalidate "
+                    "the exemplar — it says the set is not a clean "
+                    "measurement, and it is recorded so nothing "
+                    "downstream mistakes the chairs for the ceiling "
+                    "lights."}}
+
+
 def build_sheets(groups, nodes, crops_dir, sheets_dir):
     """Build every group's contact sheet. Returns {group_index:
     sheet_path} and prints crop coverage; annotates each group dict with
@@ -318,12 +414,42 @@ def write_index(groups, sheets_dir, verdicts=None):
             left_out = [m["id"] for m in gr["members"]
                         if m["id"] not in picked]
             size = v.get("canonical_size")
+            basis = v.get("canonical_size_basis") or {}
+            sizeline = ""
+            if size and v.get("canonical_size_from"):
+                tied = basis.get("n_tied_for_exemplar", 1)
+                sizeline = (
+                    f'<br>\n<b>buy one at {size} m</b> — copied verbatim '
+                    f'from <b>{v["canonical_size_from"]}</b>, the member '
+                    f'we measured best'
+                    + (f' (one of {tied} equally good; height decided it)'
+                       if tied > 1 else "")
+                    + f'. The set disagrees by '
+                    f'<b>{basis.get("set_spread_long_m")} m</b> on its long '
+                    f'floor side, {basis.get("set_spread_short_m")} m on '
+                    f'the short one, {basis.get("set_spread_height_m")} m '
+                    f'on height. Nothing was averaged.'
+                    + (f' <span style="color:#a11">The judge would have '
+                       f'said {v["judge_canonical_size"]} — the per-axis '
+                       f'median, which mixes one member\'s width with '
+                       f'another\'s depth.</span>'
+                       if v.get("judge_canonical_size") else ""))
+            ranked = basis.get("ranked") or []
+            if ranked:
+                sizeline += (
+                    '<br>\n<small>measured, best first: '
+                    + " · ".join(
+                        f'<b>{r["id"]}</b> {r["size"]} {r.get("status") or ""}'
+                        + (f' [{", ".join(r["doubts"])}]'
+                           if r.get("doubts") else "")
+                        for r in ranked) + "</small>")
             card = (
                 f'<div style="border-left:6px solid {colour};'
                 f'padding:6px 12px;margin:8px 0;background:#fafafa">'
                 f'<b style="color:{colour}">{tag}</b>'
-                + (f' — buy one at <b>{size}</b> m'
-                   if size else "") + "<br>\n"
+                + (sizeline if sizeline else
+                   (f' — buy one at <b>{size}</b> m' if size else ""))
+                + "<br>\n"
                 f'<b>in the set ({len(picked)}):</b> '
                 f'{", ".join(picked) if picked else "—"}<br>\n'
                 f'<b>left out ({len(left_out)}):</b> '
@@ -557,18 +683,43 @@ def main():
         got = dict(ex.map(run_group, list(enumerate(groups, 1))))
 
     cache_f.write_text(json.dumps(cache, indent=1), encoding="utf-8")
+
+    # THE SIZE IS COMPUTED HERE, AFTER THE VERDICT AND OUTSIDE THE CACHE.
+    # The prompt still ASKS for canonical_size and we still record what it
+    # said (judge_canonical_size) — not because we use it, but because
+    # dropping the ask would change the prompt, miss every cached verdict,
+    # and re-decide the classification the user has already accepted. The
+    # ask goes away when the answer form is redesigned.
+    status_by = {}
+    cnodes = (g.get("carve") or {}).get("nodes") or {}
+    if isinstance(cnodes, dict):
+        for nid, c in cnodes.items():
+            if isinstance(c, dict):
+                status_by[nid] = c.get("status")
+
     results = []
     for gi, gr in enumerate(groups, 1):
-        verdict = got[gi]
+        verdict = dict(got[gi])
+        if verdict.get("same_object") and verdict.get("set_members"):
+            sized = canonical_from_exemplar(gr["members"],
+                                            verdict["set_members"],
+                                            status_by, doubts)
+            if sized:
+                verdict["judge_canonical_size"] = verdict.get(
+                    "canonical_size")
+                verdict.update(sized)
         gr_out = {**gr, "members": [
             {k: v for k, v in m.items() if k != "_res_node"}
             for m in gr["members"]]}
         results.append({**gr_out,
                         **{k: v for k, v in verdict.items()
                            if k != "_cached"}})
+        got[gi] = verdict
+        src = (f" from {verdict['canonical_size_from']}"
+               if verdict.get("canonical_size_from") else "")
         print(f"[same_product]   {gr['name']}: "
               f"same={verdict.get('same_object')} "
-              f"size={verdict.get('canonical_size')} "
+              f"size={verdict.get('canonical_size')}{src} "
               f"{'(cache)' if verdict.get('_cached') else ''} — "
               f"{verdict.get('reason')}", flush=True)
 
