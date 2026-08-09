@@ -18,25 +18,61 @@ GATE with review stimuli (module contract first); verdicts land in
 REVIEW_LOG.md; Claude does not conclude from images. Rule #1: no
 scene-specific tuning; fixes at the source.
 
-## STATE ENTERING THIS PLAN (updated 2026-08-08, J8 v2.4 canonization)
+## STATE ENTERING THIS PLAN (updated 2026-08-08 evening, carve run 17)
 
-- Carve run 10 = BOX CANON (user-passed R-S2-35..39):
-  scene_manifest_slicevote_preview.json — 46 objects; {carved_pano 28,
-  carved 2, kept_wall 7, kept 2, kept_ceiling 7}. Runs 6–10 rules in:
-  half-space shell filter, winning-blob pano filter, plan-fill v2,
-  large_empty_notch doubt, PROTRUSION wall exemption, SHELL CLIP,
-  never-silent kept path, perp-cam re-box for flat objects (slice
-  shell clamp tried + reverted, R-S2-38). Details:
-  docs/CARVE_SLICEVOTE.md runs-6–10 update.
-- scene_graph.json `carve` block re-applied post-run-10 (46 nodes, 28
-  with doubts); docket = AUTO doubts only, 7 cases (the 08-07
-  user_routed channel was a Rule-1 violation, removed; obj_011 admits
-  via large_empty_notch BY RULE).
+- **Carve run 17 is the current carve state** (`r20260808-203800`,
+  canon_eligible, commit 99070ab): scene_manifest_slicevote_preview.json
+  — 46 objects; **{carved_pano 28, kept_wall 7, kept_ceiling 7, kept 2,
+  kept_outlier 2}**. The MECHANISM is the run-10 box canon (user-passed
+  R-S2-35..39: half-space shell filter, winning-blob pano filter,
+  plan-fill v2, large_empty_notch doubt, PROTRUSION wall exemption,
+  SHELL CLIP, never-silent kept path, perp-cam re-box; slice shell
+  clamp tried + reverted, R-S2-38). What changed since is HOW THE
+  TOP-VIEW DETECTION IS CHOSEN — three fixes, all traced from real
+  renders, no threshold retuned, no extra model calls:
+  1. **RANKED, not score-picked** — admitted candidates are ordered by
+     `combo = score × prior match × DET_EDGE_PENALTY (0.7 on border
+     contact)`, prior match = harmonic mean of in-prior/det and
+     covers-prior. The 30% gate stays ADMISSION ONLY. obj_020 had been
+     shipping the NEIGHBOURING chair (0.430 conf, 36% inside the prior,
+     off two edges) over the right one (0.413, 98% inside) by 0.017.
+  2. **FRAMING CHECK before detecting** — a prior that the frame cuts,
+     or that fills >80% of an axis, gets a camera pulled back to ~60%
+     fill and re-rendered before detection (obj_068's prior had filled
+     the whole 768 px frame, making the gate meaningless).
+  3. **RE-SHOOT LADDER after detecting** — a chosen detection still
+     touching a border earns up to 2 more shots pulled back; only if it
+     still truncates do we keep the prior's extent on those sides.
+  Recorded per object: `top_frame`, `top_shots`, `top_choice` (the full
+  ranked shortlist), `top_choice_overruled_score`. Scene effect: 7
+  detections overruled, 13 re-framed, 2 re-shot, ~20 boxes moved >2 cm;
+  obj_020 0.32 → 0.47 m wide (original 0.47), obj_068 0.09 → 0.25 ×
+  0.68 × 0.28 (now raises the multi-node flag), obj_034 glass door back
+  to 0.02 × 3.06 × 2.94. Details: docs/CARVE_SLICEVOTE.md, 08-08 update.
+- **⚠ TWO OUTLIER-GUARD TRIPS on run 17** (both ship their ORIGINAL box,
+  oversized vote box recorded as a doubt): obj_019 pillow at exactly 8×
+  (pano coverage too thin to pull it back; it sits in the overlapping
+  pillow pile) and obj_029 magazine at 40× (its top view finds NO
+  detection, so the slice falls back to the full-height wedge and the
+  bookshelf wins the election). Carried opens, not threshold questions.
+- scene_graph.json `carve` block re-applied per carve run (46 nodes);
+  docket = AUTO doubts only (the 08-07 user_routed channel was a Rule-1
+  violation, removed; obj_011 admits via large_empty_notch BY RULE).
+- **THE CHAIN RE-RAN END-TO-END ON RUN 17** — J0 nominated 1 pair
+  (obj_068 + obj_020) and J1 ruled them SAME ("the same olive-green
+  chair… 96% box containment, duplicate detections"): the chair
+  duplicate is caught again now that obj_068's box is chair-sized.
+  **J8**: 8 cases → 2 box swaps (obj_021 + obj_068, both ship=vote
+  because their legs continue below the smaller box), 5 kept, 1 SPLIT.
+  **J8s**: 1 cut, 1 piece. **J9**: 6 groups — lights ×3 + ×3, chairs
+  {020, 021, 028, 041} at 0.458 × 0.747 × 0.383, pillows {015, 016,
+  026}. **Materialize**: 46 resolved → 45 nodes, 3 dropped, 1 new
+  piece, 1 conflict, 9 open questions.
 - **Phase B2 loop-back: RUN** (R-S2-36..39) — additive carved_edges
-  layer + J0/J1 on it; **Phase A J8: CANONICAL VERDICTS RUN**, now on
-  the v2.4 10-case docket (status lines in each phase below).
-- Same-product grouping dry-run current: 6 groups (chairs×6, pillows×9,
-  lights×4+×3, magazines×3+×2). Verdicts never run.
+  layer + J0/J1 on it; **Phase A J8: CANONICAL VERDICTS RUN** on the
+  v2.4 docket, USER-ACCEPTED on the run-10 geometry (status lines in
+  each phase below; the run-17 re-run above is the same bench on the
+  newer boxes and has NOT been through a user gate).
 - Resolved layer = identity canon; its boxes pre-carve (stale); the
   poisoned ON edges are superseded by the rebuilt carved_edges layer.
 - **J8 v2.4 = CANON (user ruling 2026-08-08, "they all make sense.
@@ -285,6 +321,28 @@ obj_006's existing boxes. CLOSED open: other-class cover refinement
 turns resting relations into IN edges; support re-derivation needed
 pre-compose.
 
+**08-08 EVENING — FEWEST CUTS WINS (commit 09791e5). The round cap was
+being read as a BUDGET TO SPEND.** User-found: with the cap at 3 the
+sofa took 3 calls (~10 min) and produced 2 pieces; run with
+`--rounds 1` the SAME judge settled the SAME object in ONE cut at
+HIGHER confidence (0.85 vs 0.82) — matching the converged result the
+user had already approved. The budget was shaping the answer, not the
+evidence: "there are at most 3 rounds" reads as permission to defer
+work to a later round. **The fix is in what the judge is told, not in
+the ceiling:** k stays 3 (an object that genuinely needs more still
+gets it) and the prompt now states that FEWEST CUTS WINS, that 3 rounds
+is a hard CEILING and not a budget, that ONE cut settling everything is
+the ideal outcome, and that `more_cut` is for a side that genuinely
+CANNOT be settled now — with the measured comparison stated in the
+prompt so the instruction carries its own evidence. Result: **1 call, 1
+cut, 1 piece, confidence 0.85, ~3 min instead of ~10**, and the
+reasoning now names both discarded regions in one pass ("the back-run
+cushions that exactly fill obj_063's own carved box, plus the bare-rug
+inner-corner notch under the coffee table"). **This generalizes beyond
+this judge: stating a retry budget changes how much a model attempts
+per turn** — a lesson for every bench in the chain that advertises its
+retries.
+
 **08-08 — SPLIT CUTS CONSUME J8's SETTLED MAP.** The case's region
 box, the same-class neighbour boxes it draws, the S-lines it measures
 and the eligible cover it tests a discard against ALL come from
@@ -383,6 +441,12 @@ doubts, ZERO guard trips.
   sub-render and a re-derived grid + S-lines for that piece. The chain
   ends the moment nothing is flagged more_cut; after round 3 the loop
   STOPS UNCONDITIONALLY regardless.
+  **THE CEILING IS NOT A BUDGET (08-08):** the prompt states FEWEST
+  CUTS WINS — one cut that settles everything is the ideal outcome, and
+  more_cut is only for a side that genuinely cannot be settled now.
+  Measured: the same judge given 3 rounds spread one decision across 3
+  calls (2 pieces, conf 0.82, ~10 min); told fewest cuts win it settled
+  the same object in 1 call / 1 cut / 1 piece at conf 0.85, ~3 min.
 - **GUARDS:** a piece with either plan extent < 0.25 m is auto-done and
   is NEVER judged; at most 8 pieces per case (the chain stops early and
   the remaining more_cut pieces are recorded); any piece still wanting a
@@ -613,6 +677,14 @@ outstanding:
    the two never-fired paths (`j8_no_good_box`, ship_vote swap).
    These gate Phase C's promotion from UNTESTED-TRIAL to the
    canonical handoff.
+4. **The two outlier-guard trips on run 17** (carve, see STATE) —
+   obj_019 pillow at exactly 8× and obj_029 magazine at 40×. Both ship
+   their original box with the oversized vote box recorded as a doubt,
+   so nothing downstream is corrupted, but neither box is measured:
+   obj_019 has no pano box to pull it back inside the pillow pile, and
+   obj_029's top view finds NO detection at all (wedge fallback, the
+   bookshelf wins the election). Eyeball/multiplicity docket items —
+   NOT a threshold to retune.
 
 Then Phase D (compose on carved geometry) and Phase E (runner wiring +
 the solid edge on the map).

@@ -11,6 +11,13 @@ consumers (S1/support, shopping) NOT wired; next = materialize (Phase C,
 PLAN_CARVE_DOWNSTREAM). The paragraphs below are the founding history
 ("untested promotion" era) — kept verbatim.
 
+➡ **CURRENT STATE (2026-08-08): RUN 17** (`r20260808-203800`,
+canon-eligible, 46 objects, statuses {carved_pano 28, kept_wall 7,
+kept_ceiling 7, kept 2, kept_outlier 2}) — the mechanism above is
+unchanged; what changed is HOW THE TOP-VIEW DETECTION IS CHOSEN
+(ranking + framing check + re-shoot ladder). See the 2026-08-08 update
+at the bottom of this file.
+
 ## Where this came from (the experiment ladder, all on living, 1 evening)
 
 1. **Cone maps** (scratchpad `cone_map.py`): visualized each pool-retake
@@ -241,3 +248,162 @@ Statuses {carved_pano 28, carved 2, kept_wall 7, kept 2, kept_ceiling 7}
 Downstream on run 10: loop-back B2 RUN (additive carved_edges layer,
 J0/J1 on it) + J8 v2.1 canonical verdicts on the 7-case docket — see
 PLAN_CARVE_DOWNSTREAM.md for status and the queued opens.
+
+---
+
+# UPDATE 2026-08-08 (run 17, commit 99070ab): THE TOP-VIEW DETECTION IS CHOSEN, NOT ACCEPTED
+
+Everything downstream rests on ONE plan-view box: the top detection
+becomes the slice, and the election can never reach outside its own
+slice. So a wrong or truncated top box is not a small error — it is a
+ceiling on every box the stage can ship. Three fixes landed today, all
+traced from real renders, all scene-agnostic (Rule #1). **No threshold
+was retuned**: the 30% admission gate keeps its value and its meaning,
+and no extra model calls are spent — the detector already returned the
+right answer in most of these cases and we were discarding it.
+
+## 1. DETECTION CHOICE IS A RANKING, not "highest confidence wins"
+
+GroundingDINO returns SEVERAL boxes per pass. `gdino_best` used to keep
+the highest-scoring one that cleared the admission gate
+(`DET_PRIOR_MIN = 0.30` on in-prior/detection). Admission is not
+selection, and on obj_020 (chair) the highest score was the WRONG
+CHAIR:
+
+| score | detection box            | in-prior/det | covers-prior | touches border |
+|-------|--------------------------|--------------|--------------|----------------|
+| 0.430 | [515,   2, 768, 344]     | 0.365        | 0.139        | YES (2 edges)  |
+| 0.413 | [125, 154, 518, 478]     | 0.984        | 0.549        | no             |
+| 0.384 | [127,   3, 766, 481]     | 0.640        | 0.857        | YES            |
+
+Row 0 — the NEIGHBOURING chair, 36% of it inside the prior, covering
+13.9% of the prior, running off two frame edges — beat the correct
+chair (row 1: 98% inside the prior, clear of every border) by 0.017 of
+confidence. The right answer was already in the list.
+
+**The rule now:** admitted candidates are ranked by ONE combined score
+
+```
+combo = detector score × prior match × DET_EDGE_PENALTY (0.7 if the box touches a border)
+```
+
+where **prior match = the harmonic mean (F1) of in-prior/detection and
+covers-prior**. The mean is SYMMETRIC on purpose: a box that merely
+SWALLOWS the prior cannot win on containment alone, and a box sitting
+in one corner of the prior cannot win on coverage alone. The edge
+penalty carries the stage's own evidence doctrine — a box within
+`DET_EDGE_PX = 4` px of an image border is CUT BY THE FRAME, so its
+extent is not a measurement; it is discounted, not vetoed.
+`DET_PRIOR_MIN` stays ADMISSION ONLY: it decides who may be considered,
+never who wins, and it is **not a knob to retune when a pick looks
+wrong** — the ranking is what picks.
+
+**Why match alone is not enough — obj_034, the glass door.** A
+match-only rule (drop the confidence factor) preferred a 0.224-confidence
+sprawl over the 0.619 detection:
+
+| score | prior match | combo | outcome under match-only |
+|-------|-------------|-------|--------------------------|
+| 0.619 | 0.610       | 0.378 | lost                     |
+| 0.224 | 0.810       | 0.181 | won — WRONG              |
+
+The door's prior IS the drifted box that the re-box exists to correct,
+so "covers the prior well" was rewarding a detection for filling a box
+already known to be wrong. Keeping the detector's own score in the
+product is what stops the prior from voting for itself. Verified before
+landing: the combined score reproduces the OLD choice on all 22
+recorded top-view cases where the old choice was right, AND fixes
+obj_034.
+
+## 2. FRAMING CHECK — before detecting, make the object fit the frame
+
+The admission gate is a fraction of the PRIOR, so it is meaningless
+when the prior fills the picture. obj_068's original box projected to
+essentially the whole 768 px frame; an 8%-coverage detection passed and
+won.
+
+**The rule:** project the object's ORIGINAL box into the candidate plan
+camera FIRST. If the frame CUTS it, or it fills more than
+`FRAME_MAX_FILL = 0.80` of either axis, that camera cannot frame the
+object — build a camera along the SAME view direction with the SAME aim
+and the SAME fov, pulled back until the box occupies
+`FRAME_TARGET_FILL = 0.60` of both axes, re-render as
+`<id>_topfit.png` (params-sidecar gated like every other render;
+ceiling-clipped exactly as `ctop` when the eye lands above the
+ceiling), and detect on THAT image.
+
+## 3. RE-SHOOT LADDER — after detecting, don't trust a truncated box
+
+The same problem one step later: the chosen detection itself can run
+off the border, and a box within `TOP_EDGE_PX = 4` px of an edge is cut
+by the frame, not by the object. This used to be answered by PATCHING
+the footprint out to the projected prior — a patch is a guess.
+
+**The rule (same answer as §2): take another shot, pulled back, and
+look again.** Up to `TOP_FIT_RETRIES = 2` re-shoots along the same view
+direction / aim / fov, each standing off far enough that the
+DETECTION's screen extent would land near `FRAME_TARGET_FILL`, rendered
+as `<id>_topfitN.png` and re-detected under the same prior gate. The
+ladder stops at the first detection clear of every border. ONLY if the
+object is still cut off after the ladder does the footprint fall back
+to keeping the projected ORIGINAL box's extent on the truncated sides
+(rays through off-image pixels are still valid rays); a detection still
+touching all four borders is discarded outright.
+
+## What gets recorded (per object, in the rule record + report)
+
+- `top_frame` — the framing check: view, `reframed`, `fit_before`
+  (why it failed), fill before/after, standoff distance, and the
+  re-framed camera's eye/fov when one was built.
+- `top_shots` — EVERY plan shot including the re-shoots: shot index,
+  view, render filename, distance, detection box + score, fill,
+  `truncated_sides`, `prior_frac`, and the `action` taken
+  ("clear of every border", "no detection", …).
+- `top_choice` — the FULL RANKED SHORTLIST with each candidate's score,
+  match, combo and border contact, plus which index was chosen and why.
+- `top_choice_overruled_score` — true whenever the pick was NOT the
+  highest-scoring admitted box.
+
+A reviewer can therefore watch the whole decision — what the camera
+saw, what was offered, what was chosen and what it beat — without
+re-running anything.
+
+## Scene effect (run 17 = `r20260808-203800`, 46 objects, canon-eligible)
+
+- **7 objects had their detection overruled** (obj_011, obj_020,
+  obj_024, obj_026, obj_037, obj_046, obj_068).
+- **13 needed re-framing** (obj_004, 011, 013, 016, 024, 026, 037, 039,
+  046, 048, 063, 068, 069).
+- **2 needed a re-shoot** (obj_048, obj_063).
+- **~20 boxes moved more than 2 cm.**
+- obj_020 chair: 0.32 → 0.47 m wide (the original box was 0.47).
+- obj_068: 0.09 → 0.25 × 0.68 × 0.28 m, chair-sized at last — and it
+  now raises the multi-node flag, so the chair duplicate is caught
+  again downstream (J0 nominated it, J1 ruled SAME).
+- obj_034 glass door: back to 0.02 × 3.06 × 2.94 m.
+- Statuses: {carved_pano 28, kept_wall 7, kept_ceiling 7, kept 2,
+  **kept_outlier 2**} = 46.
+
+## The two outlier-guard trips (RECORDED AS DOUBTS, not fixed)
+
+The 8× guard fired twice — both ship their ORIGINAL box with the
+oversized vote box recorded as a doubt, per the standing rule:
+
+1. **obj_019 pillow — exactly 8×.** Its pano-mask filter also reports
+   "sp0 coverage too thin", so there is no founding-mask box to pull it
+   back; it sits inside the overlapping pillow pile, which is precisely
+   where a slice election over-claims.
+2. **obj_029 magazine — 40×.** Its top view finds NO detection at all,
+   so the slice falls back to the full-height wedge and the bookshelf
+   behind it wins the election.
+
+Neither is a threshold question — both are honest carried opens
+(they belong to the multiplicity/eyeball docket, not to a knob).
+
+## Viewer rule (from the same session)
+
+The carve layer's HUD label is now composed LIVE from the manifest's
+own provenance (run id, `canon_eligible`, object count). A hard-coded
+"run 10" caption had been on screen while the file already held run 16
+boxes. **Never hand-write a run number in a label** — if a caption
+states a run, it reads it from the artifact it is drawing.

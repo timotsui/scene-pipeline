@@ -640,15 +640,21 @@
            CANON: 46 objects, shell clip + perp re-box). Incoming edge
            solid = the resolved read is real; OUTGOING edge dashed =
            runner wiring pending (outputs are preview files, compose has
-           not consumed the carved manifest yet). -->
+           not consumed the carved manifest yet).
+           08-08 EVENING (run 17, commit 99070ab): the mechanism is
+           unchanged; HOW THE TOP-VIEW DETECTION IS CHOSEN changed —
+           ranked candidates (score x prior-match x edge penalty), a
+           framing check before detecting and a re-shoot ladder after.
+           Node stays SOLID (it was already the canon mechanism) and
+           the outgoing edge stays DASHED (wiring still pending). -->
       <path class="edge e-eg" d="M392,1678 V1688" marker-end="url(#ah-eg)"/>
       <g class="node" data-k="carve" transform="translate(276,1690)">
         <rect class="nbox" width="232" height="64" rx="8"/>
         <rect class="b-lane" width="4" height="64" rx="2"/>
         <text class="ntitle" x="14" y="17">slice-vote · 3-tier ladder<tspan class="nactive"> · BOX CANON 08-07</tspan></text>
         <text class="nscript" x="14" y="31">carve_slicevote.py — final boxes · wiring pending</text>
-        <text class="nsub" x="14" y="45">slice → tunnel cards T1 obj-h → T2 eye-h → T3 iso</text>
-        <text class="nsub" x="14" y="58">6-voter gate 3 → pano · 46 obj run 10 · shell clip</text>
+        <text class="nsub" x="14" y="45">top view: re-frame → RANK not score → re-shoot ×2</text>
+        <text class="nsub" x="14" y="58">6-vote gate 3 → pano · run 17 · 46 obj · 2 outlier</text>
       </g>
       <!-- ===== downstream: COMPOSE + LOOP (design 07-26) =====
            The stage is a LOOP with two halves: SEMANTIC (what is in the
@@ -705,13 +711,18 @@
            region + cover boxes now come from J8's SETTLED map, so the
            cut landed on obj_063's POST-VERDICT edge (x=0.636, S-line
            verbatim) instead of its pre-verdict one — the 0.30 m
-           overlap became 0.000 m. Still dashed until materialize
-           (Phase C) stops being a trial and consumes the cuts. -->
+           overlap became 0.000 m. 08-08 EVENING (commit 09791e5): the
+           k=3 cap was being read as a BUDGET TO SPEND — 3 calls / 2
+           pieces / conf 0.82 / ~10 min. The ceiling stays 3 and the
+           PROMPT now says FEWEST CUTS WINS; the same judge settled the
+           same object in 1 call / 1 cut / 1 piece / conf 0.85 / ~3 min.
+           Still dashed until materialize (Phase C) stops being a trial
+           and consumes the cuts. -->
       <g class="node" data-k="j8s" transform="translate(276,1822)">
         <rect class="nbox" width="232" height="44" rx="8" style="stroke-dasharray:5 4"/>
         <rect class="b-lane" width="4" height="44" rx="2"/>
         <text class="ntitle" x="14" y="17">J8s · split cuts<tspan class="ngate"> · DESIGN CANON R-S2-42</tspan></text>
-        <text class="nscript" x="14" y="31">graph/split_cuts.py · the L: 1 cut, 0 doubts, settled</text>
+        <text class="nscript" x="14" y="31">graph/split_cuts.py · FEWEST CUTS WIN · 1 call, 1 cut</text>
       </g>
       <path class="edge e-bus" d="M392,1866 V1876" marker-end="url(#ah-bus)"/>
       <!-- J9 same-product judge (Phase B): FIRST VERDICTS RAN 08-07
