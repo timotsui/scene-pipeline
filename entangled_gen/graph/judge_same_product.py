@@ -12,7 +12,7 @@ to see groups without any LLM call.
 1. CANDIDATE GROUPS (deterministic, scene-agnostic — Rule #1, no class
    lists): same-name resolved nodes, greedy plan-proximity clusters
    (2.5 m), geometric shared-anchor detection (nearest node with >=2x
-   footprint area). Sizes prefer the slice-vote vote preview when it
+   footprint area). Sizes prefer the slice-vote election preview when it
    exists. Vote doubts (graph/vote_doubts.json) ride along as context.
 2. CONTACT SHEETS (PLAN_VOTEBOX_DOWNSTREAM.md Phase B upgrade): per group
    one image, graph/same_product_sheets/group_<n>_<label>.png — one row

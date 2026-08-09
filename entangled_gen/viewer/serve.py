@@ -58,7 +58,7 @@ def box_sources(sc):
     # was too thin or the election blew past the outlier guard. The label
     # now says shipped / sliced / not-sliced, counted from the file.
     _sv = sd / "scene_manifest_slicevote_preview.json"
-    _svlab = "slice-vote vote"
+    _svlab = "vote-box stage"
     _svstat = "unreadable"
     _SLICED = ("voted", "voted_pano")   # went through the election
     _STATUSES = _SLICED + ("kept", "kept_wall", "kept_ceiling",
@@ -76,7 +76,7 @@ def box_sources(sc):
                                                            key=lambda x:
                                                            -x[1]))
         _cut = sum(_tally.get(s, 0) for s in _SLICED)
-        _svlab = ("slice-vote vote · " + str(_h.get("run_id") or "?")
+        _svlab = ("vote-box stage · " + str(_h.get("run_id") or "?")
                   + (" · CANON-ELIGIBLE" if _h.get("canon_eligible")
                      else " · partial/mixed — NOT canon")
                   + f" · {_n} shipped ({_cut} sliced, {_n - _cut} "
@@ -99,7 +99,7 @@ def box_sources(sc):
          "label: 'shipped' is every object, 'sliced' is only the ones "
          "that went through the vote election; the rest are geometric "
          "exemptions or the ORIGINAL pre-vote box. "
-         "Slice-vote vote (2026-08-07 late; user-PASSED "
+         "Slice-vote election (2026-08-07 late; user-PASSED "
          "R-S2-35..39, the canonical vote state; cyan to match the "
          "cone map's pano-filtered box): per resolved node — top-box "
          "prism slice, view-tunnel cards, 3-tier escalation ladder, "
@@ -118,9 +118,9 @@ def box_sources(sc):
         ("parallax_voted", "parallax retake · voted (preview)", "archive",
          sd / "scene_manifest_parallax_preview.json", "#65ff8f",
          "PREVIEW — experiments/parallax_retake.py: per-node side view "
-         "from a second standpoint; original ray axis voted, then the "
+         "from a second standpoint; original ray axis carved out, then the "
          "original masks' points refiltered through the established depth "
-         "slab (all axes re-derived). Unvoted nodes keep the record box "
+         "slab (all axes re-derived). Nodes with no elected box keep the record box "
          "(flagged) and are absent from this layer"),
         # set A / set B (two-standpoint experiment) REMOVED from the HUD
         # 2026-08-06 cone session (user: "we no longer need those");

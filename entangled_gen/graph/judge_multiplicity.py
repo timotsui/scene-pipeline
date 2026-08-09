@@ -781,7 +781,7 @@ def build_candidates(c):
                         "today. It is the ORIGINAL pre-vote detection box "
                         "after the room-shell clip, NOT a measurement: this "
                         "node never voted, because flat wall/ceiling "
-                        "objects skip the slice-and-vote vote. Shipping "
+                        "objects skip the slice-and-vote election. Shipping "
                         "it changes nothing."})
         if bx.get("rejected"):
             d = next((d for d in c["doubts"]
@@ -1464,7 +1464,7 @@ that render:
                      It is this node's ORIGINAL pre-vote detection box
                      after the room-shell clip. THIS NODE NEVER VOTED:
                      flat wall- and ceiling-mounted objects skip the
-                     slice-and-vote vote entirely, so there is no elected
+                     slice-and-vote election entirely, so there is no elected
                      cluster here and no founding-mask share — the orange
                      box is a prior, not a measurement.{magenta}
 {neighbour}
@@ -1737,7 +1737,7 @@ def case_facts(c):
             sh = d.get("center_shift_m")
             lines.append(
                 f"- VOTE-EXEMPT ({c['status']}) on plane {d.get('plane')}: "
-                "this node skipped the slice/vote vote entirely — no cards, "
+                "this node skipped the slice/vote election entirely — no cards, "
                 "no plan detection, no elected cluster. Its observations "
                 "are the panels listed above.")
             lines.append(
@@ -1760,7 +1760,7 @@ def case_facts(c):
             kept = d.get("truncation_kept_sides") or []
             lines.append(
                 f"- VOTE-EXEMPT ({c['status']}) on plane {d.get('plane')}: "
-                "this node skipped the slice/vote vote entirely — no cards, "
+                "this node skipped the slice/vote election entirely — no cards, "
                 "no plan detection, no elected cluster. Its observations "
                 "are the panels listed above.")
             lines.append(

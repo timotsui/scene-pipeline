@@ -305,11 +305,94 @@ shelf on bedroom_marble) and the open deep-box flags inside the layer's
 provenance. There is NO iteration loop at the graph stage — J1–J5
 fixed, J4 once, J6 once, J7 deterministic+cached, ship.
 
-## REPAIR (candidate) · Slice-vote vote — ⚠ UNTESTED PROMOTION (2026-08-06, the cone-map session)
+## ⭐ THE LAYER CHAIN — every stage is an EDIT on the scene graph (2026-08-09)
 
-Position: between the graph handoff (graph["resolved"], boxes verbatim)
-and S1. NOT in the canonical runner; dashed node on pipeline_map.html;
-preview outputs only. Design lineage: docs/SLICEVOTE.md; evidence
+USER DESIGN RULE: "each module is an edit on the scene graph, and it has
+to inherit all the properties and information. only modify, add, edit,
+delete etc. but overall structure should be the same!" And: "we need to
+always have a single source of truth for the state of the scene, which
+should have the latest and greatest."
+
+    record -> judged -> resolved -> voted -> settled -> grouped
+
+Each layer is a WHOLE graph — nodes AND edges, plus everything the layer
+before it carried — named for what its stage did. Living state
+(living_marble): record 71/175 · judged 51/110 · resolved 46/92 ·
+voted 46/82 · settled 45/77 · grouped 45/77 (nodes/edges), 0 dangling
+edges, 0 edgeless nodes, 0 conflicts.
+
+### `graph/scene_state.py` — THE single source of truth
+
+- the CHAIN is declared once, here. Readers call `scene_state.nodes(g)` /
+  `.edges(g)` / `.current(g)` and NEVER name a layer. Adding a stage =
+  adding its name to CHAIN; every consumer follows.
+- two answers that must AGREE: the chain ORDER, and the POINTER the
+  writing stage stamps into `graph["layer"]["canonical"]`. `check()`
+  reports a disagreement rather than preferring one — a mismatch means a
+  stage wrote a layer and did not declare it.
+- a layer is eligible to be current only when WHOLE (it has nodes), so a
+  half-layer can never become the state of the scene.
+
+### `graph/edge_carry.py` — the edges follow the nodes (one definition)
+
+- RE-DERIVE the geometry on the layer's own boxes. Every edge type is a
+  claim about boxes, and a moved box forms edges with nodes it never
+  touched, so re-checking former neighbours is not enough. 45 nodes =
+  990 pairs ≈ 5 ms, no model calls.
+- INHERIT what geometry cannot regenerate: judge fields (status /
+  verdict / nominated_by / triage, J6's edge re-examination) AND edges a
+  judge CREATED — J0 nominates pairs below the geometric SAME_CANDIDATE
+  gate and adds its own `zone: semantic` edge, found by `nominated_by`,
+  not by type.
+- RECORD what cannot land: `judge_fields_unplaced`,
+  `judged_edges_consumed_by_a_merge`, `judged_edges_lost_to_node_removal`.
+
+### `graph/build_voted.py --scene <s> [--apply]` -> graph["voted"]
+
+- reads: graph["resolved"], scene_manifest_slicevote_preview.json (the
+  elected boxes), pool_retake/slicevote_report.json (the vote record),
+  graph/vote_doubts.json, graph["judged"] + appearance_cache_v2.json.
+- writes: a WHOLE layer. Each node keeps everything `resolved` had, plus
+  `geometry` = the ELECTED box, `geometry_superseded` = a HISTORY of the
+  boxes it has lost (oldest first, each labelled with the stage), `vote`
+  = the whole vote record (status, tiers, slice note, votes cast/needed,
+  plan fill, every candidate box, the top-view choice trail), `doubts`,
+  `appearance` (J6's description) and `provenance`.
+- a node the vote never reached keeps its box and is listed `not_voted` —
+  never passed off as elected.
+
+### `graph/materialize_layers.py --scene <s> [--settle-only] [--apply]`
+
+- `--settle-only` -> graph["settled"]: J8 box rulings, J8s split pieces,
+  J1 SAME merges, applied to `voted` copied forward whole.
+- without it -> graph["grouped"]: the same, plus J9's same-product
+  annotations (product_group + canonical_size; NO box is resized).
+- a REPLACED box is pushed onto `geometry_superseded` — nothing is
+  overwritten without a record.
+- a NEW node (split piece) inherits everything its parent held, with the
+  inherited `vote` stamped `measured_on=<parent>` and the inherited
+  `appearance` stamped `describes=<parent>`, so neither is ever read as
+  the piece's own measurement.
+
+### Order matters: J9 judges the SETTLED layer
+
+    build_voted --apply
+    materialize_layers --settle-only --apply     (geometry + node set)
+    judge_same_product                            (J9 reads graph["settled"])
+    materialize_layers --apply                    (folds J9 in -> grouped)
+
+J9 used to read the raw vote manifest while running AFTER J8/J8s/J1, so
+it judged superseded geometry — 3 of 11 set members were stale, including
+a size-to-buy copied from a node J1 had deleted. Judging the settled
+layer removed the CAUSE of materialize's conflicts rather than recording
+the symptom: conflicts went 2 -> 0.
+
+## VOTE-BOX stage · slicevote.py (the elected boxes; layer written by build_voted.py)
+
+Position: between graph["resolved"] and S1. Its boxes become
+graph["voted"] (see THE LAYER CHAIN above) — the manifest is the stage's
+raw output, the LAYER is what everything downstream reads. Still not in
+the canonical runner; dashed node on pipeline_map.html. Design lineage: docs/SLICEVOTE.md; evidence
 trail: docs/REVIEW_LOG.md R-S2-26.
 
 - `slicevote.py --scene <s> [--only ids] [--gate 3]`

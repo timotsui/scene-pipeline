@@ -2785,7 +2785,7 @@ for _mo in man_objs:
     by_status[_s] = by_status.get(_s, 0) + 1
 man_path.write_text(json.dumps(
     {"scene": SCENE, "status": "UNTESTED-PREVIEW",
-     "source": "slicevote.py — slice-vote vote (top-box prism / "
+     "source": "slicevote.py — slice-vote election (top-box prism / "
                "wedge fallback; view-tunnel context cards; 6-voter "
                f"election, gate {a.gate}; per-node pano-mask filter; "
                "ceiling / wall-protrusion / floor-flush exempt = "

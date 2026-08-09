@@ -1,4 +1,4 @@
-"""RECORD VOTE DOUBTS — typed open questions from the slice-vote vote
+"""RECORD VOTE DOUBTS — typed open questions from the slice-vote election
 (USER RULING 2026-08-06 late: the vote's doubt flags are RECORDED, never
 decided on; judges consume them. USER GO 2026-08-07: record-proper
 integration — the description-making pass — is no longer gated; --apply
@@ -339,7 +339,7 @@ def main():
     out.write_text(json.dumps(
         {"scene": a.scene,
          "source": "graph/record_vote_doubts.py — typed open questions "
-                   "from the slice-vote vote. Consumers: multiplicity "
+                   "from the slice-vote election. Consumers: multiplicity "
                    "judge + same-product judge (+ scene_graph.json vote "
                    "block via --apply).",
          "n_nodes_with_doubts": len(doubts), "nodes": doubts}, indent=1))
@@ -369,7 +369,7 @@ def main():
         "built_from": str(rep_f),
         "report_status": rep.get("status", ""),
         "by_status": rep.get("by_status", {}),
-        "note": "ADDITIVE block (record-then-judge): slice-vote vote "
+        "note": "ADDITIVE block (record-then-judge): slice-vote election "
                 "provenance + typed doubts per resolved node; nodes are "
                 "never mutated. Boxes live in "
                 "scene_manifest_slicevote_preview.json until the "

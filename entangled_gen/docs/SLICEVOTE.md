@@ -1,4 +1,18 @@
-# Slice-vote vote + uniform-instances judge (2026-08-06 cone session)
+# Slice-vote election + uniform-instances judge (2026-08-06 cone session)
+
+> **UPDATED 2026-08-09 — this stage now WRITES A LAYER.** Everything
+> below describes how the box is elected, which is unchanged. What
+> changed is where the answer goes: `slicevote.py` produces the manifest
+> and the vote record, and `graph/build_voted.py` folds both into
+> `graph["voted"]` — a WHOLE scene graph layer (nodes AND edges), with
+> each node keeping its pre-vote box as `geometry_superseded`, the full
+> vote record under `vote`, its typed doubts, and J6's appearance.
+> Downstream reads the LAYER, never the manifest. The chain is
+> `record -> judged -> resolved -> voted -> settled -> grouped`, declared
+> once in `graph/scene_state.py`; see PIPELINE.md "THE LAYER CHAIN".
+> Any "preview outputs only" / "wiring pending" wording below predates
+> this.
+
 
 ✅ **STATUS (2026-08-07 late): RUN 10 = BOX CANON** — user-passed
 R-S2-35..39 (see the runs 6–10 update at the bottom for today's rules:

@@ -1,5 +1,18 @@
 # PLAN — VOTE DOWNSTREAM: judges → materialize → compose (the wiring road)
 
+> **UPDATED 2026-08-09 — Phases A/B/C are superseded in SHAPE.** The
+> verdicts described below are still the verdicts; what changed is that
+> no stage drops a sidecar for a later pass to reconcile. Each stage now
+> edits the scene graph and hands on a whole layer:
+> `voted` (build_voted.py) -> `settled` (materialize_layers.py
+> --settle-only: J8 rulings, J8s splits, J1 merges) -> `grouped`
+> (materialize_layers.py: J9 annotations). J9 judges the SETTLED layer,
+> which is why materialize's conflict list went 2 -> 0: it removed the
+> cause instead of recording the symptom. `graph/scene_state.py` is the
+> single source of truth for which layer is current. See PIPELINE.md
+> "THE LAYER CHAIN".
+
+
 **Written 2026-08-07** (session after the four-run night). Continues the
 R-S2-30 directive ("keep running the voted output along the pipeline")
 and the END-STATE CONTRACT on the map's vote card: the handoff stays
@@ -579,7 +592,7 @@ same-product annotations · 1 conflict** (J1 merged obj_029 <-> obj_036
 which J9 ruled NOT the same product — recorded, merge wins, J9's false
 has no effect) + 9 open questions on 8 nodes. Additivity verified
 twice, idempotent, backup written. **NOT promoted to canon** — the box
-canon is still the slice-vote vote layer.
+canon is still the slice-vote election layer.
 
 **⚠ THE GAPS (from R-S2-43, all still open):** (1) the L loses its
 one_structure linkage — obj_063 and obj_011#1 ship as two unrelated
