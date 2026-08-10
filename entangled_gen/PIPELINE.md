@@ -422,3 +422,49 @@ trail: docs/REVIEW_LOG.md R-S2-26.
 Canon gates, in order: user pass on R-S2-26 -> bedroom regression
 (standing set + no-growth) -> living-46 blind -> runner wiring + solid
 map node. Nothing committed as of 2026-08-06 late.
+
+
+## NODE VIEWS — aimed renders that follow the box (CANON 2026-08-09, R-S2-57)
+
+`graph/node_views.py` + `graph/view_cams.py` (camera math lifted verbatim
+from experiments/pool_retake.py — the vote_cams precedent: one copy of a
+camera definition). USER RULING: "this is canon. we use this one."
+
+- reads: scene_graph.json (CURRENT layer via scene_state — never a named
+  layer), room_shell.json, rig_sp0/pano_selfrender_meta.json (eye0),
+  pool_retake/ *.png + pool_targets.json (the reuse candidates and the
+  cameras that took them), gen_raw.ply (emptiness probe, opacity >= 0.3)
+- decides per node, from its CURRENT box:
+  1. the camera set — 4 near-cardinals, near-top, 2 near-perps, clip-top
+     fallback; general cull (inside the shell + 0.3 m, emptiness probe);
+     every culled view records the WALL that killed it. A split piece
+     needs no special path — a box that never existed has nothing to keep.
+  2. per standable view: `reuse_prior` / `to_be_reshot` / `to_be_shot`.
+- THE REUSE RULE: reuse an existing pool shot when it still frames
+  TODAY'S box through its own recorded camera — in-frame >= INSIDE_FRAC
+  (0.95) AND zoom >= 1/ZOOM_FACTOR (1.5) of what a RETAKE would deliver.
+  The bar is the retake, not an ideal (the obj_008 ruling: a clamped
+  camera can never fill the frame with a 16 cm object, and the retake
+  would stand in the same clamped spot). No box-agreement term — 3D IoU
+  was tried and REJECTED (2 cm on a 16 cm object destroys IoU with zero
+  visible drift). No recorded camera -> retake. Geometry-only: the rule
+  cannot see occlusion (on record; a third condition, not a re-tune).
+- writes: graph/node_views/<node>_<view>.png (+ _box.png overlay drawn
+  with the shared vote_cams projection; `#` in a split-piece id becomes
+  `_p` in filenames), per-view .params.json fingerprint sidecars
+  (eye/aim/fov/res/clip/ply/box — mismatch DELETES the png so the WSL
+  renderer must redraw; its skip-if-exists is the 08-06 stale-faces
+  failure mode), graph/node_views.json (every decision + its reasons),
+  graph/node_views/index.html (the decision sheet, reshoots outlined).
+- run: decide-only by DEFAULT (no GPU); `--render` = one WSL gsplat
+  batch; `--include-culled` / `--culled-only` = audit renders of the
+  cameras the cull rejected. HOUSE RULE: nothing renders without an
+  explicit user go.
+- consumers: NOT WIRED — which views each judge is shown is a separate
+  packaging decision, deliberately not made here. graph/crops/ untouched
+  (a crop is a detection record; a render must never overwrite one).
+- living state 08-09: 220 standable = 165 reused + 55 fresh (86 s wall,
+  0 blank, overlays on all 55); 114 culled, 110/114 agreeing with
+  pool_retake's own cull. Evidence sheets: graph/reuse_decision/ (both
+  boxes drawn through the shot's own camera; retakes outlined red),
+  graph/views_as_j8_left_them/ (the untouched baseline).

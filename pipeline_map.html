@@ -332,7 +332,7 @@
     <div class="phase-h"><span class="phase-n">DATAFLOW</span>
       <span class="phase-t">1 WORLD → 2 ANALYSIS (observe · detect · lift · place) → 3 COMPOSE+LOOP · one canonical lane + side references</span></div>
     <div class="phase-body">
-    <svg class="pipe" viewBox="0 0 800 2848" role="img"
+    <svg class="pipe" viewBox="0 0 800 2904" role="img"
          aria-label="scene-pipeline dataflow graph">
       <defs>
         <marker id="ah-eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
@@ -662,7 +662,7 @@
            ANCHORS first (arch-supported objects); dependents follow.
            The old C1–C7 chain is RETIRED from the map (07-30); its
            donor code stays on disk, lessons in S4_SHOPPING_DESIGN_NOTES. -->
-      <text class="plabel pl-comp" x="8" y="1942">STEP 3 · COMPOSE + LOOP — SUB-STAGES 3.1 SEMANTIC · 3.2 PHYSICAL (DESIGN 07-26 · FIT LOOP → PHYSICAL 08-03B)</text>
+      <text class="plabel pl-comp" x="8" y="1998">STEP 3 · COMPOSE + LOOP — SUB-STAGES 3.1 SEMANTIC · 3.2 PHYSICAL (DESIGN 07-26 · FIT LOOP → PHYSICAL 08-03B)</text>
       <!-- LOOP-BACK (user architecture ruling 08-07; IMPLEMENTED + RUN
            08-07 late, R-S2-36..39): the voted state re-enters the
            graph chain at 4g2 — graph/rederive_voted_edges.py writes
@@ -725,58 +725,76 @@
         <text class="nscript" x="14" y="31">graph/split_cuts.py · FEWEST CUTS WIN · 1 call, 1 cut</text>
       </g>
       <path class="edge e-bus" d="M392,1866 V1876" marker-end="url(#ah-bus)"/>
+      <!-- NODE VIEWS + reuse gate (CANON 08-09, R-S2-57): aimed WSL
+           gsplat renders that FOLLOW THE BOX — view set recomputed from
+           the CURRENT layer's geometry, so a moved box gets new
+           pictures and a split piece gets its first own ones. Reuse
+           rule: keep an old pool_retake shot when it still frames
+           TODAY'S box (in-frame >= 0.95, zoom >= 1/1.5 of what a
+           retake would deliver — the bar is the retake, obj_008).
+           Living: 165 reused / 55 shot in 86 s. Side module on the
+           state (reads grouped, writes its own sidecar + renders);
+           judge-packaging consumer NOT wired yet. -->
+      <g class="node" data-k="nviews" transform="translate(276,1878)">
+        <rect class="nbox" width="232" height="44" rx="8"/>
+        <rect class="b-lane" width="4" height="44" rx="2"/>
+        <text class="ntitle" x="14" y="17">node views · reuse gate<tspan class="ngate"> · CANON 08-09</tspan></text>
+        <text class="nscript" x="14" y="31">graph/node_views.py · 165 reused / 55 shot · 86 s</text>
+      </g>
+      <path class="edge e-bus" d="M392,1922 V1932" marker-end="url(#ah-bus)"/>
+      <text class="elab" x="398" y="1930">state + node views (renders + node_views.json)</text>
       <!-- J9 same-product judge (Phase B): FIRST VERDICTS RAN 08-07
            late — 6/6 after the cwd fix (call_claude lacked cwd; claude
            -p could not Read the sheets). Crop contact sheets built;
            gates open: sheets + verdicts user review, set-member id
            normalization nit, obj_005_c00/obj_017_c00 no-crop members.
            Second pass only, after J8 (pass-placement ruling). -->
-      <g class="node" data-k="j9" transform="translate(276,1878)">
+      <g class="node" data-k="j9" transform="translate(276,1934)">
         <rect class="nbox" width="232" height="44" rx="8" style="stroke-dasharray:5 4"/>
         <rect class="b-lane" width="4" height="44" rx="2"/>
         <text class="ntitle" x="14" y="17">J9 · same-product<tspan class="ngate"> · RAN 6/6 · gates</tspan></text>
         <text class="nscript" x="14" y="31">graph/judge_same_product.py · crop sheets · 08-07 late</text>
       </g>
-      <path class="edge e-eg" style="stroke-dasharray:5 4" d="M392,1922 V1954" marker-end="url(#ah-eg)"/>
-      <text class="elab" x="398" y="1946">graph.settled → J9 → graph.grouped = THE state (scene_state.py)</text>
+      <path class="edge e-eg" style="stroke-dasharray:5 4" d="M392,1978 V2010" marker-end="url(#ah-eg)"/>
+      <text class="elab" x="398" y="2002">graph.settled → J9 → graph.grouped = THE state (scene_state.py)</text>
 
       <!-- sub-stage bands (new-lane width only; old column excluded) -->
-      <rect x="0" y="1948" width="524" height="348" fill="var(--ink)" opacity="0.035"/>
-      <rect x="0" y="2300" width="524" height="370" fill="var(--ink)" opacity="0.035"/>
-      <text class="plabel pl-bus" style="font-size:15px" x="24" y="1972">3.1 SEMANTIC — WHAT (PH1 snap runs mid-lane as evidence)</text>
-      <text class="elab" x="24" y="1988">each arrow = the full scene-graph state;</text>
-      <text class="elab" x="24" y="2000">a module's write joins the state ·</text>
-      <text class="elab" x="24" y="2012">upstream rerun ⇒ downstream layers stale</text>
-      <text class="plabel pl-bus" style="font-size:15px" x="24" y="2320">3.2 PHYSICAL — WHERE, LEGALLY (mesh-time)</text>
+      <rect x="0" y="2004" width="524" height="348" fill="var(--ink)" opacity="0.035"/>
+      <rect x="0" y="2356" width="524" height="370" fill="var(--ink)" opacity="0.035"/>
+      <text class="plabel pl-bus" style="font-size:15px" x="24" y="2028">3.1 SEMANTIC — WHAT (PH1 snap runs mid-lane as evidence)</text>
+      <text class="elab" x="24" y="2044">each arrow = the full scene-graph state;</text>
+      <text class="elab" x="24" y="2056">a module's write joins the state ·</text>
+      <text class="elab" x="24" y="2068">upstream rerun ⇒ downstream layers stale</text>
+      <text class="plabel pl-bus" style="font-size:15px" x="24" y="2376">3.2 PHYSICAL — WHERE, LEGALLY (mesh-time)</text>
 
-      <g class="node" data-k="lp0" transform="translate(276,1956)">
+      <g class="node" data-k="lp0" transform="translate(276,2012)">
         <rect class="nbox" width="232" height="58" rx="8"/>
         <rect class="b-comp" width="4" height="58" rx="2"/>
         <text class="ntitle" x="14" y="17">S1 · SUPPORTED_BY<tspan class="ngate"> · v7 · R10 OPEN</tspan></text>
         <text class="nscript" x="14" y="31">compose/supported_by.py — what holds it up</text>
         <text class="nsub" x="14" y="45">v8: type-prior + bottom-edge evidence · 30 anchors</text></g>
-      <path class="edge e-comp" d="M392,2014 V2026" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2024">state + support layer (supported_by.json)</text>
-      <g class="node" data-k="cons" transform="translate(276,2028)">
+      <path class="edge e-comp" d="M392,2070 V2082" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2080">state + support layer (supported_by.json)</text>
+      <g class="node" data-k="cons" transform="translate(276,2084)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-comp" width="4" height="52" rx="2"/>
         <text class="ntitle" x="14" y="17">S2 · CONSISTENCY<tspan class="nactive"> · R2 PASSED 08-01</tspan></text>
         <text class="nscript" x="14" y="31">compose/consistency.py — edges vs verdicts</text>
         <text class="nsub" x="14" y="45">v7: against-slot ≠ confirm (AC fix) · 12 drop / 4 keep</text></g>
-      <path class="edge e-comp" d="M392,2080 V2092" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2090">state + edge verdicts (consistency.json)</text>
+      <path class="edge e-comp" d="M392,2136 V2148" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2146">state + edge verdicts (consistency.json)</text>
       <!-- PH1 SNAP drawn IN RUN ORDER (user 08-01): after S2, before S3;
            step-3 loop arrows omitted for clarity (user 08-01) -->
-      <g class="node" data-k="ph1" transform="translate(276,2094)">
+      <g class="node" data-k="ph1" transform="translate(276,2150)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-comp" width="4" height="52" rx="2"/>
         <text class="ntitle" x="14" y="17">PH1 · SNAP + ADJUDICATE<tspan class="ngate"> · v1.2 · R11 OPEN</tspan></text>
         <text class="nscript" x="14" y="31">compose/snap.py — propose · docket agent · cache+rulings</text>
         <text class="nsub" x="14" y="45">verdicts frozen to evidence · user pins outrank · 0-call re-runs</text></g>
-      <path class="edge e-comp" d="M392,2146 V2158" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2156">state + snap deltas (snap.json)</text>
+      <path class="edge e-comp" d="M392,2202 V2214" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2212">state + snap deltas (snap.json)</text>
       <!-- PROPOSE EDITS: in the lane since 08-01 (was isolated 07-27) -->
-      <g class="node" data-k="pedit" transform="translate(276,2160)">
+      <g class="node" data-k="pedit" transform="translate(276,2216)">
         <rect class="nbox" width="232" height="64" rx="8"/>
         <rect class="b-comp" width="4" height="64" rx="2"/>
         <text class="ntitle" x="14" y="17">S3 · PROPOSE EDITS<tspan class="nactive"> · v5 LOOP+SWAP CANON 08-02</tspan></text>
@@ -786,19 +804,19 @@
       <!-- 4g2→S3 side-read arrow REMOVED (user 08-01, state-oriented lane):
            the record layer rides inside the state baton; S3's arch-shell
            read stays listed in its click-card reads -->
-      <path class="edge e-comp" d="M392,2224 V2236" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2234">state + edit proposals (edit_proposals.json)</text>
+      <path class="edge e-comp" d="M392,2280 V2292" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2290">state + edit proposals (edit_proposals.json)</text>
       <!-- SCREENING DISSOLVED 08-02/03 (user ruling: sandbox — no
            truth gate; the "filter" = the library-match step inside
            shopping: NO_MATCH → not bought, host asset covers it) -->
-      <g class="node" data-k="s2" transform="translate(276,2238)">
+      <g class="node" data-k="s2" transform="translate(276,2294)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
         <text class="ntitle" x="14" y="17">S4 · SHOPPING + STYLE PICK<tspan class="nactive"> · k=3 CANON 08-03B</tspan></text>
         <text class="nscript" x="14" y="31">compose/shopping.py + pick.py — native size · image judge</text></g>
-      <path class="edge e-comp" d="M392,2284 V2308" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2294">picks.json — style-ranked TOP-3 candidates per anchor box</text>
-      <text class="elab" x="398" y="2306">= THE SEMANTIC → PHYSICAL HANDOFF BATON</text>
+      <path class="edge e-comp" d="M392,2340 V2364" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2350">picks.json — style-ranked TOP-3 candidates per anchor box</text>
+      <text class="elab" x="398" y="2362">= THE SEMANTIC → PHYSICAL HANDOFF BATON</text>
 
       <!-- FIT LOOP MOVED 3.1 → 3.2 (user 08-03B); WIRED AS 4 MODULES
            08-04B (canon rules 1–14, PLAN_FIT_LOOP.md): the placeholder
@@ -808,30 +826,30 @@
            BELOW the loop (rule 10, user reorder "it is expensive"):
            runs ONCE on the final walked set — candidate walks and
            re-shops never re-trigger it. -->
-      <g class="node" data-k="fitp" transform="translate(276,2310)">
+      <g class="node" data-k="fitp" transform="translate(276,2366)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-comp" width="4" height="52" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2·1 · PLACE<tspan class="nactive"> · CANON 08-04</tspan></text>
         <text class="nscript" x="14" y="31">compose/fit_preview.py — walk/style pick → snapped box</text>
         <text class="nsub" x="14" y="45">PCA cardinal snap · wall flush · dual attachment</text></g>
-      <path class="edge e-comp" d="M392,2362 V2374" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2372">fitted_preview.glb/.json — posed meshes</text>
-      <g class="node" data-k="fitd" transform="translate(276,2376)">
+      <path class="edge e-comp" d="M392,2418 V2430" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2428">fitted_preview.glb/.json — posed meshes</text>
+      <g class="node" data-k="fitd" transform="translate(276,2432)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-comp" width="4" height="52" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2·2 · JIGGLE<tspan class="nactive"> · CANON 08-04</tspan></text>
         <text class="nscript" x="14" y="31">compose/fit_declip.py — plane-locked bounce-apart</text>
         <text class="nsub" x="14" y="45">hug + tucked locks · applies IN PLACE to the glb</text></g>
-      <path class="edge e-comp" d="M392,2428 V2440" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2438">declipped poses (fit_declip.json)</text>
-      <g class="node" data-k="fitc" transform="translate(276,2442)">
+      <path class="edge e-comp" d="M392,2484 V2496" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2494">declipped poses (fit_declip.json)</text>
+      <g class="node" data-k="fitc" transform="translate(276,2498)">
         <rect class="nbox" width="232" height="46" rx="8"/>
         <rect class="b-comp" width="4" height="46" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2·3 · CHECK<tspan class="nactive"> · CANON 08-04</tspan></text>
         <text class="nscript" x="14" y="31">compose/fit_check.py — vertex bounds + 2 cm voxel clips</text></g>
-      <path class="edge e-comp" d="M392,2488 V2500" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2498">fit_check.json — OOB + clip pairs (report-only)</text>
-      <g class="node" data-k="fitw" transform="translate(276,2502)">
+      <path class="edge e-comp" d="M392,2544 V2556" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2554">fit_check.json — OOB + clip pairs (report-only)</text>
+      <g class="node" data-k="fitw" transform="translate(276,2558)">
         <rect class="nbox" width="232" height="52" rx="8"/>
         <rect class="b-comp" width="4" height="52" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2·4 · WALK<tspan class="nactive"> · RAN TO DRY 08-04B</tspan></text>
@@ -839,23 +857,23 @@
         <text class="nsub" x="14" y="45">0 new = DRY · all-3-dry → walk-back (fit_feedback)</text></g>
       <!-- loop-repeat + walk-back arrows omitted per the step-3 rule;
            the contract, in force: -->
-      <text class="elab" x="24" y="2568">fit loop (arrows omitted for clarity):</text>
-      <text class="elab" x="24" y="2580">walk → place, repeat until dry · walk-back:</text>
-      <text class="elab" x="24" y="2592">fit_feedback.json → shopping re-shop (rule 9)</text>
-      <path class="edge e-comp" d="M392,2554 V2592" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2568">fitted_preview = the DRY scene</text>
-      <text class="elab" x="398" y="2580">(0 OOB · residual = rug-class + contact grazes)</text>
-      <g class="node" data-k="rotch" transform="translate(276,2594)">
+      <text class="elab" x="24" y="2624">fit loop (arrows omitted for clarity):</text>
+      <text class="elab" x="24" y="2636">walk → place, repeat until dry · walk-back:</text>
+      <text class="elab" x="24" y="2648">fit_feedback.json → shopping re-shop (rule 9)</text>
+      <path class="edge e-comp" d="M392,2610 V2648" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2624">fitted_preview = the DRY scene</text>
+      <text class="elab" x="398" y="2636">(0 OOB · residual = rug-class + contact grazes)</text>
+      <g class="node" data-k="rotch" transform="translate(276,2650)">
         <rect class="nbox" width="232" height="64" rx="8"/>
         <rect class="b-comp" width="4" height="64" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2a · ROTATION CHECK<tspan class="nactive"> · CANON v2 08-04</tspan></text>
         <text class="nscript" x="14" y="31">compose/rotation_check.py — 4-candidate choice vs photo</text>
         <text class="nsub" x="14" y="45">CLOSING PASS, outside the loop (rule 10) — runs ONCE</text>
         <text class="nsub" x="14" y="58">on the final walked set · deltas apply via place→jiggle</text></g>
-      <path class="edge e-comp" d="M392,2658 V2680" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2666">STAGE OUTPUT — the composed scene:</text>
-      <text class="elab" x="398" y="2678">fitted_preview.glb/.json + rotation_check.json yaw deltas</text>
-      <text class="elab" x="398" y="2690">(HIGH-conf applied via one closing place→jiggle pass)</text>
+      <path class="edge e-comp" d="M392,2714 V2736" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2722">STAGE OUTPUT — the composed scene:</text>
+      <text class="elab" x="398" y="2734">fitted_preview.glb/.json + rotation_check.json yaw deltas</text>
+      <text class="elab" x="398" y="2746">(HIGH-conf applied via one closing place→jiggle pass)</text>
 
       <!-- PH2r SUPPORT RECURSION added 08-05C (user: "this seems like
            a loop... technically we can keep looping for sub sub
@@ -872,20 +890,20 @@
            this is genuinely a loop"): the step-3 omit-loop-arrows
            rule stands everywhere else; PH2r's re-entry into PH2·1
            PLACE is drawn, dashed = loop-back per the legend. -->
-      <g class="node" data-k="subr" transform="translate(276,2704)">
+      <g class="node" data-k="subr" transform="translate(276,2760)">
         <rect class="nbox" width="232" height="64" rx="8"/>
         <rect class="b-comp" width="4" height="64" rx="2"/>
         <text class="ntitle" x="14" y="17">PH2r · SUPPORT RECURSION<tspan class="nactive"> · SR0–12b · EXP</tspan></text>
         <text class="nscript" x="14" y="31">experiments/sub_round_cp1..7.py — seeds → boards →</text>
         <text class="nsub" x="14" y="45">assign → aligned shop → place · jiggle + capacity SR8–9</text>
         <text class="nsub" x="14" y="58">host physics SR10–12 · walk-downs · loops until no subs</text></g>
-      <path class="edge e-comp e-dash" d="M276,2736 H248 V2336 H274" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="24" y="2728">THE RECURSION (the one drawn loop):</text>
-      <text class="elab" x="24" y="2740">fitted surfaces = the next shell ·</text>
-      <text class="elab" x="24" y="2752">subs = items · hosts before riders</text>
-      <path class="edge e-comp" d="M392,2768 V2790" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2778">sub_experiment/&lt;anchor&gt;/cp7 — subs placed vs host physics</text>
-      <text class="elab" x="398" y="2790">(fleet 15: 8 active · 7 idle · viewer "subs" layer; not in fitted_preview yet)</text>
+      <path class="edge e-comp e-dash" d="M276,2792 H248 V2392 H274" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="24" y="2784">THE RECURSION (the one drawn loop):</text>
+      <text class="elab" x="24" y="2796">fitted surfaces = the next shell ·</text>
+      <text class="elab" x="24" y="2808">subs = items · hosts before riders</text>
+      <path class="edge e-comp" d="M392,2824 V2846" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2834">sub_experiment/&lt;anchor&gt;/cp7 — subs placed vs host physics</text>
+      <text class="elab" x="398" y="2846">(fleet 15: 8 active · 7 idle · viewer "subs" layer; not in fitted_preview yet)</text>
 
       <!-- PH3 COLLIDE GATE + PH4 BOX SURGERY + JUDGE: RETIRED 08-04
            (user). PH3 absorbed by PH2·3 fit_check — the same voxel
@@ -1237,6 +1255,13 @@ j8s: {mod:"lane", eyebrow:"J8s · SPLIT-CUT JUDGE · DESIGN CANON (user-passed R
   reads:["graph/multiplicity.json — SPLIT outcomes (the docket) AND `settled_boxes` (region + neighbour + cover geometry, J8's verdicts already applied)","scene_manifest_slicevote_preview.json (per-id FALLBACK for ids the settled map lacks, VERBATIM)","scene_graph.json voted_edges (same-class neighbours + the ON edges the independent-support test reads) + graph/vote_doubts.json (notch rects)","gen_raw.ply (box-content subset render)","graph/multiplicity_sheets/<id>_card*.png (side context)"],
   writes:["graph/split_cuts.json (the FLAT rounds list per case + flat final pieces [{box, owner, provenance}])","graph/split_sheets/<case>/ (stimulus pngs + prompt txts + index.html)","graph/split_cuts_cache.json (content-keyed: region box + prompt + stimulus bytes)"],
   note:"DESIGN CANON (user-passed R-S2-42) — the splitter's settling point; user ruling ~00:30 08-08: \"this is the right design, we are done with j8\". NEVER edits the graph, the vote or multiplicity.json — the rounds list + pieces are a sidecar; materialize (Phase C) is the editor. A mistake looks like: cutting one physical object in half, leaving two objects inside one piece, or landing a cut a few cm off a boundary the S-lines had measured exactly — the last one is exactly what the SETTLED-MAP wiring (08-08) fixed: the boundary the cut is measured against must be the neighbour's POST-VERDICT edge, not its pre-verdict one. 08-08 EVENING: the round cap was being READ AS A BUDGET — the prompt now says FEWEST CUTS WINS (ceiling, not budget) and the L settles in 1 call / 1 cut / 1 piece at conf 0.85 in ~3 min, against 3 calls / 2 pieces / conf 0.82 / ~10 min before (commit 09791e5); on the run-17 chain J8s again produced 1 cut, 1 piece. Node stays dashed: materialize has consumed the cuts once, but as an UNTESTED TRIAL."},
+nviews: {mod:"lane", eyebrow:"NODE VIEWS · REUSE GATE · CANON 08-09 (user: 'this is canon. we use this one') · 165 REUSED / 55 SHOT IN 86 s · CONSUMERS NOT WIRED", name:"Aimed renders that follow the box — reuse the old shot when it still frames TODAY'S box",
+  script:"graph/node_views.py + graph/view_cams.py (camera math lifted VERBATIM from experiments/pool_retake.py — the vote_cams precedent: one copy of a camera definition). Decide-only by default; --render = one WSL gsplat batch; HOUSE RULE 08-09: nothing renders without an explicit user go.",
+  how:["VIEW SET = f(CURRENT BOX), via scene_state — 4 near-cardinals + near-top + 2 near-perps + clip-top fallback, general cull (room shell + 0.3 m, emptiness probe). Every culled view records the WALL that killed it (the first version named the eye height while the failure was a side wall). A split piece needs no special path: a box that never existed has nothing to keep — obj_011#1 got the first pictures ever aimed at its own box. Cull cross-checked: pool_retake's own cull agrees on 110 of 114",
+       "THE REUSE RULE: keep an existing pool shot when it still frames TODAY'S box through its own recorded camera (pool_targets.json) — in-frame ≥ 0.95 AND zoom ≥ 1/1.5 of what a RETAKE would deliver. The bar is the retake, not an ideal: obj_008, a 16 cm light under DIST_MIN 1.2 m, can never reach design fill and the retake would stand in the same clamped spot. REJECTED on the way: the strict any-change fingerprint (reuses 0) and 3D IoU ≥ 0.9 (reuses 14/199 — 2 cm on a 16 cm object destroys IoU with zero visible drift)",
+       "STALENESS: per-view .params.json fingerprint (eye/aim/fov/res/clip/ply identity/box) — a mismatch DELETES the png so the WSL renderer must redraw; its skip-if-exists is exactly the 08-06 stale-cube-faces failure mode",
+       "BLIND SPOT ON RECORD: geometry only — the rule cannot see occlusion. If it bites, add a third condition; do not re-tune. No recorded camera → always retake (14 shots; pool_targets.json only survives the last render batch)"],
+  note:"Living 08-09: 220 standable = 165 reused + 55 fresh (86 s wall, 0 blank, current-box overlay on all 55); 114 culled with named walls. Evidence sheets: graph/reuse_decision/ (BOTH boxes drawn through the shot's own camera — blue = aimed-at resolved box, yellow = today's; retakes outlined red with per-shot reasons: 25 out-of-frame, 14 no-camera, 2 zoom, 2 both, 1 behind-camera) + graph/views_as_j8_left_them/ (the untouched baseline). graph/crops/ untouched — a crop is a detection record. NEXT, not built: the judge-packaging step (which views each judge is SHOWN; strip per node, count stated in words). Evidence trail: REVIEW_LOG R-S2-57."},
 j9: {mod:"lane", eyebrow:"J9 · SAME-PRODUCT JUDGE · FIRST VERDICTS EVER RAN 08-07 LATE (6/6 after the cwd fix) · GATES OPEN · SECOND PASS ONLY (user ruling 08-07)", name:"Same-product — are these separate boxes the same item? ONE canonical size per group",
   script:"graph/judge_same_product.py — grouping dry-run verified on living (6 groups: chairs×6, pillows×9, ceiling lights×4+×3, magazines×3+×2); crop contact sheets BUILT (member sheet per group, one image per call, per the 08-07 ruling); FIRST VERDICTS RUN 08-07 late, 6/6",
   how:["CANDIDATE GROUPS deterministic + scene-agnostic (Rule #1, no class lists): same canonical name + greedy plan-proximity (2.5 m) + shared-anchor detection (nearest node with ≥2× footprint); sizes prefer the voted boxes; vote doubts ride as context. WATCH: chair group's shared anchor came up None (expected the table via the 2× rule) — check before trusting anchor context in prompts",
