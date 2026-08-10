@@ -28,7 +28,7 @@ def overlap(lo1, hi1, lo2, hi2):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="playroom")
+    ap.add_argument("--scene", required=True)
     args = ap.parse_args()
     sc = args.scene
 

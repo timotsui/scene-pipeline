@@ -57,7 +57,7 @@ STRUCT = ("ON", "IN", "IN_WALL", "ATTACHED")
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     args = ap.parse_args()
     gpath = paths.scene_dir(args.scene) / "scene_graph.json"
     graph = json.loads(gpath.read_text())

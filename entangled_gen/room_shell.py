@@ -315,11 +315,747 @@ def fit_shell(scene, fr, pts, r2r):
             "n_wall_cells": int(wall_cell.sum())}
 
 
+# ---- W4 polygonal shell v2: TRACE -> CLOSE -> MERGE (--poly) ----------
+# User design 2026-08-09 (PLAN_ROOM_SHELL.md §3-W4). REVIEW ARTIFACTS
+# ONLY: writes room_shell_poly.json + room_shell_poly.png next to the v1
+# shell; nothing downstream reads them until the W4 gate passes.
+# 1. TRACE the interior boundary of the wall-material map wherever it is
+#    dense enough (never invent where you could measure);
+# 2. CLOSE the polygon — every un-traceable stretch becomes a segment
+#    MARKED inferred, never passed off as measured;
+# 3. MERGE similar planes — cardinal snap is a special case of the
+#    merge, position re-measured from the density spike; what cannot
+#    snap survives as a connector at its traced angle, and connector /
+#    closure pieces absorb the error so walls never move.
+POLY_MARGIN = 1.5   # m beyond p1/p99 kept for the trace — the v1 clip
+                    # (SEARCH 0.45) amputates the pocket beyond an
+                    # opening (obj_001); floater columns past this are
+                    # killed by the floor-to-ceiling rule, not the clip
+POLY_DP_M = 0.12    # m, trace simplification tolerance
+POLY_SNAP_DEG = 12  # deg, segment within this of an axis snaps cardinal
+POLY_MERGE_M = 0.15 # m, same-axis neighbours within this merge
+POLY_INK_M = 0.15   # m, wall material within this of a segment = traced
+POLY_MEAS_FRAC = 0.5  # >= this fraction inked => measured, else inferred
+POLY_GROUP_M = 0.35   # m, same-axis planes within this = one wall group
+POLY_MAJ_M = 0.08     # m, positions within this vote for one plane
+POLY_MIN_SEG_M = 0.30  # m, clean polygon swallows pieces shorter than this
+POLY_CONN_KEEP_M = 0.50  # m, connectors at least this long keep their
+                         # traced angle; shorter jogs become square steps
+POLY_WALL_MIN_M = 2.0    # m, a cardinal GROUP below this total traced
+                         # length is not architecture (user ruling
+                         # 2026-08-09: wall_04 was a shelf at the
+                         # corner) — its pieces are dropped and the
+                         # neighbouring planes close straight across.
+                         # Judged per group, not per segment, so a short
+                         # fragment of a long wall survives. Furniture
+                         # longer than this bar still defeats it, same
+                         # honesty note as the height rule
+POLY_TALL_M = 1.4   # m above the floor a solid cell's band material
+                    # must reach — walls/curtains/glass doors do,
+                    # sofas/tables/dressers do not (the furniture-dent
+                    # guard; replaces v1's reaches-the-ceiling rule,
+                    # which a dense Marble ceiling defeats)
+POLY_REACH_M = 3.0  # m, a traced pocket may extend at most this far
+                    # (geodesic, through free space) beyond the frame's
+                    # robust box. Without the cap the flood escapes an
+                    # unbounded opening and wraps around the OUTSIDE of
+                    # the walls (living_marble: the east wall traced
+                    # twice, once per face). First value, uncalibrated —
+                    # it bounds pocket DEPTH, not which scenes work
+
+
+def _dp(pts, tol):
+    """Douglas-Peucker on an open polyline (list of [x, z])."""
+    if len(pts) < 3:
+        return pts
+    a, b = np.asarray(pts[0]), np.asarray(pts[-1])
+    mid = np.asarray(pts[1:-1])
+    ab = b - a
+    L = float(np.hypot(*ab))
+    if L < 1e-9:            # degenerate chord (closed loop handed in
+                            # whole): distance from the endpoint instead
+        d = np.hypot(*(mid - a).T)
+    else:
+        d = np.abs(ab[0] * (a[1] - mid[:, 1])
+                   - ab[1] * (a[0] - mid[:, 0])) / L
+    k = int(np.argmax(d))
+    if d[k] <= tol:
+        return [pts[0], pts[-1]]
+    left = _dp(pts[:k + 2], tol)
+    return left[:-1] + _dp(pts[k + 1:], tol)
+
+
+def _dp_loop(loop, tol):
+    """Simplify a CLOSED loop: split at the point farthest from the
+    start (a degenerate chord defeats plain DP), DP each half."""
+    p0 = np.asarray(loop[0])
+    k = int(np.argmax(np.hypot(*(np.asarray(loop) - p0).T)))
+    if k < 2 or k > len(loop) - 3:
+        return _dp(loop, tol)
+    left = _dp(loop[:k + 1], tol)
+    return left[:-1] + _dp(loop[k:], tol)
+
+
+_MOORE = [(-1, 0), (-1, 1), (0, 1), (1, 1),
+          (1, 0), (1, -1), (0, -1), (-1, -1)]
+
+
+def _trace_boundary(mask):
+    """Moore-neighbour trace of the OUTER boundary of the largest True
+    region: one ordered CLOSED loop of cell indices. (plt.contour
+    fragments a jagged mask into open pieces — this never does.)"""
+    xs, zs = np.nonzero(mask)
+    k = int(np.argmin(xs * mask.shape[1] + zs))   # scan order first
+    start = (int(xs[k]), int(zs[k]))
+    loop = [start]
+    prev_dir = 6                                  # came from the left
+    cur = start
+    H, W = mask.shape
+    for _ in range(8 * mask.size):
+        found = False
+        for j in range(8):
+            d = (prev_dir + 1 + j) % 8            # clockwise sweep from
+            dy, dx = _MOORE[d]                    # the backtrack side
+            ny, nz2 = cur[0] + dy, cur[1] + dx
+            if 0 <= ny < H and 0 <= nz2 < W and mask[ny, nz2]:
+                cur = (ny, nz2)
+                prev_dir = (d + 4) % 8
+                found = True
+                break
+        if not found:                             # isolated cell
+            break
+        if cur == start:
+            break
+        loop.append(cur)
+    return loop
+
+
+def run_poly(scene):
+    from scipy import ndimage
+    sd = paths.scene_dir(scene)
+    fr = paths.frame_block(scene)
+    pts, r2r = load_upright_points(scene, fr)
+    r2r_a = np.asarray(r2r, dtype=np.float64)
+    ext_lo = np.minimum(np.array(fr["extent_p1"]) * r2r_a,
+                        np.array(fr["extent_p99"]) * r2r_a) - POLY_MARGIN
+    ext_hi = np.maximum(np.array(fr["extent_p1"]) * r2r_a,
+                        np.array(fr["extent_p99"]) * r2r_a) + POLY_MARGIN
+    pts = pts[np.all((pts >= ext_lo) & (pts <= ext_hi), axis=1)]
+    floor_m, ceil_m = measure_floor_ceiling(pts)
+
+    # wall-material ink: plan cells with dense WALL-BAND splat (points
+    # between floor and ceiling margins — the same material the audit
+    # image draws). NOT the v1 reaches-the-ceiling rule: living_marble's
+    # ceiling splat is dense, which made every open-floor cell "reach
+    # the ceiling" and the whole room read as solid. Furniture also
+    # inks, but it forms holes INSIDE the interior — the outer boundary
+    # walk never sees it, and the majority-plane merge absorbs a bulge
+    # where furniture touches a wall.
+    x, z = pts[:, 0], pts[:, 2]
+    x0, z0 = float(x.min()), float(z.min())
+    nx = int(np.ceil((x.max() - x0) / CELL)) + 1
+    nz = int(np.ceil((z.max() - z0) / CELL)) + 1
+    ci = ((x - x0) / CELL).astype(np.int32).clip(0, nx - 1)
+    cz = ((z - z0) / CELL).astype(np.int32).clip(0, nz - 1)
+    flat = ci * nz + cz
+    in_band = ((pts[:, 1] >= floor_m + WALL_BAND_LO)
+               & (pts[:, 1] <= ceil_m - WALL_BAND_HI))
+    band_cnt = np.bincount(flat[in_band],
+                           minlength=nx * nz).reshape(nx, nz)
+    # TALL rule: the cell's band material must reach above furniture
+    # height, else the sofa welds to the wall band and dents the trace
+    # (first band-only run: a 2 m bite around the sofa). Walls,
+    # curtains and glass doors reach; sofas, tables, chairs do not.
+    band_top = np.full(nx * nz, -np.inf)
+    np.maximum.at(band_top, flat[in_band], pts[in_band, 1])
+    tall = (band_top >= floor_m + POLY_TALL_M).reshape(nx, nz)
+    solid = (band_cnt >= MIN_CELL_PTS) & tall
+    ink = ndimage.binary_dilation(solid, iterations=2)
+
+    # interior = the free-space blob around the room centre.
+    # FLOOR RULE: interior cells must stand on floor-level splat — the
+    # room (and any walk-in pocket) has floor at floor_m; the area seen
+    # THROUGH a window does not, so it can never join the interior even
+    # where the wall has no floor-to-ceiling material (living_marble:
+    # the band past the curtain wall out-sized the room itself and a
+    # geodesic cap alone could not exclude it)
+    floor_cnt = np.bincount(
+        flat[np.abs(pts[:, 1] - floor_m) < 0.15],
+        minlength=nx * nz).reshape(nx, nz)
+    floor_ok = ndimage.binary_dilation(floor_cnt >= 3, iterations=4)
+    # the floor requirement applies OUTSIDE the frame's robust box only:
+    # inside it, furniture shadows the floor and would dig fake dents;
+    # outside it, floor evidence is exactly what separates a walk-in
+    # pocket from the view through a window
+    boxm = np.zeros((nx, nz), bool)
+    bx0 = int((ext_lo[0] + POLY_MARGIN - x0) / CELL)
+    bz0 = int((ext_lo[2] + POLY_MARGIN - z0) / CELL)
+    bx1 = int((ext_hi[0] - POLY_MARGIN - x0) / CELL)
+    bz1 = int((ext_hi[2] - POLY_MARGIN - z0) / CELL)
+    boxm[bx0:bx1, bz0:bz1] = True
+    free = ~ndimage.binary_dilation(solid, iterations=1) \
+        & (boxm | floor_ok)
+    lab, _n = ndimage.label(free)
+    # the room = the free component with the most area inside the
+    # frame's robust box (a centre seed lands under furniture)
+    bx0 = int((ext_lo[0] + POLY_MARGIN - x0) / CELL)
+    bz0 = int((ext_lo[2] + POLY_MARGIN - z0) / CELL)
+    bx1 = int((ext_hi[0] - POLY_MARGIN - x0) / CELL)
+    bz1 = int((ext_hi[2] - POLY_MARGIN - z0) / CELL)
+    inbox = np.bincount(lab[bx0:bx1, bz0:bz1].ravel(),
+                        minlength=_n + 1)
+    inbox[0] = 0
+    interior = lab == int(np.argmax(inbox))
+    # REACH CAP: keep only interior cells geodesically within
+    # POLY_REACH_M of the in-box part — a pocket through an opening
+    # stays, the wrap-around leak past the wall ends is cut
+    boxmask = np.zeros_like(interior)
+    boxmask[bx0:bx1, bz0:bz1] = True
+    grown = interior & boxmask
+    for _ in range(int(POLY_REACH_M / CELL)):
+        grown = ndimage.binary_dilation(grown) & interior
+    interior = grown
+
+    # TRACE: the interior's boundary as an ordered loop (Moore trace —
+    # one closed loop by construction)
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    # keep the largest connected piece only (the cap can strand slivers)
+    ilab, in_ = ndimage.label(interior)
+    if in_ > 1:
+        interior = ilab == int(np.argmax(np.bincount(
+            ilab.ravel())[1:]) + 1)
+    cells = _trace_boundary(interior)
+    loop = [[x0 + c[0] * CELL, z0 + c[1] * CELL] for c in cells]
+    verts = _dp_loop(loop, POLY_DP_M)
+    if np.allclose(verts[0], verts[-1]):
+        verts = verts[:-1]
+
+    # classify + MERGE. Each edge of the simplified loop becomes a
+    # segment; cardinal snap is a merge special case (position from the
+    # density spike); same-axis neighbours within POLY_MERGE_M merge.
+    band = pts[(pts[:, 1] >= floor_m + WALL_BAND_LO)
+               & (pts[:, 1] <= ceil_m - WALL_BAND_HI)]
+
+    def spike(axis_col, pos, t_lo, t_hi, t_col):
+        sel = band[(np.abs(band[:, axis_col] - pos) <= 0.35)
+                   & (band[:, t_col] >= t_lo) & (band[:, t_col] <= t_hi)]
+        if len(sel) < 200:
+            return None
+        v = sel[:, axis_col]
+        nb = max(8, int(0.7 / BIN_WALL))
+        cnt, edges = np.histogram(v, bins=nb, range=(pos - 0.35, pos + 0.35))
+        k = int(np.argmax(cnt))
+        return {"position": float((edges[k] + edges[k + 1]) / 2),
+                "point_count": int(cnt[k:k + 1].sum()),
+                "n_band_points": int(len(sel))}
+
+    segs = []
+    nv = len(verts)
+    for i in range(nv):
+        p, q = np.asarray(verts[i]), np.asarray(verts[(i + 1) % nv])
+        d = q - p
+        L = float(np.hypot(*d))
+        if L < 1e-6:
+            continue
+        ang = float(np.degrees(np.arctan2(d[1], d[0]))) % 180.0
+        seg = {"p": p, "q": q, "len": L}
+        if min(ang, 180 - ang) <= POLY_SNAP_DEG:        # runs along x
+            seg["kind"] = "cardinal"; seg["axis"] = "z"  # constant-z wall
+            pos = float((p[1] + q[1]) / 2)
+            sp = spike(2, pos, min(p[0], q[0]), max(p[0], q[0]), 0)
+            seg["position"] = sp["position"] if sp else pos
+            seg["spike"] = sp
+        elif abs(ang - 90) <= POLY_SNAP_DEG:            # runs along z
+            seg["kind"] = "cardinal"; seg["axis"] = "x"  # constant-x wall
+            pos = float((p[0] + q[0]) / 2)
+            sp = spike(0, pos, min(p[1], q[1]), max(p[1], q[1]), 2)
+            seg["position"] = sp["position"] if sp else pos
+            seg["spike"] = sp
+        else:
+            seg["kind"] = "connector"; seg["angle_deg"] = round(ang, 1)
+        segs.append(seg)
+    merged = True
+    while merged and len(segs) > 2:
+        merged = False
+        for i in range(len(segs)):
+            a_, b_ = segs[i], segs[(i + 1) % len(segs)]
+            same_card = (a_["kind"] == b_["kind"] == "cardinal"
+                         and a_["axis"] == b_["axis"]
+                         and abs(a_["position"] - b_["position"])
+                         <= POLY_MERGE_M)
+            same_conn = (a_["kind"] == b_["kind"] == "connector"
+                         and abs(a_["angle_deg"] - b_["angle_deg"]) <= 8)
+            if same_card or same_conn:
+                w = a_["len"] + b_["len"]
+                if same_card:
+                    a_["position"] = (a_["position"] * a_["len"]
+                                      + b_["position"] * b_["len"]) / w
+                else:
+                    a_["angle_deg"] = round(
+                        (a_["angle_deg"] * a_["len"]
+                         + b_["angle_deg"] * b_["len"]) / w, 1)
+                a_["q"] = b_["q"]; a_["len"] = w
+                del segs[(i + 1) % len(segs)]
+                merged = True
+                break
+
+    # CLOSE: consecutive lines meet at a vertex. Different orientations
+    # intersect; same-orientation neighbours get an explicit closure
+    # connector. Cardinal walls never move — joints absorb the error.
+    def line_of(s):
+        if s["kind"] == "cardinal" and s["axis"] == "x":
+            return ("x", s["position"])
+        if s["kind"] == "cardinal":
+            return ("z", s["position"])
+        return ("free", (s["p"], s["q"]))
+
+    def meet(s1, s2):
+        l1, l2 = line_of(s1), line_of(s2)
+        if l1[0] == "x" and l2[0] == "z":
+            return np.array([l1[1], l2[1]])
+        if l1[0] == "z" and l2[0] == "x":
+            return np.array([l2[1], l1[1]])
+        if "free" in (l1[0], l2[0]):
+            fs, os_ = (s1, s2) if l1[0] == "free" else (s2, s1)
+            p, q = fs["p"], fs["q"]; d = q - p
+            ol = line_of(os_)
+            if ol[0] == "free":
+                return None
+            ax_i = 0 if ol[0] == "x" else 1
+            if abs(d[ax_i]) < 1e-9:
+                return None
+            t = (ol[1] - p[ax_i]) / d[ax_i]
+            return p + t * d
+        return None
+
+    final = []
+    for i, s in enumerate(segs):
+        nxt = segs[(i + 1) % len(segs)]
+        v = meet(s, nxt)
+        joint_gap = float(np.hypot(*(nxt["p"] - s["q"])))
+        if v is not None and np.hypot(*(v - s["q"])) < 1.0:
+            s["q2"] = v; nxt["p2"] = v
+        else:                                   # parallel / far: bridge
+            s["q2"] = s.get("q2", s["q"]); nxt["p2"] = nxt["p"]
+            if joint_gap > CELL:
+                final.append({"kind": "closure", "p": s["q"],
+                              "q": nxt["p"], "len": joint_gap})
+        final.append(s)
+
+    # measured vs inferred: how much of each segment has ink beside it
+    ink_r = int(round(POLY_INK_M / CELL))
+    inkd = ndimage.binary_dilation(ink, iterations=ink_r)
+    out_segs = []
+    for k, s in enumerate(final):
+        p = np.asarray(s.get("p2", s["p"]), float)
+        q = np.asarray(s.get("q2", s["q"]), float)
+        L = float(np.hypot(*(q - p)))
+        n = max(2, int(L / CELL))
+        ts = np.linspace(0, 1, n)[:, None]
+        sample = p[None, :] * (1 - ts) + q[None, :] * ts
+        si = ((sample[:, 0] - x0) / CELL).astype(int).clip(0, nx - 1)
+        sz = ((sample[:, 1] - z0) / CELL).astype(int).clip(0, nz - 1)
+        frac = float(inkd[si, sz].mean())
+        status = "measured" if frac >= POLY_MEAS_FRAC else "inferred"
+        rec = {"id": f"seg_{k:02d}", "kind": s["kind"],
+               "status": status,
+               "traced_ink_fraction": round(frac, 2),
+               "endpoints_upright": [[round(float(p[0]), 3),
+                                      round(float(p[1]), 3)],
+                                     [round(float(q[0]), 3),
+                                      round(float(q[1]), 3)]],
+               "length_m": round(L, 3)}
+        if s["kind"] == "cardinal":
+            rec["axis"] = s["axis"]
+            rec["plane_upright_m"] = round(float(s["position"]), 3)
+            rec["evidence"] = s.get("spike")
+        elif s["kind"] == "connector":
+            rec["angle_deg"] = s["angle_deg"]
+        out_segs.append(rec)
+
+    # MERGE ACROSS THE LOOP (user ruling 2026-08-09b): group same-axis
+    # planes, snap each group to its MAJORITY plane (weighted by traced
+    # length), swallow slivers, and emit ONE CLEAN CLOSED POLYGON.
+    # Square steps join parallel planes; connectors >= POLY_CONN_KEEP_M
+    # keep their traced angle (seg_15's pocket ramp is real geometry).
+    def ink_frac(p, q):
+        p = np.asarray(p, float); q = np.asarray(q, float)
+        L = float(np.hypot(*(q - p)))
+        n = max(2, int(L / CELL))
+        ts = np.linspace(0, 1, n)[:, None]
+        sm = p[None, :] * (1 - ts) + q[None, :] * ts
+        si = ((sm[:, 0] - x0) / CELL).astype(int).clip(0, nx - 1)
+        sz = ((sm[:, 1] - z0) / CELL).astype(int).clip(0, nz - 1)
+        return float(inkd[si, sz].mean())
+
+    groups = {"x": [], "z": []}
+    for s in out_segs:
+        if s["kind"] != "cardinal":
+            continue
+        g = next((g for g in groups[s["axis"]]
+                  if abs(g["pos"] - s["plane_upright_m"]) <= POLY_GROUP_M),
+                 None)
+        if g is None:
+            g = {"pos": s["plane_upright_m"], "members": []}
+            groups[s["axis"]].append(g)
+        g["members"].append(s)
+        g["pos"] = (sum(m["plane_upright_m"] * m["length_m"]
+                        for m in g["members"])
+                    / sum(m["length_m"] for m in g["members"]))
+    group_recs = []
+    for ax_name in ("x", "z"):
+        for g in groups[ax_name]:
+            mem = sorted(g["members"], key=lambda s: s["plane_upright_m"])
+            clusters = []
+            for s in mem:
+                p, L = s["plane_upright_m"], s["length_m"]
+                if clusters and p - clusters[-1]["hi"] <= POLY_MAJ_M:
+                    c = clusters[-1]
+                    c["hi"] = p; c["wsum"] += p * L; c["len"] += L
+                else:
+                    clusters.append({"hi": p, "wsum": p * L, "len": L})
+            best = max(clusters, key=lambda c: c["len"])
+            g["plane"] = best["wsum"] / best["len"]
+            for s in g["members"]:
+                s["group_plane"] = g["plane"]
+            group_recs.append(
+                {"axis": ax_name,
+                 "majority_plane_upright_m": round(g["plane"], 3),
+                 "members": [s["id"] for s in mem],
+                 "member_planes": [s["plane_upright_m"] for s in mem],
+                 "majority_length_m": round(best["len"], 2)})
+
+    group_len = {}
+    for s in out_segs:
+        if s["kind"] == "cardinal":
+            key = (s["axis"], s["group_plane"])
+            group_len[key] = group_len.get(key, 0.0) + s["length_m"]
+    for g, rec in zip(groups["x"] + groups["z"], group_recs):
+        tot = group_len.get((rec["axis"], g["plane"]), 0.0)
+        rec["total_length_m"] = round(tot, 2)
+        rec["is_wall"] = tot >= POLY_WALL_MIN_M
+
+    seq = []
+    for s in out_segs:
+        if (s["kind"] == "cardinal"
+                and group_len[(s["axis"], s["group_plane"])]
+                < POLY_WALL_MIN_M):
+            continue                    # furniture face, not a wall
+        e = {"kind": "cardinal" if s["kind"] == "cardinal" else "connector",
+             "len": s["length_m"],
+             "p": s["endpoints_upright"][0], "q": s["endpoints_upright"][1]}
+        if s["kind"] == "cardinal":
+            e["axis"] = s["axis"]; e["plane"] = s["group_plane"]
+        seq.append(e)
+
+    def merge_seq(seq):
+        out = []
+        for e in seq:
+            if (out and e["kind"] == out[-1]["kind"] == "cardinal"
+                    and e["axis"] == out[-1]["axis"]
+                    and abs(e["plane"] - out[-1]["plane"]) < 1e-9):
+                out[-1]["q"] = e["q"]; out[-1]["len"] += e["len"]
+            else:
+                out.append(dict(e))
+        if (len(out) > 1 and out[0]["kind"] == out[-1]["kind"] == "cardinal"
+                and out[0]["axis"] == out[-1]["axis"]
+                and abs(out[0]["plane"] - out[-1]["plane"]) < 1e-9):
+            out[0]["p"] = out[-1]["p"]; out[0]["len"] += out[-1]["len"]
+            out.pop()
+        return out
+
+    seq = merge_seq(seq)
+    changed = True
+    while changed and len(seq) > 3:
+        changed = False
+        for i, e in enumerate(seq):
+            need = (POLY_CONN_KEEP_M if e["kind"] == "connector"
+                    else POLY_MIN_SEG_M)
+            if e["len"] < need:
+                del seq[i]
+                seq = merge_seq(seq)
+                changed = True
+                break
+    # CONNECTOR CHAINS (user ruling 2026-08-09, the corner chamfer: the
+    # 1 m diagonal at the shelf was still furniture): a run of
+    # consecutive connectors is an architectural feature only if it
+    # totals POLY_WALL_MIN_M — the same bar the walls must clear. A
+    # shorter run is dropped and the neighbouring walls meet square.
+    # The pocket's ramp (3.1 m chained) clears the bar; a corner cut
+    # cannot.
+    while seq and seq[0]["kind"] == "connector":     # chains must not
+        seq.append(seq.pop(0))                       # wrap the list end
+    changed = True
+    while changed and len(seq) > 3:
+        changed = False
+        i = 0
+        while i < len(seq):
+            if seq[i]["kind"] != "connector":
+                i += 1
+                continue
+            j = i
+            tot = 0.0
+            while j < len(seq) and seq[j]["kind"] == "connector":
+                tot += seq[j]["len"]
+                j += 1
+            if tot < POLY_WALL_MIN_M:
+                del seq[i:j]
+                seq = merge_seq(seq)
+                changed = True
+                break
+            i = j
+    # ONE SEGMENT PER CHAIN (user ruling 2026-08-09, same review): a
+    # surviving chain collapses to a single straight connector from the
+    # chain's start to its end — the wiggle is trace noise, the chain's
+    # span is the architecture.
+    i = 0
+    while i < len(seq):
+        if seq[i]["kind"] != "connector":
+            i += 1
+            continue
+        j = i
+        while j < len(seq) and seq[j]["kind"] == "connector":
+            j += 1
+        if j - i > 1:
+            p, q = seq[i]["p"], seq[j - 1]["q"]
+            seq[i:j] = [{"kind": "connector", "p": p, "q": q,
+                         "len": float(np.hypot(q[0] - p[0],
+                                               q[1] - p[1]))}]
+        i += 1
+
+    def isect(p, q, axis, pos):
+        p = np.asarray(p, float); d = np.asarray(q, float) - p
+        i = 0 if axis == "x" else 1
+        if abs(d[i]) < 1e-9:
+            return [float(p[0]), float(p[1])]
+        t = (pos - p[i]) / d[i]
+        v = p + t * d
+        return [float(v[0]), float(v[1])]
+
+    m = len(seq)
+    joints = []                 # joints[i]: 1 or 2 points between i, i+1
+    for i in range(m):
+        e, f = seq[i], seq[(i + 1) % m]
+        if e["kind"] == f["kind"] == "cardinal":
+            if e["axis"] != f["axis"]:
+                xp = e["plane"] if e["axis"] == "x" else f["plane"]
+                zp = e["plane"] if e["axis"] == "z" else f["plane"]
+                joints.append([[xp, zp]])
+            else:                       # parallel planes: square step
+                tc = 1 if e["axis"] == "x" else 0
+                t = (e["q"][tc] + f["p"][tc]) / 2
+                if e["axis"] == "x":
+                    joints.append([[e["plane"], t], [f["plane"], t]])
+                else:
+                    joints.append([[t, e["plane"]], [t, f["plane"]]])
+        elif e["kind"] == "connector" and f["kind"] == "cardinal":
+            joints.append([isect(e["p"], e["q"], f["axis"], f["plane"])])
+        elif e["kind"] == "cardinal" and f["kind"] == "connector":
+            joints.append([isect(f["p"], f["q"], e["axis"], e["plane"])])
+        else:
+            joints.append([list(map(float, f["p"]))])
+
+    clean_segs = []
+    verts_clean = []
+    for i in range(m):
+        e = seq[i]
+        start = joints[i - 1][-1]
+        end = joints[i][0]
+        if np.hypot(end[0] - start[0], end[1] - start[1]) < 0.02:
+            continue                        # joint re-anchoring ate it
+        frac = ink_frac(start, end)
+        rec = {"id": f"wall_{i:02d}", "kind": e["kind"],
+               "status": ("measured" if frac >= POLY_MEAS_FRAC
+                          else "inferred"),
+               "traced_ink_fraction": round(frac, 2),
+               "endpoints_upright": [[round(start[0], 3), round(start[1], 3)],
+                                     [round(end[0], 3), round(end[1], 3)]],
+               "length_m": round(float(np.hypot(end[0] - start[0],
+                                                end[1] - start[1])), 3)}
+        if e["kind"] == "cardinal":
+            rec["axis"] = e["axis"]
+            rec["plane_upright_m"] = round(e["plane"], 3)
+        clean_segs.append(rec)
+        verts_clean.append([round(start[0], 3), round(start[1], 3)])
+        if len(joints[i]) == 2:         # the square step is a segment too
+            a, b = joints[i]
+            frac = ink_frac(a, b)
+            step_ax = "z" if e["axis"] == "x" else "x"
+            clean_segs.append(
+                {"id": f"wall_{i:02d}s", "kind": "step",
+                 "status": ("measured" if frac >= POLY_MEAS_FRAC
+                            else "inferred"),
+                 "traced_ink_fraction": round(frac, 2),
+                 "axis": step_ax,
+                 "plane_upright_m": round(a[1] if step_ax == "z"
+                                          else a[0], 3),
+                 "endpoints_upright": [[round(a[0], 3), round(a[1], 3)],
+                                       [round(b[0], 3), round(b[1], 3)]],
+                 "length_m": round(float(np.hypot(b[0] - a[0],
+                                                  b[1] - a[1])), 3)})
+            verts_clean.append([round(a[0], 3), round(a[1], 3)])
+
+    # overlay for review: raw trace faint, clean polygon bold
+    fig, ax = plt.subplots(figsize=(9, 9))
+    H, xe, ze = np.histogram2d(band[:, 0], band[:, 2],
+                               bins=[int((ext_hi[0] - ext_lo[0]) / 0.02),
+                                     int((ext_hi[2] - ext_lo[2]) / 0.02)],
+                               range=[[ext_lo[0], ext_hi[0]],
+                                      [ext_lo[2], ext_hi[2]]])
+    ax.imshow(np.log1p(H.T), origin="lower", cmap="gray_r",
+              extent=[xe[0], xe[-1], ze[0], ze[-1]], aspect="equal")
+    v1 = sd / "room_shell.json"
+    if v1.exists():
+        w4 = {w["id"]: w["plane_upright_m"]
+              for w in json.loads(v1.read_text())["walls"]}
+        if len(w4) == 4:
+            from matplotlib.patches import Rectangle
+            ax.add_patch(Rectangle(
+                (w4["wall_x_low"], w4["wall_z_low"]),
+                w4["wall_x_high"] - w4["wall_x_low"],
+                w4["wall_z_high"] - w4["wall_z_low"],
+                fill=False, ec="cyan", lw=1.2, ls=":",
+                label="v1 4-wall shell"))
+    for s in out_segs:                       # raw trace, faint
+        (px, pz), (qx, qz) = s["endpoints_upright"]
+        ax.plot([px, qx], [pz, qz], "-", color="#b8b8d8", lw=1.0)
+    colors = {"cardinal": "#1db954", "connector": "#ff9f1c",
+              "step": "#9b5de5"}
+    seen = set()
+    for s in clean_segs:
+        (px, pz), (qx, qz) = s["endpoints_upright"]
+        ls = "-" if s["status"] == "measured" else "--"
+        ax.plot([px, qx], [pz, qz], ls, color=colors[s["kind"]],
+                lw=3.0, label=(f"{s['kind']} (dashed = inferred)"
+                               if s["kind"] not in seen else None))
+        seen.add(s["kind"])
+        ax.annotate(s["id"].replace("wall_", ""),
+                    ((px + qx) / 2, (pz + qz) / 2), color="#333",
+                    fontsize=8, ha="center")
+    ax.legend(loc="upper right", fontsize=8)
+    ax.set_title(f"{scene} — W4 clean polygon over the raw trace "
+                 f"(review artifact; nothing consumes this)")
+    png = sd / "room_shell_poly.png"
+    fig.tight_layout(); fig.savefig(png, dpi=130); plt.close(fig)
+
+    rep = {"scene": scene,
+           "generated_by": "room_shell.py --poly (W4 — TRACE->CLOSE->MERGE,"
+                           " review artifact, no consumers)",
+           "frame": {"raw_to_render": list(map(float, r2r))},
+           "floor_upright_m": round(floor_m, 3),
+           "ceiling_upright_m": round(ceil_m, 3),
+           "params": {"cell_m": CELL, "margin_m": POLY_MARGIN,
+                      "dp_tol_m": POLY_DP_M, "snap_deg": POLY_SNAP_DEG,
+                      "merge_m": POLY_MERGE_M, "ink_m": POLY_INK_M,
+                      "measured_min_frac": POLY_MEAS_FRAC,
+                      "group_m": POLY_GROUP_M, "majority_m": POLY_MAJ_M,
+                      "min_seg_m": POLY_MIN_SEG_M,
+                      "conn_keep_m": POLY_CONN_KEEP_M},
+           "wall_groups": group_recs,
+           "clean_polygon": {"vertices_upright": verts_clean,
+                             "segments": clean_segs},
+           "raw_trace_segments": out_segs}
+    outf = sd / "room_shell_poly.json"
+    outf.write_text(json.dumps(rep, indent=1))
+    fold_polygon_into_shell(sd, rep)
+    n_meas = sum(1 for s in clean_segs if s["status"] == "measured")
+    print(f"[shell-poly] raw trace {len(out_segs)} segments -> "
+          f"{len(group_recs)} wall groups -> clean polygon "
+          f"{len(clean_segs)} segments "
+          f"({n_meas} measured / {len(clean_segs) - n_meas} inferred):",
+          flush=True)
+    for s in clean_segs:
+        print(f"  {s['id']:9s} {s['kind']:9s} "
+              + (f"{s['axis']}={s['plane_upright_m']:+7.3f}  "
+                 if s.get("axis") else " " * 12)
+              + f"len {s['length_m']:6.3f} m  {s['status']}"
+              f"  ink {s['traced_ink_fraction']}", flush=True)
+    print(f"[shell-poly] wrote {outf}")
+    print(f"[shell-poly] overlay: {png}")
+
+
+def fold_polygon_into_shell(sd, rep):
+    """W5 (D3 ruling 2026-08-09): ONE shell contract file. The clean
+    polygon is folded into room_shell.json as a "polygon" block —
+    consumers read the contract, never the review artifact. Everything
+    is precomputed here in BOTH frames (upright and raw) so consumers
+    that live in the raw frame (slicevote) do no geometry derivation of
+    their own: per cardinal/step segment the raw plane + which side of
+    it is room interior; per connector the inward unit normal. No
+    room_shell.json on disk -> nothing to fold (v1 must run first)."""
+    shell_f = sd / "room_shell.json"
+    if not shell_f.exists():
+        print("[shell-poly] no room_shell.json — polygon block NOT "
+              "folded (run the default v1 mode first)", flush=True)
+        return
+    from matplotlib.path import Path as MplPath
+    r2r = rep["frame"]["raw_to_render"]
+    verts_up = rep["clean_polygon"]["vertices_upright"]
+    verts_raw = [[round(x * r2r[0], 3), round(z * r2r[2], 3)]
+                 for x, z in verts_up]
+    poly_raw = MplPath(np.asarray(verts_raw, float))
+
+    def inside_raw(x, z):
+        return bool(poly_raw.contains_point((x, z)))
+
+    segs = []
+    for s in rep["clean_polygon"]["segments"]:
+        (px, pz), (qx, qz) = s["endpoints_upright"]
+        p_raw = [round(px * r2r[0], 3), round(pz * r2r[2], 3)]
+        q_raw = [round(qx * r2r[0], 3), round(qz * r2r[2], 3)]
+        rec = dict(s, endpoints_raw=[p_raw, q_raw])
+        mx, mz = (p_raw[0] + q_raw[0]) / 2, (p_raw[1] + q_raw[1]) / 2
+        if s["kind"] in ("cardinal", "step"):
+            comp = 0 if s["axis"] == "x" else 2
+            plane_raw = round(s["plane_upright_m"] * r2r[comp], 3)
+            rec["plane_raw_m"] = plane_raw
+            # WALLS-table convention: +1 = interior lies BELOW the plane
+            eps = 0.05
+            probe = (mx - eps, mz) if s["axis"] == "x" else (mx, mz - eps)
+            rec["interior_side_raw"] = 1 if inside_raw(*probe) else -1
+        else:                                            # connector
+            d = np.array([q_raw[0] - p_raw[0], q_raw[1] - p_raw[1]])
+            n = np.array([-d[1], d[0]])
+            n = n / np.linalg.norm(n)
+            if not inside_raw(mx + 0.05 * n[0], mz + 0.05 * n[1]):
+                n = -n
+            rec["inward_normal_raw"] = [round(float(n[0]), 4),
+                                        round(float(n[1]), 4)]
+            rec["plane_offset_raw"] = round(
+                float(n[0] * p_raw[0] + n[1] * p_raw[1]), 4)
+        segs.append(rec)
+
+    shell = json.loads(shell_f.read_text())
+    shell["polygon"] = {
+        "generated_by": "room_shell.py --poly (W4 recipe: trace -> "
+                        "close -> merge; folded by W5/D3)",
+        "params": rep["params"],
+        "vertices_upright": verts_up,
+        "vertices_raw": verts_raw,
+        "segments": segs,
+        "note": ("raw = upright * frame.raw_to_render componentwise "
+                 "(x,z components); interior_side_raw follows the "
+                 "WALLS convention (+1 = room interior below the "
+                 "plane value); connector inward_normal_raw points "
+                 "into the room, plane_offset_raw = n . p"),
+    }
+    shell_f.write_text(json.dumps(shell, indent=1))
+    print(f"[shell-poly] polygon block ({len(segs)} segments) folded "
+          f"into {shell_f}", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--audit", action="store_true")
+    ap.add_argument("--poly", action="store_true",
+                    help="W4 trace->close->merge review artifacts")
     a = ap.parse_args()
+    if a.poly:
+        run_poly(a.scene)
+        return
     if not a.audit:
         sd = paths.scene_dir(a.scene)
         fr = paths.frame_block(a.scene)
@@ -352,6 +1088,23 @@ def main():
                   f"pts {w['evidence']['point_count']:>6}  collider "
                   f"{'agree d=' + str(cb['delta_m']) if cb else '—'}  "
                   f"parallels {len(w['parallel_surfaces'])}")
+        # W5 AUTOMATION RULE (2026-08-09): the default mode produces the
+        # COMPLETE contract in one command — the polygon fit runs here,
+        # unconditionally, so an unattended per-scene run can never end
+        # up with a v1-only shell by ordering accident. If the fit fails
+        # on a scene, the shell DEGRADES to the 4-plane v1 behaviour
+        # (consumers take the POLY-is-None path) and the failure is
+        # recorded in the contract file itself — never a silent skip.
+        try:
+            run_poly(a.scene)
+        except Exception as e:                               # noqa: BLE001
+            print(f"[shell] polygon fit FAILED ({e}) — shell stays v1 "
+                  "4-plane (degraded; recorded in room_shell.json)",
+                  flush=True)
+            cur = json.loads(f.read_text())
+            cur.pop("polygon", None)
+            cur["polygon_error"] = str(e)
+            f.write_text(json.dumps(cur, indent=1))
         return
     sd = paths.scene_dir(a.scene)
     fr = paths.frame_block(a.scene)

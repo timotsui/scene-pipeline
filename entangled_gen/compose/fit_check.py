@@ -30,6 +30,7 @@ import trimesh
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+from arch_walls import wall_axis_planes  # noqa: E402
 
 TOL = 0.005      # m -- bounds: deeper than this = finding
 PITCH = 0.02     # m -- clip lattice cell
@@ -46,14 +47,10 @@ def load_placed(scene):
     r2r = np.array(man["frame"].get("raw_to_render", [1, 1, 1]), np.float32)
     to_render = np.diag([r2r[0], r2r[1], r2r[2], 1.0])
 
-    planes = {n["id"]: n["geometry"]["plane"]["value_raw"]
-              for n in graph["nodes"] if n["id"].startswith("arch_")}
-    wx = sorted((planes["arch_wall_x_low"] * r2r[0],
-                 planes["arch_wall_x_high"] * r2r[0]))
-    wz = sorted((planes["arch_wall_z_low"] * r2r[2],
-                 planes["arch_wall_z_high"] * r2r[2]))
-    fy, cy = sorted((planes["arch_floor"] * r2r[1],
-                     planes["arch_ceiling"] * r2r[1]))
+    xs_raw, zs_raw, floor_raw, ceil_raw = wall_axis_planes(graph["nodes"])
+    wx = sorted((xs_raw[0] * r2r[0], xs_raw[-1] * r2r[0]))
+    wz = sorted((zs_raw[0] * r2r[2], zs_raw[-1] * r2r[2]))
+    fy, cy = sorted((floor_raw * r2r[1], ceil_raw * r2r[1]))
 
     sc = trimesh.load(cdir / "fitted_preview.glb", force="scene")
     parts = {}

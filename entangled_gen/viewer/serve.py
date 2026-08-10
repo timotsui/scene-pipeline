@@ -118,7 +118,7 @@ def box_sources(sc):
         ("parallax_voted", "parallax retake · voted (preview)", "archive",
          sd / "scene_manifest_parallax_preview.json", "#65ff8f",
          "PREVIEW — experiments/parallax_retake.py: per-node side view "
-         "from a second standpoint; original ray axis carved out, then the "
+         "from a second standpoint; original ray axis cut away, then the "
          "original masks' points refiltered through the established depth "
          "slab (all axes re-derived). Nodes with no elected box keep the record box "
          "(flagged) and are absent from this layer"),

@@ -396,10 +396,26 @@ DET_PRIOR_MIN = 0.30     # in-prior/det ADMISSION gate. Unchanged value
                          # CONSIDERED, never who wins. Not a knob to
                          # retune when a pick looks wrong — the ranking
                          # below is what picks.
-DET_EDGE_PENALTY = 0.7   # a detection touching a frame border is probably
+DET_EDGE_PENALTY = 0.1   # a detection touching a frame border is probably
                          # CUT OFF, so its combined score is discounted (not
                          # vetoed). User ruling 2026-08-08: rank admitted
                          # candidates by score x prior-match x this penalty.
+                         # 0.7 -> 0.1 (user ruling 2026-08-09, the obj_018
+                         # regression): a clipped box's extent is not a
+                         # measurement, and its prior-match term leans on a
+                         # prior that is itself in doubt (the re-box exists
+                         # to correct it) — picking a clipped box that wins
+                         # on filling a doubted prior compounds two
+                         # unreliable measurements. Verified on every
+                         # recorded race before landing: all 22 top-view
+                         # winners are clear of the border (no value in
+                         # [0, 0.7] flips any of them), the obj_034 glass
+                         # door replay has NO edge-flagged candidate (the
+                         # 2026-08-08 fix is untouched), and obj_018's perp
+                         # race flips to the detector's clean top answer at
+                         # any value <= 0.13. Still multiplicative, not a
+                         # veto: when every candidate is clipped the
+                         # discount cancels and the ranking is unchanged.
 DET_EDGE_PX = 4          # px — border contact band for the ranking's
                          # untruncated preference (same value/meaning as
                          # TOP_EDGE_PX / PERP_EDGE_PX, and deliberately
@@ -620,6 +636,136 @@ XLO, XHI, ZLO, ZHI = min(_xs), max(_xs), min(_zs), max(_zs)
 WALLS = [(0, XLO, -1, "XLO"), (0, XHI, +1, "XHI"),
          (2, ZLO, -1, "ZLO"), (2, ZHI, +1, "ZHI")]
 
+# ---- W5 POLYGONAL SHELL (PLAN_ROOM_SHELL.md §W4/W5, user gate passed
+# 2026-08-09). When room_shell.json carries a "polygon" block the room
+# outline is a closed polygon of segments (cardinal/step walls on exact
+# axis-aligned planes + connectors at their measured angle) and the
+# five shell consumers below walk the SEGMENT LIST instead of the 4-row
+# WALLS table: a wall can only claim or clip a box where the box's
+# footprint actually overlaps that segment's extent. No polygon block
+# -> every consumer takes its original 4-plane path unchanged.
+POLY = sh.get("polygon")
+if POLY is not None:
+    POLY_V = np.asarray(POLY["vertices_raw"], float)     # (N,2) x,z raw
+    POLY_SEGS = POLY["segments"]
+    SEG_BY_ID = {s["id"]: s for s in POLY_SEGS}
+    # the bbox globals stay defined (docstrings, sanity fallbacks) but
+    # now bound the POLYGON, not the v1 4-wall shell
+    XLO, XHI = float(POLY_V[:, 0].min()), float(POLY_V[:, 0].max())
+    ZLO, ZHI = float(POLY_V[:, 1].min()), float(POLY_V[:, 1].max())
+    print(f"[vote] shell polygon: {len(POLY_SEGS)} segments "
+          f"({sum(1 for s in POLY_SEGS if s['kind'] != 'connector')} "
+          f"planar, {sum(1 for s in POLY_SEGS if s['kind'] == 'connector')} "
+          "connector) — segment-walk wall handling ACTIVE", flush=True)
+
+
+def _pip(pts2):
+    """Point-in-polygon for (x,z) raw points, vectorized ray cast.
+    pts2: (M,2) array -> (M,) bool."""
+    x, z = pts2[:, 0], pts2[:, 1]
+    inside = np.zeros(len(pts2), bool)
+    j = len(POLY_V) - 1
+    # errstate: a horizontal edge (zi == zj) divides by zero, but its
+    # crossing test is already False on that edge — silence the noise
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for i in range(len(POLY_V)):
+            xi, zi = POLY_V[i]
+            xj, zj = POLY_V[j]
+            hit = (((zi > z) != (zj > z))
+                   & (x < (xj - xi) * (z - zi) / (zj - zi) + xi))
+            inside ^= hit
+            j = i
+    return inside
+
+
+def _dist_outline(pts2):
+    """Min distance (m) from (x,z) raw points to the polygon outline."""
+    best = np.full(len(pts2), np.inf)
+    for i in range(len(POLY_V)):
+        p = POLY_V[i]
+        q = POLY_V[(i + 1) % len(POLY_V)]
+        d = q - p
+        t = np.clip(((pts2 - p) @ d) / float(d @ d), 0.0, 1.0)
+        proj = p[None, :] + t[:, None] * d[None, :]
+        best = np.minimum(best, np.linalg.norm(pts2 - proj, axis=1))
+    return best
+
+
+def _seg_hits_rect(p, q, lo, hi):
+    """Does 2D segment p->q intersect the (x,z) rect of box lo/hi?
+    (Liang-Barsky clip.)"""
+    t0, t1 = 0.0, 1.0
+    for comp, bl, bh in ((0, lo[0], hi[0]), (1, lo[2], hi[2])):
+        d = q[comp] - p[comp]
+        o = p[comp]
+        if abs(d) < 1e-12:
+            if o < bl or o > bh:
+                return False
+        else:
+            ta, tb = (bl - o) / d, (bh - o) / d
+            if ta > tb:
+                ta, tb = tb, ta
+            t0, t1 = max(t0, ta), min(t1, tb)
+            if t0 > t1:
+                return False
+    return True
+
+
+def rect_outside_poly(lo, hi):
+    """True iff the box FOOTPRINT is entirely outside the polygon
+    (exact rect-vs-polygon: no rect corner inside, no polygon vertex
+    inside the rect, no edge crossing)."""
+    rect = np.array([[lo[0], lo[2]], [lo[0], hi[2]],
+                     [hi[0], hi[2]], [hi[0], lo[2]]], float)
+    if _pip(rect).any():
+        return False
+    if ((POLY_V[:, 0] > lo[0]) & (POLY_V[:, 0] < hi[0])
+            & (POLY_V[:, 1] > lo[2]) & (POLY_V[:, 1] < hi[2])).any():
+        return False
+    for i in range(len(POLY_V)):
+        if _seg_hits_rect(POLY_V[i], POLY_V[(i + 1) % len(POLY_V)],
+                          lo, hi):
+            return False
+    return True
+
+
+OUTSIDE_DROP_M = 0.5   # m — D1 (user ruling 2026-08-09): a box entirely
+                       # outside the polygon is IGNORED only when it is
+                       # also farther than this from the outline. Within
+                       # the band it is wall-zone material — an opening
+                       # (glass door, window) legitimately carries its
+                       # whole mass beyond the wall plane (the obj_034
+                       # ruling; its footprint sits 0.15 m outside) and
+                       # the v1 shell recorded parallel structural
+                       # surfaces up to ~0.6 m behind the visible face.
+
+
+def _rect_outline_gap(lo, hi):
+    """Min distance (m) from the box footprint to the polygon outline.
+    Exact enough for a rect known to be fully outside: the closest
+    feature pair is corner-to-edge or vertex-to-rect."""
+    corners = np.array([[x, z] for x in (lo[0], hi[0])
+                        for z in (lo[2], hi[2])], float)
+    gap = float(_dist_outline(corners).min())
+    dx = np.maximum(np.maximum(lo[0] - POLY_V[:, 0],
+                               POLY_V[:, 0] - hi[0]), 0.0)
+    dz = np.maximum(np.maximum(lo[2] - POLY_V[:, 1],
+                               POLY_V[:, 1] - hi[2]), 0.0)
+    return min(gap, float(np.hypot(dx, dz).min()))
+
+
+def _conn_overlap(s, lo, hi):
+    """Does the box footprint overlap the connector segment's span
+    (projected onto the connector's own direction, WALL_TOUCH slack)?"""
+    p, q = np.asarray(s["endpoints_raw"], float)
+    tdir = q - p
+    L = float(np.linalg.norm(tdir))
+    tdir = tdir / L
+    corners2 = np.array([[x, z] for x in (lo[0], hi[0])
+                         for z in (lo[2], hi[2])], float)
+    t = (corners2 - p) @ tdir
+    return not (t.max() < -WALL_TOUCH or t.min() > L + WALL_TOUCH)
+
 
 def wall_protrusion(lo, hi):
     """WALL PROTRUSION RULE (user ruling 2026-08-07 late, replacing the
@@ -629,20 +775,77 @@ def wall_protrusion(lo, hi):
     interior by at most WALL_PROTRUDE_MAX. Depth beyond the plane is
     deliberately ignored — an opening (glass door, window) keeps its
     mass at or beyond the wall. Returns (wall_id, protrusion_m) for
-    the least-protruding qualifying wall, else None."""
+    the least-protruding qualifying wall, else None.
+    W5 polygon path: same test per SEGMENT, but a segment can only
+    claim a box whose footprint OVERLAPS its extent (+WALL_TOUCH
+    slack) — an infinite plane can no longer claim a distant box
+    (obj_001, R-S2-61). Connector segments use the same touch/protrude
+    test against their angled line (corner-based)."""
     best = None
-    for axi, v, side, wid in WALLS:
-        if side > 0:                       # interior is at x/z < v
-            touches = hi[axi] > v - WALL_TOUCH
-            protr = v - lo[axi]
-        else:                              # interior is at x/z > v
-            touches = lo[axi] < v + WALL_TOUCH
-            protr = hi[axi] - v
-        protr = max(float(protr), 0.0)
+    if POLY is None:
+        for axi, v, side, wid in WALLS:
+            if side > 0:                   # interior is at x/z < v
+                touches = hi[axi] > v - WALL_TOUCH
+                protr = v - lo[axi]
+            else:                          # interior is at x/z > v
+                touches = lo[axi] < v + WALL_TOUCH
+                protr = hi[axi] - v
+            protr = max(float(protr), 0.0)
+            if touches and protr <= WALL_PROTRUDE_MAX:
+                if best is None or protr < best[1]:
+                    best = (wid, protr)
+        return best
+    for s in POLY_SEGS:
+        if s["kind"] != "connector":
+            axi = 0 if s["axis"] == "x" else 2
+            tax = 2 if axi == 0 else 0     # the in-plane (tangent) axis
+            v, side = s["plane_raw_m"], s["interior_side_raw"]
+            # endpoints are (x,z); the tangent coordinate is component 1
+            # for an x-plane wall (its z span), component 0 for z-plane
+            tc = 1 if axi == 0 else 0
+            p, q = s["endpoints_raw"]
+            t0, t1 = sorted((p[tc], q[tc]))
+            if hi[tax] < t0 - WALL_TOUCH or lo[tax] > t1 + WALL_TOUCH:
+                continue                   # box not in front of this wall
+            if side > 0:
+                touches = hi[axi] > v - WALL_TOUCH
+                protr = v - lo[axi]
+            else:
+                touches = lo[axi] < v + WALL_TOUCH
+                protr = hi[axi] - v
+            protr = max(float(protr), 0.0)
+        else:
+            if not _conn_overlap(s, lo, hi):
+                continue
+            n2 = np.asarray(s["inward_normal_raw"], float)
+            c = float(s["plane_offset_raw"])
+            corners2 = np.array([[x, z] for x in (lo[0], hi[0])
+                                 for z in (lo[2], hi[2])], float)
+            d = corners2 @ n2 - c          # signed; + = room interior
+            touches = float(d.min()) < WALL_TOUCH
+            protr = max(float(d.max()), 0.0)
         if touches and protr <= WALL_PROTRUDE_MAX:
             if best is None or protr < best[1]:
-                best = (wid, protr)
+                best = (s["id"], protr)
     return best
+
+
+def _axis_clip(nlo, nhi, axi, blo, bhi):
+    """Clip one axis of a box to [blo, bhi] with the MIN_SLAB rescue
+    (a collapsed axis keeps a MIN_SLAB slab flush against the plane the
+    box sat at/beyond). Mutates nlo/nhi in place."""
+    olo_a, ohi_a = float(nlo[axi]), float(nhi[axi])
+    cl, ch = max(olo_a, blo), min(ohi_a, bhi)
+    if ch - cl < MIN_SLAB:
+        if olo_a <= blo and ohi_a < bhi:            # at/beyond low
+            cl, ch = blo, blo + MIN_SLAB
+        elif ohi_a >= bhi and olo_a > blo:          # at/beyond high
+            cl, ch = bhi - MIN_SLAB, bhi
+        else:                       # degenerate box in the interior
+            c = min(max(0.5 * (olo_a + ohi_a), blo + MIN_SLAB / 2),
+                    bhi - MIN_SLAB / 2)
+            cl, ch = c - MIN_SLAB / 2, c + MIN_SLAB / 2
+    nlo[axi], nhi[axi] = cl, ch
 
 
 def shell_clip(lo, hi):
@@ -650,23 +853,74 @@ def shell_clip(lo, hi):
     strictly external volume"). Intersect a SHIPPING box with the shell
     interior. If an axis collapses below MIN_SLAB, keep a MIN_SLAB slab
     flush against the plane the box sat at/beyond (the other axes keep
-    their clipped extents). Returns (lo, hi, clip_record|None)."""
+    their clipped extents). Returns (lo, hi, clip_record|None).
+    W5 polygon path: the clip is LOCAL — a planar segment only clips a
+    box whose footprint overlaps its extent (the infinite-plane drag
+    that made obj_001 a 4 cm sliver cannot happen). A connector clips
+    to the largest axis-aligned box inside its half-plane (§W4:
+    conservative, never wrong-side-of-the-wall). Floor/ceiling clip
+    exactly as before."""
     olo = np.asarray(lo, float)
     ohi = np.asarray(hi, float)
     nlo, nhi = olo.copy(), ohi.copy()
-    for axi, (blo, bhi) in enumerate(((XLO, XHI), (CEIL, FLOOR),
-                                      (ZLO, ZHI))):
-        cl, ch = max(olo[axi], blo), min(ohi[axi], bhi)
-        if ch - cl < MIN_SLAB:
-            if olo[axi] <= blo and ohi[axi] < bhi:      # at/beyond low
-                cl, ch = blo, blo + MIN_SLAB
-            elif ohi[axi] >= bhi and olo[axi] > blo:    # at/beyond high
-                cl, ch = bhi - MIN_SLAB, bhi
-            else:                       # degenerate box in the interior
-                c = min(max(0.5 * (olo[axi] + ohi[axi]), blo + MIN_SLAB / 2),
-                        bhi - MIN_SLAB / 2)
-                cl, ch = c - MIN_SLAB / 2, c + MIN_SLAB / 2
-        nlo[axi], nhi[axi] = cl, ch
+    if POLY is None:
+        for axi, (blo, bhi) in enumerate(((XLO, XHI), (CEIL, FLOOR),
+                                          (ZLO, ZHI))):
+            _axis_clip(nlo, nhi, axi, blo, bhi)
+    else:
+        _axis_clip(nlo, nhi, 1, CEIL, FLOOR)
+        for s in POLY_SEGS:
+            if s["kind"] != "connector":
+                axi = 0 if s["axis"] == "x" else 2
+                tax = 2 if axi == 0 else 0
+                tc = 1 if axi == 0 else 0
+                p, q = s["endpoints_raw"]
+                t0, t1 = sorted((p[tc], q[tc]))
+                # local: only clip where the footprint faces this wall
+                if nhi[tax] < t0 - WALL_TOUCH or nlo[tax] > t1 + WALL_TOUCH:
+                    continue
+                v, side = s["plane_raw_m"], s["interior_side_raw"]
+                if side > 0:               # interior below the plane
+                    _axis_clip(nlo, nhi, axi, -np.inf, v)
+                else:
+                    _axis_clip(nlo, nhi, axi, v, np.inf)
+            else:
+                if not _conn_overlap(s, nlo, nhi):
+                    continue
+                n2 = np.asarray(s["inward_normal_raw"], float)
+                c = float(s["plane_offset_raw"])
+                corners2 = np.array([[x, z] for x in (nlo[0], nhi[0])
+                                     for z in (nlo[2], nhi[2])], float)
+                if float((corners2 @ n2 - c).min()) >= 0.0:
+                    continue               # already fully inside
+                # largest axis-aligned box inside the half-plane: cut
+                # along x OR z to satisfy the worst remaining corner,
+                # keep whichever cut preserves more footprint area
+                cands = []
+                for axi, comp in ((0, 0), (2, 1)):
+                    oax = 2 - axi
+                    ocomp = 1 - comp
+                    na = float(n2[comp])
+                    if abs(na) < 1e-9:
+                        continue
+                    om = min(float(nlo[oax]) * float(n2[ocomp]),
+                             float(nhi[oax]) * float(n2[ocomp]))
+                    bound = (c - om) / na
+                    clo, chi = float(nlo[axi]), float(nhi[axi])
+                    if na > 0:
+                        clo = max(clo, bound)
+                    else:
+                        chi = min(chi, bound)
+                    if chi - clo < MIN_SLAB:
+                        continue
+                    area = (chi - clo) * (float(nhi[oax]) - float(nlo[oax]))
+                    cands.append((area, axi, clo, chi))
+                if cands:
+                    _, axi, clo, chi = max(cands)
+                    nlo[axi], nhi[axi] = clo, chi
+                # no candidate = the box cannot fit inside at MIN_SLAB;
+                # leave it — D1: partial outside is not dragged, and
+                # fully-outside was dropped before shipping
     d_lo, d_hi = nlo - olo, nhi - ohi
     if not (np.abs(d_lo) > 1e-6).any() and not (np.abs(d_hi) > 1e-6).any():
         return nlo, nhi, None
@@ -688,9 +942,13 @@ def ship_box(lo, hi, rule):
 
 
 def in_bounds(eye):
-    return (XLO + WALL_PAD < eye[0] < XHI - WALL_PAD
-            and ZLO + WALL_PAD < eye[2] < ZHI - WALL_PAD
-            and CEIL + WALL_PAD < eye[1] < FLOOR - WALL_PAD)
+    if not (CEIL + WALL_PAD < eye[1] < FLOOR - WALL_PAD):
+        return False
+    if POLY is None:
+        return (XLO + WALL_PAD < eye[0] < XHI - WALL_PAD
+                and ZLO + WALL_PAD < eye[2] < ZHI - WALL_PAD)
+    p2 = np.array([[float(eye[0]), float(eye[2])]])
+    return bool(_pip(p2)[0]) and float(_dist_outline(p2)[0]) > WALL_PAD
 
 
 def empty_at(eye):
@@ -991,6 +1249,7 @@ PARAMS = {"SHELL_EPS": SHELL_EPS, "WALL_TOUCH": WALL_TOUCH,
           "TOP_EDGE_PX": TOP_EDGE_PX,
           "TOP_FIT_RETRIES": TOP_FIT_RETRIES,
           "TOP_RESHOOT_SAFETY": TOP_RESHOOT_SAFETY,
+          "OUTSIDE_DROP_M": OUTSIDE_DROP_M,
           "DET_PRIOR_MIN": DET_PRIOR_MIN,
           "DET_EDGE_PENALTY": DET_EDGE_PENALTY,
           "DET_EDGE_PX": DET_EDGE_PX}
@@ -1300,6 +1559,12 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
         print("[vote]  perp: no detection - original box kept", flush=True)
         return None, None, rec, strip
     rec["score"] = round(float(best[0]), 3)
+    # CACHE THE RACE (user ruling 2026-08-09, the obj_018 regression):
+    # the ranking's full candidate list is evidence — without it nobody
+    # can tell after the fact whether the winner beat a rival or ran
+    # unopposed (obj_018's small-light candidate had to be recovered by
+    # re-running the detector on the cached render).
+    rec["det_choice"] = best[2]
     mask = sam_mask(img, best[1], DIL_ISO)
     ov = img.convert("RGBA")
     layer = Image.new("RGBA", ov.size, (0, 0, 0, 0))
@@ -1453,6 +1718,8 @@ def perp_for_exempt(nid, name, lo0, hi0, plane):
 # ================= per-object: slice -> render -> detect -> vote =======
 cm_objects = []
 kept_exempt = []
+dropped_outside = []    # D1 (W5): entirely-outside boxes — recorded,
+                        # never shipped
 
 
 # ---- cone_map.html ROW SIDECARS (partial-runs-first, 2026-08-08) -----
@@ -1559,6 +1826,43 @@ for n in nodes:
     print(f"[vote] {nid} {name}", flush=True)
     clear_rows(nid)     # this run owns this id's cone-map row from here
 
+    # OUTSIDE-THE-SHELL DROP (D1 user ruling 2026-08-09, W5): a box
+    # whose footprint sits ENTIRELY outside the room polygon AND
+    # farther than OUTSIDE_DROP_M from the outline is ignored — it
+    # does not ship and casts no vote — but never silently: the drop
+    # is a recorded row with the evidence. The distance guard keeps
+    # wall-zone openings alive: obj_034's glass door is entirely
+    # outside the outline (0.15 m) and must NOT be dropped.
+    if (POLY is not None and rect_outside_poly(lo0, hi0)
+            and _rect_outline_gap(lo0, hi0) > OUTSIDE_DROP_M):
+        _d2 = np.array([[0.5 * (lo0[0] + hi0[0]),
+                         0.5 * (lo0[2] + hi0[2])]])
+        _dist = round(float(_dist_outline(_d2)[0]), 3)
+        print(f"[vote]  footprint entirely OUTSIDE the shell polygon "
+              f"(centre {_dist} m from the outline) — dropped, not "
+              "shipped (D1)", flush=True)
+        dropped_outside.append(
+            {"id": nid, "name": name, "nviews_vote": 0,
+             "status": "dropped_outside_shell",
+             "boxes": {"original": {"lo": [round(float(v), 3)
+                                           for v in lo0],
+                                    "hi": [round(float(v), 3)
+                                           for v in hi0]}},
+             "rule": {"dropped": "footprint entirely outside the shell "
+                                 "polygon — not shipped (D1 ruling "
+                                 "2026-08-09)",
+                      "centre_dist_to_outline_m": _dist}})
+        save_row(nid, "vote", f"""
+<section>
+<h2>{nid} — {name} <span style='font-weight:400;font-size:13px'>
+(DROPPED — outside the shell polygon)</span></h2>
+<p>The resolved box's footprint lies entirely outside the room
+outline (centre {_dist} m beyond it). D1 ruling 2026-08-09: a box
+completely outside the shell is ignored — it does not ship and casts
+no vote. Recorded here so the drop is never silent.</p>
+</section>""")
+        continue
+
     # CEILING EXEMPTION (user ruling 2026-08-06 after R-S2-27): a flat
     # ceiling-mounted object has no side silhouette for the cardinals,
     # and the floor-anchored height band slices the whole room column
@@ -1598,12 +1902,35 @@ for n in nodes:
         print(f"[vote]  wall-protrusion {_protr:.2f} m at {_wid} — vote "
               "exempt, resolved box kept (in-plane extents from the perp "
               "re-box)", flush=True)
+        _seg = SEG_BY_ID.get(_wid) if POLY is not None else None
+        if _seg is not None and _seg["kind"] == "connector":
+            # D2 (user ruling 2026-08-09): connectors are the only
+            # non-cardinal geometry and the perp machinery is
+            # axis-aligned — no face-on camera exists; the resolved
+            # box is kept, and the record says so out loud.
+            add_exempt(nid, name, lo0, hi0, "kept_wall",
+                       "wall protrusion — vote exempt (geometric: "
+                       "touches or crosses the shell outline and "
+                       f"protrudes <= {WALL_PROTRUDE_MAX:.2f} m into "
+                       "the room)",
+                       {"wall": _wid, "protrusion_m": round(_protr, 3),
+                        "rebox": {"view": "perp", "plane": _wid,
+                                  "result": "kept - connector claimant "
+                                            "(no axis-aligned face-on "
+                                            "view; D2 ruling "
+                                            "2026-08-09)"}})
+            continue
         # PERP RE-BOX: same treatment as the ceiling, on this object's
         # own wall plane — the drifting glass door is the motivating case.
-        _wrow = next(w for w in WALLS if w[3] == _wid)
+        if _seg is not None:
+            _plane_row = (0 if _seg["axis"] == "x" else 2,
+                          float(_seg["plane_raw_m"]),
+                          int(_seg["interior_side_raw"]), _wid)
+        else:
+            _wrow = next(w for w in WALLS if w[3] == _wid)
+            _plane_row = (_wrow[0], _wrow[1], _wrow[2], _wid)
         _slo, _shi, _rec = perp_for_exempt(nid, name, lo0, hi0,
-                                           (_wrow[0], _wrow[1], _wrow[2],
-                                            _wid))
+                                           _plane_row)
         add_exempt(nid, name, lo0, hi0, "kept_wall",
                    "wall protrusion — vote exempt (geometric: touches "
                    "or crosses a shell wall plane and protrudes "
@@ -1808,8 +2135,9 @@ for n in nodes:
             # WHICH DETECTION WAS CHOSEN, AND WHY (user ruling
             # 2026-08-08). The model usually returns several boxes; the
             # ranking picks one and the loser is now visible next to the
-            # winner. Recorded ONLY here — the card re-detect and the
-            # perp re-box rank identically but do not record.
+            # winner. The card re-detect and the perp re-box rank
+            # identically and record their races too (det_choice,
+            # 2026-08-09).
             _cd = s_best[2]
             _cl = _cd["candidates"]
             _ci = _cd["chosen"]
@@ -2036,11 +2364,17 @@ for n in nodes:
     # splat fuzz the old ±eps band re-admitted. Votes zeroed at tally.
     # Census printed + recorded (measure-first doctrine).
     elig = ((dots[:, 1] < FLOOR - SHELL_EPS)
-            & (dots[:, 1] > CEIL + SHELL_EPS)
-            & (dots[:, 0] > XLO + SHELL_EPS)
-            & (dots[:, 0] < XHI - SHELL_EPS)
-            & (dots[:, 2] > ZLO + SHELL_EPS)
-            & (dots[:, 2] < ZHI - SHELL_EPS))
+            & (dots[:, 1] > CEIL + SHELL_EPS))
+    if POLY is None:
+        elig &= ((dots[:, 0] > XLO + SHELL_EPS)
+                 & (dots[:, 0] < XHI - SHELL_EPS)
+                 & (dots[:, 2] > ZLO + SHELL_EPS)
+                 & (dots[:, 2] < ZHI - SHELL_EPS))
+    else:
+        # W5: inside the outline by more than SHELL_EPS — the same
+        # half-space doctrine, walked over the polygon's segments
+        d2 = dots[:, [0, 2]]
+        elig &= _pip(d2) & (_dist_outline(d2) > SHELL_EPS)
     n_shell_dots = int((~elig).sum())
     print(f"[vote] slice: {len(dots):,} dots  [{slice_info}]  "
           f"(shell-plane ineligible: {n_shell_dots:,})", flush=True)
@@ -2191,6 +2525,9 @@ for n in nodes:
             vi = vv2[inb].astype(np.int64)
             cl[np.nonzero(inb)[0]] = mask[vi, ui]
             info["why"] = f"ok({best[0]:.2f})"
+            # same race-caching as the perp re-box (user ruling
+            # 2026-08-09)
+            info["det_choice"] = best[2]
             info["claimed"] = int(cl.sum())
             out.append((cl, info))
             print(f"[vote] {vname} ok({best[0]:.2f}) claims "
@@ -2727,6 +3064,8 @@ for _o in cm_objects:
     _o["prov"] = dict(PROV)
 for _kc in kept_exempt:
     _kc["prov"] = dict(PROV)
+for _dr in dropped_outside:
+    _dr["prov"] = dict(PROV)
 
 # ---- conemap.json (voted objects only) ------------------------------
 # written BEFORE the shell clip below, exactly as before: the cone-map
@@ -2803,7 +3142,8 @@ rep_path = rdir / "slicevote_report.json"
 results = merge_entries(rep_path, "results",
                         [{k: o[k] for k in ("id", "name", "nviews_vote",
                                             "boxes", "rule", "prov")}
-                         for o in cm_objects] + kept_exempt)
+                         for o in cm_objects]
+                        + kept_exempt + dropped_outside)
 rep_path.write_text(json.dumps(
     {"scene": SCENE, "stage": "slicevote",
      "status": "UNTESTED-PREVIEW", "gate": a.gate,
@@ -2891,4 +3231,4 @@ print(f"[vote] statuses {by_status}; run_kind={RUN_KIND} "
       f"mixed_provenance={_hdr['mixed_provenance']} "
       f"canon_eligible={_hdr['canon_eligible']}; wrote cone_map.html "
       f"+ conemap.json + scene_manifest_slicevote_preview.json "
-      f"+ slicevote_report.json (⚠ UNTESTED-PREVIEW)", flush=True)
+      f"+ slicevote_report.json (UNTESTED-PREVIEW)", flush=True)

@@ -273,7 +273,7 @@ def llm_map(queue, names, cache, model, cwd):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=jc.MODEL)
     ap.add_argument("--dry-run", action="store_true",
                     help="print the plan; no LLM call, no write")

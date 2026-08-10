@@ -244,6 +244,48 @@ def build_shell_nodes(shell):
                                   (shell.get("collider") or {}).get(
                                       "planes", []) if p["axis"] == "y"]}),
     ]
+    # W5 (2026-08-10, unattended-run audit): a shell carrying the POLYGON
+    # block builds its wall nodes from the polygon SEGMENTS — one node
+    # per segment (cardinal planes + connectors), ids arch_wall_00..NN,
+    # raw-frame values precomputed by room_shell.py. A shell without the
+    # block (polygon fit failed / old scene) falls through to the v1
+    # one-wall-per-axis-side loop below unchanged.
+    poly = shell.get("polygon")
+    if poly:
+        for s in poly["segments"]:
+            ev = {"measured": s["status"] == "measured",
+                  "traced_ink_fraction": s["traced_ink_fraction"],
+                  "length_m": s["length_m"],
+                  **({"fit": s["evidence"]} if s.get("evidence") else {})}
+            y_ext = sorted([round(floor_raw, 3), round(ceil_raw, 3)])
+            if s["kind"] != "connector":
+                axc = 0 if s["axis"] == "x" else 2
+                normal = [0.0, 0.0, 0.0]
+                normal[axc] = float(-s["interior_side_raw"])
+                tc = 1 if s["axis"] == "x" else 0
+                p, q = s["endpoints_raw"]
+                t0, t1 = sorted((p[tc], q[tc]))
+                ns.append(node(
+                    "arch_" + s["id"], "wall",
+                    {"axis": s["axis"], "value_raw": s["plane_raw_m"],
+                     "inward_normal_raw": normal,
+                     "note": "polygon shell segment (W4 trace->close->"
+                             "merge; majority plane)"},
+                    {("z_raw" if s["axis"] == "x" else "x_raw"): [t0, t1],
+                     "y_raw": y_ext}, ev))
+            else:
+                n2 = s["inward_normal_raw"]
+                ns.append(node(
+                    "arch_" + s["id"], "wall",
+                    {"axis": None, "kind": "connector",
+                     "inward_normal_raw": [n2[0], 0.0, n2[1]],
+                     "offset_raw": s["plane_offset_raw"],
+                     "note": "polygon connector segment — angled outline "
+                             "piece; defines interior only (no "
+                             "axis-aligned plane)"},
+                    {"endpoints_raw": s["endpoints_raw"], "y_raw": y_ext},
+                    ev))
+        return ns
     for w in shell["walls"]:
         col = 0 if w["axis"] == "x" else 2
         tcol = 2 if w["axis"] == "x" else 0
@@ -343,7 +385,7 @@ def build_envelope_nodes(env):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--manifest", default=MANIFEST_DEFAULT)
     ap.add_argument("--pool", default=POOL_DEFAULT)
     ap.add_argument("--crop-src", default=CROPSRC_DEFAULT)

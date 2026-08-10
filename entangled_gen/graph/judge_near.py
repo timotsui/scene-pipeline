@@ -367,7 +367,7 @@ def selftest():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--concurrency", type=int, default=CONCURRENCY)
     ap.add_argument("--smoke", action="store_true")

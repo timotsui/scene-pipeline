@@ -4,7 +4,7 @@ camera set that looks at a node's box.
 Lifted verbatim out of experiments/pool_retake.py on 2026-08-09 for
 graph/node_views.py, for the same reason vote_cams.py was lifted out of
 slicevote.py: two copies of a camera definition is one copy too many.
-pool_retake stays the owner of the CARVE argument; this module owns only
+pool_retake stays the owner of the VOTE argument; this module owns only
 the lens.
 
 CONTRACT: pure camera math. Takes explicit arguments, closes over

@@ -34,6 +34,7 @@ import trimesh
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+from arch_walls import wall_axis_planes  # noqa: E402
 
 sys.path.insert(0, str(paths.REPO_ROOT / "composition"))
 from assets_thor import load_asset  # noqa: E402
@@ -194,12 +195,15 @@ def main():
                        .read_text(encoding="utf-8"))
     r2r = np.array(man["frame"].get("raw_to_render", [1, 1, 1]),
                    np.float32)
+    # .get + skip: a W5 polygon CONNECTOR wall carries no axis-aligned
+    # value_raw — it must not blow up this map (outline-only geometry)
     shell = {n["id"]: n["geometry"]["plane"]["value_raw"]
-             for n in graph["nodes"] if n["id"].startswith("arch_")}
-    wx = sorted((shell["arch_wall_x_low"] * r2r[0],
-                 shell["arch_wall_x_high"] * r2r[0]))
-    wz = sorted((shell["arch_wall_z_low"] * r2r[2],
-                 shell["arch_wall_z_high"] * r2r[2]))
+             for n in graph["nodes"] if n["id"].startswith("arch_")
+             and (n["geometry"].get("plane") or {}).get("value_raw")
+             is not None}
+    xs_raw, zs_raw, _floor_raw, _ceil_raw = wall_axis_planes(graph["nodes"])
+    wx = sorted((xs_raw[0] * r2r[0], xs_raw[-1] * r2r[0]))
+    wz = sorted((zs_raw[0] * r2r[2], zs_raw[-1] * r2r[2]))
     room_c = ((wx[0] + wx[1]) / 2, (wz[0] + wz[1]) / 2)
 
     # OBSERVED facing (describe pass v8, user ruling: define forward

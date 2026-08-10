@@ -305,7 +305,7 @@ def parse_flags(text, node_ids, edge_keys):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--digest-only", action="store_true",
                     help="print the digest, no LLM call, no write")

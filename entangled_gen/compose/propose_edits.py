@@ -101,6 +101,7 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+from arch_walls import wall_axis_planes  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -392,8 +393,18 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
         return
     boxes = {n["id"]: n["geometry"]
              for n in graph["resolved"]["nodes"]}
+    # .get + skip: a W5 polygon CONNECTOR wall carries no axis-aligned
+    # value_raw — it must not blow up this map (outline-only geometry)
     shell = {n["id"]: n["geometry"]["plane"]["value_raw"]
-             for n in graph["nodes"] if n["id"].startswith("arch_")}
+             for n in graph["nodes"] if n["id"].startswith("arch_")
+             and (n["geometry"].get("plane") or {}).get("value_raw")
+             is not None}
+    # wall axis from the NODE, never from the id string — the old
+    # `"_x_" in wall` test is always false on W5 ids (arch_wall_00..)
+    # and silently put every wall slab on the wrong axis
+    wall_axis = {n["id"]: (n["geometry"].get("plane") or {}).get("axis")
+                 for n in graph["nodes"]
+                 if n["id"].startswith("arch_wall")}
     parent_id = {}
     for o in sbL["objects"]:
         topt = (o.get("supported_by") or [{}])[0]
@@ -461,10 +472,9 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
         extending h in the UP direction."""
         return _mk_box(x, z, w, d,
                        base if up > 0 else base - h, h)
-    xs = sorted((shell["arch_wall_x_low"],
-                 shell["arch_wall_x_high"]))
-    zs = sorted((shell["arch_wall_z_low"],
-                 shell["arch_wall_z_high"]))
+    xs_raw, zs_raw, _floor_raw, _ceil_raw = wall_axis_planes(graph["nodes"])
+    xs = (xs_raw[0], xs_raw[-1])
+    zs = (zs_raw[0], zs_raw[-1])
     room = (xs[0] + 0.05, zs[0] + 0.05, xs[1] - 0.05, zs[1] - 0.05)
     floor_rects = [_footprint(g) for oid, g in boxes.items()
                    if g["aabb_min"][1] < floor_y + 0.5
@@ -678,10 +688,14 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
             """Slab embedded in the wall plane, height-clamped into
             the room (the window-through-the-ceiling fix)."""
             t = 0.1
+            if wall_axis.get(wall) not in ("x", "z"):
+                fail(f"wall {wall} has no axis-aligned plane (polygon "
+                     "connector) — cannot embed a slab", method)
+                return
             lo = min(floor_y, shell["arch_ceiling"])
             hi = max(floor_y, shell["arch_ceiling"])
             cy = min(hi - h / 2, max(lo + h / 2, cy))
-            if "_x_" in wall:
+            if wall_axis[wall] == "x":
                 box = _mk_box(shell[wall], other, t, w, cy - h / 2, h)
             else:
                 box = _mk_box(other, shell[wall], w, t, cy - h / 2, h)
@@ -692,12 +706,13 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
             if ref and ref in allb:
                 rc = allb[ref]
                 cy = rc["center"][1]
-                other = rc["center"][2] if "_x_" in anc \
+                other = rc["center"][2] if wall_axis.get(anc) == "x" \
                     else rc["center"][0]
             else:
                 cy = floor_y + up * 1.4
                 other = (room[1] + room[3]) / 2 \
-                    if "_x_" in anc else (room[0] + room[2]) / 2
+                    if wall_axis.get(anc) == "x" \
+                    else (room[0] + room[2]) / 2
             wall_slab(anc, cy, other, f"wall:{anc}")
         elif sup == "floor":
             scan_floor()
@@ -713,7 +728,8 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
                            "ceiling_hang", group=("ceil", None))
                 elif surf:   # a wall: embed behind/at the anchor
                     cy = g["center"][1]
-                    other = g["center"][2] if "_x_" in surf \
+                    other = g["center"][2] \
+                        if wall_axis.get(surf) == "x" \
                         else g["center"][0]
                     wall_slab(surf, cy, other,
                               f"wall_via:{anc}:{surf}")
@@ -943,11 +959,10 @@ def main():
         # nothing enters the scene state before screening rules.
         boxes = {n["id"]: n["geometry"]
                  for n in graph["resolved"]["nodes"]}
-        shell = {n["id"]: n["geometry"]["plane"]["value_raw"]
-                 for n in graph["nodes"] if n["id"].startswith("arch_")}
-        dims = (f'room ~{abs(shell["arch_wall_x_low"] - shell["arch_wall_x_high"]):.1f} x '
-                f'{abs(shell["arch_wall_z_low"] - shell["arch_wall_z_high"]):.1f} m, '
-                f'height {abs(shell["arch_ceiling"] - shell["arch_floor"]):.1f} m')
+        xs_raw, zs_raw, floor_raw, ceil_raw = wall_axis_planes(graph["nodes"])
+        dims = (f'room ~{xs_raw[-1] - xs_raw[0]:.1f} x '
+                f'{zs_raw[-1] - zs_raw[0]:.1f} m, '
+                f'height {abs(ceil_raw - floor_raw):.1f} m')
         arch_ids = [n["id"] for n in graph["nodes"]
                     if n["id"].startswith("arch_")]
 

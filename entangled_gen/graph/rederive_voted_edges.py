@@ -223,9 +223,9 @@ def main():
     env = {n["id"]: n for n in graph["nodes"] if n["source"] == "envelope"}
     floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
     ceil_y = env["arch_ceiling"]["geometry"]["plane"]["value_raw"]
-    walls = {nid: n["geometry"]["plane"] for nid, n in env.items()
-             if nid.startswith("arch_wall") and
-             n["geometry"].get("plane", {}).get("axis") in ("x", "z")}
+    # W5: full geometry (plane + extent) — see build_edges.wall_claim_dist
+    walls = {nid: n["geometry"] for nid, n in env.items()
+             if nid.startswith("arch_wall")}
 
     d = derive_edges(det, env, floor_y, ceil_y, walls)
 

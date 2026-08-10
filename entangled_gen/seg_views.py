@@ -58,7 +58,7 @@ def overlay_masks(img, masks):
 # ---------------- run ----------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="playroom")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--views-dir", default="", help="override views directory")
     ap.add_argument("--glob", default="gpu_yaw*.webp", help="view filename glob")
     ap.add_argument("--out-dir", default="", help="override output directory")

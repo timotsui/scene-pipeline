@@ -24,7 +24,7 @@ WALL_LABELS = {"window", "door", "curtain", "picture"}  # not floor obstacles
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="playroom")
+    ap.add_argument("--scene", required=True)
     args = ap.parse_args()
     sc = args.scene
 

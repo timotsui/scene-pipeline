@@ -693,7 +693,7 @@ def build_page(g, scene, scene_dir):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     args = ap.parse_args()
     scene_dir = paths.scene_dir(args.scene)
     gp = scene_dir / "scene_graph.json"

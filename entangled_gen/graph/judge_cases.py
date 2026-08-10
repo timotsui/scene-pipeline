@@ -381,7 +381,7 @@ def case_hash(*parts):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--sheets-only", action="store_true")
     args = ap.parse_args()

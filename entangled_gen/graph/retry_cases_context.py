@@ -100,7 +100,7 @@ def apply_report(sdir):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=jc.MODEL)
     ap.add_argument("--sheets-only", action="store_true",
                     help="build sheet + print prompt; NO model call")

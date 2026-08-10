@@ -15,7 +15,21 @@ Shared (not per scene): out/report.html, out/cache, out/archive, out/logs,
 out/viewer_caps, out/_debug. Every script builds paths through here.
 """
 import json as _json
+import sys as _sys
 from pathlib import Path
+
+# CONSOLE ENCODING GUARD (2026-08-10, unattended-run audit): on Windows a
+# piped/redirected stdout is cp1252 (or the OEM codepage), and a print()
+# containing any character outside it KILLS the stage with
+# UnicodeEncodeError — a w5-partial slicevote run died on its final
+# status line this way. Every stage imports paths, so one guard here
+# covers the whole pipeline: utf-8 out, and errors="replace" so no
+# console, however exotic, can crash a print again.
+for _s in (_sys.stdout, _sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError, OSError):
+        pass          # non-reconfigurable stream (embedded/captured) — fine
 
 HERE = Path(__file__).parent
 

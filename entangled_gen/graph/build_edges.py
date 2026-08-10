@@ -117,6 +117,13 @@ FLOOR_TOL = 0.15           # m, |gap| band around the floor plane
 MIN_FOOT_OVERLAP = 0.30    # fraction of a's xz footprint over b
 IN_FRAC = 0.60             # overlap volume / smaller volume
 WALL_TOL = 0.10            # m, box-to-plane distance for IN_WALL / ceiling
+WALL_TANGENT_SLACK = 0.10  # m, W5 polygon shells: a wall SEGMENT only
+                           # claims a box whose footprint overlaps its
+                           # traced extent (+ this slack) — an infinite
+                           # plane must not claim a distant box (the
+                           # obj_001 disease, R-S2-61). v1 walls carry a
+                           # room-spanning extent, so behaviour there is
+                           # unchanged.
 INTERP_MIN_VOL = 0.001     # m3
 SC_IOU_CONF = 0.60         # SAME_CANDIDATE confident zone: IoU >= this
 SC_IOU_MIN = 0.40          # SAME_CANDIDATE floor: IoU >= this
@@ -126,6 +133,48 @@ SC_CONTAIN = 0.90          # gray zone also needs containment >= this
 def h(y_raw):
     """Physical height from raw y (physical up = -y)."""
     return -y_raw
+
+
+def wall_claim_dist(g, geom):
+    """Distance from a box to ONE wall segment's claim zone, or None
+    when the box is outside it (W5 polygon shells, 2026-08-10 audit).
+    Axis walls: perpendicular interval-plane distance, guarded by the
+    segment's tangent extent when the node records one. Connectors
+    (axis None): |signed distance| of the footprint corners to the
+    angled line, guarded by the segment span. Returns (d, evidence)."""
+    plane = (geom or {}).get("plane") or {}
+    ext = (geom or {}).get("extent") or {}
+    if plane.get("axis") in ("x", "z"):
+        k = 0 if plane["axis"] == "x" else 2
+        tcol = 2 if plane["axis"] == "x" else 0
+        span = ext.get("z_raw" if plane["axis"] == "x" else "x_raw")
+        if span:
+            t0, t1 = sorted(span)
+            if (g["aabb_max"][tcol] < t0 - WALL_TANGENT_SLACK
+                    or g["aabb_min"][tcol] > t1 + WALL_TANGENT_SLACK):
+                return None
+        d = interval_plane_dist(g["aabb_min"][k], g["aabb_max"][k],
+                                plane["value_raw"])
+        return d, {"wall_axis": plane["axis"],
+                   "wall_value_raw": plane["value_raw"]}
+    if plane.get("kind") == "connector":
+        n2 = plane["inward_normal_raw"]
+        c = plane["offset_raw"]
+        corners = [(x, z) for x in (g["aabb_min"][0], g["aabb_max"][0])
+                   for z in (g["aabb_min"][2], g["aabb_max"][2])]
+        sd = [x * n2[0] + z * n2[2] - c for x, z in corners]
+        d = 0.0 if (min(sd) < 0.0 < max(sd)) else min(abs(v) for v in sd)
+        ep = ext.get("endpoints_raw") or []
+        if len(ep) == 2:
+            (px, pz), (qx, qz) = ep
+            dx, dz = qx - px, qz - pz
+            L = (dx * dx + dz * dz) ** 0.5 or 1.0
+            ts = [((x - px) * dx + (z - pz) * dz) / L for x, z in corners]
+            if (max(ts) < -WALL_TANGENT_SLACK
+                    or min(ts) > L + WALL_TANGENT_SLACK):
+                return None
+        return d, {"wall_axis": "connector", "wall_value_raw": None}
+    return None
 
 
 def overlap_1d(lo1, hi1, lo2, hi2):
@@ -183,7 +232,8 @@ def derive_edges(det, env, floor_y, ceil_y, walls):
     env    envelope nodes keyed by id (arch_floor / arch_ceiling /
            arch_wall*), each with geometry.plane + evidence
     floor_y / ceil_y   raw-y plane values
-    walls  {wall id: plane dict} for the x/z wall planes
+    walls  {wall id: geometry dict (plane + extent)} for ALL wall
+           segments — axis planes AND connectors (W5 polygon shells)
 
     Extracted from main() 2026-08-07 for the Phase-B2 loop-back
     re-derive (graph/rederive_voted_edges.py), which runs the same
@@ -272,24 +322,25 @@ def derive_edges(det, env, floor_y, ceil_y, walls):
     for n in det:
         g = n["geometry"]
         best = None
-        for wid, plane in walls.items():
-            k = 0 if plane["axis"] == "x" else 2
-            d = interval_plane_dist(g["aabb_min"][k], g["aabb_max"][k],
-                                    plane["value_raw"])
+        for wid, wgeom in walls.items():
+            hit = wall_claim_dist(g, wgeom)
+            if hit is None:
+                continue          # box outside this segment's claim zone
+            d, wev = hit
             if best is None or d < best[1]:
-                best = (wid, d, plane)
+                best = (wid, d, wev)
         if best and best[1] <= WALL_TOL:
-            wid, d, plane = best
+            wid, d, wev = best
             # on-wall footprint: the node's box projected onto the wall —
             # tangent (horizontal along the wall) + vertical intervals, RAW.
-            tcol = 2 if plane["axis"] == "x" else 0
-            add("IN_WALL", n["id"], wid,
-                {"wall_distance_m": round(d, 3), "wall_axis": plane["axis"],
-                 "wall_value_raw": plane["value_raw"],
-                 "on_wall_tangent_raw": [round(g["aabb_min"][tcol], 3),
-                                         round(g["aabb_max"][tcol], 3)],
-                 "on_wall_y_raw": [round(g["aabb_min"][1], 3),
-                                   round(g["aabb_max"][1], 3)]}, [])
+            ev = {"wall_distance_m": round(d, 3), **wev,
+                  "on_wall_y_raw": [round(g["aabb_min"][1], 3),
+                                    round(g["aabb_max"][1], 3)]}
+            if wev["wall_axis"] in ("x", "z"):
+                tcol = 2 if wev["wall_axis"] == "x" else 0
+                ev["on_wall_tangent_raw"] = [round(g["aabb_min"][tcol], 3),
+                                             round(g["aabb_max"][tcol], 3)]
+            add("IN_WALL", n["id"], wid, ev, [])
         dc = interval_plane_dist(g["aabb_min"][1], g["aabb_max"][1], ceil_y)
         if dc <= WALL_TOL:
             add("ATTACHED", n["id"], "arch_ceiling",
@@ -386,11 +437,15 @@ def derive_edges(det, env, floor_y, ceil_y, walls):
         dc = interval_plane_dist(g["aabb_min"][1], g["aabb_max"][1], ceil_y)
         cands.append((dc, "ceiling", "arch_ceiling",
                       {"distance_m": round(dc, 3)}))
-        for wid, plane in walls.items():
-            k = 0 if plane["axis"] == "x" else 2
-            d = interval_plane_dist(g["aabb_min"][k], g["aabb_max"][k],
-                                    plane["value_raw"])
+        for wid, wgeom in walls.items():
+            hit = wall_claim_dist(g, wgeom)
+            if hit is None:
+                continue
+            d, wev = hit
             cands.append((d, "wall", wid, {"distance_m": round(d, 3)}))
+            if wev["wall_axis"] not in ("x", "z"):
+                continue          # connectors record no parallel surfaces
+            k = 0 if wev["wall_axis"] == "x" else 2
             for ps in (env[wid]["evidence"].get("parallel_surfaces") or []):
                 d2 = interval_plane_dist(g["aabb_min"][k], g["aabb_max"][k],
                                          ps["value_raw"])
@@ -504,7 +559,7 @@ def derive_edges(det, env, floor_y, ceil_y, walls):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     args = ap.parse_args()
     gpath = paths.scene_dir(args.scene) / "scene_graph.json"
     graph = json.loads(gpath.read_text())
@@ -515,10 +570,11 @@ def main():
     floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
     ceil_y = env["arch_ceiling"]["geometry"]["plane"]["value_raw"]
     # any wall node (measured room_shell segments OR legacy grid-bound
-    # placeholders) — id-agnostic so N-segment shells just work
-    walls = {nid: n["geometry"]["plane"] for nid, n in env.items()
-             if nid.startswith("arch_wall") and
-             n["geometry"].get("plane", {}).get("axis") in ("x", "z")}
+    # placeholders) — id-agnostic so N-segment shells just work. W5:
+    # values are the FULL geometry (plane + extent) so wall_claim_dist
+    # can guard by segment extent and handle connectors (axis None).
+    walls = {nid: n["geometry"] for nid, n in env.items()
+             if nid.startswith("arch_wall")}
 
     d = derive_edges(det, env, floor_y, ceil_y, walls)
     edges, nesting = d.edges, d.nesting

@@ -54,6 +54,7 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+from arch_walls import arch_label  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'graph'))
 import scene_state  # noqa: E402
 
@@ -162,10 +163,6 @@ BENEATH_TOL = 0.30       # |object bottom - candidate top| window; raised
 WALL_NEAR = 0.15         # wall/ceiling/floor proximity worth reporting
 NEAR_SCAN = 0.05         # new near-contact pairs not already in the graph
 MIN_OVERLAP_FRAC = 0.05  # of the upper object's base, for a beneath candidate
-
-ARCH_LABEL = {"arch_floor": "the floor", "arch_ceiling": "the ceiling",
-              "arch_wall_x_low": "wall x_low", "arch_wall_x_high": "wall x_high",
-              "arch_wall_z_low": "wall z_low", "arch_wall_z_high": "wall z_high"}
 
 TEMPLATE = """\
 {firm}You are auditing the support structure of objects extracted from a \
@@ -457,7 +454,7 @@ def build_candidates(nodes, arch_planes, edges, beneath_tol=BENEATH_TOL):
                          if g < 0 else f"face {face} is {cm(g)} from the "
                          f"wall plane")
                 add(other, "edge", e["type"],
-                    f"{e['type']} {ARCH_LABEL[other]} ({other}) "
+                    f"{e['type']} {arch_label(other)} ({other}) "
                     f"[graph edge]: {m}")
             else:
                 add(other, "edge", e["type"],
@@ -503,12 +500,12 @@ def build_candidates(nodes, arch_planes, edges, beneath_tol=BENEATH_TOL):
                 m = (f"face {face} penetrates the wall plane {cm(-g)}"
                      if g < 0 else f"face {face} is {cm(g)} from the wall")
                 add(aid, "computed", "near-wall",
-                    f"near {ARCH_LABEL[aid]} ({aid}) [computed]: {m}")
+                    f"near {arch_label(aid)} ({aid}) [computed]: {m}")
         if not any(a.startswith("arch_wall") for a in partners):
             aid = min(wall_d, key=lambda a: abs(wall_d[a][0]))
             g, face = wall_d[aid]
             add(aid, "computed", "nearest-wall",
-                f"nearest wall {ARCH_LABEL[aid]} ({aid}) [computed, "
+                f"nearest wall {arch_label(aid)} ({aid}) [computed, "
                 f"always offered]: face {face} is {cm(abs(g))} "
                 f"{'past' if g < 0 else 'from'} the wall plane")
         if "arch_ceiling" not in partners:
@@ -535,7 +532,7 @@ def build_candidates(nodes, arch_planes, edges, beneath_tol=BENEATH_TOL):
         # about mis-lifted boxes (a door 30 cm from every wall)
         near = [(box_gap(A, boxes[bid]), f"{names[bid]} ({bid})")
                 for bid in boxes if bid != oid]
-        near += [(abs(g), ARCH_LABEL[aid] + f" ({aid})")
+        near += [(abs(g), arch_label(aid) + f" ({aid})")
                  for aid, (g, _f) in wall_d.items()]
         near.sort(key=lambda t: t[0])
         context.append("nearest things (box-to-box): " + " · ".join(

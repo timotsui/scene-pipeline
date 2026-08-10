@@ -138,7 +138,7 @@ def iou3d(lo1, hi1, lo2, hi2):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="playroom")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--views-dir", default="")
     ap.add_argument("--seg-dir", default="")
     ap.add_argument("--ply", default="")

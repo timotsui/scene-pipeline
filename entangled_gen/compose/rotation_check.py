@@ -59,6 +59,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 EG = Path(__file__).parent.parent
 sys.path.insert(0, str(EG))
 import paths  # noqa: E402
+from arch_walls import wall_axis_planes  # noqa: E402
 sys.path.insert(0, str(paths.REPO_ROOT / "composition"))
 from place import look_at_pose  # noqa: E402
 
@@ -553,12 +554,9 @@ def load_scene(scene):
     r2r = np.array(man["frame"].get("raw_to_render", [1, 1, 1]), np.float32)
     to_render = np.diag([r2r[0], r2r[1], r2r[2], 1.0])
 
-    shell_planes = {n["id"]: n["geometry"]["plane"]["value_raw"]
-                    for n in graph["nodes"] if n["id"].startswith("arch_")}
-    wx = sorted((shell_planes["arch_wall_x_low"] * r2r[0],
-                 shell_planes["arch_wall_x_high"] * r2r[0]))
-    wz = sorted((shell_planes["arch_wall_z_low"] * r2r[2],
-                 shell_planes["arch_wall_z_high"] * r2r[2]))
+    xs_raw, zs_raw, _floor_raw, _ceil_raw = wall_axis_planes(graph["nodes"])
+    wx = sorted((xs_raw[0] * r2r[0], xs_raw[-1] * r2r[0]))
+    wz = sorted((zs_raw[0] * r2r[2], zs_raw[-1] * r2r[2]))
     room_c = np.array([(wx[0] + wx[1]) / 2, 0.0, (wz[0] + wz[1]) / 2])
 
     sc = trimesh.load(cdir / "fitted_preview.glb", force="scene")
@@ -783,7 +781,7 @@ def ref_sheet(scene_dir, member, oid, out_path, compass=None):
 # --------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="bedroom_marble")
+    ap.add_argument("--scene", required=True)
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--cams", default="A,B")
     ap.add_argument("--items", default="all",
