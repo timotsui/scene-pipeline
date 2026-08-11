@@ -446,6 +446,38 @@ above the lock**, including under J8's eight concurrent workers. No
 crashes. Compare the unlocked July record on the same card: 2415 MHz,
 203 W.
 
+---
+
+## 4d. THE GLTS COMPARISON — cost numbers, and what they do NOT mean
+
+`glts_run.py` runs the GL-TreeSearch baseline on one of our scenes using
+THE SAME MARBLE PROMPT the scene was generated from — the one input the
+two methods genuinely share. Isolation is GLTS's own `PROJECT_ROOT`, one
+directory per scene; the Blender phase takes `paths.gpu_lock` and the
+layout phase does not, which is what makes `--parallel` worth having.
+
+**OUR COST, measured, and the two numbers are NOT alike:**
+
+```
+bedroom  (autotest_bedroom)  57.0 min  10 stages   vote 2538s = 74% of it
+living   (autotest_living)    1.9 min  10 stages   NO VOTE IN THIS NUMBER
+```
+
+⚠ **The living-room figure is not a full-pipeline cost and must never be
+quoted as one.** That clone was made from a scene whose vote had already
+been run, so its 1.9 minutes is the chain MINUS its single most expensive
+stage. The bedroom number is the honest one: a scene that had detection
+but no vote, taken all the way to `grouped`.
+
+⚠ Neither number includes the geometric core (crop / seg / lift), which
+builds the `record` layer from the capture. That work has no counterpart
+on the GLTS side at all — GLTS never looks at a room.
+
+⚠ The GLTS runs in flight stop at stage 13 (layout only). The prior full
+bedroom run, through Blender, took ~87 min (R-S2 2026-07-14). Comparing
+our 57 min against a 13-stop GLTS run would flatter us; say which is
+which every time either number is used.
+
 ### Findings to carry (not fixed tonight)
 
 - ⚠ **THE CHAIN HAS NO JUDGE FOR A DUPLICATE THE VOTE ITSELF CREATES.**
