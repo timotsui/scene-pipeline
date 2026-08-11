@@ -103,6 +103,16 @@ verdict, snapped_cut, pieces}] — never a tree. Verdicts are a SIDECAR
 (graph/split_cuts.json). This judge NEVER edits the graph, the vote or
 multiplicity.json — materialize is the editor.
 
+TWO RULES ABOUT THE SIDECAR (2026-08-11 audit; see main()):
+  * AN EMPTY DOCKET IS SUCCESS. A scene where J8 split nothing is an
+    ordinary outcome — the file is written with an empty `cases` list and
+    the stage exits 0. Only a MISSING graph/multiplicity.json is an error
+    (the previous stage never ran).
+  * MERGE-ON-WRITE. An --only run REPAIRS the cases it names and keeps
+    every other case on disk verbatim (the rule the vote and J8 follow).
+    A corrupt file on disk STOPS the stage: continuing would silently drop
+    every case this run did not touch.
+
 Run:  python graph/split_cuts.py --scene living_marble [--sheets-only]
       [--only obj_011,...] [--rounds 3] [--model sonnet]
 """
@@ -768,7 +778,12 @@ def render_region(splat, box, out_dir, name, label):
     cmd = (f"wsl -d Ubuntu-24.04 -- bash -c \"cd /root/splat_analyzer && "
            f"{py} '{scr}' --targets '{to_wsl(tgt)}' --ply '{to_wsl(ply)}' "
            f"--out '{to_wsl(out_dir)}' --res {RES}\"")
-    subprocess.run(cmd, check=True, timeout=900, shell=True)
+    # ONE CARD, ONE RENDER AT A TIME (2026-08-11). The lock is held only
+    # around the subprocess, never around the ply subsetting above or the
+    # cleanup below — see paths.gpu_lock for why the GPU is the one
+    # resource allowed a shared lock file.
+    with paths.gpu_lock(f"split_cuts render {tgt.stem}"):
+        subprocess.run(cmd, check=True, timeout=900, shell=True)
     ply.unlink(missing_ok=True)
     return png, t, n
 
@@ -1592,6 +1607,39 @@ def round_html(rec):
             + "<br>".join(bits) + f"</p>{img}</div>")
 
 
+def prev_cases_on_disk(path):
+    """The cases already recorded in graph/split_cuts.json — the other
+    half of the MERGE-ON-WRITE below.
+
+    A CORRUPT FILE IS FATAL, NEVER SWALLOWED (2026-08-11, unattended-run
+    audit; slicevote._load_list was changed the same day for the same
+    reason). This file is the ONLY record of the cases an --only run did
+    not re-judge. Starting over from an empty list here would rewrite the
+    whole-scene document with this run's one or two cases, materialize
+    would then ship every other SPLIT node UNCUT while J8 still says it
+    must be cut, and the stage would exit 0 with a printed line as the
+    entire alarm. Stopping is the only safe answer."""
+    if not path.exists():
+        print("[splitcuts] merge: graph/split_cuts.json absent - writing "
+              "THIS RUN'S cases only", flush=True)
+        return []
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        cases = doc.get("cases")
+        if not isinstance(cases, list):
+            raise ValueError("no 'cases' list")
+        return cases
+    except Exception as e:                                   # noqa: BLE001
+        raise SystemExit(
+            f"[splitcuts] FATAL: {path} is corrupt or unreadable ({e}). "
+            "Continuing would silently drop every SPLIT case this run did "
+            "not touch, because this file is the only record of them - "
+            "materialize would ship those nodes UNCUT while J8 still says "
+            "they must be cut. Nothing was written. If you meant to start "
+            "over, delete the file and re-run this stage in full (no "
+            "--only).")
+
+
 def write_case_sheet(d, case, rounds, pieces):
     body = "".join(round_html(r) for r in rounds) or \
         "<p class='meta'>no rounds.</p>"
@@ -1666,13 +1714,38 @@ def main():
         doubts = {n["id"]: n["doubts"]
                   for n in json.loads(df.read_text(encoding="utf-8"))["nodes"]}
 
+    if not isinstance(mult.get("cases"), list):
+        # A REAL ERROR: the J8 sidecar exists but is not a docket. That is
+        # a broken previous stage, not an empty one.
+        raise SystemExit("[splitcuts] graph/multiplicity.json carries no "
+                         "'cases' list - re-run "
+                         "graph/judge_multiplicity.py")
     docket = [c for c in mult["cases"]
               if (c.get("verdict") or {}).get("outcome") == "SPLIT"]
     if a.only:
-        keep = set(a.only.split(","))
+        keep = {i.strip() for i in a.only.split(",") if i.strip()}
         docket = [c for c in docket if c["id"] in keep]
+        absent = sorted(keep - {c["id"] for c in docket})
+        if absent:
+            print("[splitcuts] --only named " + ", ".join(absent)
+                  + ", which J8 did not rule SPLIT - nothing to do for "
+                    "them", flush=True)
     if not docket:
-        raise SystemExit("[splitcuts] no SPLIT cases on the J8 docket")
+        # AN EMPTY DOCKET IS SUCCESS, NOT FAILURE (2026-08-11,
+        # hundred-scene-run audit). This used to raise SystemExit. A scene
+        # where J8 split nothing is an ordinary, correct outcome and will
+        # be the common one, but the runner reads any non-zero exit as a
+        # crash and stopped the whole scene on it - and because nothing
+        # was written, the checkpoint that requires graph/split_cuts.json
+        # would have failed even on a zero exit. So we do NOT return here:
+        # the rest of main() runs over an empty docket and writes the
+        # normal document with an empty `cases` list, which is exactly
+        # what materialize_layers reads (it iterates cases and does
+        # nothing when there are none).
+        print("[splitcuts] NO OBJECT NEEDS SPLITTING in this scene - J8 "
+              "put no SPLIT case on the docket. This is a NORMAL RESULT, "
+              "not an error: the stage writes an empty split_cuts.json "
+              "and exits 0.", flush=True)
     root_dir = sd / "graph" / "split_sheets"
     root_dir.mkdir(parents=True, exist_ok=True)
     cache_f = sd / "graph" / "split_cuts_cache.json"
@@ -1719,6 +1792,11 @@ def main():
             nid, edges, names, voted, region, excluded)
         d = root_dir / nid
         d.mkdir(parents=True, exist_ok=True)
+        # SCOPED BY CONSTRUCTION: every case owns a SUBDIRECTORY of
+        # split_sheets, so this wipe can only ever touch the case being
+        # rebuilt. (judge_multiplicity keeps all its sheets in one flat
+        # directory and had to scope its wipe by id; there is nothing to
+        # scope here.)
         for old in (list(d.glob("*.png")) + list(d.glob("*_prompt.txt"))
                     + list(d.glob("_*_target.json"))):
             old.unlink()   # a shorter chain must not leave the old one's
@@ -1771,6 +1849,34 @@ def main():
     # a final flush; judge_one_region wrote the cache after every call
     paths.write_atomic(cache_f, json.dumps(cache, indent=1))
 
+    out_f = sd / "graph" / "split_cuts.json"
+    # MERGE-ON-WRITE (2026-08-11, the rule the vote and J8 already follow —
+    # see judge_multiplicity.py "MERGE-ON-WRITE" and slicevote.merge_entries).
+    # An --only run REPAIRS the cases it was asked about and keeps every
+    # other case on disk VERBATIM. Before this, --only obj_011 rewrote the
+    # whole file with that one case: materialize then found no cut record
+    # for the others and shipped them UNCUT while J8 still said they must
+    # be split, and nothing refused - the run completed and the checkpoint
+    # passed. Only an --only run merges; a full run judged the whole
+    # docket and its document IS the whole scene.
+    fresh_ids = sorted(c["id"] for c in out_cases)
+    kept_n = 0
+    if a.only:
+        kept = [c for c in prev_cases_on_disk(out_f)
+                if c.get("id") not in set(fresh_ids)]
+        kept_n = len(kept)
+        print(f"[splitcuts] merge: {len(out_cases)} case(s) from this run + "
+              f"{kept_n} kept verbatim = {len(out_cases) + kept_n}",
+              flush=True)
+        out_cases = sorted(out_cases + kept, key=lambda c: c.get("id", ""))
+
+    # EVERYTHING BELOW DESCRIBES THE MERGED SET, NOT THIS RUN'S CASES.
+    # A document that counted only the fresh cases would describe a file
+    # it is not: the judge-failure count, the case count and the sheet
+    # index all read the cases this file SHIPS. `calls` is the exception
+    # that is stated twice - the console line reports what THIS RUN paid
+    # for, the sheet index sums the calls recorded on every case.
+
     # HOW MANY DECISIONS NOBODY MADE (2026-08-11, unattended-run audit).
     # The unit here is the judged REGION, not the case: one case is a
     # chain of up to `rounds` regions and each one is its own question.
@@ -1779,6 +1885,9 @@ def main():
     # region therefore shipped UNCUT without a judge saying so. No
     # threshold is applied and the stage never fails on this count: where
     # the line falls is the user's call, and the gate reads the field.
+    # Counted over the MERGED cases (above), so an --only run's file
+    # describes itself and not just the case it re-judged. On an empty
+    # docket both numbers are zero, which is the truth: nothing was asked.
     default_ids, judged = [], 0
     for c in out_cases:
         for r in c.get("rounds") or []:
@@ -1791,7 +1900,6 @@ def main():
     judge_failures = {"defaulted": len(default_ids), "total": judged,
                       "ids": default_ids}
 
-    out_f = sd / "graph" / "split_cuts.json"
     paths.write_atomic(out_f, json.dumps({
         "scene": a.scene, "built": date.today().isoformat(),
         "source": "graph/split_cuts.py (J8s) - executes J8 SPLIT verdicts "
@@ -1805,6 +1913,20 @@ def main():
                    "s_dedupe_m": S_DEDUPE,
                    "discard_residue_max": RESIDUE_MAX,
                    "discard_margin_m": MARGIN, "discard_occ_k": OCC_K},
+        # WHAT KIND OF RUN WROTE THIS (the vote records the same thing in
+        # its prov header). A partial run's document is a repair of one or
+        # two cases laid over an older whole-scene build, so it is not a
+        # single build of the whole scene and must not be read as one.
+        "run": {"kind": "only" if a.only else "full",
+                "judged_ids": fresh_ids,
+                "kept_verbatim": kept_n,
+                "whole_scene_build": not a.only,
+                "note": ("--only run: the ids in judged_ids were re-judged "
+                         "and every other case was carried through from "
+                         "the previous file verbatim"
+                         if a.only else
+                         "full run: every SPLIT case on the J8 docket was "
+                         "judged by this run")},
         "judge_failures": judge_failures,
         "judge_failures_note": "judged regions in this file whose decision "
                                "no judge made — the call failed twice or the "
@@ -1818,17 +1940,29 @@ def main():
         f"<td>{c.get('calls', 0)}</td>"
         f"<td>{len(c.get('rounds', []))}</td>"
         f"<td>{len(c.get('pieces', []))}</td></tr>" for c in out_cases)
+    # The index describes the file, so its call count is the sum over the
+    # cases on the record - `total_calls` is what THIS RUN paid for, which
+    # on an --only run is not the same number.
+    doc_calls = sum(int(c.get("calls") or 0) for c in out_cases)
+    partial = (f" Partial run (--only {', '.join(fresh_ids) or 'nothing'}): "
+               f"{kept_n} case(s) kept verbatim from the previous file."
+               if a.only else "")
+    empty = ("" if out_cases else
+             " NO OBJECT NEEDED SPLITTING in this scene - an empty docket "
+             "is a normal result, not an error.")
     (root_dir / "index.html").write_text(
         f"""<!doctype html><meta charset='utf-8'>
 <title>J8s split cuts - {a.scene}</title><style>{CSS}</style>
 <h1>J8s - SPLIT CUTS - {a.scene}</h1>
-<p class='meta'>{len(out_cases)} SPLIT case(s), {total_calls} model
-call(s). FIXED CHAIN: at most {a.rounds} rounds, then it stops. Guards:
-min extent {MIN_EXTENT} m (auto-done, never judged), max {MAX_PIECES}
-pieces/case, leftovers ship uncut with doubt split_incomplete.</p>
+<p class='meta'>{len(out_cases)} SPLIT case(s), {doc_calls} model
+call(s).{partial}{empty} FIXED CHAIN: at most {a.rounds} rounds, then it
+stops. Guards: min extent {MIN_EXTENT} m (auto-done, never judged), max
+{MAX_PIECES} pieces/case, leftovers ship uncut with doubt
+split_incomplete.</p>
 <table><tr><th>case</th><th>name</th><th>resolution</th><th>calls</th>
 <th>rounds</th><th>pieces</th></tr>{idx}</table>""", encoding="utf-8")
-    print(f"[splitcuts] {len(out_cases)} case(s), {total_calls} model "
+    print(f"[splitcuts] {len(out_cases)} case(s) on the record "
+          f"({doc_calls} model call(s)); this run made {total_calls} "
           f"call(s) -> {out_f}", flush=True)
     # Printed and marked, so a hundred-scene log can be grepped for it.
     if judge_failures["defaulted"]:

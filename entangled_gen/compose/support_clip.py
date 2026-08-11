@@ -27,8 +27,14 @@ import json
 from pathlib import Path
 
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+# scene_state lives in the sibling graph/ package, not beside us, so its
+# directory has to go on the path too (same two-step the other compose
+# modules use, e.g. uniform_instances.py).
+sys.path.insert(0, str(HERE.parent / "graph"))
+import scene_state  # noqa: E402
 
 PEN_TOL = 0.02      # m an object may visually sink into its support
 OVERHANG = 0.10     # m of footprint overhang beyond the supporter's edge
@@ -137,6 +143,14 @@ def main():
         json.dumps(man, indent=2))
 
     if a.apply:
+        # --apply is box surgery on `resolved`, so `resolved` is what this
+        # run wrote and the file must say so. The stamp also marks voted,
+        # settled and everything after them stale: they were elected from
+        # the boxes we just cut, so a finished scene is no longer finished
+        # once this flag is used. Without the stamp that invalidation is
+        # completely silent — one flag and the whole downstream stack is
+        # quietly wrong while the end-of-run gate still reports it clean.
+        scene_state.stamp(g, "resolved")
         gf.write_text(json.dumps(g, indent=1), encoding="utf-8")
         print(f"[clip] APPLIED to graph[resolved] ({report['n_clipped']} nodes)")
     print(f"[clip] ON nodes {len(supports)}; clipped {report['n_clipped']}; "

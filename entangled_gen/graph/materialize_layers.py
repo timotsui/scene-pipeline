@@ -280,18 +280,37 @@ def vote_report_boxes(sdir, graph):
 
 
 def same_verdict_pairs(graph):
-    """SAME_CANDIDATE edges of graph['voted_edges'] whose J1 verdict is
-    SAME. Returns [(a, b, verdict)]."""
-    layer = (graph.get("voted") or graph.get("voted_edges")
-             or {})
-    out = []
-    for e in layer.get("edges", []):
-        if e.get("type") != "SAME_CANDIDATE":
-            continue
-        v = e.get("verdict") or {}
-        if str(v.get("verdict", "")).upper() == "SAME":
-            out.append((e["a"], e["b"], v))
-    return out
+    """SAME_CANDIDATE edges whose J1 verdict is SAME. [(a, b, verdict)].
+
+    LOOK IN BOTH BLOCKS, AND PREFER THE ONE J1 ACTUALLY WRITES TO
+    (fixed 2026-08-11). This used to read `(graph["voted"] or
+    graph["voted_edges"])` — the docstring said `voted_edges`, the code
+    took `voted` whenever it existed, which is always. `voted`'s edges
+    are edge_carry's re-derived copy, made at build time with whatever
+    verdicts existed THEN; `voted_edges` is the block `judge_pairs.py
+    --edges-from voted_edges` writes new verdicts into. So re-judging a
+    SAME_CANDIDATE pair after the vote had no effect at all: the answer
+    went into `voted_edges` and this function never looked there.
+
+    That matters because the vote MOVES BOXES and can create duplicate
+    pairs that no judge saw before it (docs/PLAN_AUTOMATION_2026-08-11,
+    the two chairs at 96% containment). Re-judging them is the intended
+    repair, and it silently did nothing.
+
+    Now: every SAME verdict in EITHER block counts, keyed by the pair so
+    the same edge is never applied twice, and `voted_edges` wins a
+    disagreement because it is where a later, deliberate re-judgement
+    lands."""
+    seen = {}
+    for block in ("voted", "voted_edges"):
+        for e in (graph.get(block) or {}).get("edges", []):
+            if e.get("type") != "SAME_CANDIDATE":
+                continue
+            v = e.get("verdict") or {}
+            if str(v.get("verdict", "")).upper() != "SAME":
+                continue
+            seen[tuple(sorted((e["a"], e["b"])))] = (e["a"], e["b"], v)
+    return list(seen.values())
 
 
 def doubts_by_node(sdir, graph):

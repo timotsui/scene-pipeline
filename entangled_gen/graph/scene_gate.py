@@ -211,6 +211,54 @@ def after(scene, stage, since=None, graph=None):
     return r
 
 
+def stale_inputs(scene, graph):
+    """Layers whose INPUT FILE changed after the layer was built.
+
+    THE HOLE THIS CLOSES. The stale sweep understands LAYERS and nothing
+    else, but half of what these stages read is a FILE — the vote's
+    preview manifest, the judges' verdict sidecars, the view plan. Re-run
+    `j8` on its own and it rewrites `graph/multiplicity.json`, which
+    `settled` was built from; every layer still looks fresh, because
+    nothing in the chain ever knew that file was an input. `check()`
+    passes, the end-of-run gate passes, and `settled` is quietly built
+    from verdicts that no longer exist.
+
+    So: each stage declares in graph/stages.py the files it consumes that
+    another stage produced, every layer records `written_at` when it is
+    stamped, and this compares the two. A file NEWER than the layer that
+    consumed it means the layer is out of date, whatever the layer chain
+    thinks.
+
+    Returns [(level, message)]. A layer written before `written_at`
+    existed reports nothing — "I cannot tell" must never be dressed up as
+    "fine", and it resolves itself the first time the stage re-runs."""
+    sd = paths.scene_dir(scene)
+    out = []
+    for st in stages.CHAIN:
+        if not (st.writes and st.inputs):
+            continue
+        built = scene_state.written_at(graph, st.writes)
+        if built is None:
+            continue                     # predates the stamp; cannot check
+        for rel in st.inputs:
+            p = sd / rel
+            if not p.exists():
+                continue                 # absence is the artifacts check's job
+            newer = p.stat().st_mtime - built
+            if newer > MTIME_SLACK_S:
+                ago = (f"{newer:.0f}s" if newer < 90 else
+                       f"{newer/60:.0f} min" if newer < 5400 else
+                       f"{newer/3600:.1f} h")
+                out.append((
+                    "FAIL",
+                    f"`{st.writes}` was built {ago} BEFORE its "
+                    f"input {rel} was last written. The stage that writes "
+                    f"that file has run since, so `{st.writes}` was built "
+                    f"from something that no longer exists. Re-run "
+                    f"`{st.key}` and everything after it."))
+    return out
+
+
 def _shown_counts(g):
     return ((g.get("shown") or {}).get("counts") or {})
 
@@ -260,6 +308,9 @@ def final(scene, graph=None):
         elif not prob:
             r.add("PASS", f"evidence layer whole: {pic}/{n} nodes have a "
                           f"picture")
+
+    for level, msg in stale_inputs(scene, g):
+        r.add(level, msg)
 
     for level, msg in quality_notes(scene, g):
         r.add(level, msg)

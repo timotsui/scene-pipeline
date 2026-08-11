@@ -108,8 +108,11 @@ from collections import namedtuple
 from pathlib import Path
 
 HERE = Path(__file__).parent
-sys.path.insert(0, str(HERE.parent))
+for _p in (HERE, HERE.parent):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 import paths  # noqa: E402
+import scene_state  # noqa: E402
 
 TOL_ON_AIR = 0.08          # m, max air gap bottom(a) above top(b)
 TOL_ON_PEN = 0.15          # m, max penetration of a's bottom into b
@@ -598,6 +601,12 @@ def main():
     graph["counts"]["nested_nodes"] = d.counts_partial["nested_nodes"]
     graph["edges"] = edges
     graph["edge_summary"] = edge_summary
+    # The file's top-level nodes/edges ARE the `record` layer (see
+    # scene_state._layer — record is the one irregular name), and we have
+    # just rewritten its edges. Stamping it says record is current and
+    # marks judged and everything after it stale: those layers were built
+    # from the edge set this run replaced.
+    scene_state.stamp(graph, "record")
     gpath.write_text(json.dumps(graph, indent=1))
 
     # ---------------- report ----------------

@@ -656,7 +656,12 @@ def render(sc, targets):
     print(f"[views] rendering {len(targets)} views via WSL gsplat "
           f"(~{len(targets) * 1.6 / 60:.0f} min, 1 s GPU pacing each) ...",
           flush=True)
-    subprocess.run(cmd, check=True, timeout=7200, shell=True)
+    # ONE CARD, ONE RENDER BATCH AT A TIME (2026-08-11). This is the
+    # longest GPU hold in the pipeline — a whole scene's views in one
+    # call — so it is also the one most worth serialising against another
+    # scene starting up. See paths.gpu_lock.
+    with paths.gpu_lock(f"node_views batch, {len(targets)} views, {sc.scene}"):
+        subprocess.run(cmd, check=True, timeout=7200, shell=True)
 
 
 CSS = """
@@ -1076,10 +1081,65 @@ def main():
         render(sc, targets)
         rows, targets = plan(sc, inc, a.culled_only)  # report truth
     draw_boxes(sc, rows)
+
+    # MERGE-ON-WRITE (same rule as the vote and judge_multiplicity): an
+    # --only run REPAIRS the nodes it was asked about and keeps every other
+    # node's plan on disk verbatim. Without this, planning one node wrote a
+    # file holding one node, and node_evidence — which reads this file for
+    # the WHOLE scene — silently lost every other node's pictures.
+    doc_f = sc.sd / "graph" / "node_views.json"
+    merged_rows, kept_pending, partial = rows, 0, None
+    if a.only and doc_f.exists():
+        try:
+            prev = json.loads(doc_f.read_text(encoding="utf-8"))
+            prev_rows = prev.get("rows")
+            if not isinstance(prev_rows, list):
+                raise ValueError("no 'rows' list in the file on disk")
+        except Exception as exc:                            # noqa: BLE001
+            # LOUD, never silent. Starting over from this run's rows would
+            # drop every node we were not asked about — the exact damage
+            # this merge exists to prevent — and the next stage would read
+            # the shortened file as if it were the whole scene.
+            raise SystemExit(
+                f"[views] REFUSING to write: the plan already on disk at "
+                f"{doc_f} could not be read ({exc}). An --only run must "
+                f"merge into it, and overwriting it would silently drop "
+                f"every node this run did not touch. Fix or delete that "
+                f"file, or re-run without --only to rebuild it whole.")
+        # A plan aimed at a different layer describes different boxes, so
+        # the two halves would not be one scene. node_evidence checks the
+        # layer of the file as a whole and could not tell them apart.
+        if prev.get("layer") != sc.layer:
+            raise SystemExit(
+                f"[views] REFUSING to write: the plan on disk was aimed at "
+                f"layer '{prev.get('layer')}' but this run aimed at "
+                f"'{sc.layer}'. Merging them would put two different sets "
+                f"of boxes in one file. Re-run without --only to rebuild "
+                f"the whole scene against '{sc.layer}'.")
+        done = {r["id"] for r in rows}
+        kept = [r for r in prev_rows if r.get("id") not in done]
+        # The pictures those kept nodes are still waiting on are part of
+        # the scene's backlog, so the merged document's count has to
+        # include them — otherwise a one-node run reports "0 still to
+        # render" for a scene with renders outstanding.
+        kept_pending = sum(
+            1 for r in kept
+            for v in (r.get("views") or []) + (r.get("culled_views") or [])
+            if v.get("needs_render"))
+        print(f"[views] merge: {len(rows)} from this run + {len(kept)} "
+              f"kept verbatim ({kept_pending} of their views still to "
+              f"render)")
+        merged_rows = sorted(rows + kept, key=lambda r: r.get("id", ""))
+        partial = {"only": sorted(done), "kept_verbatim":
+                   sorted(r.get("id", "") for r in kept),
+                   "note": "an --only run: the ids under `only` were "
+                           "re-planned, every other row is the previous "
+                           "run's, carried through unchanged"}
+
     # node_evidence reads this file and refuses to attach pictures if it
     # disagrees with the layer it was aimed at, so a half-written copy
     # would stop the next stage dead. Written beside itself and renamed.
-    paths.write_atomic(sc.sd / "graph" / "node_views.json", json.dumps(
+    paths.write_atomic(doc_f, json.dumps(
         {"scene": a.scene, "layer": sc.layer, "res": RES,
          "renderer": "analyzer/render_targets_wsl.py (WSL gsplat)",
          "cameras": "graph/view_cams.py",
@@ -1089,8 +1149,16 @@ def main():
                         "EMPTY_R", "EMPTY_MAX", "DIST_MIN", "DIST_MAX")},
          "crops_untouched": True,
          "culled_rendered": bool(a.include_culled),
-         "pending_render": len(targets),
-         "rows": rows}, indent=1))
+         # counted over the MERGED set: this run's own queue plus the views
+         # the carried-over rows were still waiting on. On a full run
+         # kept_pending is 0 and this is exactly len(targets) as before.
+         "pending_render": len(targets) + kept_pending,
+         **({"partial_run": partial} if partial else {}),
+         "rows": merged_rows}, indent=1))
+    # The HTML sheet stays THIS RUN'S rows on purpose: it is a human audit
+    # page for the work just done, and it draws boxes out of the layer
+    # dictionary this run loaded, which an --only run narrowed. The JSON
+    # above is the file the next stage reads, and that one is whole.
     write_report(sc, rows, len(targets))
     n_v = sum(r.get("n_views", 0) for r in rows)
     n_c = sum(len(r.get("culled_views", [])) for r in rows)

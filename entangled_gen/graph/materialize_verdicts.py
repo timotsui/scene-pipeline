@@ -67,6 +67,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
 import judge_cases as jc  # noqa: E402
+import scene_state  # noqa: E402
 
 PROMPT_VERSION = "1"
 SHRINK_PROMPT_VERSION = "1"
@@ -500,6 +501,12 @@ def main():
                    "rewritten": n_rewritten,
                    "unresolved_reinterpret": n_unres,
                    "boxes_trimmed": n_trim}}
+    # We just rewrote `resolved`, so say so in the file. The stamp also
+    # marks every LATER layer stale, because each of them was built from
+    # the resolved boxes that no longer exist. Without it the file keeps
+    # claiming a newer layer is current and the next stage reads geometry
+    # from a run that has been superseded.
+    scene_state.stamp(graph, "resolved")
     gpath.write_text(json.dumps(graph, indent=1))
     print(f"[resolve] wrote {gpath}")
     print(f"[resolve] {graph['resolved']['counts']}")

@@ -1340,7 +1340,10 @@ def perp_run_renders(targets_json, ply_path):
            f"{_py} '{_scr}' --targets '{to_wsl(targets_json)}' "
            f"--ply '{to_wsl(ply_path)}' --out '{to_wsl(sdir)}' "
            f"--res {RES}\"")
-    subprocess.run(cmd, check=True, timeout=1800, shell=True)
+    # One render at a time on the card — the machine hard-powers-off under
+    # burst (docs/POWER_CRASHES.md) and two scenes can be running at once.
+    with paths.gpu_lock(f"{SCENE} perp/reframe render"):
+        subprocess.run(cmd, check=True, timeout=1800, shell=True)
 
 
 def _fig(fname, cap):
@@ -2565,7 +2568,10 @@ no vote. Recorded here so the drop is never silent.</p>
                  for t, p, _tr in jobs]
         cmd = ("wsl -d Ubuntu-24.04 -- bash -c \"cd /root/splat_analyzer"
                " && " + " && ".join(parts) + "\"")
-        subprocess.run(cmd, check=True, timeout=1800, shell=True)
+        # Only the subprocess is inside the lock: the ply subsetting above
+        # and the cleanup below are CPU work and must not hold the card.
+        with paths.gpu_lock(f"{SCENE} {nid} vote card renders"):
+            subprocess.run(cmd, check=True, timeout=1800, shell=True)
         for _t, p, transient in jobs:
             if transient:
                 p.unlink(missing_ok=True)

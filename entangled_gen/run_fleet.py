@@ -15,6 +15,13 @@ one level above it and has exactly two promises.
     the stage it died on, and — this is the part that matters — the
     gate's own INFO and WARN lines for that scene.
 
+    AND ONE MORE TABLE: BY MODULE. Per-scene times say which scene was
+    slow. Over a hundred scenes the useful question is which MODULE the
+    night went into, so the report also carries one row per stage key —
+    how many scenes ran it, total, mean, median, worst, and which scene
+    was the worst — sorted slowest first. The numbers are read back out
+    of each scene's own run_scene log; nothing is re-timed here.
+
 WHY THE WARN AND INFO LINES ARE IN THE TABLE. A scene can PASS and still
 be poor. The gate deliberately checks the machinery, not the answers, so
 `grouped` can be fresh and whole while eleven objects fell back to a
@@ -62,6 +69,8 @@ codes and they live in the table.
 """
 import argparse
 import json
+import os
+import statistics
 import subprocess
 import sys
 import time
@@ -190,51 +199,162 @@ def scene_argv(scene, a):
         argv += ["--no-llm"]
     if a.box_thr is not None:
         argv += ["--box-thr", str(a.box_thr)]
+    if a.scene_continue_on_fail:
+        argv += ["--continue-on-fail"]
     return argv
+
+
+def kill_tree(proc):
+    """Kill the timed-out scene AND everything it started on this side.
+
+    Killing only the direct child leaves its descendants running. A scene
+    that timed out is usually mid-render, so the descendants are the
+    expensive ones: python, the cmd.exe wrapper, wsl.exe. On Windows the
+    reliable way to take a whole tree down is taskkill with /T (tree) and
+    /F (force), because Python's own kill() reaches one process only.
+
+    WHAT THIS CANNOT KILL. Anything already running INSIDE the WSL VM is
+    not in the Windows process tree at all — wsl.exe is a client, not the
+    parent of the Linux process. Reaping that side needs a separate call
+    into the VM, which is reap_wsl_renderers() below.
+
+    Returns a line saying what happened, for the scene's report row."""
+    if proc.poll() is not None:
+        return "the scene had already exited when the timeout fired"
+    pid = proc.pid
+    try:
+        r = subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)],
+                           text=True, errors="replace",
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=60)
+        note = (f"taskkill /T /F on pid {pid} returned {r.returncode}: "
+                f"{' '.join((r.stdout or '').split())[:200]}")
+    except (OSError, subprocess.SubprocessError) as e:
+        # taskkill is part of Windows, but this must work anywhere and
+        # must never be the thing that stops the fleet, so fall back to
+        # killing the one process we have a handle on and say so.
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        note = (f"taskkill unavailable ({type(e).__name__}: {e}); killed only "
+                f"the direct child pid {pid}, so any grandchildren it "
+                f"started are still running")
+
+    # Confirm the pid is really gone before the next scene starts. A
+    # scene that overlaps the next one competes for the GPU, which is the
+    # one shared resource nothing arbitrates (docs/POWER_CRASHES.md).
+    for _ in range(20):
+        if proc.poll() is not None:
+            break
+        time.sleep(0.5)
+    if proc.poll() is None:
+        note += f"; WARNING pid {pid} was still alive 10s after the kill"
+    else:
+        note += f"; pid {pid} confirmed gone"
+    return note
+
+
+def reap_wsl_renderers():
+    """Best effort at the Linux side of a timed-out scene, reported aloud.
+
+    The GPU work runs inside the WSL VM. The Windows-side tree kill above
+    cannot touch it, so this asks the VM itself to kill the renderer by
+    command line. It is best effort by nature — the pattern could miss, a
+    future renderer could be named something else — so it REPORTS what it
+    found instead of pretending. Silence here is the failure mode that
+    costs a night: the next scene starts, the orphan is still on the
+    card, and this machine hard-powers-off under GPU burst.
+
+    Never raises. If WSL itself is unreachable, that is a line in the
+    report and the fleet goes on."""
+    pattern = "render_targets_wsl.py"
+    try:
+        r = subprocess.run(["wsl", "-e", "pkill", "-f", pattern],
+                           text=True, errors="replace",
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=120)
+    except (OSError, subprocess.SubprocessError) as e:
+        return (f"could not ask WSL to reap `{pattern}` "
+                f"({type(e).__name__}: {e}) — check by hand with "
+                f"`wsl -e ps aux` and nvidia-smi before the next fleet")
+    # pkill's contract: 0 means it signalled at least one process, 1 means
+    # nothing matched. Both are useful answers and neither is an error.
+    if r.returncode == 0:
+        return (f"WSL: killed at least one orphaned `{pattern}` left behind "
+                f"by the timeout")
+    if r.returncode == 1:
+        return f"WSL: no `{pattern}` was running — nothing to reap"
+    return (f"WSL: pkill -f {pattern} returned {r.returncode}: "
+            f"{' '.join((r.stdout or '').split())[:200]}")
 
 
 def run_one(scene, argv, timeout_s, log_path):
     """Run one scene to completion, a timeout, or its own death.
 
-    Returns (verdict, returncode, seconds). Never raises for anything the
-    child did: deciding what a failure means is this file's job and the
-    answer is always 'write it down and go on to the next scene'.
+    Returns (verdict, returncode, seconds, note). Never raises for
+    anything the child did: deciding what a failure means is this file's
+    job and the answer is always 'write it down and go on to the next
+    scene'.
 
-    THE CHILD IS KILLED, ITS GRANDCHILDREN MAY NOT BE. On a timeout we
-    kill the run_scene.py process. That does NOT necessarily kill a
-    renderer it started inside WSL: those live in a different process
-    tree and survive a Python-level timeout, which is how a wedged scene
-    can otherwise hold the fleet for its whole render budget and then
-    some. An operator who sees repeated `timeout` rows in the morning
-    report should check for orphaned renderers (`wsl -e ps aux`, and the
-    GPU in nvidia-smi) before starting another fleet — otherwise the next
-    run competes with the last one for the card."""
+    THE CHILD IS KILLED WITH ITS TREE, AND THE VM IS ASKED SEPARATELY. On
+    a timeout the whole Windows-side process tree goes (kill_tree), and
+    then the WSL side is asked to reap its renderer (reap_wsl_renderers),
+    because a process inside the VM is not a descendant of anything here.
+    Both report what they did into the scene's row, so an operator
+    reading the morning table can see whether the card was actually left
+    free for the next scene rather than having to guess.
+
+    Popen rather than subprocess.run, because a tree kill needs the pid
+    and run() does not hand one out."""
     t0 = time.time()
+    note = ""
     try:
-        r = subprocess.run(argv, cwd=HERE, text=True, errors="replace",
-                           stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT,
-                           timeout=(timeout_s or None))
-        out, rc, verdict = r.stdout, r.returncode, None
-    except subprocess.TimeoutExpired as e:
-        # subprocess.run has already killed the child and reaped it; what
-        # the scene managed to print before that is in the exception.
-        out = e.output or ""
-        if isinstance(out, bytes):
-            out = out.decode("utf-8", "replace")
-        out += (f"\n\n[run_fleet] KILLED after {timeout_s}s — the scene "
-                f"exceeded --scene-timeout. Check for a renderer left "
-                f"running inside WSL: killing this Python process does not "
-                f"kill one.\n")
-        rc, verdict = None, "timeout"
+        proc = subprocess.Popen(argv, cwd=HERE, text=True, errors="replace",
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
     except OSError as e:
         # The child could not be started at all (a missing interpreter, a
         # path that moved). That is a failure of this scene, not of the
         # fleet, so it is recorded like any other.
         out = f"[run_fleet] could not start run_scene.py: {e}\n"
         rc, verdict = None, "crashed"
+        _write_scene_log(scene, argv, log_path, t0, rc, out)
+        return verdict, rc, time.time() - t0, f"could not start: {e}"
+
+    try:
+        out, _ = proc.communicate(timeout=(timeout_s or None))
+        rc, verdict = proc.returncode, None
+    except subprocess.TimeoutExpired:
+        killed = kill_tree(proc)
+        reaped = reap_wsl_renderers()
+        print(f"[run_fleet] TIMEOUT teardown: {killed}", flush=True)
+        print(f"[run_fleet] TIMEOUT teardown: {reaped}", flush=True)
+        note = f"{killed}; {reaped}"
+        # Collect whatever the scene printed before it was killed. The
+        # pipe is drained after the kill so this cannot block forever.
+        try:
+            out, _ = proc.communicate(timeout=60)
+        except (subprocess.TimeoutExpired, OSError, ValueError):
+            out = ""
+        out = out or ""
+        out += (f"\n\n[run_fleet] KILLED after {timeout_s}s — the scene "
+                f"exceeded --scene-timeout.\n"
+                f"[run_fleet] windows tree: {killed}\n"
+                f"[run_fleet] wsl side    : {reaped}\n")
+        rc, verdict = None, "timeout"
     dt = time.time() - t0
 
+    _write_scene_log(scene, argv, log_path, t0, rc, out or "")
+
+    if verdict is None:
+        verdict = VERDICT_BY_CODE.get(rc, "crashed")
+    return verdict, rc, dt, note
+
+
+def _write_scene_log(scene, argv, log_path, t0, rc, out):
+    """Everything the scene printed, under a header saying what it was."""
+    dt = time.time() - t0
     header = (f"# run_fleet: {scene}\n"
               f"# $ {' '.join(str(x) for x in argv)}\n"
               f"# started {_iso(t0)}  ended {_iso(time.time())}  "
@@ -244,10 +364,6 @@ def run_one(scene, argv, timeout_s, log_path):
         paths.write_atomic(log_path, header + out)
     except OSError as e:
         print(f"[run_fleet] warning: could not write {log_path}: {e}")
-
-    if verdict is None:
-        verdict = VERDICT_BY_CODE.get(rc, "crashed")
-    return verdict, rc, dt
 
 
 # --------------------------------------------------------------------------
@@ -315,7 +431,17 @@ def _iso(epoch=None):
 
 
 def _runid():
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    """A run id that sorts by time and is still unique.
+
+    The bare timestamp has one-second resolution, so two fleets started
+    inside the same second wrote out/fleet_<runid>.json over each other
+    and one night's report simply vanished. The process id is the
+    cheapest thing guaranteed distinct between two live runs, so it goes
+    on the end; the timestamp stays first so a directory listing is still
+    in run order, and both parts are filename-safe on Windows. Same rule
+    as run_scene.py's own run id, deliberately."""
+    return (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            + f"-{os.getpid()}")
 
 
 def _hms(seconds):
@@ -346,6 +472,83 @@ def totals(rows):
             "failed": failed,
             "by_verdict": by_kind,
             "seconds": sum(r["seconds"] for r in rows)}
+
+
+def by_module(rows):
+    """WHERE DID THE NIGHT GO — one row per stage key, across every scene.
+
+    Per-scene totals answer "which scene was slow". After a hundred
+    scenes the question that actually gets asked is "which MODULE is the
+    night", and no per-scene number answers it. So the times are read
+    back out of each scene's own run_scene_<runid>.json — the same file
+    died_on() already reads, and only ever a log written since that scene
+    started, so last week's run can never be counted as tonight's.
+
+    NOTHING IS RE-TIMED HERE and nothing new is written per scene. The
+    only shared file in this whole path is the fleet report, written once
+    at the end by this process. The GPU is the one resource several
+    scenes could contend for; files must not become a second one.
+
+    A stage that was skipped is not counted: it did not run, and a zero
+    would drag its mean down as if it had been fast."""
+    acc = {}
+    for r in rows:
+        p = r.get("run_log")
+        if not p:
+            continue                    # skipped, or died before it logged
+        try:
+            data = json.loads(Path(p).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue                    # a truncated log is not worth a crash
+        for st in data.get("stages") or []:
+            if st.get("skipped"):
+                continue
+            key = st.get("stage") or "?"
+            secs = float(st.get("seconds") or 0.0)
+            gate = (float(st.get("seconds_gate_before") or 0.0)
+                    + float(st.get("seconds_gate_after") or 0.0))
+            a = acc.setdefault(key, {"stage": key, "phase": st.get("phase"),
+                                     "samples": [], "gate_seconds": 0.0,
+                                     "scenes": []})
+            a["samples"].append(secs)
+            a["gate_seconds"] += gate
+            a["scenes"].append((secs, r["scene"]))
+
+    out = []
+    for a in acc.values():
+        worst_secs, worst_scene = max(a["scenes"])
+        out.append({
+            "stage": a["stage"],
+            "phase": a["phase"],
+            "scenes": len(a["samples"]),
+            "total_seconds": round(sum(a["samples"]), 1),
+            "mean_seconds": round(statistics.mean(a["samples"]), 1),
+            "median_seconds": round(statistics.median(a["samples"]), 1),
+            "max_seconds": round(worst_secs, 1),
+            "max_scene": worst_scene,
+            "gate_seconds": round(a["gate_seconds"], 2),
+        })
+    # Slowest module first: the top row is where the night went, and that
+    # is the only row most people will read.
+    return sorted(out, key=lambda d: -d["total_seconds"])
+
+
+def print_by_module(mods):
+    if not mods:
+        print("\n[run_fleet] BY MODULE: no run_scene logs from tonight to "
+              "read, so there is nothing to total.")
+        return
+    total = sum(m["total_seconds"] for m in mods)
+    print("\n  BY MODULE (every scene tonight, slowest module first):")
+    print(f"    {'stage':12s} {'ph':5s} {'n':>3s} {'total':>9s} {'share':>7s} "
+          f"{'mean':>8s} {'median':>8s} {'max':>8s}  worst scene")
+    for m in mods:
+        share = (100.0 * m["total_seconds"] / total) if total > 0 else 0.0
+        print(f"    {m['stage']:12s} {(m['phase'] or '?'):5s} "
+              f"{m['scenes']:3d} {m['total_seconds']:9.1f} {share:6.1f}% "
+              f"{m['mean_seconds']:8.1f} {m['median_seconds']:8.1f} "
+              f"{m['max_seconds']:8.1f}  {m['max_scene']}")
+    print(f"    {'TOTAL':12s} {'':5s} {'':3s} {total:9.1f}")
 
 
 def write_json(path, data):
@@ -401,6 +604,11 @@ code{font:12px/1.4 Consolas,Menlo,monospace;background:#f6f6f6;padding:1px 3px}
         infos = _notes(r, ("INFO",))
         notes = "".join(f"<li class=warn>{escape(m)}</li>" for m in warns) \
             + "".join(f"<li class=info>{escape(m)}</li>" for m in infos)
+        # The teardown note only exists on a scene that was killed, and
+        # it is the one thing an operator must read before starting
+        # another fleet: it says whether the card was left free.
+        if r.get("note"):
+            notes = f"<li class=warn>teardown: {escape(r['note'])}</li>" + notes
         h.append(
             f"<tr class={r['verdict']}>"
             f"<td>{escape(r['scene'])}</td>"
@@ -413,6 +621,37 @@ code{font:12px/1.4 Consolas,Menlo,monospace;background:#f6f6f6;padding:1px 3px}
     h.append("<p class=sub>A scene can PASS and still be poor: the gate "
              "checks the machinery, not the answers. The WARN and INFO "
              "lines are how much of the scene was really measured.</p>")
+
+    mods = data.get("by_module") or []
+    h.append("<h1 style='margin-top:28px'>by module</h1>")
+    h.append("<p class=sub>Where the night went. One row per stage, totalled "
+             "across every scene that ran it, slowest first. Times come from "
+             "each scene&rsquo;s own run_scene log; nothing is re-timed. A "
+             "GPU stage&rsquo;s seconds include time spent waiting on a "
+             "renderer inside WSL.</p>")
+    if not mods:
+        h.append("<p class=sub>No run_scene logs from tonight to total.</p>")
+    else:
+        mtotal = sum(m["total_seconds"] for m in mods) or 1.0
+        h.append("<table><tr><th>stage</th><th>phase</th><th>scenes</th>"
+                 "<th>total</th><th>share</th><th>mean</th><th>median</th>"
+                 "<th>max</th><th>slowest scene</th><th>gate</th></tr>")
+        for m in mods:
+            h.append(
+                f"<tr><td><code>{escape(m['stage'])}</code></td>"
+                f"<td>{escape(m['phase'] or '')}</td>"
+                f"<td class=num>{m['scenes']}</td>"
+                f"<td class=num>{_hms(m['total_seconds'])}</td>"
+                f"<td class=num>{100.0 * m['total_seconds'] / mtotal:.1f}%</td>"
+                f"<td class=num>{_hms(m['mean_seconds'])}</td>"
+                f"<td class=num>{_hms(m['median_seconds'])}</td>"
+                f"<td class=num>{_hms(m['max_seconds'])}</td>"
+                f"<td>{escape(m['max_scene'])}</td>"
+                f"<td class=num>{m['gate_seconds']:.1f}s</td></tr>")
+        h.append(f"<tr><td><b>total</b></td><td></td><td></td>"
+                 f"<td class=num><b>{_hms(mtotal)}</b></td>"
+                 f"<td colspan=5></td><td></td></tr>")
+        h.append("</table>")
     return paths.write_atomic(path, "\n".join(h) + "\n")
 
 
@@ -448,6 +687,16 @@ def build_parser():
                         "not pass (default: record it and go on)")
     g.add_argument("--dry-run", action="store_true",
                    help="print the plan and run nothing")
+    g.add_argument("--scene-continue-on-fail", action="store_true",
+                   help="pass --continue-on-fail down to run_scene.py, so a "
+                        "scene runs its whole chain instead of stopping at "
+                        "its own first bad stage. OFF BY DEFAULT ON PURPOSE: "
+                        "a stage that runs on a bad earlier layer produces "
+                        "garbage and the gate would refuse it anyway, so the "
+                        "extra stages cost time and teach nothing. Turn it "
+                        "on when you want the full picture of ONE broken "
+                        "scene — every failure it has, in one pass, instead "
+                        "of finding them one re-run at a time.")
 
     g = ap.add_argument_group("passed through to run_scene.py")
     g.add_argument("--phase", choices=("core", "graph", "all"), default="all")
@@ -504,6 +753,7 @@ def main():
         row = {"index": i, "scene": sc, "verdict": None, "returncode": None,
                "seconds": 0.0, "started": _iso(), "died_on": None,
                "log": str(log_path), "run_log": None, "gate": None,
+               "note": "",
                "argv": [str(x) for x in scene_argv(sc, a)]}
 
         if a.resume:
@@ -518,9 +768,15 @@ def main():
 
         print(f"[{i}/{len(scenes)}] {sc}: start  {_iso()}", flush=True)
         t0 = time.time()
-        verdict, rc, dt = run_one(sc, scene_argv(sc, a), timeout_s, log_path)
+        verdict, rc, dt, note = run_one(sc, scene_argv(sc, a), timeout_s,
+                                        log_path)
         row["verdict"], row["returncode"], row["seconds"] = verdict, rc, dt
+        row["note"] = note
         row["gate"] = gate_lines(sc)
+        # died_on() returns the run log path too, and only ever one
+        # written since this scene started. by_module() reads its timings
+        # out of exactly that file, so the same freshness rule covers
+        # both and no stale log can be counted as tonight's.
         if verdict != "pass":
             row["died_on"], row["run_log"] = died_on(sc, t0)
         else:
@@ -548,6 +804,7 @@ def main():
         "stopped_early_at": stopped_early,
         "scene_timeout_s": timeout_s,
         "totals": totals(rows),
+        "by_module": by_module(rows),
         "scenes": rows,
     }
     write_json(json_path, data)
@@ -561,6 +818,8 @@ def main():
     for kind, n in sorted(t["by_verdict"].items()):
         if kind != "pass":
             print(f"              {n:3d}  {kind}")
+    print_by_module(data["by_module"])
+    print()
     print(f"  {json_path}")
     print(f"  {html_path}")
     print("=" * 60)

@@ -77,13 +77,25 @@ class Stage:
                — for the stages that edit the graph without adding a
                layer (`vote`, `voted_edges`: neither has nodes, so
                neither can ever become the state of the scene)
+    inputs     FILES this stage consumes that ANOTHER stage produced.
+               These are the dependencies the layer chain cannot see, and
+               they are the hole this field closes. The stale sweep only
+               understands LAYERS, but half of what these stages read is
+               a file: the vote's preview manifest, the judges' verdict
+               sidecars. Re-run one of those stages by itself and it
+               rewrites a file that a later layer was built from, while
+               every layer still looks fresh — because nothing in the
+               chain knew the file was an input. With `inputs` declared,
+               the gate can compare each file's mtime against the
+               `written_at` of the layer that consumed it and say so.
     llm        does this stage spend model calls
     gpu        does this stage want the GPU (so a runner can warn about
                the clock lock, see docs/POWER_CRASHES.md)
     """
 
     def __init__(self, key, title, argv, reads=None, writes=None,
-                 artifacts=(), graph_keys=(), llm=False, gpu=False, note=""):
+                 artifacts=(), graph_keys=(), inputs=(), llm=False,
+                 gpu=False, note=""):
         self.key = key
         self.title = title
         self._argv = argv
@@ -91,6 +103,7 @@ class Stage:
         self.writes = writes
         self.artifacts = tuple(artifacts)
         self.graph_keys = tuple(graph_keys)
+        self.inputs = tuple(inputs)
         self.llm = llm
         self.gpu = gpu
         self.note = note
@@ -129,6 +142,8 @@ CHAIN = (
         "voted", "build the `voted` layer from the elected boxes",
         lambda sc: [PY, "graph/build_voted.py", "--scene", sc],
         reads="resolved", writes="voted",
+        inputs=("scene_manifest_slicevote_preview.json",
+                "vote/slicevote_report.json"),
     ),
     Stage(
         "voted_edges", "re-derive the edges against the boxes the vote elected",
@@ -162,6 +177,9 @@ CHAIN = (
         lambda sc: [PY, "graph/materialize_layers.py", "--scene", sc,
                     "--settle-only"],
         reads="voted", writes="settled",
+        inputs=("graph/multiplicity.json", "graph/split_cuts.json",
+                "graph/vote_doubts.json",
+                "scene_manifest_slicevote_preview.json"),
         note="SAME MODULE AS `grouped`, AND THE DIFFERENCE MATTERS. "
              "--settle-only writes geometry; without it the module also "
              "writes `grouped`, which is J9's output. Run the full one "
@@ -185,6 +203,7 @@ CHAIN = (
         "evidence", "decide the one picture each node is seen as -> `shown`",
         lambda sc: [PY, "graph/node_evidence.py", "--scene", sc],
         reads="settled", writes="shown",
+        inputs=("graph/node_views.json",),
         gpu=True,
         note="Reads `settled` BY NAME, never 'whatever is current'. It "
              "feeds J9, and `grouped` is J9's own output — evidence taken "
@@ -202,6 +221,19 @@ CHAIN = (
         "grouped", "materialize J9's grouping into `grouped`",
         lambda sc: [PY, "graph/materialize_layers.py", "--scene", sc],
         reads="shown", writes="grouped",
+        inputs=("graph/same_product.json", "graph/multiplicity.json",
+                "graph/split_cuts.json",
+                "scene_manifest_slicevote_preview.json"),
+        note="⚠ `reads` IS CONSERVATIVE, NOT LITERAL. This pass does not "
+             "read `shown` at all — it starts again from `voted` and "
+             "re-applies the same four geometry rules `settled` did, then "
+             "adds J9's grouping on top. `shown` is declared because it is "
+             "the NEWEST layer that must be fresh for this to be a legal "
+             "moment to run, and the stale sweep makes that imply every "
+             "earlier layer is fresh too. The audit note stands: because "
+             "this pass rebuilds rather than inherits, the per-node "
+             "`shown` block does NOT survive into `grouped`. See "
+             "docs/PLAN_AUTOMATION_2026-08-11.md.",
     ),
 )
 

@@ -46,8 +46,11 @@ from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).parent
-sys.path.insert(0, str(HERE.parent))
+for _p in (HERE, HERE.parent):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 import paths  # noqa: E402
+import scene_state  # noqa: E402
 # the record's own calibrated thresholds -- re-derivation must match them
 from build_edges import (TOL_ON_AIR, TOL_ON_PEN, FLOOR_TOL,  # noqa: E402
                          MIN_FOOT_OVERLAP, xz_overlap_area, h)
@@ -309,6 +312,11 @@ def main():
         "edge_counts": counts,
         "self_check": {"passed": bool(ok), "details": checks},
     }
+    # We just rewrote `judged`, so say so in the file. The stamp also marks
+    # every later layer stale — resolved and everything after it were built
+    # on the merges and edges this run has just replaced, so they describe a
+    # scene that no longer exists and their stages must run again.
+    scene_state.stamp(graph, "judged")
     gpath.write_text(json.dumps(graph, indent=1))
 
     print(f"[judged] wrote graph['judged'] in {gpath}")

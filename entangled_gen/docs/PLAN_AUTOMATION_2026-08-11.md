@@ -141,7 +141,105 @@ Status: [ ] not started · [~] in progress · [x] done · [!] blocked
 
 ---
 
-## 5. THE SECOND AUDIT — hazards AUTOMATION_READINESS.md missed
+## 4b. THE THIRD PASS — the user's own questions (2026-08-11, later)
+
+User asked, in their words: *"Do we have clear module boundaries? Can we
+run partial chains and partial modules, and will it know it needs to
+override / supersede? Re-running some modules — is it clear, and can it
+lead to stale things being used? Any naming confusion with stale stuff?
+Always a single source of truth for scene state? And when running
+multiple projects, can they live in isolation?"*
+
+**WHAT WAS PROVED BY HAND FIRST.** Re-running a middle module directly,
+not through the runner, on a scene that was already finished:
+
+```
+before:  live record..shown          stale [grouped]
+$ python graph/materialize_layers.py --scene S --settle-only
+[state] `settled` rewritten — marked stale: shown, grouped
+after:   live record..settled        stale [shown, grouped]   current: settled
+$ python graph/scene_gate.py --scene S --before j9
+FAIL  layer `shown` is STALE — `settled` was rewritten after it was
+      built, so it was computed from inputs that no longer exist.
+```
+
+So the supersede-and-invalidate machinery works, and the current layer
+correctly falls back. That is the good news, and it is the core of what
+was asked.
+
+**FOUND GAP 1 — A STAGE RUN BARE DEGRADES INSTEAD OF REFUSING.** The
+gate protects the RUNNER. Run a module by hand and it is on its own.
+Asked to judge a scene whose evidence layer had just gone stale, J9
+answered:
+
+```
+[same_product] evidence: graph['shown'] is STALE (its input was
+rewritten) — falling back to detector crops; re-run node_evidence.py
+                                                             ...exit 0
+```
+
+It noticed, it said so, and it carried on with worse evidence and
+reported success. ABSENT and STALE are being treated the same, and they
+are not the same thing: absent means the stage never ran, which is a
+documented and defensible degradation; stale means the stage DID run and
+its input has since changed, which is a chain-ordering error.
+
+### THE ANSWERS, IN SHORT
+
+| question | answer |
+|---|---|
+| single source of truth for scene state | YES for the back half of the pipeline, NO for the front half and for `compose/` — being fixed |
+| clear module boundaries | the DECLARED boundary was accurate for 4 of 11 rows and conservative-but-wrong for 6; the errors all leaned SAFE at the layer level and DANGEROUS at the file level — fixed by declaring file inputs |
+| partial chain / partial modules | safe when driven by the runner; a module run bare had no protection — being fixed |
+| re-running a module supersedes correctly | YES for the three stages that stamp; NO for five that write a layer and never stamp — being fixed |
+| naming confusion | one live wrong-block read (fixed); several stale docstrings |
+| scenes isolated from each other | on disk YES, thoroughly. The GPU is the one unarbitrated shared resource — being fixed with a lock |
+
+### THE THREE STRUCTURAL HOLES, AND WHAT WAS DONE
+
+**HOLE A — the staleness machinery only understood LAYERS, and half of
+what these stages read is a FILE.** `graph['vote']`, `graph['voted_edges']`
+and the three judge verdict sidecars are inputs to `settled` that can
+neither be marked stale nor mark anything stale. Re-run `j8` by itself and
+it rewrites `multiplicity.json`, which `settled` was built from — every
+layer still reports fresh, `check()` passes, the end-of-run gate passes.
+
+FIXED. `scene_state.stamp()` now records `written_at` on every layer;
+`stages.py` gained an `inputs` field naming the files each stage consumes
+that another stage produced; `scene_gate.stale_inputs()` compares the two.
+Proven both ways on a test scene: silent when ordered, and when
+`multiplicity.json` was touched after `settled` was built —
+
+```
+FAIL  `settled` was built 24s BEFORE its input graph/multiplicity.json
+      was last written. The stage that writes that file has run since,
+      so `settled` was built from something that no longer exists.
+```
+
+**HOLE B — five modules write a chain layer and never stamp it.**
+`materialize_verdicts` (`resolved`), `build_judged` (`judged`),
+`build_edges` (`record`), `migrate_walls_w5` (three at once) and
+`compose/support_clip --apply` (`resolved`, in place). The layer changes,
+everything after it keeps looking fresh, and both freshness answers still
+agree because the pointer was never touched. `support_clip` is the sharpest:
+one flag silently invalidates a finished scene's whole downstream stack.
+FIXED by adding the stamp.
+
+**HOLE C — the wrong block was being read for J1 merge verdicts.**
+`materialize_layers.same_verdict_pairs` had a docstring naming
+`voted_edges` over code that preferred `voted`. `voted` is edge_carry's
+re-derived copy made at build time; `voted_edges` is where a later,
+deliberate re-judgement lands. So re-judging a duplicate pair after the
+vote did NOTHING — which is exactly the repair the §4 chair problem calls
+for. FIXED: both blocks are read, keyed by pair, `voted_edges` winning a
+disagreement.
+
+**FOUND GAP 2 — `--only` SHRINKS A WHOLE-SCENE FILE.** `node_views.py
+--only a,b` filters the node set and then writes `node_views.json`
+containing ONLY those nodes, silently dropping every other node's plan.
+That directly contradicts the project's own graph-edit rule — a module
+inherits the whole structure and edits the named parts. A partial run
+must not quietly delete what it was not asked about. — hazards AUTOMATION_READINESS.md missed
 
 A separate read-only audit of all eleven stages, looking for what the
 readiness doc did not cover. Ranked worst first. Fixed items are marked.
@@ -196,6 +294,55 @@ Checked and found CLEAN: nothing interactive anywhere; no hardcoded
 scene name inside the chain; nothing written outside the scene dir; no
 unseeded randomness (the one RNG is seeded).
 
+### ISOLATION — the answer, and the lock
+
+**On disk, isolation is genuinely good and was verified rather than
+assumed.** Every stage in the chain writes only inside
+`paths.scene_dir(scene)`; every temporary `.ply` and render-target JSON
+carries the node id and lives in the scene's own folder; every judge
+cache is per-scene; the one module-level cache is keyed by a path that
+contains the scene; no `glob()` in the chain can match another scene's
+files (the `bedroom` / `bedroom_marble` prefix hazard does not exist —
+the scene name is only ever a whole path component); nothing reads the
+working directory. A hundred scenes run one after another cannot leak
+into each other.
+
+**The GPU was the one shared thing nothing arbitrated.** There was no
+lock, semaphore or queue anywhere in the repo. The only mitigation was a
+`time.sleep(1.0)` inside each renderer process — which does nothing when
+several processes render at once. And it was already being exceeded
+WITHIN a single scene: J8 runs 8 workers and, since v2.4, builds its
+render inside the worker, so one scene could put 8 rasterisations on the
+card at once. On a machine that hard-powers-off under GPU burst.
+
+FIXED. `paths.gpu_lock()` — an `O_CREAT|O_EXCL` lock file at
+`out/gpu.lock`, deliberately the one shared mutable file in the design —
+now wraps all five WSL render call sites. `paths.scene_lock(scene)`
+refuses a second run of the same scene and names the other pid, because
+`write_atomic` prevents a torn write but not a LOST UPDATE.
+
+Two details worth keeping:
+- **Stale locks are broken by PID LIVENESS, not by a timeout.** The
+  failure being survived is a power cut: the lock file outlives its
+  owner. If only a timeout could clear it, one crash at 01:00 would cost
+  the rest of the night. Recovery from a dead holder is immediate; the
+  (generous, 2 h) age limit is only a backstop for a recycled pid or a
+  lock written by another host.
+- **`os.kill(pid, 0)` is NOT the liveness test on Windows** — it calls
+  `TerminateProcess`, so the obvious portable idiom would kill the
+  process it was asking about. `OpenProcess` + `GetExitCodeProcess` is
+  used instead.
+
+Both proven across real, separate processes: two children's critical
+sections did not overlap, a lock left by a dead pid was broken in 0.00 s,
+and a second run of a live scene was refused by name.
+
+⚠ STILL TRUE: a scene killed by `--scene-timeout` could leave its
+renderer running inside WSL, where the Windows process tree cannot reach
+it. `run_fleet` now kills the Windows tree with `taskkill /T /F`,
+confirms the pid is gone, and then makes a separate best-effort
+`wsl -e pkill` — reporting what it found rather than assuming.
+
 ### Findings to carry (not fixed tonight)
 
 - ⚠ **THE CHAIN HAS NO JUDGE FOR A DUPLICATE THE VOTE ITSELF CREATES.**
@@ -225,6 +372,44 @@ unseeded randomness (the one RNG is seeded).
   What WAS done: `scene_gate.quality_notes` now WARNs, on every scene,
   when a SAME_CANDIDATE edge reaches the end with no verdict — so the
   hole is counted on all 100 runs instead of being silently absorbed.
+
+- ⚠⚠ **COMPOSE READS THE PRE-VOTE LAYER.** Every module in `compose/`
+  takes its boxes and edges from `graph["resolved"]` — the layer as it
+  stood BEFORE the vote elected anything. `consistency.py`,
+  `propose_edits.py`, `supported_by.py`, `snap.py`, `support_clip.py`
+  all do it; `pick.py`, `fit_preview.py` and `fit_declip.py` read
+  appearance from `judged` for the same reason. On `living_marble` that
+  means placing and shopping against boxes where the glass door is 6.04 m
+  instead of 0.02 m, with no split pieces and with merged-away nodes
+  still present.
+
+  The files themselves show it is an oversight rather than a decision:
+  `supported_by.py` already fixed APPEARANCE to `scene_state.nodes()`
+  with a comment explaining why `judged` was wrong — while the boxes four
+  lines above stayed on `resolved`. `snap.py` calls
+  `scene_state.nodes()` on line 201 and `graph["resolved"]` on line 358.
+
+  NOT FIXED, and it is the biggest single correctness finding of the
+  night. It is also outside the chain — `stages.CHAIN` ends at `grouped`
+  and no gate covers compose at all — so it neither blocks nor is caught
+  by anything built here. Fixing it changes what gets placed and bought,
+  which is the user's call, not a plumbing repair.
+
+- ⚠ **`grouped` REBUILDS RATHER THAN INHERITS, SO THE PICTURES DO NOT
+  SURVIVE.** `materialize_layers`' full pass does not read `shown` at
+  all — the word does not appear in the file. It starts again from
+  `voted` and re-applies the same four geometry rules `settled` did, then
+  adds J9's grouping. So `grouped` is a SIBLING of `settled`, not a child
+  of `shown`, and the per-node `shown` block — the picture the whole
+  `node_evidence` stage exists to decide — is absent from the current
+  layer. Anything calling `scene_state.nodes(graph)` after a finished run
+  gets nodes with no pictures.
+
+  This contradicts the project's own graph-edit rule (inherit the whole
+  structure, edit the named parts) and quietly discards a stage's output.
+  NOT FIXED — it is an architectural change to materialize. The stage
+  table now says plainly that its `reads="shown"` is conservative rather
+  than literal, and why.
 
 - **`shown` stores supplementary view paths ABSOLUTE** while the main
   picture path is relative to the scene dir. Mixed, and it means a scene

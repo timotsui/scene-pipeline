@@ -32,6 +32,8 @@ A half-layer (the retired `vote` node-sidecar, `voted_edges` with no
 nodes) can never become the state of the scene.
 """
 
+import time as _time
+
 # oldest -> newest. Each is a stage's edit of the one before it.
 CHAIN = (
     ("record",   "detection: every node found, with all its evidence"),
@@ -133,7 +135,16 @@ def stamp(graph, name, note="", run_id=None):
     downstream exists yet, so the sweep does nothing at all.
 
     Marked, never deleted: the content stays readable, and `stale_since`
-    names the layer whose rewrite invalidated it."""
+    names the layer whose rewrite invalidated it.
+
+    EVERY LAYER ALSO RECORDS WHEN IT WAS WRITTEN (2026-08-11). The stale
+    sweep can only see LAYERS, and a stage's real inputs are often FILES —
+    the vote's preview manifest, the judges' verdict sidecars. Re-run one
+    of those stages alone and it rewrites a file that a layer was built
+    from, while every layer still looks fresh, because nothing in the
+    chain knows the file exists. `written_at` is what lets the gate
+    answer that: a layer whose input file is NEWER than the layer itself
+    was built from something that has since changed."""
     lay = graph.setdefault("layer", {})
     lay["canonical"] = name
     lay["chain"] = list(NAMES)
@@ -158,12 +169,31 @@ def stamp(graph, name, note="", run_id=None):
     me = _layer(graph, name)
     if isinstance(me, dict):
         me.pop("stale_since", None)
+        me["written_at"] = _time.time()
+    if name == "record":
+        # `record` is the file's top level, and _layer() builds a fresh
+        # dict for it rather than returning one that lives in the graph —
+        # so the line above would write to a throwaway. Put it where it
+        # will actually be saved.
+        graph.setdefault("layer", {})["record_written_at"] = _time.time()
     lay["stale"] = present(graph, include_stale=True)
     lay["stale"] = [n for n in lay["stale"] if is_stale(graph, n)]
     if swept:
         print(f"[state] `{name}` rewritten — marked stale: "
               f"{', '.join(swept)} (re-run their stages)")
     return graph
+
+
+def written_at(graph, name):
+    """When this layer was last written, as epoch seconds, or None.
+
+    None means the layer predates the stamp recording it (2026-08-11) —
+    an honest "I do not know", which a caller must treat as "cannot
+    check", never as "old" or as "fine"."""
+    if name == "record":
+        return (graph.get("layer") or {}).get("record_written_at")
+    b = graph.get(name)
+    return b.get("written_at") if isinstance(b, dict) else None
 
 
 def check(graph):

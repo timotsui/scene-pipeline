@@ -1159,7 +1159,15 @@ def boxcontent_render(scene, region, tgt, out_dir, notes, nid):
                f"{py} '{scr}' --targets '{sc.to_wsl(tf)}' "
                f"--ply '{sc.to_wsl(sub)}' --out '{sc.to_wsl(out_dir)}' "
                f"--res {BOXC_RES}\"")
-        subprocess.run(cmd, check=True, timeout=900, shell=True)
+        # This runs inside the CONCURRENCY-way ThreadPoolExecutor, so up to
+        # eight of these could otherwise hit the card at once (the stimulus
+        # has been built in the worker since v2.4) — and the machine
+        # hard-powers-off under GPU burst, see docs/POWER_CRASHES.md.
+        # Serialising HERE, around the subprocess alone, is what the "lanes
+        # are couriers, compute is cloud-side" ruling actually intended: the
+        # renders queue, the model calls stay concurrent.
+        with paths.gpu_lock(f"{scene} {nid} box-content render"):
+            subprocess.run(cmd, check=True, timeout=900, shell=True)
     except Exception as e:                                     # noqa: BLE001
         notes.append(f"{nid}: box-content render FAILED "
                      f"({type(e).__name__}: {str(e)[:160]}) — panel omitted")

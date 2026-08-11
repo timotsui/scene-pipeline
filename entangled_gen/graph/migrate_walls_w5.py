@@ -40,8 +40,11 @@ from pathlib import Path
 import numpy as np
 
 HERE = Path(__file__).parent
-sys.path.insert(0, str(HERE.parent))
+for _p in (HERE, HERE.parent):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 import paths  # noqa: E402
+import scene_state  # noqa: E402
 
 WALL_TOL = 0.10       # m — build_edges' IN_WALL claim distance
 TANGENT_SLACK = 0.10  # m — footprint-vs-segment-extent overlap slack
@@ -296,11 +299,22 @@ def main():
         shutil.copy2(gp, bak)
         print(f"[migrate] backup: {bak.name}")
     graph["nodes"] = keep + new_walls
+    # We rewrote three layers at once: record (the wall nodes above, plus
+    # its IN_WALL edges), judged and resolved. Stamp the EARLIEST of them,
+    # `record`, because the stale sweep runs forward from whatever it is
+    # given: stamping record marks judged, resolved and everything after
+    # them stale, which is exactly right. Our edits to judged and resolved
+    # were a repair of their wall edges, NOT a rebuild from the new record,
+    # so they are still owed a proper re-run and must not look fresh.
+    # Stamping the LATEST layer instead would leave judged and resolved
+    # claiming to be up to date, which is the bug this fixes.
+    scene_state.stamp(graph, "record")
     gp.write_text(json.dumps(graph, indent=1))
     print(f"[migrate] wrote {gp}")
-    print("[migrate] NEXT: rebuild the downstream layers — "
-          "build_voted --apply, then materialize_layers --settle-only "
-          "--apply, then materialize_layers --apply")
+    print("[migrate] the downstream layers are now MARKED STALE in the "
+          "file automatically — rebuild them with build_voted --apply, "
+          "then materialize_layers --settle-only --apply, then "
+          "materialize_layers --apply")
 
 
 if __name__ == "__main__":

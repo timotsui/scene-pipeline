@@ -75,13 +75,22 @@ EXIT CODES
        after a stage, or the final check said the run did not finish
     When more than one thing failed, the exit code is the FIRST failure's.
 
-THE RUN LOG. Every run writes out/<scene>/run_scene_<utc>.json: the argv,
-return code and duration of every stage, plus the gate lines from before
-and after it. Over a hundred scenes that file, not console scrollback, is
-how anyone finds out what happened. Its path is printed at the end.
+THE RUN LOG. Every run writes out/<scene>/run_scene_<utc>-<pid>.json: the
+argv, return code and duration of every stage, when it started and ended,
+how long the two gate checks around it took, plus the gate lines from
+before and after it. Over a hundred scenes that file, not console
+scrollback, is how anyone finds out what happened. Its path is printed at
+the end.
+
+WHERE THE TIME WENT. The end-of-run summary prints a TIMING block: every
+stage that ran, its seconds, and its share of the run, slowest first. One
+scene's block answers "what was slow tonight"; run_fleet.py reads these
+same run logs across every scene and prints the same thing per MODULE,
+which is the question a hundred scenes actually raise.
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -145,13 +154,34 @@ class RunLog:
         }
 
     def stage(self, phase, key, argv, rc, seconds, before=None, after=None,
-              note=""):
+              note="", started=None, ended=None,
+              seconds_gate_before=None, seconds_gate_after=None):
+        """One stage, as a row.
+
+        `seconds` is WALL CLOCK FOR THE CHILD PROCESS ITSELF and nothing
+        else — not the gate checks on either side of it, which are timed
+        separately as `seconds_gate_before` / `seconds_gate_after` so a
+        slow stage is never confused with a slow check. On the GPU stages
+        that wall clock includes time this process spent waiting on a
+        renderer running inside WSL, which is where most of it goes; the
+        runner cannot see inside that, so the number is honestly "how
+        long we waited", not "how long the GPU worked".
+
+        `started` and `ended` are ISO UTC strings rather than durations
+        because durations cannot be lined up: two runs on the same night
+        can only be compared against each other on a clock."""
         self.data["stages"].append({
             "phase": phase,
             "stage": key,
             "argv": _norm_argv(argv),
             "returncode": rc,
             "seconds": round(seconds, 2),
+            "started": started,
+            "ended": ended,
+            "seconds_gate_before": (None if seconds_gate_before is None
+                                    else round(seconds_gate_before, 2)),
+            "seconds_gate_after": (None if seconds_gate_after is None
+                                   else round(seconds_gate_after, 2)),
             "before": _lines(before),
             "after": _lines(after),
             "note": note,
@@ -160,7 +190,9 @@ class RunLog:
     def skipped(self, phase, key, why):
         self.data["stages"].append({
             "phase": phase, "stage": key, "argv": [], "returncode": None,
-            "seconds": 0.0, "before": None, "after": None,
+            "seconds": 0.0, "started": None, "ended": None,
+            "seconds_gate_before": None, "seconds_gate_after": None,
+            "before": None, "after": None,
             "skipped": why, "note": why,
         })
 
@@ -180,7 +212,18 @@ def _utc_iso():
 
 
 def _runid():
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    """A run id that sorts by time and is still unique.
+
+    The bare timestamp was not enough. It has one-second resolution, and
+    two runs started inside the same second — a fleet retrying a scene, a
+    person starting a run while a script starts another — silently
+    overwrote each other's run log, so one of the two runs simply had no
+    record. The process id is the cheapest thing guaranteed distinct
+    between two live runs, so it goes on the end. The timestamp stays
+    first so a directory listing is still in run order, and both parts
+    are filename-safe on Windows."""
+    return (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            + f"-{os.getpid()}")
 
 
 def _norm_argv(argv):
@@ -343,19 +386,21 @@ def run_core(sc, skip, box_thr, log, failures, stop_on_fail):
             return None
         mark = len(ARGV_TRACE)
         t0 = time.time()
+        started = _utc_iso()
         try:
             out = fn()
         except SystemExit as e:
             dt = time.time() - t0
             log.stage("core", name, _since_mark(mark), RC_CRASH, dt,
-                      note=str(e))
+                      note=str(e), started=started, ended=_utc_iso())
             failures.append({"phase": "core", "stage": name,
                              "kind": "crashed", "code": RC_CRASH,
                              "detail": str(e)})
             print(f"[run_scene] FAILED core stage `{name}`: {e}", flush=True)
             return "FAILED"
         dt = time.time() - t0
-        log.stage("core", name, _since_mark(mark), 0, dt)
+        log.stage("core", name, _since_mark(mark), 0, dt,
+                  started=started, ended=_utc_iso())
         summary[name] = out
         return out
 
@@ -461,28 +506,40 @@ def run_graph(sc, selected, log, failures, stop_on_fail):
 
     `since=t0` is what makes `after` able to catch the silent no-op: a
     promised file that exists but predates t0 means the stage exited 0
-    having done nothing."""
+    having done nothing. t0 is taken before the `before` check so that
+    slack always runs the safe way — earlier, never later.
+
+    THE THREE CLOCKS ARE KEPT APART. The stage's own wall clock, the
+    `before` check and the `after` check are timed separately. The checks
+    are cheap, but "cheap" is a claim, and the only way anyone can see
+    that it stays true over a hundred scenes is if the number is written
+    down next to the stage it guards."""
     per_stage = []
     for st in selected:
         argv = st.argv(sc)
         t0 = time.time()
+        started = _utc_iso()
 
         before = _gate_call(gate.before, sc, st)
         before.print()
+        t_gate_before = time.time() - t0
         if not before.ok:
-            log.stage("graph", st.key, argv, None, time.time() - t0,
+            log.stage("graph", st.key, argv, None, 0.0,
                       before=before,
-                      note="gate refused to start this stage")
+                      note="gate refused to start this stage",
+                      started=started, ended=_utc_iso(),
+                      seconds_gate_before=t_gate_before)
             failures.append({"phase": "graph", "stage": st.key,
                              "kind": "gate-before", "code": RC_GATE,
                              "detail": _first_fail(before)})
-            per_stage.append((st, "GATE-BEFORE", time.time() - t0))
+            per_stage.append((st, "GATE-BEFORE", t_gate_before))
             if stop_on_fail:
                 return per_stage
             continue
 
+        t_stage0 = time.time()
         rc, _ = spawn(argv)
-        dt = time.time() - t0
+        dt = time.time() - t_stage0
         if rc != 0:
             kind = "refused" if rc == RC_REFUSED else "crashed"
             code = RC_REFUSED if rc == RC_REFUSED else RC_CRASH
@@ -490,7 +547,8 @@ def run_graph(sc, selected, log, failures, stop_on_fail):
                       "written a layer with holes in it and declined"
                       if rc == RC_REFUSED else f"stage exited {rc}")
             log.stage("graph", st.key, argv, rc, dt, before=before,
-                      note=detail)
+                      note=detail, started=started, ended=_utc_iso(),
+                      seconds_gate_before=t_gate_before)
             failures.append({"phase": "graph", "stage": st.key, "kind": kind,
                              "code": code, "detail": detail})
             print(f"[run_scene] {kind.upper()} `{st.key}` (rc={rc}): {detail}",
@@ -500,19 +558,24 @@ def run_graph(sc, selected, log, failures, stop_on_fail):
                 return per_stage
             continue
 
+        t_after0 = time.time()
         after = _gate_call(gate.after, sc, st, since=t0)
         after.print()
-        log.stage("graph", st.key, argv, rc, time.time() - t0,
-                  before=before, after=after)
+        t_gate_after = time.time() - t_after0
+        log.stage("graph", st.key, argv, rc, dt,
+                  before=before, after=after,
+                  started=started, ended=_utc_iso(),
+                  seconds_gate_before=t_gate_before,
+                  seconds_gate_after=t_gate_after)
         if not after.ok:
             failures.append({"phase": "graph", "stage": st.key,
                              "kind": "gate-after", "code": RC_GATE,
                              "detail": _first_fail(after)})
-            per_stage.append((st, "GATE-AFTER", time.time() - t0))
+            per_stage.append((st, "GATE-AFTER", dt))
             if stop_on_fail:
                 return per_stage
             continue
-        per_stage.append((st, "ok", time.time() - t0))
+        per_stage.append((st, "ok", dt))
     return per_stage
 
 
@@ -685,14 +748,28 @@ def main():
     failures = []
     t_start = time.time()
 
-    summary = {}
-    if do_core:
-        summary = run_core(sc, skip_core, a.box_thr, log, failures,
-                           stop_on_fail)
+    # ONE WRITER PER SCENE, FOR THE WHOLE RUN.
+    #
+    # paths.write_atomic makes each write of scene_graph.json all-or-
+    # nothing, but it cannot stop a LOST UPDATE: two runs of the same
+    # scene each read the 1.5 MB graph, each edit their own layer, each
+    # rename their copy over the other, and the second one wins. The
+    # checkpoint would not catch it either — it asks whether a layer is
+    # present and freshly written, never who wrote it.
+    #
+    # A second run of the same scene is an operator mistake, not a queue,
+    # so scene_lock REFUSES rather than waits, and names the other pid.
+    # It is held for the whole run and released even if a stage raises.
+    with paths.scene_lock(sc, f"run_scene {a.phase} (run {runid})"):
+        summary = {}
+        if do_core:
+            summary = run_core(sc, skip_core, a.box_thr, log, failures,
+                               stop_on_fail)
 
-    per_stage = []
-    if do_graph and (not failures or not stop_on_fail):
-        per_stage = run_graph(sc, selected_graph, log, failures, stop_on_fail)
+        per_stage = []
+        if do_graph and (not failures or not stop_on_fail):
+            per_stage = run_graph(sc, selected_graph, log, failures,
+                                  stop_on_fail)
 
     # THE CHECK THAT DID NOT EXIST. Until now a scene could end with a
     # stale layer and the runner reported success. A scene is PASS only
@@ -717,15 +794,52 @@ def main():
     log_path = log.write(verdict, failures, final_result)
 
     _print_summary(sc, dt, verdict, summary, per_stage, failures,
-                   llm_skipped, final_result, log_path)
+                   llm_skipped, final_result, log_path, log.data["stages"])
 
     if not failures:
         return 0
     return failures[0]["code"]
 
 
+def _print_timing(stage_rows, wall_seconds):
+    """WHERE THE TIME WENT IN THIS SCENE.
+
+    Every stage that actually ran, its own wall clock, and its share of
+    the run, slowest first. A skipped stage is left out — a zero row
+    tells nobody anything and only pushes the real ones down the page.
+
+    The gate column is here on purpose. The two checks around a stage are
+    supposed to be cheap; printing them is how anyone would find out that
+    one had stopped being cheap, instead of blaming the stage."""
+    ran = [s for s in stage_rows if not s.get("skipped")]
+    if not ran:
+        return
+    total = sum(float(s.get("seconds") or 0.0) for s in ran)
+    gate_total = sum(float(s.get("seconds_gate_before") or 0.0)
+                     + float(s.get("seconds_gate_after") or 0.0) for s in ran)
+    print("\n  TIMING (stage wall clock, slowest first):")
+    print(f"    {'stage':12s} {'phase':5s} {'seconds':>9s} {'share':>7s} "
+          f"{'gate s':>7s}")
+    for s in sorted(ran, key=lambda s: -float(s.get("seconds") or 0.0)):
+        secs = float(s.get("seconds") or 0.0)
+        share = (100.0 * secs / total) if total > 0 else 0.0
+        g = (float(s.get("seconds_gate_before") or 0.0)
+             + float(s.get("seconds_gate_after") or 0.0))
+        print(f"    {s.get('stage', '?'):12s} {s.get('phase', '?'):5s} "
+              f"{secs:9.1f} {share:6.1f}% {g:7.2f}")
+    print(f"    {'TOTAL':12s} {'':5s} {total:9.1f} {100.0 if total else 0:6.1f}%"
+          f" {gate_total:7.2f}")
+    # The run's wall clock is a little longer than the sum of the stages:
+    # the difference is the final gate, argument handling, and the gaps
+    # between stages. Showing both means the gap is visible instead of
+    # being quietly absorbed into whichever stage is nearest.
+    print(f"    stages {total:.1f}s of {wall_seconds:.1f}s run wall clock "
+          f"({wall_seconds - total:.1f}s outside the stages: the final "
+          f"gate and startup)")
+
+
 def _print_summary(sc, dt, verdict, summary, per_stage, failures,
-                   llm_skipped, final_result, log_path):
+                   llm_skipped, final_result, log_path, stage_rows=()):
     print("\n" + "=" * 60)
     print(f"[run_scene] {verdict}  scene={sc}  {dt:.1f}s")
 
@@ -748,6 +862,8 @@ def _print_summary(sc, dt, verdict, summary, per_stage, failures,
             print(f"    {state:11s} {st.key:12s} "
                   f"{(st.reads or '-'):9s} -> {(st.writes or '-'):9s} "
                   f"{secs:6.1f}s  {st.title}")
+
+    _print_timing(stage_rows, dt)
 
     if llm_skipped:
         print("\n  " + "*" * 56)
