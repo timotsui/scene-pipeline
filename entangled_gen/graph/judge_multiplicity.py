@@ -235,6 +235,23 @@ def claude_env():
     return env
 
 
+class JudgeUnavailable(RuntimeError):
+    """The judge could not be ASKED at all — a bad credential, an expired
+    token, an exhausted balance.
+
+    WHY THIS IS ITS OWN EXCEPTION (2026-08-11, unattended-run audit). The
+    per-case handler in run_case turns a failed call into an UNCLEAR
+    verdict. That is the right answer for a model that looked at the
+    stimulus and could not decide, and it is the WRONG answer for a
+    machine that never got to look. If the token expires at scene 40 of
+    100, every remaining case comes back UNCLEAR at confidence 0.00, the
+    stage exits 0, multiplicity.json is written and is FRESH by mtime, and
+    sixty more scenes burn the same way with nothing in the output saying
+    a judge was never consulted. So this one failure is deliberately NOT
+    caught per case: it travels out of the docket, out of main, and kills
+    the stage with a non-zero exit at the FIRST scene."""
+
+
 def call_claude(prompt, cwd, model):
     exe = shutil.which("claude")
     if not exe:
@@ -245,13 +262,18 @@ def call_claude(prompt, cwd, model):
                        timeout=CALL_TIMEOUT_S)
     out = (r.stdout or "").strip()
     err = (r.stderr or "").strip()
-    if r.returncode != 0:
-        raise RuntimeError(f"claude exit {r.returncode}: "
-                           f"{err[:400] or out[:400]}")
+    # The credential check runs BEFORE the exit-code check on purpose: an
+    # auth or billing refusal usually ALSO exits non-zero, and the old
+    # order reported it as a plain "claude exit 1" that the per-case
+    # handler happily swallowed into a verdict.
     low = (out + " " + err).lower()
     for bad in ("invalid_api_key", "authentication_error", "credit balance"):
         if bad in low:
-            raise RuntimeError(f"claude API-billing/auth error: {out[:400]}")
+            raise JudgeUnavailable(
+                f"claude API-billing/auth error: {(err or out)[:400]}")
+    if r.returncode != 0:
+        raise RuntimeError(f"claude exit {r.returncode}: "
+                           f"{err[:400] or out[:400]}")
     return out
 
 
@@ -1129,7 +1151,8 @@ def boxcontent_render(scene, region, tgt, out_dir, notes, nid):
     tf = out_dir / f"_{tgt['name']}_target.json"
     try:
         n = _splat(ply_src).write_subset(region["lo"], region["hi"], sub)
-        tf.write_text(json.dumps([tgt], indent=1), encoding="utf-8")
+        # atomic: the WSL renderer reads this file back immediately
+        paths.write_atomic(tf, json.dumps([tgt], indent=1))
         py = "/root/miniconda3/envs/splatanalyzer/bin/python"
         scr = sc.to_wsl(HERE / "analyzer" / "render_targets_wsl.py")
         cmd = (f"wsl -d Ubuntu-24.04 -- bash -c \"cd /root/splat_analyzer && "
@@ -1147,8 +1170,10 @@ def boxcontent_render(scene, region, tgt, out_dir, notes, nid):
         notes.append(f"{nid}: box-content renderer produced no {png.name} — "
                      "panel omitted")
         return None, "renderer wrote no png"
-    side.write_text(json.dumps({"hash": h, "gaussians": n, **payload},
-                               indent=1), encoding="utf-8")
+    # atomic: this sidecar is read back on the next run to decide whether
+    # the render can be reused, so a half-written one costs a GPU render
+    paths.write_atomic(side, json.dumps({"hash": h, "gaussians": n,
+                                         **payload}, indent=1))
     return png, (f"box-content render, {n:,} gaussian(s) inside the region; "
                  f"camera in its params sidecar {side.name}")
 
@@ -2064,7 +2089,7 @@ def main():
     vote = g.get("vote") or {}
     if not vote:
         raise SystemExit("[multiplicity] no vote block — run "
-                         "record_vote_doubts.py --apply first")
+                         "record_vote_doubts.py first")
     nodes = g["resolved"]["nodes"]
     by_id = {n["id"]: n for n in nodes}
     # v2.1: relational facts come from the loop-back's voted-edge layer.
@@ -2072,7 +2097,7 @@ def main():
     ce = g.get("voted_edges") or {}
     if not ce.get("edges"):
         raise SystemExit("[multiplicity] no graph['voted_edges'] — run "
-                         "graph/rederive_voted_edges.py --apply (Phase B2 "
+                         "graph/rederive_voted_edges.py (Phase B2 "
                          "loop-back) first; J8 v2.1 reads its relational "
                          "facts from that layer and computes none itself")
     edges = ce["edges"]
@@ -2236,6 +2261,7 @@ def main():
 
     cache_f = sd / "graph" / "judge_multiplicity_cache.json"
     cache = json.loads(cache_f.read_text()) if cache_f.exists() else {}
+    cache_lock = threading.Lock()   # a level's cases run concurrently
 
     def case_key(c):
         h = hashlib.sha256()
@@ -2251,6 +2277,7 @@ def main():
         if c.get("no_stimulus"):
             return {**c, "verdict": {
                 "outcome": "UNCLEAR", "confidence": 0.0,
+                "judge_default": True,
                 "reason": "no stimulus images on disk"}, "cached": False}
         k = case_key(c)
         if k in cache:
@@ -2267,6 +2294,10 @@ def main():
             try:
                 return parse_verdict(call_claude(prompt, sheets_dir,
                                                  a.model), keys), None
+            except JudgeUnavailable:
+                # NOT a failed attempt — the question was never asked. Let
+                # it out of the docket and kill the stage (see the class).
+                raise
             except Exception as e:                    # noqa: BLE001
                 return None, f"{type(e).__name__}: {str(e)[:160]}"
 
@@ -2276,11 +2307,22 @@ def main():
                               "OBJECT ONLY.")
             err = err2 or err
         if v is None:
+            # `judge_default` marks a verdict NOBODY made. It rides with
+            # the verdict into the cache and into multiplicity.json, so a
+            # run where 39 of 40 cases defaulted can be told apart from
+            # one where 2 did — which downstream had no way to see.
             v = {"outcome": "UNCLEAR", "confidence": 0.0,
+                 "judge_default": True,
                  "reason": (f"judge call failed x2 — {err}" if err
                             else "malformed model reply x2")}
         v = {**v, "model": a.model, "date": date.today().isoformat()}
-        cache[k] = v
+        with cache_lock:
+            cache[k] = v
+            # FLUSH AS WE GO: the cache used to be written once, after the
+            # last level. Anything that ended the stage early — a crash, a
+            # power cut (docs/POWER_CRASHES.md) — threw away every answer
+            # the run had already paid for. Purely about not paying twice.
+            paths.write_atomic(cache_f, json.dumps(cache, indent=1))
         return {**c, "verdict": v, "cached": False}
 
     # LEVELS RUN IN SEQUENCE; a level's cases are independent and still run
@@ -2314,7 +2356,8 @@ def main():
                       f"-> lo {[round(v, 3) for v in rec['now']['lo']]} hi "
                       f"{[round(v, 3) for v in rec['now']['hi']]}", flush=True)
     results = [done[c["id"]] for c in cases if c["id"] in done]
-    cache_f.write_text(json.dumps(cache, indent=1))
+    with cache_lock:                 # a final flush; run_case wrote as it went
+        paths.write_atomic(cache_f, json.dumps(cache, indent=1))
 
     idx = build_index(results, sheets_dir, a.scene, notes)
     for n in notes:
@@ -2363,7 +2406,19 @@ def main():
     if not conflicts:
         print("[multiplicity] post-judge consistency check: no docket pair "
               "overlaps MORE than it did before judging", flush=True)
-    out_f.write_text(json.dumps({
+    # HOW MANY VERDICTS NOBODY MADE (2026-08-11, unattended-run audit).
+    # Counted over the cases this file SHIPS, so an --only run's merged
+    # file describes itself and not just the handful of cases re-judged.
+    # A case counts as defaulted when no judge formed its verdict: the
+    # call failed twice, the reply was malformed twice, or there was no
+    # stimulus to ask about. No threshold is applied and the stage never
+    # fails on this count — where the line falls is the user's call, and
+    # the gate reads the field.
+    defaulted_ids = [c.get("id") for c in fresh
+                     if (c.get("verdict") or {}).get("judge_default")]
+    judge_failures = {"defaulted": len(defaulted_ids), "total": len(fresh),
+                      "ids": defaulted_ids}
+    paths.write_atomic(out_f, json.dumps({
         "scene": a.scene, "built": date.today().isoformat(),
         "source": "graph/judge_multiplicity.py (J8) — verdicts REFERENCE "
                   "nodes; materialize (Phase C) is the editor. Consumers: "
@@ -2401,6 +2456,12 @@ def main():
         "judge_order": order,
         "settle_log": settle_log,
         "post_judge_conflicts": conflicts,
+        "judge_failures": judge_failures,
+        "judge_failures_note": "cases in this file whose verdict no judge "
+                               "made — the call failed twice, the reply was "
+                               "malformed twice, or there was no stimulus. "
+                               "Recorded, never acted on: a gate decides "
+                               "how many is too many.",
         "cases": fresh}, indent=1))
     for c in results:
         v = c["verdict"]
@@ -2417,8 +2478,29 @@ def main():
               f"conf {v.get('confidence', 0.0):.2f} "
               f"{'(cache)' if c.get('cached') else ''} — "
               f"{v.get('reason', '')[:80]}", flush=True)
+    # Printed last and marked, so a hundred-scene log can be grepped for it.
+    if judge_failures["defaulted"]:
+        print(f"[multiplicity] JUDGE FAILURES: "
+              f"{judge_failures['defaulted']} of {judge_failures['total']} "
+              f"case(s) ended on a DEFAULT verdict (no judge made them): "
+              f"{', '.join(judge_failures['ids'])}", flush=True)
+    else:
+        print(f"[multiplicity] JUDGE FAILURES: 0 of "
+              f"{judge_failures['total']} case(s) defaulted", flush=True)
     print(f"[multiplicity] -> {out_f}", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except JudgeUnavailable as e:
+        # The credential or the balance, not the scene. Nothing this run
+        # produced can be trusted, because every case after the failure
+        # would have defaulted to UNCLEAR without a judge ever seeing it.
+        print(f"[multiplicity] STOPPING — the judge could not be asked: {e}",
+              file=sys.stderr, flush=True)
+        print("[multiplicity] NO VERDICT IN THIS RUN CAN BE TRUSTED. Fix the "
+              "credential or the account balance and run this scene again "
+              "from the start; the cache keeps the answers already paid for.",
+              file=sys.stderr, flush=True)
+        raise SystemExit(2)

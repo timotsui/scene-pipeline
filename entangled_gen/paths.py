@@ -15,6 +15,7 @@ Shared (not per scene): out/report.html, out/cache, out/archive, out/logs,
 out/viewer_caps, out/_debug. Every script builds paths through here.
 """
 import json as _json
+import os as _os
 import sys as _sys
 from pathlib import Path
 
@@ -173,6 +174,46 @@ def pano_frames(sc):
 
 def spots(sc):
     return scene_dir(sc) / "spots.png"
+
+
+def write_atomic(path, text, encoding="utf-8"):
+    """Write a file so that a crash can never leave it half-written.
+
+    WHY THIS EXISTS (2026-08-11, unattended-run audit). `scene_graph.json`
+    is 1.5 MB and holds the WHOLE scene — record, judged, resolved, vote,
+    voted, settled, shown. Four stages rewrote it with a bare
+    `write_text`, which truncates the file to zero and then streams the
+    new content back. This machine hard-powers-off under GPU burst
+    (docs/POWER_CRASHES.md), and two of those four stages run right after
+    a GPU stage. A cut in that window leaves a truncated graph, and the
+    graph is NOT a layer that can be re-derived: detection, lifting,
+    description and edges all sit upstream of the chain and would every
+    one of them have to be run again. Over a hundred unattended scenes
+    that stops being unlucky and starts being a matter of time.
+
+    Write to a temporary file beside the target, flush it to the disk,
+    then rename. On Windows and on POSIX alike `Path.replace` is atomic
+    within a filesystem, so a reader sees either the whole old file or
+    the whole new one and never a mixture. `record_vote_doubts` already
+    did exactly this; it is now the one way every stage writes.
+
+    The temp file is left in place if the write itself fails, so there is
+    something to look at, and it never overwrites the good file.
+
+    LINE ENDINGS ARE DELIBERATELY LEFT ALONE. `newline` is not pinned, so
+    this writes exactly the bytes `Path.write_text` wrote before — CRLF on
+    this machine. Pinning "\n" here would be tidier in the abstract and
+    would rewrite every 1.5 MB scene graph on disk the first time a stage
+    touched it, turning a one-line edit into a whole-file diff on all 100
+    scenes. Atomicity was the problem; formatting was not."""
+    path = Path(path)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding=encoding) as f:
+        f.write(text)
+        f.flush()
+        _os.fsync(f.fileno())          # the bytes are on the disk, not in a cache
+    tmp.replace(path)
+    return path
 
 
 def gen_scenes():

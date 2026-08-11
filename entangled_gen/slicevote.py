@@ -543,9 +543,37 @@ print("[vote] reading raw ply rows ...", flush=True)
 _f = open(PLY, "rb")
 _header = [_f.readline(), _f.readline()]
 _names, _n = [], None
+# HEADER LOOP MUST BE ABLE TO END (2026-08-11, unattended-run audit).
+# At end of file readline() returns b"" for ever, so on a truncated ply
+# none of the branches below ever match and the loop appends empty lines
+# until the machine swaps to death. The ply is ~100 MB and is produced
+# upstream on the same machine that hard-powers-off under GPU burst
+# (docs/POWER_CRASHES.md), so a half-written ply is a normal input here,
+# not a freak one. In an unattended run over ~100 scenes a hang is worse
+# than a crash: a crash ends this scene and the runner moves on, a hang
+# stalls the whole night. So we stop on the empty read, and we also cap
+# the header — a real ply header is a few dozen lines, so a few thousand
+# already means we are reading something that is not a ply header.
+_HEADER_MAX = 4000
 while True:
     line = _f.readline()
+    # b"" is end of file. A line with no newline on the end is the same
+    # story one byte earlier: the file stops in the middle of a header
+    # line, which no complete ply ever does. Both mean the header ran
+    # out, and catching the second here keeps a half-written line out of
+    # the property parse below, where it would raise an IndexError that
+    # says nothing about the real problem.
+    if not line or not line.endswith(b"\n"):
+        raise ValueError(
+            f"{PLY}: the ply header ended without 'end_header' — the "
+            "file is truncated or is not a .ply. Re-make the splat for "
+            "this scene.")
     _header.append(line)
+    if len(_header) > _HEADER_MAX:
+        raise ValueError(
+            f"{PLY}: no 'end_header' in the first {_HEADER_MAX} lines — "
+            "the file is truncated or is not a .ply. Re-make the splat "
+            "for this scene.")
     ls = line.strip()
     if ls.startswith(b"element vertex"):
         _n = int(ls.split()[-1])
@@ -632,8 +660,9 @@ def render_gate(view, cull_rule, cull_margin, keep):
     elif png.exists():
         print(f"[vote] render {name}: params match ({h}) — reusing png",
               flush=True)
-    side.write_text(json.dumps({"hash": h, **payload}, indent=1),
-                    encoding="utf-8")
+    # atomic: a later run reads this sidecar to decide whether the png
+    # beside it is stale, so a half-written one must never exist
+    paths.write_atomic(side, json.dumps({"hash": h, **payload}, indent=1))
     return not fresh
 
 
@@ -1426,7 +1455,7 @@ def top_fit_render(nid, name, vname, eye, aim, fov, clip_ceiling):
         cply = sdir / f"votectx_{vname}.ply"
         write_subset_ply(keep, cply)
         tf = sdir / f"votetgt_{vname}.json"
-        tf.write_text(json.dumps([view], indent=1))
+        paths.write_atomic(tf, json.dumps([view], indent=1))
         perp_run_renders(tf, cply)
         cply.unlink(missing_ok=True)
     return png
@@ -1567,7 +1596,7 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     cply = sdir / f"votectx_{vname}.ply"
     write_subset_ply(~hole, cply)
     tf = sdir / f"votetgt_{vname}.json"
-    tf.write_text(json.dumps([view], indent=1))
+    paths.write_atomic(tf, json.dumps([view], indent=1))
     perp_run_renders(tf, cply)
     cply.unlink(missing_ok=True)
     png = sdir / f"{vname}.png"
@@ -2524,7 +2553,7 @@ no vote. Recorded here so the drop is never silent.</p>
             cply = sdir / f"votectx_{v['name']}.ply"
             write_subset_ply(~hole, cply)
             ctf = sdir / f"votetgt_{v['name']}.json"
-            ctf.write_text(json.dumps([v], indent=1))
+            paths.write_atomic(ctf, json.dumps([v], indent=1))
             jobs.append((ctf, cply, True))
         return jobs
 
@@ -2600,7 +2629,8 @@ no vote. Recorded here so the drop is never silent.</p>
     # ---- TIER 1: context cards at object height ----
     jobs = ctx_render_jobs(views[:4])
     tf = sdir / f"votetgt_{nid}.json"
-    tf.write_text(json.dumps([views[4]], indent=1))  # clean slice34
+    # clean slice34
+    paths.write_atomic(tf, json.dumps([views[4]], indent=1))
     render_gate(views[4], CULL_SLICE, 0.0, slice_mask)
     jobs.append((tf, plyp, False))
     run_renders(jobs)
@@ -2752,7 +2782,7 @@ no vote. Recorded here so the drop is never silent.</p>
                    "eye": views[k]["eye"], "aim": views[k]["aim"],
                    "fov": FOV_GOOD} for k in range(4)]
         itf = sdir / f"votetgt_{nid}_iso.json"
-        itf.write_text(json.dumps(iviews, indent=1))
+        paths.write_atomic(itf, json.dumps(iviews, indent=1))
         for _iv in iviews:
             render_gate(_iv, CULL_SLICE, 0.0, slice_mask)
         run_renders([(itf, plyp, False)])
@@ -3100,9 +3130,19 @@ def _load_list(path, listkey):
             raise ValueError(f"no '{listkey}' list")
         return lst
     except Exception as e:                                   # noqa: BLE001
-        print(f"[vote] merge: {path.name} corrupt/unreadable ({e}) — "
-              "writing THIS RUN'S entries only", flush=True)
-        return []
+        # FATAL, NEVER SWALLOWED (2026-08-11, unattended-run audit).
+        # This function is the only thing that keeps the objects a
+        # partial or --only run did not touch. Returning [] here would
+        # rewrite the whole-scene document with this run's ids alone, so
+        # every other object's elected box would be gone and the stage
+        # would still exit 0 with one printed line as the entire alarm.
+        # A corrupt input must stop the scene, not quietly shrink it.
+        raise SystemExit(
+            f"[vote] FATAL: {path} is corrupt or unreadable ({e}). "
+            "Continuing would silently drop every object this run did "
+            "not touch, because this file is the only record of them. "
+            "Nothing was written. If you meant to start over, delete "
+            "the file and re-run the vote in full (no --only).")
 
 
 def merge_entries(path, listkey, run_entries):
@@ -3167,8 +3207,9 @@ for _dr in dropped_outside:
 # layer carries the unclipped evidence boxes.
 cm_path = rdir / "conemap.json"
 cm_merged = merge_entries(cm_path, "objects", cm_objects)
-cm_path.write_text(json.dumps({"scene": SCENE, **prov_header(cm_merged),
-                               "objects": cm_merged}), encoding="utf-8")
+paths.write_atomic(cm_path,
+                   json.dumps({"scene": SCENE, **prov_header(cm_merged),
+                               "objects": cm_merged}))
 
 # ---- PREVIEW manifest + report (⚠ UNTESTED promotion) ----
 objs = []
@@ -3217,7 +3258,7 @@ by_status = {}
 for _mo in man_objs:
     _s = (_mo.get("flags") or ["?"])[0]
     by_status[_s] = by_status.get(_s, 0) + 1
-man_path.write_text(json.dumps(
+paths.write_atomic(man_path, json.dumps(
     {"scene": SCENE, "status": "UNTESTED-PREVIEW",
      "source": "slicevote.py — slice-vote election (top-box prism / "
                "wedge fallback; view-tunnel context cards; 6-voter "
@@ -3232,6 +3273,9 @@ man_path.write_text(json.dumps(
      **prov_header(man_objs),
      "frame": {"space": "raw", "up": [0.0, -1.0, 0.0]},
      "n_objects": len(man_objs), "objects": man_objs}, indent=2))
+# ATOMIC ON PURPOSE: this is the file merge_entries reads on the next
+# partial run, and a cut during a bare write is exactly what makes the
+# corrupt file that now stops the scene. Written whole or not at all.
 
 rep_path = rdir / "slicevote_report.json"
 results = merge_entries(rep_path, "results",
@@ -3239,7 +3283,7 @@ results = merge_entries(rep_path, "results",
                                             "boxes", "rule", "prov")}
                          for o in cm_objects]
                         + kept_exempt + dropped_outside)
-rep_path.write_text(json.dumps(
+paths.write_atomic(rep_path, json.dumps(
     {"scene": SCENE, "stage": "slicevote",
      "status": "UNTESTED-PREVIEW", "gate": a.gate,
      **prov_header(results),

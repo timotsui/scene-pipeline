@@ -73,6 +73,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
@@ -122,6 +123,22 @@ def claude_env():
     return env
 
 
+class JudgeUnavailable(RuntimeError):
+    """The judge could not be ASKED at all — a bad credential, an expired
+    token, an exhausted balance.
+
+    WHY THIS IS ITS OWN EXCEPTION (2026-08-11, unattended-run audit; the
+    same class exists in judge_multiplicity.py and split_cuts.py). The
+    per-group handler in run_group turns a failed call into a group whose
+    members are all `unassigned`. That is an honest record for a model
+    that saw the contact sheet and could not tell the products apart. It
+    is the wrong record for a machine that never got to look: if the token
+    expires mid-queue, every group of every remaining scene comes back
+    unassigned, the stage exits 0, and same_product.json looks like a
+    finished job whose judge simply grouped nothing. This failure is
+    therefore NOT caught per group — it kills the stage."""
+
+
 def call_claude(prompt, model, cwd=None):
     # cwd MUST be the sheets dir when the prompt references image files:
     # claude -p can only Read within its working directory (the J9
@@ -137,14 +154,19 @@ def call_claude(prompt, model, cwd=None):
                        cwd=(str(cwd) if cwd else None),
                        timeout=CALL_TIMEOUT_S)
     out = (r.stdout or "").strip()
-    if r.returncode != 0:
-        raise RuntimeError(f"claude exit {r.returncode}: "
-                           f"{(r.stderr or out)[:400]}")
+    # The credential check runs BEFORE the exit-code check on purpose: an
+    # auth or billing refusal usually ALSO exits non-zero, and the old
+    # order reported it as a plain "claude exit 1" that the per-group
+    # handler swallowed into a verdict.
     low = (out + " " + (r.stderr or "")).lower()
     for bad in ("invalid_api_key", "authentication_error",
                 "credit balance"):
         if bad in low:
-            raise RuntimeError(f"claude auth/billing error: {out[:400]}")
+            why = (r.stderr or "") or out
+            raise JudgeUnavailable(f"claude auth/billing error: {why[:400]}")
+    if r.returncode != 0:
+        raise RuntimeError(f"claude exit {r.returncode}: "
+                           f"{(r.stderr or out)[:400]}")
     return out
 
 
@@ -280,7 +302,7 @@ def shown_pictures(graph, sd):
     if lay.get("stale_since"):
         return {}, ("graph['shown'] is STALE (its input was rewritten) — "
                     "falling back to detector crops; re-run "
-                    "node_evidence.py --apply")
+                    "node_evidence.py")
     nodes = lay["nodes"]
     it = nodes.items() if isinstance(nodes, dict) else \
         ((n["id"], n) for n in nodes)
@@ -921,7 +943,7 @@ def main():
     # on living run 17, obj_011 was still the uncut 2.80 m L, obj_020 had
     # been merged away and was nonetheless a set's EXEMPLAR, and obj_021's
     # box had been swapped. Build it with:
-    #     graph/materialize_layers.py --scene <s> --settle-only --apply
+    #     graph/materialize_layers.py --scene <s> --settle-only
     # Fallback (no settled layer yet): the resolved nodes + vote manifest,
     # the old behaviour, announced so it is never a silent downgrade.
     # a resolved node's members are RECORD ids — the second hop the crop
@@ -975,7 +997,7 @@ def main():
                 voted[o["id"]] = o["size"]
         print("[same_product] ⚠ no graph['grouped'] — falling back to the "
               "RAW vote manifest, which J8/J8s/J1 may have superseded. "
-              "Run materialize_layers.py --settle-only --apply first.",
+              "Run materialize_layers.py --settle-only first.",
               flush=True)
     # SUB-OBJECTS SKIP THE POOLS (user rule 2026-08-10): a node flagged
     # sub_object — a small find INSIDE a parent during a close-up retake
@@ -1073,6 +1095,7 @@ def main():
     cache_f = sd / "graph" / "judge_same_product_cache.json"
     cache = (json.loads(cache_f.read_text(encoding="utf-8"))
              if cache_f.exists() and not a.no_cache else {})
+    cache_lock = threading.Lock()   # the groups are judged concurrently
 
     def build_prompt(gi, gr):
         lines = []
@@ -1159,6 +1182,8 @@ def main():
         ids = [m["id"] for m in gr["members"]]
         if len(blind) == len(ids):
             return gi, {"assignments": None, "no_photo_members": blind,
+                        # no judge saw this group either — counted
+                        "judge_default": True,
                         "reason": "no photos on the contact sheet — every "
                                   "row is empty, so there is nothing to "
                                   "look at (not asked)",
@@ -1179,6 +1204,10 @@ def main():
                 if v is None:
                     raise ValueError("no JSON in judge output")
                 return v, None
+            except JudgeUnavailable:
+                # NOT a failed attempt — the question was never asked. Let
+                # it out of the pool and kill the stage (see the class).
+                raise
             except Exception as e:              # noqa: BLE001
                 return None, f"{type(e).__name__}: {str(e)[:160]}"
 
@@ -1214,9 +1243,22 @@ def main():
                          f"after a retry" if missing else "")),
              "model": a.model, "date": date.today().isoformat(),
              "attempts": tries}
+        # `judge_default` marks a group no judge finished. It rides with
+        # the verdict into the cache and into same_product.json, so a run
+        # where the calls failed can be told apart from one where the
+        # judge really left everything alone. main() counts these into
+        # `judge_failures`.
+        if missing:
+            v["judge_default"] = True
         if blind:
             v["no_photo_members"] = blind
-        cache[k] = v
+        with cache_lock:
+            cache[k] = v
+            # FLUSH AS WE GO: the cache used to be written once, after the
+            # last group. Anything that ended the stage early - a crash, a
+            # power cut (docs/POWER_CRASHES.md) - threw away every answer
+            # the run had already paid for. Purely about not paying twice.
+            paths.write_atomic(cache_f, json.dumps(cache, indent=1))
         return gi, {**v, "_cached": False}
 
     print(f"[same_product] judging {len(groups)} group(s), model "
@@ -1225,7 +1267,9 @@ def main():
     with ThreadPoolExecutor(max_workers=a.concurrency) as ex:
         got = dict(ex.map(run_group, list(enumerate(groups, 1))))
 
-    cache_f.write_text(json.dumps(cache, indent=1), encoding="utf-8")
+    # a final flush; run_group wrote the cache after every group
+    with cache_lock:
+        paths.write_atomic(cache_f, json.dumps(cache, indent=1))
 
     # THE SIZE IS CODE'S JOB, computed here from the judge's assignment.
     # (status_by / doubts were re-keyed onto the settled node set above.)
@@ -1333,7 +1377,20 @@ def main():
     outd = sd / "graph"
     outd.mkdir(exist_ok=True)
     out = outd / "same_product.json"
-    out.write_text(json.dumps(
+
+    # HOW MANY GROUPS NOBODY JUDGED (2026-08-11, unattended-run audit).
+    # The unit is the POOL (one kind of object), because that is what one
+    # call asks about. A pool counts as defaulted when the judge did not
+    # place every member: the call failed twice, the reply was malformed
+    # twice, members were left out after the retry, or there was no photo
+    # to look at. No threshold is applied and the stage never fails on
+    # this count: where the line falls is the user's call, and the gate
+    # reads the field.
+    default_ids = [p["name"] for p in pools if p.get("judge_default")]
+    judge_failures = {"defaulted": len(default_ids), "total": len(pools),
+                      "ids": default_ids}
+
+    paths.write_atomic(out, json.dumps(
         {"scene": a.scene, "status": "UNTESTED",
          "form": "assign-every-member v2 (2026-08-08): ONE POOL PER KIND "
                  "(whole scene, no distance rule), the judge assigns "
@@ -1355,16 +1412,45 @@ def main():
                      "find inside a parent; bought by its own box and "
                      "photos, never pooled for product identity"}
              for n in sub_nodes],
+         "judge_failures": judge_failures,
+         "judge_failures_note": "pools in this file the judge did not "
+                                "finish - the call failed twice, the reply "
+                                "was malformed twice, members were left "
+                                "unassigned, or there was no photo. "
+                                "Recorded, never acted on: a gate decides "
+                                "how many is too many.",
          "pools": pools,
          "groups": results}, indent=1, ensure_ascii=False),
         # EXPLICIT utf-8: ensure_ascii=False writes the judges' em-dashes
-        # as real characters, and write_text() would otherwise encode them
-        # through the Windows locale codepage and produce a file nothing
-        # downstream can read back (hit immediately, 2026-08-08).
+        # as real characters, and the locale codepage would otherwise
+        # produce a file nothing downstream can read back (hit
+        # immediately, 2026-08-08). write_atomic defaults to utf-8; it is
+        # named here because this file is the one that proved it matters.
         encoding="utf-8")
     print(f"[same_product] wrote {out} (⚠ UNTESTED)", flush=True)
+    # Printed and marked, so a hundred-scene log can be grepped for it.
+    if judge_failures["defaulted"]:
+        print(f"[same_product] JUDGE FAILURES: "
+              f"{judge_failures['defaulted']} of {judge_failures['total']} "
+              f"pool(s) were left unjudged or part-judged: "
+              f"{', '.join(judge_failures['ids'])}", flush=True)
+    else:
+        print(f"[same_product] JUDGE FAILURES: 0 of "
+              f"{judge_failures['total']} pool(s) defaulted", flush=True)
     print(f"[same_product] cache: {cache_f}", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except JudgeUnavailable as e:
+        # The credential or the balance, not the scene. Nothing this run
+        # produced can be trusted: every pool after the failure would have
+        # come back unassigned without a judge ever seeing it.
+        print(f"[same_product] STOPPING - the judge could not be asked: {e}",
+              file=sys.stderr, flush=True)
+        print("[same_product] NO VERDICT IN THIS RUN CAN BE TRUSTED. Fix the "
+              "credential or the account balance and run this scene again "
+              "from the start; the cache keeps the answers already paid for.",
+              file=sys.stderr, flush=True)
+        raise SystemExit(2)

@@ -170,6 +170,21 @@ def claude_env():
     return env
 
 
+class JudgeUnavailable(RuntimeError):
+    """The judge could not be ASKED at all — a bad credential, an expired
+    token, an exhausted balance.
+
+    WHY THIS IS ITS OWN EXCEPTION (2026-08-11, unattended-run audit; the
+    same class exists in judge_multiplicity.py and judge_same_product.py).
+    The per-region handler in judge_one_region turns a failed call into
+    "no_cut / keep" and the region ships UNCUT. That is a defensible answer
+    for a model that looked at the top view and saw no cut to make. It is
+    the wrong answer for a machine that never got to look: if the token
+    expires mid-queue, every region of every remaining scene ships uncut,
+    the stage exits 0, and split_cuts.json looks like a finished job. This
+    failure is therefore NOT caught per region — it kills the stage."""
+
+
 def call_claude(prompt, cwd, model):
     exe = shutil.which("claude")
     if not exe:
@@ -180,13 +195,18 @@ def call_claude(prompt, cwd, model):
                        timeout=CALL_TIMEOUT_S)
     out = (r.stdout or "").strip()
     err = (r.stderr or "").strip()
-    if r.returncode != 0:
-        raise RuntimeError(f"claude exit {r.returncode}: "
-                           f"{err[:400] or out[:400]}")
+    # The credential check runs BEFORE the exit-code check on purpose: an
+    # auth or billing refusal usually ALSO exits non-zero, and the old
+    # order reported it as a plain "claude exit 1" that the per-region
+    # handler swallowed into a verdict.
     low = (out + " " + err).lower()
     for bad in ("invalid_api_key", "authentication_error", "credit balance"):
         if bad in low:
-            raise RuntimeError(f"claude API-billing/auth error: {out[:400]}")
+            raise JudgeUnavailable(
+                f"claude API-billing/auth error: {(err or out)[:400]}")
+    if r.returncode != 0:
+        raise RuntimeError(f"claude exit {r.returncode}: "
+                           f"{err[:400] or out[:400]}")
     return out
 
 
@@ -740,7 +760,8 @@ def render_region(splat, box, out_dir, name, label):
     tgt = out_dir / f"_{name}_target.json"
     n = splat.write_subset(box["lo"], box["hi"], ply)
     t = top_target(box, name, label)
-    tgt.write_text(json.dumps([t], indent=1), encoding="utf-8")
+    # atomic: the WSL renderer reads this file back immediately
+    paths.write_atomic(tgt, json.dumps([t], indent=1))
     png.unlink(missing_ok=True)      # the renderer skips existing files
     py = "/root/miniconda3/envs/splatanalyzer/bin/python"
     scr = to_wsl(HERE / "analyzer" / "render_targets_wsl.py")
@@ -1126,6 +1147,10 @@ def judge_one_region(st, item, rnd):
             try:
                 return parse_verdict(call_claude(p, st["dir"],
                                                  st["model"])), None
+            except JudgeUnavailable:
+                # NOT a failed attempt — the question was never asked. Let
+                # it out of the chain and kill the stage (see the class).
+                raise
             except Exception as e:                    # noqa: BLE001
                 return None, f"{type(e).__name__}: {str(e)[:160]}"
 
@@ -1135,15 +1160,28 @@ def judge_one_region(st, item, rnd):
                               "ONLY.")
             err = err2 or err
         if v is None:
+            # `judge_default` marks a decision NOBODY made. It rides with
+            # the verdict into the cache and into split_cuts.json so that
+            # a run where most regions shipped uncut because the calls
+            # failed can be told apart from one where the judge really
+            # found nothing to cut. main() counts these into
+            # `judge_failures`.
             v = {"decision": "no_cut", "action": "keep",
                  "owner": item.get("owner") or "this_node",
-                 "confidence": 0.0,
+                 "confidence": 0.0, "judge_default": True,
                  "reason": (f"judge call failed x2 ({err}) - region ships "
                             "UNCUT" if err else
                             "malformed model reply x2 - region ships UNCUT")}
             rec["doubts"].append("unclear_ships_uncut")
         v = {**v, "model": st["model"], "date": date.today().isoformat()}
         st["cache"][key] = v
+        # FLUSH AS WE GO: the cache used to be written once, after the last
+        # case. The GPU render above runs unguarded, so one failed render
+        # at case 12 of 15 propagated out and threw away every model call
+        # the stage had already paid for; a power cut did the same
+        # (docs/POWER_CRASHES.md). Purely about not paying twice.
+        paths.write_atomic(st["cache_file"],
+                           json.dumps(st["cache"], indent=1))
         cached = False
         st["calls"] += 1
     rec["verdict"] = v
@@ -1709,7 +1747,8 @@ def main():
               "voted": {o: v for o, v in voted.items()},
               "notches": [dd["rect_m"] for dd in doubts.get(nid, [])
                           if dd["kind"] == "large_empty_notch"],
-              "cache": cache, "model": a.model, "calls": 0,
+              "cache": cache, "cache_file": cache_f,
+              "model": a.model, "calls": 0,
               "plan_cells": plan_cells.get(nid),
               "max_rounds": a.rounds, "pieces": 1,
               "sheets_only": a.sheets_only, "context_block": ctx_block}
@@ -1729,9 +1768,31 @@ def main():
               f"{len(rounds)} round record(s), {len(pieces)} final piece(s), "
               f"{st['calls']} call(s) -> {d}", flush=True)
 
-    cache_f.write_text(json.dumps(cache, indent=1), encoding="utf-8")
+    # a final flush; judge_one_region wrote the cache after every call
+    paths.write_atomic(cache_f, json.dumps(cache, indent=1))
+
+    # HOW MANY DECISIONS NOBODY MADE (2026-08-11, unattended-run audit).
+    # The unit here is the judged REGION, not the case: one case is a
+    # chain of up to `rounds` regions and each one is its own question.
+    # A region counts as defaulted when its verdict was the fallback —
+    # the call failed twice or the reply was malformed twice — and the
+    # region therefore shipped UNCUT without a judge saying so. No
+    # threshold is applied and the stage never fails on this count: where
+    # the line falls is the user's call, and the gate reads the field.
+    default_ids, judged = [], 0
+    for c in out_cases:
+        for r in c.get("rounds") or []:
+            v = r.get("verdict") or {}
+            if not v:
+                continue
+            judged += 1
+            if v.get("judge_default"):
+                default_ids.append(f"{c['id']}/{r.get('region_id')}")
+    judge_failures = {"defaulted": len(default_ids), "total": judged,
+                      "ids": default_ids}
+
     out_f = sd / "graph" / "split_cuts.json"
-    out_f.write_text(json.dumps({
+    paths.write_atomic(out_f, json.dumps({
         "scene": a.scene, "built": date.today().isoformat(),
         "source": "graph/split_cuts.py (J8s) - executes J8 SPLIT verdicts "
                   "geometrically as a FIXED 3-ROUND CHAIN (a plain loop over "
@@ -1744,7 +1805,13 @@ def main():
                    "s_dedupe_m": S_DEDUPE,
                    "discard_residue_max": RESIDUE_MAX,
                    "discard_margin_m": MARGIN, "discard_occ_k": OCC_K},
-        "cases": out_cases}, indent=1), encoding="utf-8")
+        "judge_failures": judge_failures,
+        "judge_failures_note": "judged regions in this file whose decision "
+                               "no judge made — the call failed twice or the "
+                               "reply was malformed twice, so the region "
+                               "shipped UNCUT. Recorded, never acted on: a "
+                               "gate decides how many is too many.",
+        "cases": out_cases}, indent=1))
     idx = "".join(
         f"<tr><td><a href='{c['id']}/index.html'>{c['id']}</a></td>"
         f"<td>{c['name']}</td><td>{c.get('resolution')}</td>"
@@ -1763,8 +1830,29 @@ pieces/case, leftovers ship uncut with doubt split_incomplete.</p>
 <th>rounds</th><th>pieces</th></tr>{idx}</table>""", encoding="utf-8")
     print(f"[splitcuts] {len(out_cases)} case(s), {total_calls} model "
           f"call(s) -> {out_f}", flush=True)
+    # Printed and marked, so a hundred-scene log can be grepped for it.
+    if judge_failures["defaulted"]:
+        print(f"[splitcuts] JUDGE FAILURES: {judge_failures['defaulted']} of "
+              f"{judge_failures['total']} judged region(s) ended on a DEFAULT "
+              f"(shipped UNCUT with no judge): "
+              f"{', '.join(judge_failures['ids'])}", flush=True)
+    else:
+        print(f"[splitcuts] JUDGE FAILURES: 0 of {judge_failures['total']} "
+              "judged region(s) defaulted", flush=True)
     print(f"[splitcuts] sheets: {root_dir / 'index.html'}", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except JudgeUnavailable as e:
+        # The credential or the balance, not the scene. Nothing this run
+        # produced can be trusted: every region after the failure would
+        # have shipped uncut without a judge ever seeing it.
+        print(f"[splitcuts] STOPPING - the judge could not be asked: {e}",
+              file=sys.stderr, flush=True)
+        print("[splitcuts] NO CUT DECISION IN THIS RUN CAN BE TRUSTED. Fix "
+              "the credential or the account balance and run this scene "
+              "again from the start; the cache keeps the answers already "
+              "paid for.", file=sys.stderr, flush=True)
+        raise SystemExit(2)
