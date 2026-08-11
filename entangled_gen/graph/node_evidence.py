@@ -1536,7 +1536,12 @@ def main():
                                "the ctx pads are describe_nodes.py's, "
                                "re-used rather than re-invented"},
          "rows": rows}, indent=1))
-    write_report(sc, rows, out)
+    # THE LAYER IS ALREADY WRITTEN AND STAMPED by write_layer() above, so
+    # a broken picture must not throw it away (user ruling 2026-08-11).
+    # The guard is loud, records the traceback, and leaves a marker the
+    # gate counts — "continue" is not "ignore". See paths.report_guard for
+    # why this wrapping is legal HERE and nowhere earlier in this file.
+    paths.report_guard(a.scene, "evidence report", write_report, sc, rows, out)
     _summarise(a, rows, cut, skip, shots, problems, sc, out)
 
 

@@ -208,6 +208,73 @@ def spots(sc):
     return scene_dir(sc) / "spots.png"
 
 
+def report_guard(sc, what, fn, *args, **kwargs):
+    """Run a REVIEW-ARTIFACT builder. Never let it fail the stage.
+
+    USER RULING 2026-08-11: "if the review page fails but job is actually
+    complete it's ok to continue, but try to find out why and fix."
+
+    THE FAILURE THIS ANSWERS. `node_evidence` wrote its `shown` layer for
+    all 28 nodes, stamped it, verified it — and then died building the
+    HTML review page on a bad crop rectangle. The runner said the stage
+    CRASHED, the gate said the layer was whole, and both were right. Over
+    a hundred unattended scenes that costs scenes that had already
+    succeeded, for a picture nobody is awake to look at.
+
+    ⚠ THE NARROW SCOPE IS THE WHOLE POINT, so read this before wrapping
+    anything else in it. This repo's recurring injury is a stage that
+    reports success having done nothing — six no-op flags, GLTS exiting 0
+    on a dead scene, five modules writing a layer without stamping it.
+    Swallowing exceptions is how that happens. So:
+
+      * Wrap ONLY a step that draws something for a human to look at.
+        Never a step that computes, decides, or writes a layer.
+      * Wrap it ONLY AFTER the stage's real output is committed. If the
+        layer is not yet written, a crash here MUST still kill the stage.
+      * The gate is unaffected: it checks the declared layer and
+        artifacts, so a stage that skips its report and lies about its
+        real output is still caught.
+
+    IT IS LOUD, AND IT LEAVES A TRAIL. The traceback is printed in full,
+    and a marker file is written next to the scene so the failure is
+    counted on every fleet report instead of scrolling past at 3 a.m.
+    "Continue" is not "ignore" — the ruling asked to carry on AND find
+    out why.
+
+    Returns fn's value, or None if it failed."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception:                              # noqa: BLE001 — see above
+        import traceback
+        tb = traceback.format_exc()
+        bar = "!" * 60
+        print(f"\n{bar}\n[{what}] THE REVIEW ARTIFACT FAILED, and the "
+              f"stage is CONTINUING.\n"
+              f"  This is deliberate (user ruling 2026-08-11): the "
+              f"stage's real output was\n"
+              f"  already written, so a broken picture must not throw it "
+              f"away.\n"
+              f"  IT IS STILL A BUG. Fix it — the traceback is below and "
+              f"a marker is on disk.\n{bar}\n{tb}{bar}\n", flush=True)
+        try:
+            d = scene_dir(sc)
+            d.mkdir(parents=True, exist_ok=True)
+            write_atomic(d / "report_failures.json", _json.dumps({
+                "scene": str(sc), "what": what,
+                "error": tb.strip().splitlines()[-1],
+                "traceback": tb,
+                "note": "A review-artifact builder raised AFTER this "
+                        "stage's real output was committed. The stage "
+                        "continued by user ruling 2026-08-11. The work is "
+                        "sound; the picture is missing and the cause is "
+                        "here.",
+            }, indent=1))
+        except Exception:                          # noqa: BLE001
+            print(f"[{what}] could not even write the failure marker",
+                  flush=True)
+        return None
+
+
 def write_atomic(path, text, encoding="utf-8"):
     """Write a file so that a crash can never leave it half-written.
 

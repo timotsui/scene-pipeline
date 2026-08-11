@@ -19,6 +19,7 @@ image-only terms = generator improvisation the prompt never named.
 Writes OUT/<scene>/vocab.json and prints every per-source list for review.
 """
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -35,6 +36,99 @@ MODEL = "haiku"            # fast + cheap; open-source tagger is the someday-swa
 CALL_TIMEOUT_S = 240
 FRAMES_PER_CALL = 4        # images per VLM call (keeps each call attentive)
 N_SWEEP_FRAMES = 8         # one level-elevation frame per standpoint
+
+#: Bump on ANY change to the four prompts below. It is salted into every
+#: cache key, so an edited prompt re-asks instead of serving an answer to
+#: a question that is no longer being asked. Same rule the judges use
+#: (graph/judge_pairs.py, graph/triage_pairs.py).
+PROMPT_VERSION = "1"
+
+
+# ==========================================================================
+# THE CACHES — this stage was the funnel's most expensive, and had none
+# ==========================================================================
+#
+# Measured on the first fresh scene (2026-08-11): `vocab` took 293.5 s of
+# an 872.7 s funnel — 34%, the single most expensive stage — across four
+# model calls. A bare call round-trips in ~3 s, so almost none of that is
+# process overhead; it is the model thinking. And NOTHING was cached, so
+# every re-run of a scene paid the full 293 s for a byte-identical answer.
+#
+# TWO CACHES, BECAUSE THERE ARE TWO KINDS OF QUESTION HERE, and conflating
+# them would either leak one room's answer into another or throw away the
+# reuse that matters.
+#
+#   SHARED, ACROSS EVERY SCENE — the three TEXT legs. "Is 'ladder' a
+#   concrete object?", "what else is a ladder called?", "does 'ladder'
+#   denote something visible?" None of those depend on the room. Keyed
+#   PER TERM, which is the load-bearing detail: measured across three
+#   genuinely different rooms, 31-48% of terms are shared and 66% of all
+#   distinct terms appear in more than one room, so a per-term cache
+#   starts paying on scene two and approaches that 66% ceiling as the
+#   ordinary furniture vocabulary saturates.
+#   ⚠ NOT keyed on the whole list. scene_scale.py caches by hashing its
+#   sorted label list, which is right there (one prior per scene) and
+#   would be near-useless here: no two rooms have the same word list, so
+#   a whole-list key would hit ~never.
+#
+#   PER SCENE — the pano look-pass, which reads THIS room's photograph.
+#   Keyed on the image's content hash, so it survives re-runs (this
+#   scene's funnel was re-run four times today) and correctly re-asks if
+#   the pano is ever re-rendered.
+#
+#: Shared cache, deliberately at the OUT root rather than in any scene.
+TERM_CACHE = paths.OUT / "vocab_term_cache.json"
+
+
+def _load_term_cache():
+    """The shared per-term answers, or an empty book. A cache written
+    under a different PROMPT_VERSION is DISCARDED, not migrated."""
+    if TERM_CACHE.exists():
+        try:
+            d = json.loads(TERM_CACHE.read_text(encoding="utf-8"))
+            if isinstance(d, dict) and d.get("prompt_version") == PROMPT_VERSION:
+                for k in ("concrete", "synonym", "imageword"):
+                    d.setdefault(k, {})
+                return d
+        except (ValueError, OSError):
+            pass                       # unreadable cache is a cold cache
+    return {"prompt_version": PROMPT_VERSION,
+            "concrete": {}, "synonym": {}, "imageword": {}}
+
+
+def _save_term_cache(cache):
+    """Persist, MERGING under whatever is on disk now.
+
+    run_fleet runs scenes one at a time, so this is not a hot race — but
+    a plain overwrite would silently drop another run's entries, and a
+    cache that loses answers is worse than no cache because the loss is
+    invisible. Merge-then-write costs nothing."""
+    disk = _load_term_cache()
+    for bucket in ("concrete", "synonym", "imageword"):
+        merged = dict(disk.get(bucket) or {})
+        merged.update(cache.get(bucket) or {})
+        cache[bucket] = merged
+    try:
+        TERM_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        paths.write_atomic(TERM_CACHE, json.dumps(cache, indent=1))
+    except OSError as e:               # noqa: BLE001
+        print(f"[vocab] could not write the shared term cache ({e}) — "
+              f"this run still worked, the next one just re-asks")
+
+
+def _cached_ask(cache, bucket, terms, ask, default):
+    """Answers for every term, asking only about the ones not on file.
+
+    `ask(missing)` returns {term: answer} and may raise — the caller owns
+    degradation, exactly as it did before there was a cache. Returns
+    (answers, n_asked) so the log can say how much the cache saved."""
+    book = cache.setdefault(bucket, {})
+    missing = [t for t in terms if t not in book]
+    if missing:
+        got = ask(missing)
+        for t in missing:
+            book[t] = got.get(t, default)
+    return {t: book[t] for t in terms if t in book}, len(missing)
 
 VLM_PROMPT = """Read the image file(s) at the following absolute path(s), then list every distinct TYPE of object visible in them (they show one indoor room).
 
@@ -184,16 +278,46 @@ def main():
 
     # ---- source B: observation (pano + sweep frames via VLM) ----
     pano_terms, frame_terms, images_used, vlm_calls = [], [], [], 0
+    term_cache = _load_term_cache()
+    pano_cache_f = sdir / "vocab_pano_cache.json"
     if not args.skip_vlm:
         pano = find_pano(sc)
         if pano:
-            # cwd = the pano's own dir: claude -p auto-allows reads only
-            # under its working directory (the frames calls use sdir for
-            # the same reason — job frames live inside the scene folder)
-            raw = call_claude(VLM_PROMPT.format(files=f'"{pano}"'), pano.parent)
-            pano_terms = parse_list(raw)
-            images_used.append(str(pano)); vlm_calls += 1
-            print(f"[vlm] pano -> {len(pano_terms)} raw terms")
+            # PER-SCENE, KEYED ON THE IMAGE'S CONTENT. This answer is
+            # about THIS room, so it cannot be shared — but it is also
+            # the same answer every time the same picture is read, and
+            # this scene's funnel was re-run four times on 08-11. The key
+            # is the file's hash, not its path, so a re-rendered pano
+            # correctly re-asks.
+            key = (hashlib.sha256(pano.read_bytes()).hexdigest()[:16]
+                   + "|" + PROMPT_VERSION)
+            cached = None
+            if pano_cache_f.exists():
+                try:
+                    pc = json.loads(pano_cache_f.read_text(encoding="utf-8"))
+                    cached = pc.get(key)
+                except (ValueError, OSError):
+                    cached = None
+            if cached is not None:
+                pano_terms = cached
+                print(f"[vlm] pano -> {len(pano_terms)} raw terms (cache hit, "
+                      f"0 calls)")
+            else:
+                # cwd = the pano's own dir: claude -p auto-allows reads
+                # only under its working directory (the frames calls use
+                # sdir for the same reason — job frames live inside the
+                # scene folder)
+                raw = call_claude(VLM_PROMPT.format(files=f'"{pano}"'),
+                                  pano.parent)
+                pano_terms = parse_list(raw)
+                vlm_calls += 1
+                try:
+                    paths.write_atomic(pano_cache_f,
+                                       json.dumps({key: pano_terms}, indent=1))
+                except OSError:
+                    pass               # a missed cache costs time, not truth
+                print(f"[vlm] pano -> {len(pano_terms)} raw terms")
+            images_used.append(str(pano))
         base = sdir / "analyzer"
         jobs = ([base / args.job] if args.job else
                 sorted((d for d in base.glob("job_*") if (d / "transforms.json").exists()),
@@ -218,11 +342,21 @@ def main():
     dropped_abstract = []
     if A and not args.skip_vlm:
         try:
-            raw = call_claude(CONCRETE_PROMPT.format(terms=", ".join(A)), sdir)
-            keep = set(parse_list(raw))
-            dropped_abstract = [t for t in A if t not in keep]
-            A = [t for t in A if t in keep]
-            print(f"[vlm] concreteness: kept {len(A)}  dropped {dropped_abstract}")
+            def _ask_concrete(missing):
+                raw = call_claude(
+                    CONCRETE_PROMPT.format(terms=", ".join(missing)), sdir)
+                keep = set(parse_list(raw))
+                return {t: (t in keep) for t in missing}
+
+            ans, asked = _cached_ask(term_cache, "concrete", A,
+                                     _ask_concrete, True)
+            if asked:
+                vlm_calls += 1         # this leg never counted itself before
+            dropped_abstract = [t for t in A if not ans.get(t, True)]
+            A = [t for t in A if ans.get(t, True)]
+            print(f"[vlm] concreteness: kept {len(A)}  dropped "
+                  f"{dropped_abstract}  ({asked} asked, "
+                  f"{len(ans) - asked} from cache)")
         except Exception as e:  # noqa: BLE001
             print(f"[vlm] concreteness pass unavailable ({e}) — keeping all")
     P = funnel(pano_terms, known)
@@ -242,20 +376,39 @@ def main():
     llm_syn = {}
     if final and not args.skip_vlm:
         try:
-            raw = call_claude(SYNONYM_PROMPT.format(terms=", ".join(final)), sdir)
-            for ln in raw.splitlines():
-                if ":" not in ln:
-                    continue
-                term, alts = ln.split(":", 1)
-                term = term.strip().lower().lstrip("-• ").strip('"')
-                if term not in prov:
-                    continue
-                for alt in [a.strip().lower() for a in alts.split(",") if a.strip()]:
+            def _ask_synonyms(missing):
+                raw = call_claude(
+                    SYNONYM_PROMPT.format(terms=", ".join(missing)), sdir)
+                got = {t: [] for t in missing}
+                asked = set(missing)
+                for ln in raw.splitlines():
+                    if ":" not in ln:
+                        continue
+                    term, alts = ln.split(":", 1)
+                    term = term.strip().lower().lstrip("-• ").strip('"')
+                    if term not in asked:
+                        continue
+                    got[term] = [a.strip().lower()
+                                 for a in alts.split(",") if a.strip()]
+                return got
+
+            ans, asked = _cached_ask(term_cache, "synonym", final,
+                                     _ask_synonyms, [])
+            if asked:
+                vlm_calls += 1
+            # THE ACCEPTANCE RULES STAY OUT OF THE CACHE. What is stored
+            # is the model's raw answer per term; whether an alternative
+            # SURVIVES depends on this scene's own `prov` and on what
+            # other alternatives were already taken, so it must be
+            # recomputed per scene or one room's vocabulary would decide
+            # another's.
+            for term in final:
+                for alt in ans.get(term) or []:
                     if (alt and alt not in prov and alt not in STOP
                             and alt not in llm_syn and len(alt.split()) <= 4):
                         llm_syn[alt] = term
-            vlm_calls += 1
-            print(f"[vlm] detector synonyms ({len(llm_syn)}): "
+            print(f"[vlm] detector synonyms ({len(llm_syn)}) "
+                  f"[{asked} asked, {len(ans) - asked} from cache]: "
                   + (", ".join(f"{a}->{t}" for a, t in llm_syn.items()) or "-"))
         except Exception as e:  # noqa: BLE001
             print(f"[vlm] synonym pass unavailable ({e}) — none added")
@@ -267,15 +420,26 @@ def main():
     query_dropped = []
     if q_terms and not args.skip_vlm:
         try:
-            raw = call_claude(IMAGE_WORD_PROMPT.format(terms=", ".join(q_terms)), sdir)
-            last = [ln.strip() for ln in raw.splitlines() if ln.strip()][-1]
-            if last.strip().upper() != "NONE":
-                flagged = {t.strip().lower() for t in last.split(",") if t.strip()}
-                query_dropped = [t for t in q_terms if t in flagged]
-                q_terms = [t for t in q_terms if t not in flagged]
-            vlm_calls += 1
+            def _ask_imageword(missing):
+                raw = call_claude(
+                    IMAGE_WORD_PROMPT.format(terms=", ".join(missing)), sdir)
+                lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+                last = lines[-1] if lines else "NONE"
+                if last.strip().upper() == "NONE":
+                    return {t: False for t in missing}
+                flagged = {t.strip().lower()
+                           for t in last.split(",") if t.strip()}
+                return {t: (t in flagged) for t in missing}
+
+            ans, asked = _cached_ask(term_cache, "imageword", q_terms,
+                                     _ask_imageword, False)
+            if asked:
+                vlm_calls += 1
+            query_dropped = [t for t in q_terms if ans.get(t)]
+            q_terms = [t for t in q_terms if not ans.get(t)]
             print(f"[vlm] image-word screen dropped from queries: "
-                  f"{query_dropped or '-'}")
+                  f"{query_dropped or '-'}  ({asked} asked, "
+                  f"{len(ans) - asked} from cache)")
         except Exception as e:  # noqa: BLE001
             print(f"[vlm] image-word screen unavailable ({e}) — queries unchanged")
 
@@ -298,8 +462,11 @@ def main():
                  "images": images_used,
                  "built": time.strftime("%Y-%m-%d %H:%M:%S")},
     }
+    # PERSIST THE SHARED BOOK BEFORE THE OUTPUT, so a crash writing
+    # vocab.json still banks the answers this run paid for.
+    _save_term_cache(term_cache)
     vf = sdir / "vocab.json"
-    vf.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    paths.write_atomic(vf, json.dumps(out, indent=2))
 
     print(f"\n=== vocab.json written: {vf}")
     print(f"\nPROMPT ({len(A)}): {', '.join(A) or '-'}")

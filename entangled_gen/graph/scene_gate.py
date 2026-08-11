@@ -445,6 +445,25 @@ def quality_notes(scene, g):
     this scene was really measured, so a hundred runs can be sorted by
     it afterwards instead of all looking alike."""
     out = []
+    # A REVIEW ARTIFACT THAT FAILED WHILE ITS STAGE CARRIED ON.
+    # paths.report_guard lets a picture-builder fail without killing a
+    # stage whose real output is already committed (user ruling
+    # 2026-08-11) — and drops this marker so the failure is COUNTED on
+    # every scene rather than scrolling past at 3 a.m. WARN, not FAIL:
+    # the scene's data is sound, a human's page is missing. It stays on
+    # the report until someone fixes the cause and the stage re-runs.
+    rf = paths.scene_dir(scene) / "report_failures.json"
+    if rf.exists():
+        try:
+            d = json.loads(rf.read_text(encoding="utf-8"))
+            what, err = d.get("what", "?"), d.get("error", "?")
+        except (ValueError, OSError):
+            what, err = "?", "(marker unreadable)"
+        out.append(("WARN", f"a review artifact failed and the stage "
+                            f"continued: {what} — {err}. The data is "
+                            f"sound; the picture is missing. Traceback in "
+                            f"{rf.name}. Delete it once fixed."))
+
     # The vote's own doubts. THE SOURCE IS THE SIDECAR, graph/
     # vote_doubts.json, not a graph block: this note is wanted straight
     # after the `doubts` stage, and `voted` — the layer that folds the
