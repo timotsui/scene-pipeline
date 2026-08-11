@@ -239,8 +239,42 @@ OEM-locked, and the lock does not survive a reboot.
   harvest world — `--scene fresh01 --bundle <uuid>` produced a scene
   directory containing one file and a complete plan to the end.
 
-- **STEP 6 IS BLOCKED ON THE USER, AND ONLY ON THAT.** The run needs the
-  GPU clock lock applied from an ADMIN shell — `nvidia-smi -lgc 0,1500`
-  — which this session cannot do. See R-S2-95: neither the lock nor its
-  scheduled task can be verified from an unelevated shell, so the receipt
-  the command prints is the only proof.
+- **THE GPU LOCK IS ON, AND IT IS NOW MEASURED RATHER THAN ASSUMED.**
+  Sampled during the `detect` burst on the live run: 16 samples above 30%
+  utilisation, **peak exactly 1500 MHz, peak 89.6 W**. That matches
+  `POWER_CRASHES.md`'s locked figure (93.8 W) against the ~190 W
+  transients seen unlocked. This is the empirical proof R-S2-95 said was
+  the only kind available.
+
+- **STEP 6, FIRST ATTEMPT — `fresh01`, FAILED AT STAGE ONE.** R-S2-96.
+  The machinery was right and the bundle was rejected: a deliberate
+  refusal, gate caught it, run log written. Which led to:
+
+- **THE FRAME CONTRACT WAS REJECTING 20 OF 34 WORLDS FOR THE WRONG
+  REASON.** R-S2-97/98. With no trimming and no margin, **33 of 34
+  colliders sit entirely inside their splat** — the frames are fine. The
+  0.5th-percentile crop was discarding thinly-rendered corners. On the
+  world that failed, the rejected face had 1,173 splats within 25 cm.
+  USER RULING: loosen it. Applied on the PERCENTILE (0.5 -> 0.05),
+  **not** the margin, which stays 0.5. Re-measured against the shipped
+  code: **29 of 34 pass**, and the five that fail do so by 0.61–3.98 m,
+  none marginally.
+
+- **THE CATALOGUE NOW SAYS WHAT IS RUNNABLE**, which it never did — it
+  showed `downloaded`, and downloaded is not runnable. Files (this tree
+  is NOT a git repo; the harvest folder is data by convention):
+  - `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week8\marble-harvest\tools\build_catalogue.ps1`
+  - `…\catalog\frame_contract.json` (the measurement, per world)
+  - `…\catalog\CATALOGUE.html` — badges + Runnable / Frame FAIL / No collider filters
+  - `…\catalog\MASTER_catalogue.csv`, `DOWNLOADED_catalogue.csv` — two new columns
+  - `…\catalog\_CATALOGUE_SUMMARY.md`
+
+  **29 runnable · 5 blocked · 284 downloaded with no collider at all.**
+  The collider, not this check, is what caps the corpus at 34 of 318.
+
+- **STEP 6, SECOND ATTEMPT — `fresh02` (`188a1d3f`, a rustic attic
+  bedroom), RUNNING.** Nine intake stages passed in order: frame, stitch,
+  crops, vocab, bearings, detect, lift, recenter, filter. It is detecting
+  real furniture — bed, ceiling beam, ladder, trunk, window, rug. This is
+  the first time any of this has run from a script on a scene that never
+  existed before.

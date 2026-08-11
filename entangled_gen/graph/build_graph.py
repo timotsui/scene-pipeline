@@ -99,8 +99,25 @@ def load_inputs(scene, a):
         "bundle_path": sdir / "bundle_path.txt",       # optional
         "pano_meta": sdir / "rig_sp0" / "pano_selfrender_meta.json",
     }
+    # ⚠ `envelope` IS ONLY REQUIRED ON THE FALLBACK PATH, and demanding it
+    # here unconditionally was stale. It is read at ONE site — the else
+    # branch below that builds PLACEHOLDER architecture nodes from the
+    # envelope grid when there is no room_shell.json. room_shell.py
+    # superseded that on 07-26 ("architecture measurement moved to
+    # room_shell.py"), envelope.py was PARKED the same day, and
+    # pipeline_map.html has drawn it with no outgoing arrow ever since.
+    #
+    # So the funnel does not run it, correctly — and this line then
+    # crashed the first genuinely fresh scene at the first stage after
+    # the funnel, having passed all eleven intake stages
+    # (`[record] MISSING inputs: ['envelope']`, 2026-08-11B). Every dev
+    # scene had a stale envelope.npz from the era when it did run, which
+    # is why nothing caught it before.
+    optional = ("bundle_path",)
+    if (sdir / "room_shell.json").exists():
+        optional += ("envelope",)
     missing = [k for k, f in p.items() if not f.exists()
-               and k not in ("bundle_path",)]
+               and k not in optional]
     if missing:
         raise SystemExit(f"[record] MISSING inputs: {missing}")
     man = json.loads(p["manifest"].read_text())
@@ -437,6 +454,17 @@ def main():
         env_nodes = build_shell_nodes(json.loads(shell_f.read_text()))
         arch_src = f"room_shell.json (measured, {len(env_nodes) - 2} walls)"
     else:
+        # THE PLACEHOLDER PATH. envelope.py is PARKED (map, 07-26) and the
+        # funnel does not run it, so on a scene built the current way this
+        # branch is unreachable — room_shell always exists. It is kept for
+        # old scenes that have an envelope.npz and no shell. Say plainly
+        # what is missing rather than dying inside numpy.
+        if not paths.envelope_npz(scene).exists():
+            raise SystemExit(
+                "[record] no room_shell.json AND no envelope.npz — there "
+                "is nothing to build the room's architecture from. Run "
+                "room_shell.py --scene <s> (the funnel's `shell` stage); "
+                "envelope.py is parked and is not the way to fix this.")
         env_nodes = build_envelope_nodes(envelope.load(scene))
         arch_src = "envelope grid bounds (PLACEHOLDER — run room_shell.py)"
     nodes = det_nodes + env_nodes
