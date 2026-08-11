@@ -44,6 +44,38 @@ import paths
 UNROTATE = ["-r", "180,0,0"]     # undo the converter's rot180-about-x
 BOUNDS_MARGIN = 0.5              # m, self-check tolerance
 
+#: How much of the point cloud's outer tail the self-check ignores, per
+#: axis per side. The check asks "is the collider inside the splat", and
+#: a splat has stray specks well outside the room, so some trimming is
+#: needed or the bound is meaningless.
+#:
+#: ⚠ 0.5 UNTIL 2026-08-11, AND IT WAS THE WRONG KNOB DOING THE WORK.
+#: Measured across all 34 harvested worlds that have a collider: at 0.5
+#: only 14 passed. But the frame was not the problem — with NO trimming
+#: and NO margin, 33 of the 34 colliders sit ENTIRELY INSIDE their splat,
+#: and the collider's height matches the splat's to within 1% in 27 of
+#: them. What 0.5% was rejecting was a collider reaching into a corner
+#: the generator rendered THINLY. The evidence is the splat count at the
+#: offending face: 1,700-68,700 for worlds that passed, 0-3,446 for
+#: worlds that failed. On the world this was found on, the rejected face
+#: had 1,173 splats within 25 cm of it — a wall, not a speck.
+#:
+#: 0.05 recovers 29 of 34 with BOUNDS_MARGIN untouched. The alternative
+#: lever, widening the margin, was measured and rejected: it needs 1.5 m
+#: to reach 26 worlds and 3 m to reach 30, and a 3 m tolerance can no
+#: longer detect a wrong frame at all, which is the only thing this check
+#: exists for.
+#:
+#: THE CHECK'S REAL JOB IS UNAFFECTED. The one genuinely broken world in
+#: the corpus (363c0b4f — collider floating 3.83 m above the highest
+#: splat in the scene, ZERO splats within 25 cm of that face) fails at
+#: this setting, at the old one, and with no margin at all.
+#:
+#: USER RULING 2026-08-11: "the world can mostly be trusted, we can
+#: widen the margin." Applied on the percentile rather than the margin,
+#: per the measurement above. Census: docs/REVIEW_LOG.md R-S2-97.
+BOUNDS_TAIL_PCT = 0.05           # %, per axis per side
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -75,14 +107,32 @@ def main():
 
     r3 = paths.load_r3()
     xyz, *_ = r3.load_splat(str(ply), opacity_min=0.3)
-    s_lo = np.percentile(xyz, 0.5, axis=0) - BOUNDS_MARGIN
-    s_hi = np.percentile(xyz, 99.5, axis=0) + BOUNDS_MARGIN
+    s_lo = np.percentile(xyz, BOUNDS_TAIL_PCT, axis=0) - BOUNDS_MARGIN
+    s_hi = np.percentile(xyz, 100 - BOUNDS_TAIL_PCT, axis=0) + BOUNDS_MARGIN
     if (m_lo < s_lo).any() or (m_hi > s_hi).any():
+        # SAY HOW BADLY, AND ON WHICH AXIS. The old message printed two
+        # bounding boxes and left the reader to subtract them by eye, on
+        # the stage that is a scene's very first. Overshoot per axis is
+        # what actually distinguishes a wrong frame (metres, several
+        # axes) from a collider grazing a thinly-rendered corner
+        # (centimetres, one axis) — see BOUNDS_TAIL_PCT above.
+        over_lo = np.maximum(s_lo - m_lo, 0.0)
+        over_hi = np.maximum(m_hi - s_hi, 0.0)
+        worst = max(over_lo.max(), over_hi.max())
+        axes = ", ".join(
+            f"{ax}_{side} by {v:.2f} m"
+            for ax, lo, hi in zip("xyz", over_lo, over_hi)
+            for side, v in (("min", lo), ("max", hi)) if v > 0)
         raise SystemExit(
-            f"[intake] CONTRACT VIOLATION: collider bounds "
-            f"[{m_lo.round(2)},{m_hi.round(2)}] outside splat bounds "
-            f"[{s_lo.round(2)},{s_hi.round(2)}] — bundle does not match "
-            f"the trusted-frame contract; refusing to guess.")
+            f"[intake] CONTRACT VIOLATION: the collider reaches outside "
+            f"the splat by up to {worst:.2f} m ({axes}).\n"
+            f"  collider {m_lo.round(2)} .. {m_hi.round(2)}\n"
+            f"  splat    {s_lo.round(2)} .. {s_hi.round(2)}  "
+            f"(tail {BOUNDS_TAIL_PCT}% trimmed, margin {BOUNDS_MARGIN} m)\n"
+            f"  The two files disagree about where this room is, so every "
+            f"box measured from them would be wrong. Refusing to guess a "
+            f"frame — a square room looks the same upside down, so there "
+            f"is nothing here to estimate from.")
 
     shutil.copyfile(glb[0], sd / "collider_registered.glb")
     (sd / "collider_registration.json").write_text(json.dumps(
