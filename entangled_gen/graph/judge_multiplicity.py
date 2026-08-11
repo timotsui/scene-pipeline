@@ -96,7 +96,7 @@ the vote, so it has NO cone-map entry, NO cards and NO plan detection —
 the stimulus above cannot be built for it. Its one real observation is
 the vote's FACE-ON (perp) render, whose camera the vote wrote to its
 own params sidecar
-(pool_retake/slices/vote_<id>_perp.params.json: eye/aim/fov/res as
+(vote/slices/vote_<id>_perp.params.json: eye/aim/fov/res as
 rendered). That render is the case's single panel, annotated with the
 same convention: ORANGE = the node's CURRENT (shipping) box, GREEN =
 same-class neighbours, MAGENTA = the rejected face-on candidate (the
@@ -423,9 +423,9 @@ def named_box(nid, key, report, doubts):
     entry stands; a box is NEVER guessed."""
     bx = report.get(nid) or {}
     if key == "vote":
-        return bx.get("vote2"), "pool_retake/slicevote_report.json boxes.vote2"
+        return bx.get("vote2"), "vote/slicevote_report.json boxes.vote2"
     if key == "pano":
-        return bx.get("pano"), "pool_retake/slicevote_report.json boxes.pano"
+        return bx.get("pano"), "vote/slicevote_report.json boxes.pano"
     if key == "rebox_candidate":
         for d in doubts.get(nid) or []:
             if d.get("kind") == "rebox_rejected_smaller" \
@@ -981,7 +981,7 @@ def perp_params(c, sd, notes):
     there. (None, path) plus a build note when it is missing or unusable:
     this pipeline never invents a camera for a picture it cannot place."""
     nid = c["id"]
-    side = sd / "pool_retake" / "slices" / f"vote_{nid}_perp.params.json"
+    side = sd / "vote" / "slices" / f"vote_{nid}_perp.params.json"
     if not side.exists():
         notes.append(f"{nid}: face-on render has no params sidecar "
                      f"({side.name}) — camera unknown (no camera is ever "
@@ -1004,7 +1004,7 @@ def perp_panels(c, sd, sheets_dir, notes):
     box. Either may be missing; a missing one is a build note, never a
     fabricated panel."""
     nid = c["id"]
-    png = sd / "pool_retake" / "slices" / f"vote_{nid}_perp.png"
+    png = sd / "vote" / "slices" / f"vote_{nid}_perp.png"
     p, side = perp_params(c, sd, notes)
     if not png.exists():
         notes.append(f"{nid}: vote-exempt, and no face-on render "
@@ -1210,8 +1210,7 @@ def build_panels(c, sd, sheets_dir, notes):
     if c.get("exempt"):
         return perp_panels(c, sd, sheets_dir, notes)
     nid = c["id"]
-    sdir = sd / "pool_retake" / "slices"
-    rdir = sd / "pool_retake"
+    sdir = sd / "vote" / "slices"
     rec = {v["view"]: v for v in c["cm"]["views"]}
     aim = c["cm"]["aim"]
     boxes = c["cm"]["boxes"]
@@ -1248,7 +1247,14 @@ def build_panels(c, sd, sheets_dir, notes):
     # --- the plan render the vote detected on ---
     tv, tcam, prov = plan_cam(c, sd, notes)
     if tv is not None:
-        png = rdir / f"{nid}_{tv}.png"
+        # THE PANEL SHOWS THE PICTURE THE VOTE ACTUALLY DETECTED ON, and
+        # nothing else. Since 2026-08-10 slicevote renders its own plan
+        # view into vote/slices/. NO FALLBACK into the demoted
+        # render_aimed_views output: a fresh automated scene never runs
+        # that method, so a fallback would only ever fire on THIS scene
+        # and would hand the judge a stale picture under a caption that
+        # says otherwise. A missing plan render is a missing input.
+        png = sd / "vote" / "slices" / f"{nid}_{tv}.png"
         notch = None
         for d in c["doubts"]:
             if d["kind"] == "large_empty_notch" and boxes.get("vote2"):
@@ -1270,7 +1276,6 @@ def plan_cam(c, sd, notes):
     candidate whose render exists AND whose eye matches the record, so a
     wrong pick cannot survive."""
     nid = c["id"]
-    rdir = sd / "pool_retake"
     # drive the cull BOTH ways to enumerate both branches: pass=True
     # yields the in-room 'top' standpoint, pass=False forces the
     # clip-top 'ctop' fallback. Parameters are identical either way —
@@ -1288,17 +1293,33 @@ def plan_cam(c, sd, notes):
     # eyes the vote itself recorded for a plan standpoint: the top
     # voter's eye, and the "slice" row (= tcands[0]'s eye by construction)
     known = [rec[k] for k in ("top", "slice") if k in rec]
+    # THE CAMERA RECORD COMES FROM THE VOTE, NOT FROM A DEMOTED METHOD
+    # (2026-08-10). slicevote now renders its own plan view and writes a
+    # sidecar beside it (vote/slices/votetgt_<id>_<view>.json), so that
+    # is the record to check against. pool_targets.json — the camera
+    # file of experiments/render_aimed_views.py — is consulted ONLY for
+    # scenes whose vote predates the change, because a fresh automated
+    # scene never runs that method and the file will not exist.
+    # THE PLAN RENDER AND ITS CAMERA BOTH COME FROM THE VOTE (2026-08-10).
+    # No fallback into aimed_views_resolved/: that folder is the output of
+    # experiments/render_aimed_views.py, which a fresh automated scene
+    # never runs. A fallback would let THIS scene keep resolving files
+    # that scenes 2..100 cannot — the same code taking two paths, with
+    # the unattended one never exercised. If the vote has not shot its
+    # own plan view, that is a missing input and it says so.
+    sdir = sd / "vote" / "slices"
     tgt = {}
-    ptf = rdir / "pool_targets.json"
-    if ptf.exists():
-        try:
-            tgt = {t["name"]: t for t in json.loads(ptf.read_text())}
-        except (ValueError, KeyError, TypeError):
-            tgt = {}
     for name, eye, fov in cands:
-        png = rdir / f"{nid}_{name}.png"
+        png = sdir / f"{nid}_{name}.png"
         if not png.exists():
             continue
+        own = sdir / f"votetgt_{nid}_{name}.json"
+        if own.exists():
+            try:
+                v = json.loads(own.read_text())
+                tgt[f"{nid}_{name}"] = v[0] if isinstance(v, list) else v
+            except (ValueError, KeyError, TypeError, IndexError):
+                pass
         src = []
         ok = False
         for k in known:
@@ -1311,12 +1332,12 @@ def plan_cam(c, sd, notes):
             de = float(np.linalg.norm(eye - np.array(t["eye"], float)))
             if de <= EYE_TOL and abs(fov - float(t["fov"])) <= 1e-6:
                 ok = True
-                src.append(f"eye+fov match the render sidecar "
-                           f"pool_targets.json[{nid}_{name}]")
+                src.append(f"eye+fov match the render's own sidecar "
+                           f"[{nid}_{name}]")
             else:
-                notes.append(f"{nid} {name}: rebuilt camera disagrees with "
-                             f"pool_targets.json (d_eye {de:.4f} m) — plan "
-                             "overlay SKIPPED")
+                notes.append(f"{nid} {name}: rebuilt camera disagrees "
+                             f"with the render's own sidecar (d_eye "
+                             f"{de:.4f} m) — plan overlay SKIPPED")
                 return None, None, "render-sidecar mismatch"
         if not ok:
             continue
@@ -2066,15 +2087,15 @@ def main():
     # v2.4 — the VOTE's own records, the only place a J8 ship key's box may
     # be resolved from (the same two sources materialize reads).
     report = {}
-    rep_f = sd / "pool_retake" / "slicevote_report.json"
+    rep_f = sd / "vote" / "slicevote_report.json"
     if rep_f.exists():
         report = {r["id"]: (r.get("boxes") or {}) for r in json.loads(
             rep_f.read_text(encoding="utf-8"))["results"]}
     all_doubts = {i: (n.get("doubts") or [])
                   for i, n in (vote.get("nodes") or {}).items()}
-    cm_f = sd / "pool_retake" / "conemap.json"
+    cm_f = sd / "vote" / "conemap.json"
     if not cm_f.exists():
-        raise SystemExit("[multiplicity] no pool_retake/conemap.json — run "
+        raise SystemExit("[multiplicity] no vote/conemap.json — run "
                          "slicevote.py first (the stimuli come from "
                          "its renders + view records)")
     cm_by_id = {o["id"]: o for o in json.loads(

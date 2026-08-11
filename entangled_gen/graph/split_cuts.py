@@ -1612,7 +1612,7 @@ def main():
     # anchored to the vote2 box) — the discard residue check's occupied
     # cells (audit_discard).
     plan_cells = {}
-    rep_f = sd / "pool_retake" / "slicevote_report.json"
+    rep_f = sd / "vote" / "slicevote_report.json"
     if rep_f.exists():
         rep = json.loads(rep_f.read_text(encoding="utf-8"))
         for r in rep.get("results", []):

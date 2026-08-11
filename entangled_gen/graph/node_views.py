@@ -86,7 +86,7 @@ RES = 768               # the vote/pool render size — one size pipeline-wide
 INSIDE_FRAC = 0.95
 ZOOM_FACTOR = 1.5
 OPACITY_MIN = 0.30      # emptiness probe reads SOLID geometry only, as
-#                         pool_retake does; splat haze is not a wall
+#                         render_aimed_views does; splat haze is not a wall
 
 
 def safe(nid):
@@ -115,28 +115,62 @@ def shell_bounds(sd):
 
 
 class Scene:
-    def __init__(self, scene):
+    def __init__(self, scene, layer=None):
         self.scene = scene
         self.sd = paths.scene_dir(scene)
         self.out = self.sd / "graph" / "node_views"
         self.g = json.loads((self.sd / "scene_graph.json").read_text())
-        self.layer = scene_state.current_name(self.g)
-        self.cur = {n["id"]: n for n in scene_state.nodes(self.g)}
+        # THE LAYER MAY BE NAMED BY THE CALLER (2026-08-10). Default is
+        # unchanged — whatever is current. But node_evidence must ask for
+        # `settled` by name: it feeds J9, and `current` is `grouped`,
+        # which is J9's OWN OUTPUT. That is not a hypothetical — J9's
+        # SAME_PRODUCT rule writes the product size INTO member boxes,
+        # so on living 3 of the 11 nodes it wants reshot have a
+        # different box in grouped than in settled. Aiming at grouped
+        # would frame the verdict's box and hand it back as evidence.
+        self.layer = layer or scene_state.current_name(self.g)
+        if layer:
+            b = self.g.get(layer)
+            got = b.get("nodes") if isinstance(b, dict) else None
+            if not got:
+                raise SystemExit(
+                    f"[views] no whole `{layer}` layer — present: "
+                    f"{', '.join(scene_state.present(self.g))}")
+            self.cur = {n["id"]: n for n in got}
+        else:
+            self.cur = {n["id"]: n for n in scene_state.nodes(self.g)}
         # THE LAYER THE EXISTING PICTURES WERE SHOT FROM.
-        # experiments/pool_retake.py reads g["resolved"] by name, so every
-        # picture in pool_retake/ was framed on a RESOLVED box. Three
+        # experiments/render_aimed_views.py reads g["resolved"] by name, so every
+        # picture in aimed_views_resolved/ was framed on a RESOLVED box. Three
         # stages have edited the boxes since (voted, settled, grouped).
         # Keeping the old layer here is what lets the gate say WHY a
         # reshoot is needed instead of only that one is.
         self.prior = {n["id"]: n for n in
                       (self.g.get("resolved") or {}).get("nodes", [])}
-        self.pool = self.sd / "pool_retake"
-        # the cameras that took the existing pool shots — the reuse rule
-        # is only checkable where one was recorded (206 of 220 here)
-        tf = self.pool / "pool_targets.json"
-        self.pool_cams = ({t["name"]: t
-                           for t in json.loads(tf.read_text())}
-                          if tf.exists() else {})
+        # THE REUSE POOL IS OUR OWN PRIOR RENDERS (2026-08-10, user
+        # ruling: nothing may depend on what a future automated scene
+        # will not produce). It used to be aimed_views_resolved/ — the
+        # renders of experiments/render_aimed_views.py, the box method
+        # that lost the 08-06 bake-off. That method does not run on a
+        # fresh scene, so living reused 26 shots while scenes 2..100
+        # would have reused none: the same code, two behaviours, and the
+        # unattended one never exercised.
+        #
+        # Our own store is a better pool anyway. Every render we take
+        # writes <safe-id>_<view>.params.json beside it holding the exact
+        # eye/aim/fov — the same record pool_targets.json held, produced
+        # by us, for every scene, with no other method required. First
+        # run on any scene renders everything; later runs reuse whatever
+        # still frames the box. One behaviour everywhere.
+        self.pool = self.out
+        self.pool_cams = {}
+        for pf in sorted(self.out.glob("*.params.json")):
+            try:
+                t = json.loads(pf.read_text())
+            except ValueError:
+                continue
+            if all(k in t for k in ("eye", "aim", "fov")):
+                self.pool_cams[pf.name[:-len(".params.json")]] = t
         self.shell = shell_bounds(self.sd)
         self.eye0 = np.array(json.loads(
             (self.sd / "rig_sp0" / "pano_selfrender_meta.json")
@@ -155,6 +189,73 @@ class Scene:
         d = self.xyz - eye
         r = view_cams.EMPTY_R
         return int((np.einsum("ij,ij->i", d, d) < r * r).sum())
+
+    def fov_fit(self, eye, aim, geo, fov0=None, margin=1.06):
+        """The lens that contains this box from this eye. CLOSED FORM.
+
+        The camera's ORIENTATION does not depend on its field of view —
+        `make_cam` builds the basis from (eye, aim, up) and fov only sets
+        the focal scale f = res / (2 tan(fov/2)). So the answer is direct:
+        rotate the eight corners into camera space, take the largest
+        |x|/z and |y|/z, and that ratio IS the tangent of the half-angle
+        the box demands.
+
+        (This started life as an iteration that rendered with a trial fov,
+        measured the pixel overshoot and rescaled. It converged on the
+        first pass and spent the second confirming — because the quantity
+        it was computing reduces algebraically to the line below. User
+        asked why it needed passes at all; it did not.)
+
+        `fov0` is ignored, kept so the caller's signature does not change.
+        Returns None if any corner is at or behind the camera plane."""
+        lo = np.asarray(geo["aabb_min"], float)
+        hi = np.asarray(geo["aabb_max"], float)
+        pts = np.array([[x, y, z] for x in (lo[0], hi[0])
+                        for y in (lo[1], hi[1]) for z in (lo[2], hi[2])],
+                       np.float64)
+        M = vote_cams.c2w_from_eye_aim(list(eye), list(aim), [0.0, -1.0, 0.0])
+        R = np.stack([M[:3, 0], -M[:3, 1], M[:3, 2]])
+        cam = (pts - np.asarray(eye, float)) @ R.T
+        z = cam[:, 2]
+        if (z <= 0.05).any():
+            return None
+        ratio = float(np.maximum(np.abs(cam[:, 0]) / z,
+                                 np.abs(cam[:, 1]) / z).max())
+        return 2 * math.degrees(math.atan(ratio * margin))
+
+    def occluded_at(self, eye, centre, half):
+        """How much solid stuff sits BETWEEN this eye and that box.
+
+        The same idea slicevote culls with: a point counts as blocking
+        when it lies inside the cone from eye to box AND is nearer than
+        the box's near face. Deliberately cheap — one dot product per
+        gaussian, no sorting, no rendering — because the main-photo
+        search calls it once per candidate standpoint.
+
+        A near-zero count is a clear line of sight. It does NOT promise
+        a good picture: a thin object seen edge-on is unobstructed and
+        still unreadable. It only rules out the camera being behind a
+        wall or a sofa."""
+        eye = np.asarray(eye, float)
+        c = np.asarray(centre, float)
+        to_c = c - eye
+        d_c = float(np.linalg.norm(to_c))
+        if d_c < 1e-6:
+            return len(self.xyz)
+        u = to_c / d_c
+        rel = self.xyz - eye
+        depth = rel @ u
+        # only what is in FRONT of the eye and NEARER than the box
+        near = (depth > 0.10) & (depth < d_c - half)
+        if not near.any():
+            return 0
+        rel = rel[near]
+        depth = depth[near]
+        # perpendicular distance from the sight line, against the cone
+        # that the box subtends at that depth
+        perp2 = np.einsum("ij,ij->i", rel, rel) - depth * depth
+        radius = half * (depth / d_c)          # cone widens with depth
+        return int((perp2 < radius * radius).sum())
 
 
 def fingerprint(sc, nid, v, geo):
@@ -187,7 +288,7 @@ def why_reshoot(sc, nid, v, geo):
     its word. So this reports what actually changed: the box, and how far
     the camera therefore moved.
 
-    THE OLD CAMERA IS RECONSTRUCTED, NOT READ. pool_retake wrote no
+    THE OLD CAMERA IS RECONSTRUCTED, NOT READ. render_aimed_views wrote no
     sidecar beside its renders, so nothing on disk records the camera
     that drew them. What is recorded is the LAYER it read (`resolved`),
     so the old camera is recomputed from the old box through this same
@@ -242,7 +343,12 @@ def reuse_test(sc, nid, v, geo):
     way — {"pass": bool, "reason": ...} — or None when no shot exists at
     all (nothing to test). A fail that only said "fail" could not be
     reviewed, and 44 unexplained reshoots is how this gap was found."""
-    stem = nid.split("#")[0]
+    # OUR OWN FILENAMES, so a split piece keeps its identity. The old
+    # pool was keyed `nid.split("#")[0]` because the demoted pass never
+    # shot split pieces and obj_011#1 could only ever match its PARENT's
+    # picture — a borrow dressed up as a reuse. safe() is the name we
+    # write under, so obj_011#1 now matches obj_011_p1 and nothing else.
+    stem = safe(nid)
     png = sc.pool / f"{stem}_{v['view']}.png"
     if not png.exists():
         return None
@@ -311,7 +417,7 @@ def gate(sc, nid, v, geo, suffix=""):
     if png.exists():
         return "keep", stem, h, None
     # Is there an OLDER picture of this view, from before this module
-    # existed? pool_retake's renders are the only ones, and a split piece
+    # existed? render_aimed_views's renders are the only ones, and a split piece
     # has none because its box is younger than they are.
     if suffix:
         return "to_be_shot", stem, h, {"kind": "audit_render",
@@ -345,6 +451,25 @@ def plan(sc, include_culled=False, culled_only=False):
             continue
         views, dropped = view_cams.candidates(geo, sc.eye0, sc.shell,
                                               sc.empty_at)
+        # THE MAIN PHOTO GOES FIRST, and it is a different kind of view:
+        # the others are "look at it from that side", this one is "the
+        # one picture of this object", searched for at eye level as near
+        # the capture standpoint as the room allows.
+        mv, mwhy = view_cams.main_view_cam(geo, sc.eye0, sc.shell,
+                                           sc.empty_at, sc.occluded_at,
+                                           fov_fit=sc.fov_fit)
+        if mv is not None:
+            views = [mv] + views
+            print(f"[views] {nid:<12} MAIN {mv['dist_to_object']:.2f} m "
+                  f"from the object, {mv['dist_to_default']:.2f} m from "
+                  f"the standpoint, fov {mv['fov']:.0f} deg "
+                  f"({mv['considered']} of {mv['of_candidates']} "
+                  f"standpoints tried)", flush=True)
+        else:
+            dropped.append({"view": "main", "why": [mwhy], "tried": [],
+                            "aim": [float(x) for x in
+                                    (geo.get("center") or [0, 0, 0])]})
+            print(f"[views] {nid:<12} MAIN — NONE: {mwhy}", flush=True)
         vrows = []
         for v in views:
             status, stem, h, why = gate(sc, nid, v, geo)
@@ -626,7 +751,7 @@ def tile(sc, v, kind):
     src = v.get("box_file") or v["file"]
     w = v.get("why") or {}
     if v.get("status") == "reuse_prior":
-        rel = f'../../pool_retake/{w.get("prior_file", "")}'
+        rel = f'{w.get("prior_file", "")}'
         body = f'<a href="{rel}"><img src="{rel}"></a>'
     elif v.get("status") == "to_be_reshot" and w.get("prior_file"):
         # the evidence picture: the reuse_decision annotated copy has
@@ -634,7 +759,7 @@ def tile(sc, v, kind):
         # was aimed at, yellow = today's); fall back to the raw shot
         ann = sc.sd / "graph" / "reuse_decision" / v["file"]
         rel = (f'../reuse_decision/{v["file"]}' if ann.exists()
-               else f'../../pool_retake/{w["prior_file"]}')
+               else f'{w["prior_file"]}')
         body = f'<a href="{rel}"><img class="old" src="{rel}"></a>'
     else:
         body = (f'<a href="{src}"><img src="{src}"></a>'
@@ -650,7 +775,7 @@ def tile(sc, v, kind):
         if "camera_moved_m" in w:
             cap.append(f'camera moves {w["camera_moved_m"] * 100:.0f} cm')
         if w.get("prior_file"):
-            cap.append(f'<a href="../../pool_retake/{w["prior_file"]}">'
+            cap.append(f'<a href="{w["prior_file"]}">'
                        "the old picture</a>")
     cell_cls = "cell reshot" if v.get("status") == "to_be_reshot" \
         else "cell"
@@ -717,7 +842,7 @@ def write_report(sc, rows, n_pending):
          "are marked <b>TO BE SHOT</b>.</p>",
          '<div class="key">'
          "<b>What the existing pictures were framed on.</b> Every render "
-         "in <code>pool_retake/</code> was shot from the <code>resolved</code> "
+         "reused here was shot by an EARLIER RUN of this module, from the box as it stood then "
          "layer, because that is the layer that module reads by name. "
          "Three stages have edited the boxes since &mdash; "
          "<code>voted</code> elected new ones, <code>settled</code> "
@@ -733,13 +858,13 @@ def write_report(sc, rows, n_pending):
          "<br><br>"
          "<b>Nothing could have been kept on this run in any case.</b> "
          "This folder is new, so there is no picture of any node to "
-         "keep &mdash; the pictures in <code>pool_retake/</code> are in "
+         "keep &mdash; the pictures reused here are in "
          "another folder, under another naming scheme, with no sidecar "
          "recording what camera drew them, so they are linked for "
          "comparison and never reused. The keep/reshoot distinction only "
          "starts saving work on the SECOND run.<br><br>"
          "<b>The old camera is reconstructed, not read.</b> "
-         "<code>pool_retake</code> wrote no sidecar beside its renders, so "
+         "<code>render_aimed_views</code> wrote no sidecar beside its renders, so "
          "nothing on disk records the camera that drew them. What is "
          "recorded is the layer it read, so the old camera is recomputed "
          "from the old box through the same module. Said plainly because "
@@ -768,7 +893,7 @@ def write_report(sc, rows, n_pending):
          + "</div>"]
 
     # ---- THE CULL, CHECKED AGAINST THE ONLY OTHER OPINION ON DISK ----
-    # pool_retake ran the same cull on the OLD boxes. Where it produced a
+    # render_aimed_views ran the same cull on the OLD boxes. Where it produced a
     # picture and this run culls the same view, the two disagree, and a
     # disagreement is the only cheap evidence available that the cull is
     # wrong. Shown first, in full, rather than buried in the rows.
@@ -781,7 +906,7 @@ def write_report(sc, rows, n_pending):
     n_drop = sum(len(r.get("dropped", [])) for r in rows)
     h.append("<h2 style='font-size:17px;margin:26px 0 4px'>The cull, "
              "checked against the pictures that already exist</h2>"
-             f"<p><code>pool_retake</code> ran this same cull on the OLD "
+             f"<p><code>render_aimed_views</code> ran this same cull on the OLD "
              f"boxes. Of the <b>{n_drop}</b> views culled now, "
              f"<b>{n_drop - len(clash)}</b> it also had no picture for "
              f"&mdash; the two agree. <b>{len(clash)}</b> it did shoot, "
@@ -793,9 +918,9 @@ def write_report(sc, rows, n_pending):
             w = next((v.get("why") for v in r["views"] if v.get("why")), {})
             h.append('<div class="cell" style="width:300px">'
                      f'<span class="tag t_reshot">CULLED NOW</span>'
-                     f'<a href="../../pool_retake/{p.name}">'
+                     f'<a href="{p.name}">'
                      f'<img class="old" style="width:300px" '
-                     f'src="../../pool_retake/{p.name}"></a>'
+                     f'src="{p.name}"></a>'
                      f'<div class="cap"><b>{e(r["id"])} {e(d["view"])}</b> '
                      f'&middot; {e(str(r.get("name")))}<br>'
                      f'{e("; ".join(d["why"][:1]))}<br>'
@@ -852,8 +977,8 @@ def write_report(sc, rows, n_pending):
                 had = (sc.pool / f'{r["id"]}_{d["view"]}.png')
                 h.append(f'<div class="drop">no <b>{e(d["view"])}</b> — '
                          f'{e("; ".join(d["why"]) or "no standpoint passed")}'
-                         + (' &middot; <a href="../../pool_retake/'
-                            f'{had.name}">but pool_retake DID shoot this '
+                         + (' &middot; <a href="'
+                            f'{had.name}">but an earlier run DID shoot this '
                             "view, on the old box</a>"
                             if had.exists() else "") + "</div>")
             h.append("</div></div>")
@@ -879,8 +1004,13 @@ def main():
                          "without paying for the kept views first")
     ap.add_argument("--only", default="",
                     help="comma-separated node ids (default: every node)")
+    ap.add_argument("--layer", default="",
+                    help="aim at this layer's boxes by NAME instead of "
+                         "whatever is current. node_evidence passes "
+                         "`settled`, because current is `grouped` and "
+                         "grouped is J9's own output.")
     a = ap.parse_args()
-    sc = Scene(a.scene)
+    sc = Scene(a.scene, a.layer or None)
     if a.only:
         want = set(a.only.split(","))
         missing = sorted(want - set(sc.cur))

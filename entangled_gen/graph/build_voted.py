@@ -3,17 +3,17 @@ were elected.
 
 NAMING (user, 2026-08-08): this stage does not vote anything. It renders
 views of a node, lets the detections in them VOTE, and elects a box. The
-result is a NEW box, not a trimmed one. So: the vote-box stage, and the
+result is a NEW box, not a trimmed one. So: the vote stage, and the
 boxes it produces are VOTED boxes. The old `vote*` names survive in file
 names and stored keys and are being retired separately.
 
 WHY THIS LAYER EXISTS (user, 2026-08-08): "after vote box we should
 update the whole scene graph, as the new vote box will supersede the old
-box — that's the whole point. All info from the vote box stage should
+box — that's the whole point. All info from the vote stage should
 also be written into canon graph. We can keep the stale boxes for
 reference purposes, but we need to make sure it's explicitly known."
 
-Before this module the vote-box stage wrote NOTHING into the graph. It
+Before this module the vote stage wrote NOTHING into the graph. It
 dropped a manifest and a report beside it, `resolved` kept its pre-vote
 geometry, and every later module had to know on its own to override that
 geometry from the manifest. 43 of 46 resolved boxes disagreed with the
@@ -25,7 +25,7 @@ WHAT THIS MODULE DOES — one edit, on the whole graph:
 
   GETS   graph["resolved"] (the last full layer), the elected boxes
          (scene_manifest_slicevote_preview.json), the vote record
-         (pool_retake/slicevote_report.json) and the typed doubts
+         (vote/slicevote_report.json) and the typed doubts
          (graph/vote_doubts.json).
   WRITES one ADDITIVE layer graph["voted"] = {nodes, edges, nesting,
          edge_meta, run, counts, open_questions} — a WHOLE graph, the
@@ -71,7 +71,7 @@ import scene_state      # noqa: E402
 
 LAYER = "voted"
 MANIFEST = "scene_manifest_slicevote_preview.json"
-REPORT = Path("pool_retake") / "slicevote_report.json"
+REPORT = Path("vote") / "slicevote_report.json"
 GEOM_KEYS = ("aabb_min", "aabb_max", "center", "size")
 
 # the vote record's own fields, lifted onto the node so nothing downstream
@@ -146,7 +146,7 @@ def build(scene):
             # is stated rather than implied
             n["provenance"] = [{
                 "rule": "not_voted",
-                "note": "the vote-box stage produced no box for this node "
+                "note": "the vote stage produced no box for this node "
                         "— its PRE-VOTE geometry stands unchanged"}]
             opens.append({"node": nid, "kind": "not_voted",
                           "text": "no elected box; this node's geometry is "

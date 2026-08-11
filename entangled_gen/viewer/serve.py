@@ -58,7 +58,7 @@ def box_sources(sc):
     # was too thin or the election blew past the outlier guard. The label
     # now says shipped / sliced / not-sliced, counted from the file.
     _sv = sd / "scene_manifest_slicevote_preview.json"
-    _svlab = "vote-box stage"
+    _svlab = "vote stage"
     _svstat = "unreadable"
     _SLICED = ("voted", "voted_pano")   # went through the election
     _STATUSES = _SLICED + ("kept", "kept_wall", "kept_ceiling",
@@ -76,7 +76,7 @@ def box_sources(sc):
                                                            key=lambda x:
                                                            -x[1]))
         _cut = sum(_tally.get(s, 0) for s in _SLICED)
-        _svlab = ("vote-box stage · " + str(_h.get("run_id") or "?")
+        _svlab = ("vote stage · " + str(_h.get("run_id") or "?")
                   + (" · CANON-ELIGIBLE" if _h.get("canon_eligible")
                      else " · partial/mixed — NOT canon")
                   + f" · {_n} shipped ({_cut} sliced, {_n - _cut} "
@@ -90,7 +90,58 @@ def box_sources(sc):
     # it is an INPUT, not a competing answer, so the vote manifest and
     # the hand-composed judge preview move to the collapsed archive
     # section. Files stay on disk; nothing is deleted.
+    # ---- TEMPORARY A/B PAIR (2026-08-10, user eyeball) ----------------
+    # Same pattern as the 08-06 directional-prior pair: two vote runs side
+    # by side so the box moves can be SEEN rather than read off a delta
+    # table. RED = the old run the graph was built from (44 of its 46
+    # boxes date from r20260808-203800, old code + old params), GREEN =
+    # tonight's full re-run under the current shell and current code.
+    # Both labels read their own run_id from the file — the 08-08 lesson
+    # (a hard-coded "run 10" caption outliving the boxes) applies here too.
+    # REMOVE BOTH once ruled; the files stay on disk.
+    _ab = sd / "_pre_eps05_backup_manifest.json"
+
+    def _ablab(p, side):
+        try:
+            _j = json.loads(p.read_text(encoding="utf-8"))
+            _n = len(_j.get("objects") or [])
+            return (f"A/B {side} · {_j.get('run_id') or '?'} · "
+                    f"{_j.get('run_kind') or '?'}"
+                    + ("/mixed" if _j.get("mixed_provenance") else "")
+                    + f" · {_n} boxes")
+        except Exception:                                   # noqa: BLE001
+            return f"A/B {side} · unreadable"
+
     srcs = [
+        ("vote_ab_old", _ablab(_ab, "SHELL_EPS 0.03"), "current", _ab,
+         "#ff5252",
+         "TEMPORARY A/B — RED = the vote with the OLD 3 cm shell "
+         "electorate filter (run r20260810-233757). Pair with GREEN, the "
+         "same vote at 5 cm. 14 boxes differ; every one SHRANK. LOOK AT "
+         "TWO THINGS SEPARATELY, because the one constant did both: "
+         "(1) AT THE WALLS the change helped — obj_012 -0.20 m, obj_014 "
+         "-0.08 m, magazines/tv stand tighter; obj_022 (plant, on a shelf "
+         "1.77 m up) is the clean control, tighter in x/z with its bottom "
+         "untouched. (2) AT THE FLOOR it hurt — SHELL_EPS applies to floor "
+         "and ceiling too, so every floor-standing object lifted off the "
+         "ground: obj_028 chair's box now floats 0.267 m above the floor "
+         "(was 0.121), obj_020 0.199 (was 0.155), obj_006 coffee table "
+         "0.103 (was 0.066). DISPLAY ONLY. Remove both entries once "
+         "ruled."),
+        ("vote_ab_new", _ablab(sd / "scene_manifest_slicevote_preview.json",
+                               "SHELL_EPS 0.05"), "current",
+         sd / "scene_manifest_slicevote_preview.json", "#4caf50",
+         "TEMPORARY A/B — GREEN = the vote with the NEW 5 cm shell "
+         "electorate filter (user ruling: \"3cm was arbitrary anyway, try "
+         "5\"). Everything else identical to RED — same renders, same "
+         "cameras, only who is allowed to VOTE changed. THE QUESTION ON "
+         "THE TABLE: the wall gain is real but the floor loss is real "
+         "too, because one constant governs walls, floor AND ceiling. The "
+         "proposal is to SPLIT it — keep 5 cm at walls, put the floor and "
+         "ceiling back to 3 cm — since everything measured (a 4.2 cm "
+         "median skin, wall_00's density peak at 3-4 cm) was measured at "
+         "WALLS and says nothing about the floor. Same file the cyan "
+         "'vote stage' archive layer draws."),
         ("slicevote", _svlab, "archive",
          sd / "scene_manifest_slicevote_preview.json", "#00bcd4",
          "SUPERSEDED 2026-08-08 by the materialized layer (it is this "
@@ -118,7 +169,7 @@ def box_sources(sc):
         # parallax_voted REMOVED from the HUD 2026-08-10 (user: retired
         # shot systems are not mentioned) — the manifest was written only
         # by the retired retake experiments (parallax_retake.py, then
-        # clobbered by pool_retake.py — two writers, one filename) and is
+        # clobbered by render_aimed_views.py — two writers, one filename) and is
         # archived with them under archive_2026-08-10_retired_shots/.
         # set A / set B (two-standpoint experiment) REMOVED from the HUD
         # 2026-08-06 cone session (user: "we no longer need those");
@@ -148,7 +199,7 @@ def box_sources(sc):
          "content is the owners' boxes, already present as their own "
          "nodes). Composed live from scene_manifest_slicevote_preview + "
          "graph/multiplicity.json + graph/split_cuts.json + "
-         "pool_retake/slicevote_report.json; missing side files degrade "
+         "vote/slicevote_report.json; missing side files degrade "
          "to the plain shipping boxes"),
     ]
     # same-product (J9): TWO composed layers, one colour each, so the set
@@ -286,7 +337,7 @@ def judge_preview(sc):
     """Compose the judge-preview box layer (display only, NOT materialized):
     the manifest's shipping boxes edited per the J8 multiplicity verdicts
     (graph/multiplicity.json) and the J8s split executions
-    (graph/split_cuts.json), vote2 boxes from pool_retake/
+    (graph/split_cuts.json), vote2 boxes from vote/
     slicevote_report.json, plus the J1 SAME merges from
     scene_graph.json voted_edges (duplicate pairs: the smaller box is
     tagged merged into its survivor, geometry unchanged). Materialize (Phase C) stays the only editor —
@@ -306,7 +357,7 @@ def judge_preview(sc):
             return []
 
     rep = {r.get("id"): r.get("boxes") or {}
-           for r in load(sd / "pool_retake" / "slicevote_report.json",
+           for r in load(sd / "vote" / "slicevote_report.json",
                          "results")}
     mult = {c["id"]: c.get("verdict") or {}
             for c in load(sd / "graph" / "multiplicity.json", "cases")
@@ -422,7 +473,7 @@ def judge_preview(sc):
                       "scene_manifest_slicevote_preview.json + "
                       "graph/multiplicity.json (J8) + "
                       "graph/split_cuts.json (J8s) + "
-                      "pool_retake/slicevote_report.json + "
+                      "vote/slicevote_report.json + "
                       "scene_graph.json voted_edges (J1 SAME merges)",
             "frame": man.get("frame"),
             "not_shipping": not_shipping,
@@ -937,11 +988,11 @@ class H(BaseHTTPRequestHandler):
             # strict-AND vs >=2-vote candidate boxes + retake camera poses.
             # Built by the scratchpad cone_map script; remove when the
             # strictness rule is decided.
-            f = paths.scene_dir(sc) / "pool_retake" / "conemap.json"
+            f = paths.scene_dir(sc) / "vote" / "conemap.json"
             if f.exists():
                 self._send(200, f.read_bytes(), "application/json")
             else:
-                self._send(404, b"no pool_retake/conemap.json for this scene")
+                self._send(404, b"no vote/conemap.json for this scene")
         elif p == "/collisions.json":
             # collide.py --export output: mesh-overlap pairs + RENDER-frame
             # overlap boxes for the viewer's collision layer

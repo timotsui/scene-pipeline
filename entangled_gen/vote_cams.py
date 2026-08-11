@@ -66,7 +66,7 @@ def roty(v, deg):
 def top_cam_for(geo, eye0, ceil_y, wall_pad, in_bounds, empty_at,
                 empty_max):
     """Plan-view camera candidates for ONE node, matching the renders
-    experiments/pool_retake.py wrote as <id>_top.png / <id>_ctop.png.
+    experiments/render_aimed_views.py wrote as <id>_top.png / <id>_ctop.png.
 
     geo        the resolved node's geometry dict (center + size)
     eye0       the original standpoint (rig_sp0 eye_raw)

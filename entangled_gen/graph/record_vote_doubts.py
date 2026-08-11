@@ -13,7 +13,7 @@ Two outputs:
    mechanical plain-English sentence (no LLM — judges do the judging).
    Consumers: multiplicity judge + same-product judge + viewer cards.
 
-Doubt kinds (per node, from pool_retake/slicevote_report.json + the
+Doubt kinds (per node, from vote/slicevote_report.json + the
 preview manifest's status flags):
 - pano_vs_cluster: pano-filtered box < 50% of the vote-cluster volume
   (possible multi-node structure — multiplicity-judge territory).
@@ -227,7 +227,7 @@ def main():
                          "additive `vote` block")
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
-    rep_f = sd / "pool_retake" / "slicevote_report.json"
+    rep_f = sd / "vote" / "slicevote_report.json"
     if not rep_f.exists():
         raise SystemExit("[doubts] no slicevote_report.json — run "
                          "slicevote.py first")

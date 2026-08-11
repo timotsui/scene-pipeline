@@ -23,7 +23,7 @@ unconstrained (partial side masks crush; bottoms belong to support_clip).
 One point refilter composes all bands over the ORIGINAL sp0 mask points;
 box refit at 1/99 pct. Keeps (flagged) only when the whole pool fails.
 
-Run:  python experiments/pool_retake.py --scene living_marble
+Run:  python experiments/render_aimed_views.py --scene living_marble
       [--only obj_004,...] [--res 768]
 """
 import argparse
@@ -99,7 +99,7 @@ def main():
     ap.add_argument("--res", type=int, default=768)
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
-    rdir = sd / "pool_retake"
+    rdir = sd / "aimed_views_resolved"
     rdir.mkdir(exist_ok=True)
 
     g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
@@ -527,7 +527,7 @@ def main():
     by = {}
     for r in results:
         by[r["status"]] = by.get(r["status"], 0) + 1
-    report = {"scene": a.scene, "stage": "pool_retake",
+    report = {"scene": a.scene, "stage": "aimed_views_resolved",
               "params": {"CORR_MIN": CORR_MIN, "DET_THR": DET_THR,
                          "OFF_AXIS": OFF_AXIS, "PERP": PERP,
                          "EMPTY_MAX": EMPTY_MAX, "WALL_PAD": WALL_PAD},
@@ -548,14 +548,14 @@ def main():
                      "size": [round(y - x, 4) for x, y in zip(lo, hi)],
                      "n_detections": 1, "views": [], "flags": [r["status"]]})
     manp = {"scene": a.scene,
-            "source": "experiments/pool_retake.py preview (candidate pool: "
+            "source": "experiments/render_aimed_views.py preview (candidate pool: "
                       "4 near-cardinal + near-top + 2 near-perp, general "
                       "bounds/emptiness cull)",
             "frame": {"space": "raw", "up": [0.0, -1.0, 0.0]},
             "n_objects": len(objs), "objects": objs}
     (sd / "scene_manifest_parallax_preview.json").write_text(
         json.dumps(manp, indent=2))
-    print(f"[pool] statuses {by}; report -> pool_retake/pool_report.json; "
+    print(f"[pool] statuses {by}; report -> aimed_views_resolved/pool_report.json; "
           f"preview written", flush=True)
 
 

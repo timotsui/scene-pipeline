@@ -1,6 +1,14 @@
-"""SLICE-VOTE VOTE — the box-repair stage (USER-DESIGNED 2026-08-06
+"""SLICEVOTE — THE VOTE STAGE. (USER-DESIGNED 2026-08-06
 cone-map session; hardened over 4 whole-scene living runs 08-06/07,
 REVIEW_LOG R-S2-26..30, all USER-PASSED).
+
+ONE NAME, NOT SEVERAL (user ruling 2026-08-10: "please unify names, its
+very confusing if you keep calling it different things"). This module is
+`slicevote`, a.k.a. THE VOTE STAGE. It produces the layer `voted` and
+owns the folder `vote/`. It repairs boxes — that is the JOB, not a
+second name, and this line used to read "the box-repair stage", which is
+exactly how the drift started. Never "box repair" / "vote-box stage" as
+if they named the module. Same discipline as the retired word "carve".
 
 STATUS: user-passed on living_marble (R-S2-29 + R-S2-30); bedroom
 regression WAIVED by user 08-06. NOT yet wired into the canonical
@@ -191,9 +199,9 @@ Per resolved graph node:
    evidence, not shipping geometry.
 
 Outputs (per scene): scene_manifest_slicevote_preview.json,
-pool_retake/slicevote_report.json (rule.tiers records escalation),
-pool_retake/conemap.json (viewer cone-map layer), conemap_obj_*.png,
-cone_map.html, pool_retake/rows/<id>[.exempt].html (per-object page
+vote/slicevote_report.json (rule.tiers records escalation),
+vote/conemap.json (viewer cone-map layer), conemap_obj_*.png,
+cone_map.html, vote/rows/<id>[.exempt].html (per-object page
 fragments — the sidecars that let a partial run rebuild a COMPLETE page).
 
 PARTIAL RUNS ARE FIRST CLASS (user order 2026-08-08: "restructure so we
@@ -203,7 +211,7 @@ whole-scene documents instead of replacing them:
   * the startup image wipe is SCOPED to the ids being processed, so no
     other object's cone-map row loses its pictures;
   * slicevote_report.json / scene_manifest_slicevote_preview.json /
-    pool_retake/conemap.json are MERGED ON WRITE — the existing document
+    vote/conemap.json are MERGED ON WRITE — the existing document
     is loaded, only the processed ids' entries are replaced, every other
     entry is kept VERBATIM, and objects are emitted in RESOLVED-NODE
     ORDER so the files stay diff-stable. An id on disk that this run did
@@ -229,7 +237,7 @@ renderer skips any png that already exists, so a render whose CAMERA or
 CULL changed but whose NAME did not used to be silently reused, and the
 stage then detected on the old picture while projecting with the new
 camera. Every render this stage requests now carries a sidecar
-pool_retake/slices/<render_name>.params.json holding the hash of
+vote/slices/<render_name>.params.json holding the hash of
 everything that determines the image: camera eye / aim / fov, res, the
 cull rule string + its margin, and a sha of the exact kept-gaussian set
 that was written to the ply. Before a render is requested the sidecar is
@@ -310,8 +318,29 @@ EMPTY_R = 0.30
 EMPTY_MAX = 1500
 DIL_ISO = 8
 OUTLIER_K = 8.0
-SHELL_EPS = 0.03   # m — shell electorate filter (user 2026-08-07, in the
-                   # approved 2-3 cm band; shell is collider-agreed 5-36mm)
+SHELL_EPS = 0.05   # m — shell electorate filter. 0.03 -> 0.05 by USER
+                   # RULING 2026-08-10 late ("3cm was arbitrary anyway,
+                   # try 5"), replacing the 2026-08-07 "approved 2-3 cm
+                   # band; shell is collider-agreed 5-36mm".
+                   # WHAT PROMPTED IT (obj_012 bookshelf): the vote box
+                   # ran 0.74 m further along the wall than the pano box.
+                   # The 11,684 dots it gained sit at a MEDIAN of 0.042 m
+                   # from the wall plane — 84% of them in the 2-5 cm band,
+                   # i.e. just outside a 3 cm cut. Measured over all four
+                   # walls, 3 cm captures only 29% of wall-adjacent
+                   # material, and wall_00's DENSEST band is 3-4 cm — the
+                   # old cut landed on the rising edge of the wall's own
+                   # material, not past it.
+                   # ⚠ HONESTLY LABELLED: this number was chosen after
+                   # seeing one scene's symptom, which is the kind of
+                   # tuning the blind-test rule warns about. It is a user
+                   # ruling, not a measured optimum. Two explanations fit
+                   # the same histogram and are NOT separated: the splat's
+                   # wall really is a ~5 cm fuzzy shell, OR the fitted
+                   # plane sits 3-4 cm outside the true surface. Those
+                   # want different fixes (bigger tolerance vs better
+                   # plane fit). What would decide it: plane-fit residuals
+                   # measured across several rooms.
 WALL_TOUCH = 0.20  # m — a face this close to a wall plane (or past it)
                    # counts as touching that wall
 WALL_PROTRUDE_MAX = 0.20   # m — max intrusion into the room interior for
@@ -441,8 +470,13 @@ TOP_RESHOOT_SAFETY = 1.10  # small margin on the computed pull-back, so
                            # FRAME_TARGET_FILL rather than exactly on it
 
 sd = paths.scene_dir(SCENE)
-rdir = sd / "pool_retake"
+rdir = sd / "vote"
 rdir.mkdir(exist_ok=True)
+# NO FOREIGN INPUTS. This stage reads nothing from
+# experiments/render_aimed_views.py any more — see the plan-render
+# comment in the top-camera loop. Every picture slicevote detects on is
+# one slicevote rendered, so a fresh scene needs no other method to have
+# run first.
 sdir = rdir / "slices"
 sdir.mkdir(exist_ok=True)
 rowdir = rdir / "rows"          # per-object cone_map.html fragments
@@ -1281,7 +1315,7 @@ def perp_run_renders(targets_json, ply_path):
 
 
 def _fig(fname, cap):
-    return (f"<figure><img src='pool_retake/slices/{fname}' "
+    return (f"<figure><img src='vote/slices/{fname}' "
             f"loading='lazy'><figcaption>{cap}</figcaption></figure>")
 
 
@@ -1975,7 +2009,26 @@ no vote. Recorded here so the drop is never silent.</p>
     tcands, c0 = top_cam_for(n["geometry"], eye0, CEIL, WALL_PAD,
                              in_bounds, empty_at, EMPTY_MAX)
     for vname, teye, tfov in tcands:
-        png = rdir / f"{nid}_{vname}.png"
+        # THE PLAN RENDER IS OURS NOW (2026-08-10, user ruling: the
+        # pipeline must run unattended on 100 scenes, so no stage may
+        # depend on a batch some other method happened to leave behind).
+        #
+        # This line used to READ aimed_views_resolved/<id>_{top,ctop}.png
+        # — a picture from experiments/render_aimed_views.py, the box
+        # method that LOST the 08-06 bake-off. It was never shot for us;
+        # slicevote was designed afterwards on renders that happened to
+        # be on disk. On a FRESH scene that means running a demoted
+        # method's 206-render batch to harvest 36 plan views and discard
+        # ~470, which is not a saving, it is a defect.
+        #
+        # We already owned every piece: top_cam_for RECOMPUTES these
+        # cameras (it never read them), top_fit_render is our renderer,
+        # and 18 of 55 plan views on living were already ours because
+        # the borrowed camera could not frame the object. This makes the
+        # path that already ran a third of the time the ONLY path.
+        png = top_fit_render(nid, name, f"{nid}_{vname}", teye, c0, tfov,
+                             clip_ceiling=(vname == "ctop"
+                                           or float(teye[1]) < CEIL + 0.08))
         if not png.exists():
             continue
         cam = make_cam(teye, list(c0), tfov, RES)
@@ -2956,21 +3009,53 @@ no vote. Recorded here so the drop is never silent.</p>
         stats.append(f"\u26a0 FLAG: {rule_flag}")
     if outlier_flag:
         stats.append(f"\u26a0 OUTLIER: {outlier_flag}")
+    # A PLAN SHOT THAT FOUND NOTHING IS THE MOST IMPORTANT THING ON THE
+    # ROW (user, 2026-08-10). When it fails the slice falls back to the
+    # original-box wedge, so NOTHING re-measured the box and whatever
+    # came in ships. That was invisible here: the bookshelves came out
+    # floor-to-ceiling and the sheet showed no sign of why.
+    if any(s.get("det_box") is None for s in (top_shots_rec or [])):
+        stats.append("\u26a0 PLAN SHOT FOUND NOTHING \u2014 fell back to "
+                     "the original-box wedge; this box was NOT "
+                     "re-measured from a plan view")
     if len(tiers) > 1:
         stats.append("escalated: " + " \u2192 ".join(tiers))
     strip = ""
     f34 = sdir / f"vote_{nid}_slice34.png"
     if f34.exists():
-        strip += (f"<figure><img src='pool_retake/slices/{f34.name}' "
+        strip += (f"<figure><img src='vote/slices/{f34.name}' "
                   f"loading='lazy'><figcaption>THE SLICE · clean 3/4 "
                   f"view ({len(dots):,} dots)</figcaption></figure>")
+    # THE PLAN SHOT — the step that decides PRISM vs FALLBACK WEDGE, and
+    # the one step this page used to leave out entirely (the strip below
+    # skips view "top" by design; that skip hides the DETECTION shot, not
+    # just the voter). Every rung of the re-shoot ladder is drawn, with
+    # the detection overlay when there is one. A shot that found nothing
+    # has no overlay to draw, so it is captioned as a failure rather than
+    # silently absent — a missing picture is not a readable result.
+    for _s in (top_shots_rec or []):
+        _p = sdir / _s["render"]
+        _d = sdir / f"{_p.stem}_det.png"
+        _src = _d.name if _d.exists() else (_p.name if _p.exists() else None)
+        if _src is None:
+            continue
+        if _s.get("det_box") is None:
+            _cap = (f"PLAN SHOT {_s.get('shot', 0)} · {_s.get('view', '?')}"
+                    f" · <b>FOUND NOTHING</b> — slice fell back to the "
+                    f"original-box wedge")
+        else:
+            _cap = (f"PLAN SHOT {_s.get('shot', 0)} · {_s.get('view', '?')}"
+                    f" · score {_s.get('score')} · {_s.get('action', '?')}")
+        strip += (f"<figure><img src='vote/slices/{_src}' "
+                  f"loading='lazy'><figcaption>{_cap}</figcaption></figure>")
     ftop = sdir / f"vote_{nid}_top_det.png"
     if ftop.exists():
-        strip += (f"<figure><img src='pool_retake/slices/{ftop.name}' "
-                  f"loading='lazy'><figcaption>TOP VOTER · plan render, "
-                  f"its mask+box</figcaption></figure>")
+        strip += (f"<figure><img src='vote/slices/{ftop.name}' "
+                  f"loading='lazy'><figcaption>TOP VOTER · the slice seen "
+                  f"from above, its mask+box (NOT the detection shot "
+                  f"above)</figcaption></figure>")
     for fsp in sorted(rdir.glob(f"conemap_sp0_{nid}_*.png")):
-        strip += (f"<figure><img src='pool_retake/{fsp.name}' "
+        strip += (f"<figure><img src='vote/{fsp.name}' "
                   f"loading='lazy'><figcaption>ORIGINAL VOTER · sp0 "
                   f"pano mask</figcaption></figure>")
     for i in infos:
@@ -2981,14 +3066,14 @@ no vote. Recorded here so the drop is never silent.</p>
         f2 = sdir / f"vote_{nid}_{vn}.png"
         src = f.name if f.exists() else (f2.name if f2.exists() else None)
         if src:
-            strip += (f"<figure><img src='pool_retake/slices/{src}' "
+            strip += (f"<figure><img src='vote/slices/{src}' "
                       f"loading='lazy'><figcaption>{vn} "
                       f"\u00b7 {i.get('why', '?')}</figcaption></figure>")
     save_row(nid, "vote", f"""
 <section>
 <h2>{nid} \u2014 {name}</h2>
 <p>{' &nbsp;\u00b7&nbsp; '.join(stats)}</p>
-<img class='big' src='pool_retake/{fig_path.name}'>
+<img class='big' src='vote/{fig_path.name}'>
 <div class='strip'>{strip}</div>
 </section>""")
 

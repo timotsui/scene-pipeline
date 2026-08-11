@@ -140,3 +140,43 @@ J9 has re-run on repaired evidence.
 ## PROGRESS LOG
 
 - (start) Plan written from the design conversation. Awaiting build go.
+- CORRECTION to ruling 3 above: the old module did NOT hardcode
+  `grouped`; it read `scene_state.current(graph)` and the docstring
+  merely described what was current that day. The circularity was drift,
+  not a constant. Pinning to `settled` is the same fix for the same
+  reason.
+- Checkpoint commit 828316e (~5 sessions of work) taken BEFORE the
+  rename, so a broken rename stays easy to see.
+- **B1 DONE, user go.** `recrop_gate.py` -> `graph/node_evidence.py`
+  (git mv, history kept). Layer pinned to `settled` by name; repair plan
+  per node; re-cut preview now drawn with the CONTEXT pads so the page
+  shows the margin the repair will actually have. Decides only — no
+  pixels, no renders.
+  Living: 45 nodes, 35 fire -> **24 recut, 11 reshoot, 10 keep**.
+- **BUG FOUND AND FIXED IN B1 (scene-agnostic).** The module looked for
+  a member's photo and camera only in `rig_sp0/crops`, but a member may
+  state its own `img` (build_graph.cut_crops has always honoured this).
+  The two SP4 enrichment children were therefore reported "no usable
+  crop" when photo AND sidecar both existed in `rig_sp0/rcc`. Fixed via
+  `Scene.view_paths`; blocked went 2 -> 0.
+- **MODELLING FLAW IN MY OWN PLAN, corrected.** The supersede ruling is
+  per CONDITION but the plan applied it per NODE, which would discard a
+  node's good crop whenever it also had a bad one. `keep_crops` is now
+  decided per crop; a crop stays if it is clean or its only complaint is
+  re-zoom. The `keep+recut` repair kind was dropped — the keep is data,
+  not a fifth kind.
+- **HONEST NULL RESULT:** on living_marble **no crop fires `rezoomed`
+  alone** (9 fire it together with not_in_photo, 0 alone). So the
+  keep-the-re-zoom ruling is implemented but NOT EXERCISED by this
+  scene; readings A and B are indistinguishable on it. Do not treat
+  living as evidence either way.
+- **B2 DONE, user go.** `--recut` performs the cuts; decide-only stays
+  the default. 40 re-cuts for 24 nodes, 0 degenerate. recut/ is wiped
+  and rebuilt every run; graph/crops verified untouched at 246 files.
+  The page now shows the REAL cut file, not a preview.
+- **BUG CAUGHT BY COUNTING (B2):** 40 written, 39 on disk — a node with
+  two detections in ONE photo collided on `<node>__<view>.png` and the
+  second overwrote the first. One filename, two writers, the 08-06
+  failure class again. Name now carries the detection. 40/40 after.
+- NEXT: user reviews the page, then B3 (11 reshoots — QUEUED, needs an
+  explicit render go), then B4 the `shown` layer.

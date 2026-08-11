@@ -157,7 +157,7 @@ import scene_state    # noqa: E402
 import edge_carry     # noqa: E402
 
 VOTED_MANIFEST = "scene_manifest_slicevote_preview.json"
-VOTE_REPORT = Path("pool_retake") / "slicevote_report.json"
+VOTE_REPORT = Path("vote") / "slicevote_report.json"
 GEOM_KEYS = ("aabb_min", "aabb_max", "center", "size")
 LAYER = "grouped"
 
@@ -258,7 +258,7 @@ def load_json(p, what, required=True):
 
 def vote_report_boxes(sdir, graph):
     """{id: {box_name: {lo,hi}}} from the vote's own report (the only
-    place vote2 lives). Preferred location is the scene's pool_retake/;
+    place vote2 lives). Preferred location is the scene's vote/;
     the vote block's recorded absolute built_from is the fallback."""
     p = sdir / VOTE_REPORT
     if not p.exists():
@@ -354,7 +354,7 @@ class Materialize:
         USER DESIGN RULE (2026-08-08): a module edits the scene graph and
         inherits the rest. This used to rebuild each node from scratch —
         id / name / geometry / members / from — which quietly dropped
-        everything the vote-box stage had recorded (the elected box's own
+        everything the vote stage had recorded (the elected box's own
         provenance, the superseded pre-vote box, the vote record, the
         typed doubts) and forced every later reader to go find it in a
         sidecar. Now graph['voted'] is copied forward WHOLE and this pass

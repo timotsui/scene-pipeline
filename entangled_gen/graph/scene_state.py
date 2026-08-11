@@ -8,7 +8,7 @@ The scene graph is a stack of layers, each one a stage's edit of the one
 before it. That is the right shape — but until now every consumer named
 a layer by hand, and they named different ones. `resolved` was the last
 name most of them learned, so they kept reading it long after the
-vote-box stage had elected new boxes: 43 of 46 objects had a different
+vote stage had elected new boxes: 43 of 46 objects had a different
 box in `resolved` than the one actually decided, and the glass door
 differed by 300x on one axis. Nothing was wrong in the file. Nothing
 said which part of it was current.
@@ -37,8 +37,17 @@ CHAIN = (
     ("record",   "detection: every node found, with all its evidence"),
     ("judged",   "J0/J1 verdicts on the record"),
     ("resolved", "identity settled — duplicates merged, names fixed"),
-    ("voted",    "the vote-box stage: boxes elected"),
+    ("voted",    "the vote stage: boxes elected"),
     ("settled",  "J8 box rulings, J8s splits, J1 merges"),
+    # node_evidence.py. USER RULING 2026-08-11: this is an EVOLUTION OF
+    # THE SCENE STATE, not a note for a judge. Every node's stored crop
+    # was cut around a box that has since moved, so the crops are STALE
+    # and the pictures this stage names SUPERSEDE them. It sits after
+    # `settled` and before `grouped` because it reads settled boxes on
+    # purpose — grouped is J9's own output, and evidence that depended
+    # on it would be feeding J9 its own verdict back.
+    ("shown",    "node_evidence: the picture each node is actually seen "
+                 "as — stale crops superseded"),
     ("grouped",  "J9: instances grouped into products"),
 )
 NAMES = tuple(n for n, _ in CHAIN)
@@ -56,13 +65,28 @@ def _layer(graph, name):
     return b if isinstance(b, dict) else None
 
 
-def present(graph):
+def is_stale(graph, name):
+    """Was this layer built from something that has since been rewritten?
+
+    A layer is an edit of the one before it, so rewriting layer N makes
+    every layer AFTER N out of date by definition — it was computed from
+    inputs that no longer exist. Marked, not deleted: the old content is
+    still readable and still says which run produced it."""
+    b = _layer(graph, name)
+    return bool(b and b.get("stale_since"))
+
+
+def present(graph, include_stale=False):
     """Every WHOLE layer in the file, oldest first. Whole = it has nodes;
-    an edges-only or node-sidecar block is not a state of the scene."""
+    an edges-only or node-sidecar block is not a state of the scene.
+
+    STALE LAYERS ARE EXCLUDED unless asked for. A layer left over from
+    before its input was rewritten is not a state of the scene, it is a
+    record of an old one."""
     out = []
     for name in NAMES:
         b = _layer(graph, name)
-        if b and b.get("nodes"):
+        if b and b.get("nodes") and (include_stale or not is_stale(graph, name)):
             out.append(name)
     return out
 
@@ -89,10 +113,27 @@ def edges(graph):
     return (lay or {}).get("edges") or []
 
 
-def stamp(graph, name, note=""):
-    """Record IN THE FILE which layer is current. Called by the stage that
-    just wrote one, so a reader that never imports this module can still
-    see the answer."""
+def stamp(graph, name, note="", run_id=None):
+    """Record IN THE FILE which layer is current, and MARK EVERY LAYER
+    AFTER IT STALE.
+
+    THE STALE SWEEP EXISTS FOR THE UNATTENDED RUN (user requirement
+    2026-08-11: "make sure this is going to be smooth for the 100
+    automated runs"). Rewriting a layer silently invalidates everything
+    downstream — those layers were computed from inputs that no longer
+    exist. Before this, the file could hold a NEWER-BY-ORDER layer built
+    from OLDER inputs, and `check()` reported a disagreement a human had
+    to interpret. On one scene that is a conversation; on a hundred it is
+    a stall, or worse, a stage quietly reading last run's answer.
+
+    So the rule is mechanical: writing layer N stamps N and marks
+    N+1..end stale. A stale layer is skipped by present()/current() and
+    stops being stale the moment its own stage rewrites it — which, in
+    an ordered run, happens moments later. On a FRESH scene nothing
+    downstream exists yet, so the sweep does nothing at all.
+
+    Marked, never deleted: the content stays readable, and `stale_since`
+    names the layer whose rewrite invalidated it."""
     lay = graph.setdefault("layer", {})
     lay["canonical"] = name
     lay["chain"] = list(NAMES)
@@ -100,6 +141,28 @@ def stamp(graph, name, note=""):
         note or f"{name}: {DESCRIPTIONS.get(name, '')}. The newest whole "
         "layer is the state of the scene; earlier layers are kept for "
         "reference and are SUPERSEDED for geometry.")
+    swept = []
+    if name in NAMES:
+        for later in NAMES[NAMES.index(name) + 1:]:
+            b = _layer(graph, later)
+            if not (b and b.get("nodes")):
+                continue
+            b["stale_since"] = {"layer": name, "run": run_id,
+                                "why": (f"`{name}` was rewritten after "
+                                        f"this layer was built, so this "
+                                        f"was computed from inputs that "
+                                        f"no longer exist. Re-run "
+                                        f"{later}'s stage.")}
+            swept.append(later)
+    # a layer being written is, by definition, no longer stale
+    me = _layer(graph, name)
+    if isinstance(me, dict):
+        me.pop("stale_since", None)
+    lay["stale"] = present(graph, include_stale=True)
+    lay["stale"] = [n for n in lay["stale"] if is_stale(graph, n)]
+    if swept:
+        print(f"[state] `{name}` rewritten — marked stale: "
+              f"{', '.join(swept)} (re-run their stages)")
     return graph
 
 

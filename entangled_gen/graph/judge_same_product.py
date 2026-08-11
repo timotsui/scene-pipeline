@@ -260,7 +260,51 @@ def find_anchor(node, nodes):
     return (best["id"], best["name"], round(best_d, 2)) if best else None
 
 
-def member_crop_paths(src_ids, src_nodes, crops_dir):
+def shown_pictures(graph, sd):
+    """{node id -> the picture that node is CURRENTLY seen as}, from
+    graph['shown'].
+
+    WHY THIS EXISTS (user ruling 2026-08-11). This judge used to pick a
+    detector crop by detection score. Those crops were cut around boxes
+    that have since moved — on living_marble 35 of 45 nodes no longer had
+    a crop that framed their own box — so the judge was matching products
+    on pictures of the wrong region. node_evidence works out the right
+    picture per node and writes it as the layer `shown`; this reads it.
+
+    Empty dict when the layer is absent or stale, and the caller falls
+    back to the old crop pick — a scene that has not run node_evidence
+    still works, it just gets the worse evidence it always got."""
+    lay = graph.get("shown")
+    if not isinstance(lay, dict) or not lay.get("nodes"):
+        return {}, "graph['shown'] absent — falling back to detector crops"
+    if lay.get("stale_since"):
+        return {}, ("graph['shown'] is STALE (its input was rewritten) — "
+                    "falling back to detector crops; re-run "
+                    "node_evidence.py --apply")
+    nodes = lay["nodes"]
+    it = nodes.items() if isinstance(nodes, dict) else \
+        ((n["id"], n) for n in nodes)
+    out = {}
+    for nid, nd in it:
+        pic = ((nd.get("shown") or {}).get("picture") or {})
+        p = pic.get("path")
+        if not p:
+            continue
+        f = Path(p)
+        if not f.is_absolute():
+            f = sd / p
+        if f.exists():
+            out[nid] = f
+    return out, f"graph['shown']: {len(out)} node(s) carry a picture"
+
+
+def member_crop_paths(src_ids, src_nodes, crops_dir, shown=None, mid=None):
+    # THE `shown` PICTURE WINS OUTRIGHT when the node has one. It does not
+    # sit alongside the stored crops: those crops are what `shown` was
+    # built to supersede, and showing both would hand the judge the stale
+    # picture it was meant to stop using.
+    if shown and mid and mid in shown:
+        return [shown[mid]]
     """Up to CROPS_PER_MEMBER crops for one pool member, highest det score
     first — the judge_pairs.py node_crops pattern.
 
@@ -548,7 +592,7 @@ def canonical_from_exemplar(members, picked, status_by, doubts_by):
                     "lights."}}
 
 
-def build_sheets(groups, nodes, crops_dir, sheets_dir):
+def build_sheets(groups, nodes, crops_dir, sheets_dir, shown=None):
     """Build every group's contact sheet. Returns {group_index:
     sheet_path} and prints crop coverage; annotates each group dict with
     its sheet filename and per-member crop counts."""
@@ -559,8 +603,10 @@ def build_sheets(groups, nodes, crops_dir, sheets_dir):
         crops_by_id = {}
         for m in gr["members"]:
             crops_by_id[m["id"]] = member_crop_paths(
-                m["_src_ids"], src_nodes, crops_dir)
+                m["_src_ids"], src_nodes, crops_dir,
+                shown=shown, mid=m["id"])
             m["n_crops"] = len(crops_by_id[m["id"]])
+            m["from_shown"] = bool(shown and m["id"] in shown)
         out_path = sheets_dir / f"group_{i}_{slugify(gr['name'])}.png"
         build_sheet(gr, crops_by_id, out_path)
         gr["sheet"] = out_path.name
@@ -1002,7 +1048,13 @@ def main():
     src_nodes = {n["id"]: n for n in g["nodes"]}  # crop evidence here
     crops_dir = sd / "graph" / "crops"
     sheets_dir = sd / "graph" / "same_product_sheets"
-    sheet_paths = build_sheets(groups, src_nodes, crops_dir, sheets_dir)
+    # THE PICTURE EACH NODE IS CURRENTLY SEEN AS. Spoken out loud either
+    # way: on 100 unattended scenes, "which evidence did this verdict
+    # actually see" must be answerable from the log, not inferred.
+    shown_pics, shown_note = shown_pictures(g, sd)
+    print(f"[same_product] evidence: {shown_note}", flush=True)
+    sheet_paths = build_sheets(groups, src_nodes, crops_dir, sheets_dir,
+                               shown=shown_pics)
 
     if a.dry_run:
         n_by_name = {}
