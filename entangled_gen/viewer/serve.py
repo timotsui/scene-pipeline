@@ -398,8 +398,11 @@ def judge_preview(sc):
     vols = {o["id"]: _vol(o) for o in man.get("objects", [])}
     merged = {}   # loser id -> survivor id
     try:
-        gedges = (json.loads((sd / "scene_graph.json").read_text())
-                  .get("voted_edges") or {}).get("edges") or []
+        # the voted LAYER's own edges; graph["voted_edges"] is the
+        # retired half-layer, kept second for scenes voted before 08-11
+        _g = json.loads((sd / "scene_graph.json").read_text())
+        gedges = ((_g.get("voted") or {}).get("edges")
+                  or (_g.get("voted_edges") or {}).get("edges") or [])
     except Exception:
         gedges = []
     for e in gedges:

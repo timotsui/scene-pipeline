@@ -1681,10 +1681,20 @@ def main():
     mult = json.loads(mf.read_text(encoding="utf-8"))
     g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
     names = {n["id"]: n["name"] for n in g["resolved"]["nodes"]}
-    edges = (g.get("voted_edges") or {}).get("edges") or []
+    # THE VOTED LAYER'S OWN EDGES (2026-08-11). This read the retired
+    # graph["voted_edges"] half-layer and hard-exited without it, which
+    # crashed the first genuinely fresh scene right after J8 — the fifth
+    # reader of that block, and one the §6b work list did not name.
+    # `voted_edges` is still accepted, second, for scenes voted before
+    # the change; a fresh scene never has it.
+    edges = ((g.get("voted") or {}).get("edges")
+             or (g.get("voted_edges") or {}).get("edges") or [])
     if not edges:
-        raise SystemExit("[splitcuts] no graph['voted_edges'] - run "
-                         "graph/rederive_voted_edges.py --apply first")
+        raise SystemExit("[splitcuts] the `voted` layer has no edges — run "
+                         "graph/build_voted.py first. (This used to demand "
+                         "graph['voted_edges']; that half-layer is retired "
+                         "and build_voted re-derives the same edges inside "
+                         "the layer.)")
     prev = sd / "scene_manifest_slicevote_preview.json"
     voted = {o["id"]: (o["aabb_min"], o["aabb_max"])
               for o in json.loads(prev.read_text(encoding="utf-8"))["objects"]}

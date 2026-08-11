@@ -673,6 +673,7 @@ CHAIN = (
         lambda sc: [PY, "graph/triage_pairs.py", "--scene", sc,
                     "--edges-from", "voted"],
         reads="voted", writes=None,
+        artifacts=("graph/triage_pairs_cache.json",),
         llm=True,
         note="Runs on the VOTED LAYER's own edges, not on the record. "
              "Only genuinely new nesting candidates cost a call. No "
@@ -684,6 +685,7 @@ CHAIN = (
         lambda sc: [PY, "graph/judge_pairs.py", "--scene", sc,
                     "--edges-from", "voted"],
         reads="voted", writes=None,
+        artifacts=("graph/judge_pairs_cache.json",),
         llm=True,
         note="This is the stage that answers a duplicate the VOTE made by "
              "moving boxes — the two-chairs case. Its SAME verdicts ride "

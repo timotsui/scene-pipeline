@@ -286,8 +286,31 @@ def stale_inputs(scene, graph):
     """
     sd = paths.scene_dir(scene)
     out = []
-    for st in (stages.INTAKE + stages.RECORD + stages.CHAIN
-               + stages.COMPOSE):
+    order = stages.INTAKE + stages.RECORD + stages.CHAIN + stages.COMPOSE
+
+    # WHICH FILES A LATER STAGE IS SUPPOSED TO REWRITE.
+    #
+    # ⚠ THIS GUARD EXISTS BECAUSE THE CHECK WAS WRONG WITHOUT IT, AND
+    # WRONG IN THE WORST WAY: it told the operator to do something the
+    # design forbids. On the first fresh scene it reported "`judged` was
+    # built 9 min BEFORE its input graph/judge_pairs_cache.json — re-run
+    # `build_judged` and everything after it." Both halves of that are
+    # true and the conclusion is not. The Phase-B2 loop-back re-runs J1
+    # AFTER the vote, which rewrites that cache on purpose, and
+    # docs/AUTOMATION_READINESS.md:301-304 says in terms: "J2 is NOT part
+    # of the loop-back ... re-running build_judged would rewrite the
+    # immutable `judged` layer and sweep the vote stale." A check whose
+    # remedy corrupts the scene is worse than no check.
+    #
+    # So: an input that some LATER stage declares as its own artifact is
+    # a designed loop-back, not staleness. Structural, from the tables —
+    # no list of special cases to keep in step.
+    later_writes = {}
+    for i, st in enumerate(order):
+        for rel in st.artifacts:
+            later_writes.setdefault(rel, []).append(i)
+
+    for idx, st in enumerate(order):
         if not st.inputs:
             continue
 
@@ -334,6 +357,8 @@ def stale_inputs(scene, graph):
             p = sd / rel
             if not p.exists():
                 continue                 # absence is the artifacts check's job
+            if any(w > idx for w in later_writes.get(rel, ())):
+                continue                 # designed loop-back, see above
             newer = p.stat().st_mtime - built
             if newer > MTIME_SLACK_S:
                 ago = (f"{newer:.0f}s" if newer < 90 else
