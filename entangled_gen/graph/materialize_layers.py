@@ -1174,6 +1174,7 @@ class Materialize:
         self.same_product()
         self.edges()
         self.edge_list += getattr(self, "product_edges", [])
+        self.inherit_shown()
         self.cross_checks()
         self.open_doubts()
         self.stats.update(
@@ -1276,6 +1277,42 @@ class Materialize:
                 "indent": indent}
 
     # -- outputs ---------------------------------------------------------
+    def inherit_shown(self):
+        """Carry each node's PICTURE decision from `shown` into `grouped`.
+
+        THE DEFECT THIS CLOSES (found in the stage table's own note, fixed
+        2026-08-11B on the user's ruling that it is "a core function").
+        This pass does not read `shown` — it starts again from `voted` and
+        re-applies the geometry rules, then adds J9's grouping. So the
+        `shown` block, which records WHICH PICTURE each node is actually
+        seen as, existed on all 28 nodes of `shown` and on ZERO nodes of
+        `grouped`. `grouped` is the final layer and the one compose reads,
+        so the pipeline decided each object's picture and then dropped the
+        answer on the last step.
+
+        That contradicts the project's own layer rule (user, 2026-08-08):
+        "each module is an edit on the scene graph, and it has to inherit
+        all the properties and information."
+
+        MATCHED BY ID, AND MISSES ARE COUNTED, NOT ASSUMED AWAY. `shown`
+        is built from `settled`, and this pass rebuilds the same node set
+        from the same rules, so the ids line up — but a node that gained
+        an id here (a J8s split piece) legitimately has no picture yet,
+        and that is reported rather than hidden."""
+        shown = (self.graph.get("shown") or {}).get("nodes") or []
+        if not shown:
+            self.stats["shown_inherited"] = 0
+            self.stats["shown_missing"] = len(self.nodes)
+            return
+        book = {n["id"]: n["shown"] for n in shown if n.get("shown")}
+        got = 0
+        for nid, n in self.nodes.items():
+            if nid in book:
+                n["shown"] = book[nid]
+                got += 1
+        self.stats["shown_inherited"] = got
+        self.stats["shown_missing"] = len(self.nodes) - got
+
     def layer(self):
         return {
             "built": date.today().isoformat(),

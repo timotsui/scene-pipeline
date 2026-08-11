@@ -758,16 +758,23 @@ CHAIN = (
         inputs=("graph/same_product.json", "graph/multiplicity.json",
                 "graph/split_cuts.json",
                 "scene_manifest_slicevote_preview.json"),
-        note="⚠ `reads` IS CONSERVATIVE, NOT LITERAL. This pass does not "
-             "read `shown` at all — it starts again from `voted` and "
-             "re-applies the same four geometry rules `settled` did, then "
-             "adds J9's grouping on top. `shown` is declared because it is "
-             "the NEWEST layer that must be fresh for this to be a legal "
-             "moment to run, and the stale sweep makes that imply every "
-             "earlier layer is fresh too. The audit note stands: because "
-             "this pass rebuilds rather than inherits, the per-node "
-             "`shown` block does NOT survive into `grouped`. See "
-             "docs/PLAN_AUTOMATION_2026-08-11.md.",
+        note="⚠ `reads` IS CONSERVATIVE, NOT LITERAL for the GEOMETRY. "
+             "This pass starts again from `voted` and re-applies the same "
+             "four geometry rules `settled` did, then adds J9's grouping "
+             "on top. `shown` is declared because it is the NEWEST layer "
+             "that must be fresh for this to be a legal moment to run, and "
+             "the stale sweep makes that imply every earlier layer is "
+             "fresh too. "
+             "IT DOES NOW READ `shown` FOR ONE THING (fixed 2026-08-11B, "
+             "user: \"a core function of the pipeline\"): each node's "
+             "PICTURE decision is carried across by "
+             "materialize_layers.inherit_shown(). Before that fix the "
+             "block existed on every node of `shown` and on NONE of "
+             "`grouped` — the pipeline decided what each object is seen "
+             "as and then dropped the answer on the last step, in the "
+             "layer compose reads. Matched by id; a node with no "
+             "counterpart (a fresh split piece) is COUNTED in "
+             "counts.shown_missing, never assumed away.",
     ),
 )
 
@@ -1040,6 +1047,25 @@ COMPOSE = (
              "and fit_preview.py:351-360 has been reading "
              "rotation_check.json the whole time — dead code without "
              "this row, because nothing in the chain ever wrote the file.",
+    ),
+    Stage(
+        "prep_viewer", "build the payload that lets a human look at this "
+                       "scene",
+        lambda sc: [PY, "viewer/prep_scene.py", "--scene", sc],
+        artifacts=("repo:viewer/data/{scene}.bin",),
+        note="⚠ THE STAGE THAT WAS IN NO TABLE, and the omission had a "
+             "shape worth remembering: a scene could pass all 45 stages "
+             "and every gate and still be INVISIBLE. The viewer lists "
+             "whatever is in viewer/data/*.bin, and nothing in the "
+             "pipeline put anything there — `fresh02` finished completely "
+             "and did not appear in the dropdown. Over a hundred scenes "
+             "that is a hundred results nobody can look at without "
+             "remembering a command by hand, which is the exact class of "
+             "problem this table exists to remove. "
+             "IT IS LAST AND IT IS CHEAP TO SKIP: ~19.5 MB per scene "
+             "(about 2 GB across a hundred), it spends no model calls and "
+             "no GPU, and `--skip prep_viewer` drops it for a run whose "
+             "scenes nobody intends to open.",
     ),
 )
 

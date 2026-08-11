@@ -115,6 +115,29 @@ def _load_if_needed(scene, graph, stage):
     return None
 
 
+def artifact_path(scene, rel):
+    """Where a declared artifact or input actually lives.
+
+    Almost every one is relative to the SCENE directory, which is the
+    rule the tables were written under. Two escapes exist because two
+    real files do not fit it:
+
+      `{scene}`     substituted with the scene name, for a file named
+                    after the scene rather than sitting inside its folder.
+      `repo:` prefix  resolved against the REPO, not the scene. The
+                    viewer's payload is the case: viewer/data/<scene>.bin
+                    lives with the viewer, and out/ is not inside the
+                    repo, so no amount of ../.. reaches it.
+
+    Without this, `prep_viewer` could not declare an artifact at all, and
+    a stage with no declared artifact is a stage the no-op trap cannot
+    see — which is the one thing the gate exists for."""
+    rel = str(rel).replace("{scene}", str(scene))
+    if rel.startswith("repo:"):
+        return (HERE.parent / rel[len("repo:"):]).resolve()
+    return paths.scene_dir(scene) / rel
+
+
 def _layer_state(graph, name):
     """(present, stale) for a layer, using the same 'whole = it has nodes'
     rule the rest of the pipeline uses."""
@@ -141,7 +164,8 @@ def _report_missing_inputs(scene, stage, r):
     another stage was supposed to write now says which one is missing
     instead of dying inside PIL or json."""
     sd = paths.scene_dir(scene)
-    gone = [rel for rel in stage.inputs if not (sd / rel).exists()]
+    gone = [rel for rel in stage.inputs
+            if not artifact_path(scene, rel).exists()]
     if gone:
         r.add("INFO", f"declared input(s) not on disk: {', '.join(gone)}"
                       + (" — normal on the first round of the fit loop"
@@ -232,7 +256,7 @@ def after(scene, stage, since=None, graph=None):
                           f"stage exited 0 without writing it")
 
     for rel in stage.artifacts:
-        p = sd / rel
+        p = artifact_path(scene, rel)
         if not p.exists():
             r.add("FAIL", f"promised {rel} and it does not exist")
             continue
@@ -353,8 +377,9 @@ def stale_inputs(scene, graph):
             built = scene_state.written_at(graph, st.writes)
             made, level = f"`{st.writes}`", "FAIL"
         else:
-            times = [(sd / rel).stat().st_mtime for rel in st.artifacts
-                     if (sd / rel).exists()]
+            times = [artifact_path(scene, rel).stat().st_mtime
+                     for rel in st.artifacts
+                     if artifact_path(scene, rel).exists()]
             built = min(times) if times else None
             made, level = f"`{st.key}`'s output", "WARN"
         if built is None:
@@ -369,7 +394,7 @@ def stale_inputs(scene, graph):
             continue
 
         for rel in st.inputs:
-            p = sd / rel
+            p = artifact_path(scene, rel)
             if not p.exists():
                 continue                 # absence is the artifacts check's job
             if any(w > idx for w in later_writes.get(rel, ())):
