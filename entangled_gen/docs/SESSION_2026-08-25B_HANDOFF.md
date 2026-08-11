@@ -319,6 +319,69 @@ decide whether it is still live or superseded by `build_graph`'s W5 path.
 
 ---
 
+## 6b. ⭐ USER RULING 2026-08-11 (late) — THE MAP IS RIGHT; STALE THINGS LEAVE THE CHAIN
+
+User: *"I think the pipeline viewer is generally correct. Items marked
+Stale should not be in the core pipeline."*
+
+That settles two of the open questions and creates one contained piece of
+work. **Do this first next session.**
+
+### What the map actually says
+
+> RETIRED by this: the `graph['vote']` node-sidecar and the
+> `graph['voted_edges']` half-layer — **files stay on disk**.
+
+> the 08-07 `rederive_voted_edges` loop-back and its additive
+> `graph["voted_edges"]` HALF-layer are retired — edges now follow the
+> nodes INSIDE every whole layer (`edge_carry.py`). **J0/J1 still run on
+> the voted layer's edges** as a second pass.
+
+So: the loop-back SURVIVES as a concept, the half-layer does not. The
+judges keep running; they just read a different place.
+
+### The work this implies
+
+**A. Retire the `voted_edges` stage.** Drop the `voted_edges` row from
+`stages.CHAIN` (`rederive_voted_edges.py` stays on disk).
+
+**B. Teach the judges to read the voted LAYER's edges.**
+`graph/triage_pairs.py:161` and `graph/judge_pairs.py:258` both offer only
+`choices=("record", "voted_edges")`. They need a `voted` mode that reads
+`scene_state.current()`'s own edges. Then `j0_retriage` / `j1_repairs`
+switch to `--edges-from voted`.
+
+**C. `judge_multiplicity` hard-exits without `graph['voted_edges']** —
+point it at the voted layer's edges too.
+
+**D. Retire the `graph['vote']` block, keep `vote_doubts.json`.** Four
+readers use the block: `judge_multiplicity:2097`,
+`judge_same_product:1038`, `materialize_layers:274,324`,
+`scene_gate:332`. The FILE is already the preferred source in
+`materialize_layers.doubts_by_node` (block is only its fallback), so the
+pattern exists — move the other three onto the file, then stop
+`record_vote_doubts:393` writing the block. Keep the `doubts` STAGE: its
+artifact `vote_doubts.json` is read by five modules and is not retired.
+
+### Why this is worth doing rather than leaving
+
+It removes the second source of truth for geometry.
+`rederive_voted_edges.py:100-116` builds its node set from
+`graph["resolved"]["nodes"]` and its boxes from the preview manifest —
+running beside `graph['voted']`, which is exactly what R-S2-51 removed
+everywhere else. It is also the last "half-layer" in the pipeline, and the
+whole-layer rule is what makes `scene_state` trustworthy.
+
+### Checked: nothing else in the tables is map-retired
+
+Swept `pipeline_map.html` for RETIRED / STALE / SUPERSEDED / TOMBSTONE.
+The other hits are already respected: the old C1–C7 compose chain (not in
+`COMPOSE`), `materialize` graduating into `materialize_layers` (the table
+uses the new one), and `resolved` being superseded for geometry (fixed in
+compose today).
+
+---
+
 ## 7. WHAT NEEDS THE USER — nothing else is blocked on them
 
 1. **`voted_edges`: live or retired?** `pipeline_map.html:669-680` draws
