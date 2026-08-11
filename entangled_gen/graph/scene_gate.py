@@ -310,6 +310,21 @@ def stale_inputs(scene, graph):
         for rel in st.artifacts:
             later_writes.setdefault(rel, []).append(i)
 
+    # ⚠ THE CLOSING PASS RUNS OUT OF TABLE ORDER, and missing that
+    # produced a false WARN on the very first complete run (2026-08-11B):
+    # "`rotation_check`'s output was built 16s BEFORE its input
+    # fitted_preview.json". True, and by design — stages.FIT_CLOSING
+    # re-runs fit_preview and fit_declip AFTER rotation_check to apply
+    # its yaw deltas, while both sit BEFORE it in the COMPOSE tuple. The
+    # table records the order stages are DECLARED in; the runner also
+    # knows this one block runs again at the end, so the check has to
+    # know it too. Recorded past the end of the order, so anything at or
+    # before rotation_check sees them as later writers.
+    for key in getattr(stages, "FIT_CLOSING", ()):
+        st = stages.BY_KEY.get(key)
+        for rel in (st.artifacts if st else ()):
+            later_writes.setdefault(rel, []).append(len(order))
+
     for idx, st in enumerate(order):
         if not st.inputs:
             continue
