@@ -208,9 +208,19 @@ repair, wrong if anything later expects the whole scene.
 This machine hard-powers-off under GPU burst (docs/POWER_CRASHES.md).
 The mitigation is `nvidia-smi -lgc 0,1500`, applied per boot — and since
 the failure IS a reboot, **a crash always clears the lock and the retry
-runs unprotected.** `tools/install_gpu_clock_lock.ps1` registers a
-boot-time task but has NOT been installed (needs one elevated click).
-For a 100-scene run this must be in place first.
+runs unprotected.**
+
+✅ **CLOSED 2026-08-11.** `tools/install_gpu_clock_lock.ps1` was run and
+registered the scheduled task **`GPUClockLock`** — `nvidia-smi -lgc 0,1500`
+as SYSTEM at every startup, on-battery restrictions disabled. After a crash
+the lock is back before anyone logs in.
+
+⚠ Note a claim made when this was proposed and later found FALSE: an
+unelevated session CANNOT fire the task with `schtasks /run`. A task
+running as SYSTEM is not visible or startable by a standard user (access
+denied on query, run, and reading the task file). The task covers the BOOT
+case, which was the hole that mattered; re-applying mid-session still needs
+an admin shell.
 
 ### 4.4 Big objects cannot be framed from inside the room
 

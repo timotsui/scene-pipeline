@@ -65,11 +65,17 @@ Four hard power-offs in one day, three during vote runs. Not thermal
 it. Mitigation is `nvidia-smi -lgc 0,1500` from an admin shell: peak
 clocks 2400 → 1500 MHz, peak draw 140 → 99 W, zero crashes since.
 
-⚠ **THE LOCK DIES ON REBOOT, AND THE FAILURE IS A REBOOT.** A crash
-always clears it, so the retry runs unprotected.
-`tools/install_gpu_clock_lock.ps1` registers a boot-time task and is
-**NOT INSTALLED** — it needs one elevated click. Do this before any long
-run.
+The lock dies on reboot, and the failure IS a reboot — so a crash used to
+clear it and the retry ran unprotected. ✅ **CLOSED 2026-08-11:**
+`tools/install_gpu_clock_lock.ps1` was run and registered the scheduled
+task **`GPUClockLock`** (nvidia-smi -lgc 0,1500, as SYSTEM, at every
+startup, on-battery restrictions disabled). Nothing to do before a long
+run any more.
+
+⚠ One claim made while proposing it was FALSE and is corrected on record:
+an unelevated session CANNOT trigger the task with `schtasks /run` — a
+SYSTEM task is not visible or startable by a standard user. The boot case
+is covered; re-applying mid-session still needs an admin shell.
 
 Also found: **battery at 77 % health after only 78 cycles** (design
 90,005 mWh, actual 69,260). Abnormal for the cycle count and a plausible
@@ -159,9 +165,17 @@ M  docs/{REVIEW_LOG, PLAN_NODE_EVIDENCE_2026-08-10}.md
 ?? docs/SESSION_2026-08-24_HANDOFF.md (this file)
 ```
 
-**This is the standing risk.** Seven sessions of work, on a machine that
-hard-crashed four times the day before. Commit as
-Timotsui / timotsuihc@gmail.com when the user says go.
+✅ **COMMITTED 2026-08-11, working tree clean.**
+- `dcee7e7` the evidence layer + the machine fix (everything above)
+- `a8f369d` the PowerShell tools forced to plain ASCII
+
+⚠ **PS 5.1 READS `.ps1` AS ANSI UNLESS THERE IS A BOM.** A single em-dash
+inside a quoted string broke install_gpu_clock_lock.ps1 with a "missing
+closing brace" reported twenty lines later; watch_gpu.ps1 had the same
+fault and survived only because its em-dashes sat in comments. Keep .ps1
+files ASCII. Related: NEVER edit a file via a PowerShell
+Get-Content/Set-Content round-trip — it re-encoded view_cams.py mid-session
+(BOM added, every em-dash mangled) and had to be repaired. Use the editor.
 
 ---
 
