@@ -38,6 +38,14 @@ only counts as PASS when that answers yes.
 
 COMMON INVOCATIONS
 
+    python run_scene.py --scene newroom --bundle .../worlds/<uuid>
+        START A SCENE FROM A HARVESTED WORLD. Creates out/newroom/ and
+        writes bundle_path.txt, then runs. Until 2026-08-11 that one
+        line was typed by a human — a hand step at the very front of a
+        chain meant to run unattended over a hundred worlds. It refuses
+        rather than repointing an existing scene at a different bundle,
+        and refuses a bundle missing a prompt, a splat or a collider.
+
     python run_scene.py --scene bedroom_marble
         both phases, stopping at the first failure
 
@@ -322,6 +330,83 @@ def run(argv, capture=False):
         printable = " ".join(str(a) for a in argv)
         raise SystemExit(f"stage failed (rc={rc}): {printable}")
     return out
+
+
+# --------------------------------------------------------------------------
+# starting a scene
+# --------------------------------------------------------------------------
+
+#: What a Marble harvest bundle must contain for the funnel to run. The
+#: pano is NOT here on purpose: the canonical funnel self-renders its own
+#: equirect from the splat (pano_stitch.py), so a bundle without
+#: pano_rgb_0.png is perfectly usable — 318 of the 323 harvested worlds
+#: have no pano and only 34 have a collider, so requiring one would cut
+#: the corpus for no reason.
+BUNDLE_NEEDS = (
+    ("prompt.txt", "the generation prompt — the word list is built from "
+                   "it (vocab_build.py)"),
+    ("*.spz", "the splat — everything is measured against it"),
+    ("*collider*.glb", "the collider — frame_bootstrap.py refuses without "
+                       "one (this is why only 34 of 323 harvested worlds "
+                       "can currently be run)"),
+)
+
+
+def adopt_bundle(scene, bundle):
+    """Point a scene at a Marble bundle: create out/<scene>/ and write
+    bundle_path.txt.
+
+    THIS IS THE STEP THAT HAD NO PRODUCER. Every other input in the
+    pipeline is written by some stage; this one line was typed by a
+    human, which is a hand step at the very front of a chain that is
+    supposed to run unattended over a hundred worlds.
+
+    It REFUSES rather than repoints. Rewriting an existing
+    bundle_path.txt to a different bundle would leave every artifact in
+    the scene directory measured against the old world, with nothing
+    stale-marked and nothing to notice — the same silent-wrong-input
+    shape as the mood sheet and the wall edges. Re-adopting the SAME
+    bundle is fine and says nothing."""
+    b = Path(bundle).expanduser()
+    if not b.is_dir():
+        raise SystemExit(f"--bundle {b} is not a directory. Pass the "
+                         f"bundle FOLDER, not a file inside it.")
+    # glob handles both the literal names and the patterns; a literal
+    # that is absent globs to nothing, which is the answer we want
+    missing = [(pat, why) for pat, why in BUNDLE_NEEDS
+               if not any(b.glob(pat))]
+    if missing:
+        lines = "\n".join(f"    {pat:18s} {why}" for pat, why in missing)
+        raise SystemExit(
+            f"[run_scene] {b.name} is not a runnable bundle — missing:\n"
+            f"{lines}\n"
+            f"  A harvested world with no collider cannot be run today; "
+            f"see the harvester's collider step.")
+
+    sd = paths.scene_dir(scene)
+    sd.mkdir(parents=True, exist_ok=True)
+    bp = sd / "bundle_path.txt"
+    new = str(b.resolve())
+    if bp.exists():
+        old = bp.read_text(encoding="utf-8").strip()
+        if old and Path(old).resolve() != b.resolve():
+            raise SystemExit(
+                f"[run_scene] scene '{scene}' is already pointed at a "
+                f"DIFFERENT bundle:\n"
+                f"    now : {old}\n"
+                f"    you : {new}\n"
+                f"  Refusing to repoint it. Everything already in "
+                f"{sd} was measured against the first one and none of it "
+                f"would be marked stale. Use a new scene name, or delete "
+                f"the scene directory if you meant to start over.")
+        print(f"[run_scene] scene '{scene}' already points at this bundle",
+              flush=True)
+        return bp
+    paths.write_atomic(bp, new + "\n")
+    print(f"[run_scene] scene '{scene}' adopted bundle {b.name}\n"
+          f"            {new}\n"
+          f"            -> {bp}", flush=True)
+    return bp
 
 
 # --------------------------------------------------------------------------
@@ -948,6 +1033,12 @@ def main():
         description="Run one scene end to end: the geometric core, the "
                     "graph chain, and a gate between every stage.")
     ap.add_argument("--scene", help="scene name under out/")
+    ap.add_argument("--bundle", default=None,
+                    help="path to the Marble bundle folder. Creates the "
+                         "scene directory and writes bundle_path.txt, so a "
+                         "fresh world needs no hand step. Safe to repeat: "
+                         "it refuses rather than silently repointing a "
+                         "scene at a different bundle.")
     ap.add_argument("--box-thr", type=float, default=0.35,
                     help="GroundingDINO box threshold for the seg stage")
     ap.add_argument("--skip", default="",
@@ -994,6 +1085,8 @@ def main():
         ap.error("--scene is required (except with --list)")
 
     sc = a.scene
+    if a.bundle:
+        adopt_bundle(sc, a.bundle)
     skip_core, skip_graph = parse_skip(a.skip)
     stop_on_fail = not a.continue_on_fail
     do_core = a.phase in ("core", "all")

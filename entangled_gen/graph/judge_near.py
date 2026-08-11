@@ -385,6 +385,44 @@ def main():
     nodes = {n["id"]: n for n in graph["nodes"]}
     floor_y = nodes["arch_floor"]["geometry"]["plane"]["value_raw"]
 
+    # ---- J1 MUST HAVE JUDGED THE PAIRS FIRST -------------------------
+    # same_canonical() above folds the pairs J1 ruled SAME, so one
+    # physical object detected twice cannot take two slots on a
+    # floater's menu. It reads those verdicts off the SAME_CANDIDATE
+    # edges. Run this pass before J1 and the fold is a no-op that raises
+    # no error: the menu quietly offers the same shelf twice under two
+    # ids, and the model picks between duplicates.
+    #
+    # THE EVIDENCE IS `judge_pairs_meta`, not a "did it run" flag.
+    # judge_pairs writes that block on every non-smoke run
+    # (judge_pairs.py:367, unconditional), before it knows what the
+    # verdicts were. So a scene where J1 ran and ruled everything
+    # DISTINCT -- nothing to fold -- carries the block with "judged" set
+    # and is not mistaken for a scene where J1 never ran.
+    jp_meta = graph.get("judge_pairs_meta")
+    if not jp_meta:
+        raise SystemExit(
+            "[judge_near] J1 has not judged this scene's pairs -- run "
+            f"`python graph/judge_pairs.py --scene {args.scene}` first. "
+            "This pass folds J1's SAME verdicts so a duplicate detection "
+            "cannot appear twice on a floater's menu of what might hold "
+            "it.")
+
+    # Second limb, same evidence: J1 ran, but its verdicts are no longer
+    # on the edges. build_edges.py rebuilds graph["edges"] from scratch
+    # (build_edges.py:602) and leaves judge_pairs_meta behind, so the
+    # block alone does not prove the verdicts are still there.
+    if jp_meta.get("judged") and not any(
+            e["type"] == "SAME_CANDIDATE" and e.get("verdict")
+            for e in graph["edges"]):
+        raise SystemExit(
+            "[judge_near] J1's verdicts are missing from the edges -- "
+            f'judge_pairs_meta says it judged {jp_meta["judged"]} pairs '
+            "and no SAME_CANDIDATE edge carries a verdict, so the edges "
+            "were rebuilt after J1 ran. Re-run `python "
+            f"graph/judge_pairs.py --scene {args.scene}` first; it "
+            "re-applies them from its cache and costs no model calls.")
+
     queue = [e for e in graph["edges"] if e["type"] == "NEAR"]
     if args.smoke:
         queue = queue[:1]

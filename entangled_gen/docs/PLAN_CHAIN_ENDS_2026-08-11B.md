@@ -151,8 +151,62 @@ OEM-locked, and the lock does not survive a reboot.
 
 ---
 
+## OPEN QUESTIONS THIS WORK RAISED — for the user, none blocking
+
+1. **Should `pick` REFUSE on a blank mood sheet?** Today it degrades
+   loudly (fixed 08-11B — it was degrading silently). A scene whose rig
+   crops are missing would have every asset chosen with no sense of the
+   room's style, and still pass the gate. Refusing would block the
+   scene; counting it in `scene_gate.quality_notes` beside the
+   slice-fallback number would not. Not invented either way here.
+2. Still open from the handoff §7 and untouched: `support_clip`, sub
+   rounds (PH2r), `fit_feedback`'s re-shop scope, the five undeclared
+   compose loop-back files (§4b), the paper's metric.
+
+---
+
 ## PROGRESS LOG
 
 - **2026-08-11B, opened.** Read the handoff, `PARKED.md`, `stages.py`,
   the map, `PIPELINE.md`. Grounding above verified on disk. Plan agreed
   with the user: all six steps this session, steps 3–5 delegated.
+
+- **STEP 1 DONE** — `b8f87f2`, REVIEW_LOG R-S2-91. §6b A–D all four.
+  The half-layer is out of the chain, the loop-back judges read the
+  voted layer via a new `scene_state.judge_view()`, `graph['vote']` is
+  retired across its four readers, and `vote_doubts.json` is the one
+  copy.
+
+  **It uncovered a defect worth more than the retirement.**
+  `edge_carry.py:176` handed `wall_claim_dist` a wall's `plane` where
+  the function reads `geometry["plane"]` and `geometry["extent"]`
+  itself, so every wall lookup missed and **every layer from `voted`
+  onward carried zero IN_WALL edges** — 18 missing on living, 24 on
+  bedroom, against 19 in `resolved`. Silent, because the layers had no
+  wall edges to be stale. Compose reads `grouped`; a wall-mounted object
+  arriving with no IN_WALL edge has nothing holding it up. Same two
+  lines also dropped W5 connector segments.
+
+  After the fix the retirement proved itself: the voted layer's
+  re-derived edges match `graph['voted_edges']` **pair for pair** on
+  both scenes (85 and 145 edges, zero difference).
+
+  Also caught before it shipped: vote-exempt nodes reach J8 without
+  `tiers`/`slice`, which the retired block defaulted and the docket card
+  joins unguarded — living's `obj_018` exactly. Defaulted; docket now
+  verified identical to the old one on all three scenes.
+
+  ⚠ **The layers ON DISK are not fixed by this.** Every existing scene
+  still has zero IN_WALL from `voted` on until its chain is re-run. The
+  fresh-scene run is what will show the corrected numbers.
+
+- **STEP 2, first half** — `2a3c351`. `compose/pick.py`'s mood sheet
+  read the retired lane's directory, so the model choosing every asset
+  saw four blank squares; repointed at `rig_sp0/crops` and the
+  degradation made loud. Added `paths.rig_dir` / `rig_crops_dir`.
+  `crop_pano.py`'s bundle fallback now resolves harvest bundles instead
+  of raising a bare `StopIteration`.
+
+  Remaining in step 2 — deleting the six dead-lane stages from
+  `run_scene.py` — is held until the INTAKE tuple is ready, so the repo
+  never has a `--phase core` that does nothing.

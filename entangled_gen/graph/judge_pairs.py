@@ -284,6 +284,53 @@ def main():
     view = scene_state.judge_view(graph, args.edges_from)
     nodes, edges_list = view.nodes, view.edges
 
+    # ---- J0 MUST HAVE TRIAGED THIS LAYER FIRST -----------------------
+    # Wrong order here is silent, not loud: the geometric SAME_CANDIDATE
+    # edges are already on the layer, so this judge finds a queue and
+    # runs happily -- it just never sees the SEMANTIC pairs (box inside
+    # box, containment >= 0.90) that only triage_pairs.py nominates.
+    # Those are exactly the pairs the IoU floor was built to exclude, so
+    # skipping them ships unjudged duplicates.
+    #
+    # THE EVIDENCE IS `triage_meta`, not a "did it run" flag. triage
+    # writes that block into THIS LAYER's meta on every non-dry run,
+    # before it knows whether it nominated anything (triage_pairs.py:306
+    # is unconditional). So the two cases the check has to tell apart do
+    # look different: J0 ran and nominated nothing leaves the block with
+    # "nominated": 0, and only J0 never running leaves no block at all.
+    # Layer-scoped on purpose -- the Phase-B2 loop-back re-triages the
+    # `voted` layer and its meta rides with that layer, so the record's
+    # old run cannot vouch for it.
+    layer_flag = ("" if args.edges_from == "record"
+                  else f" --edges-from {args.edges_from}")
+    triage_meta = view.meta_into.get("triage_meta")
+    if not triage_meta:
+        raise SystemExit(
+            f"[judge_pairs] J0 has not triaged the `{args.edges_from}` "
+            "layer -- run `python graph/triage_pairs.py --scene "
+            f"{args.scene}{layer_flag}` first. J0 is what nominates the "
+            "semantic pairs (one box almost entirely inside another); "
+            "without it they never reach this judge and duplicates ship "
+            "unjudged.")
+
+    # Second limb, same evidence: J0 ran, but its nominations are no
+    # longer on the layer. build_edges.py rebuilds graph["edges"] from
+    # scratch (build_edges.py:602), which drops the added edges while
+    # leaving triage_meta behind -- so the block alone is not proof the
+    # docket is complete. Only fires when J0 said it nominated pairs.
+    triage_edges = [e for e in edges_list
+                    if e["type"] == "SAME_CANDIDATE"
+                    and e.get("nominated_by") == "triage"]
+    if triage_meta.get("nominated") and not triage_edges:
+        raise SystemExit(
+            "[judge_pairs] J0's nominations are missing from the "
+            f"`{args.edges_from}` layer -- triage_meta says it nominated "
+            f'{triage_meta["nominated"]} pairs and none of them are on '
+            "the edges, so the edges were rebuilt after J0 ran. Re-run "
+            f"`python graph/triage_pairs.py --scene {args.scene}"
+            f"{layer_flag}` first; it re-applies them from its cache and "
+            "costs no model calls.")
+
     queue = [e for e in edges_list if e["type"] == "SAME_CANDIDATE"]
     if args.pair:
         a, b = args.pair.split("|")

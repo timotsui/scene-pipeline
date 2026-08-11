@@ -320,6 +320,34 @@ def main():
         raise SystemExit("[judge_coherence] no judged view -- run "
                          "build_judged.py first")
 
+    # ---- J3 MUST HAVE NAMED THE CLUSTERS FIRST -----------------------
+    # The digest below quotes every node's NAME, and the cache key is a
+    # hash of the digest. Run this before J3 and the harm is silent and
+    # permanent: the verdict is computed from provisional detector
+    # labels ("lamp" for a ceiling fixture) and cached; when J3 later
+    # fixes the names the hash changes, but the flags already written to
+    # the graph stay, and a re-run of THIS pass on the corrected digest
+    # is the only thing that would replace them.
+    #
+    # THE EVIDENCE IS `naming_meta`, not a "did it run" flag. judge_names
+    # writes that block into the judged layer on every non-smoke run
+    # (judge_names.py:301, unconditional), before it knows whether the
+    # naming queue had anything in it. So a scene whose clusters all
+    # agreed on their label -- empty queue, nothing to name -- carries
+    # the block with "named": 0, and only a scene where J3 never ran has
+    # no block. build_judged.py replaces graph["judged"] wholesale
+    # (build_judged.py:296), so a rebuild of the judged layer takes the
+    # block with it and this refusal fires again, correctly: those names
+    # are provisional once more.
+    if not judged.get("naming_meta"):
+        raise SystemExit(
+            "[judge_coherence] J3 has not named this scene's clusters -- "
+            f"run `python graph/judge_names.py --scene {args.scene}` "
+            "first. This pass caches its verdict under a hash of the "
+            "digest, and the digest quotes every object's name; judging "
+            "provisional names caches an answer about names that are "
+            "about to change.")
+
     room, nodes_txt, edges_txt = build_digest(graph)
     if args.digest_only:
         print(f"ROOM:\n{room}\n\nOBJECTS:\n{nodes_txt}\n\n"
