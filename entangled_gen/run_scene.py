@@ -516,6 +516,12 @@ def graph_dry_run(sc, selected, title="GRAPH CHAIN", max_rounds=None,
               f"carries its round number")
         print(f"    then, only if rotation_check passes, a CLOSING pass: "
               f"{' -> '.join(stages.FIT_CLOSING)}")
+    elif max_rounds and any(s.key in stages.FIT_LOOP for s in selected):
+        # Say it here too, not only when the run starts: a dry run that
+        # silently dropped the loop would let someone plan a partial
+        # re-run believing the fit block still converges.
+        print("  NOTE: the fit loop stages are not all selected, or not "
+              "contiguous, so they would run ONCE each and NOT as a loop.")
     for st in selected:
         argv = st.argv(sc)
         cost = ", ".join(x for x in (("LLM" if st.llm else ""),
