@@ -455,7 +455,7 @@ def run_core(sc, skip, box_thr, log, failures, stop_on_fail):
 # the graph chain — order and flags come from graph/stages.py
 # --------------------------------------------------------------------------
 
-def graph_dry_run(sc, selected):
+def graph_dry_run(sc, selected, title="GRAPH CHAIN"):
     """Print the exact command line of every stage that would run, and the
     gate checks that would happen around it. Runs nothing."""
     print("\n[dry-run] GRAPH CHAIN")
@@ -495,7 +495,8 @@ def _gate_call(fn, *args, **kw):
         return r
 
 
-def run_graph(sc, selected, log, failures, stop_on_fail):
+def run_graph(sc, selected, log, failures, stop_on_fail,
+              phase="graph"):
     """Walk the selected part of stages.CHAIN with a checkpoint on each side.
 
     The shape is fixed and deliberate:
@@ -524,12 +525,12 @@ def run_graph(sc, selected, log, failures, stop_on_fail):
         before.print()
         t_gate_before = time.time() - t0
         if not before.ok:
-            log.stage("graph", st.key, argv, None, 0.0,
+            log.stage(phase, st.key, argv, None, 0.0,
                       before=before,
                       note="gate refused to start this stage",
                       started=started, ended=_utc_iso(),
                       seconds_gate_before=t_gate_before)
-            failures.append({"phase": "graph", "stage": st.key,
+            failures.append({"phase": phase, "stage": st.key,
                              "kind": "gate-before", "code": RC_GATE,
                              "detail": _first_fail(before)})
             per_stage.append((st, "GATE-BEFORE", t_gate_before))
@@ -546,10 +547,10 @@ def run_graph(sc, selected, log, failures, stop_on_fail):
             detail = ("refused: incomplete evidence — the stage would have "
                       "written a layer with holes in it and declined"
                       if rc == RC_REFUSED else f"stage exited {rc}")
-            log.stage("graph", st.key, argv, rc, dt, before=before,
+            log.stage(phase, st.key, argv, rc, dt, before=before,
                       note=detail, started=started, ended=_utc_iso(),
                       seconds_gate_before=t_gate_before)
-            failures.append({"phase": "graph", "stage": st.key, "kind": kind,
+            failures.append({"phase": phase, "stage": st.key, "kind": kind,
                              "code": code, "detail": detail})
             print(f"[run_scene] {kind.upper()} `{st.key}` (rc={rc}): {detail}",
                   flush=True)
@@ -562,13 +563,13 @@ def run_graph(sc, selected, log, failures, stop_on_fail):
         after = _gate_call(gate.after, sc, st, since=t0)
         after.print()
         t_gate_after = time.time() - t_after0
-        log.stage("graph", st.key, argv, rc, dt,
+        log.stage(phase, st.key, argv, rc, dt,
                   before=before, after=after,
                   started=started, ended=_utc_iso(),
                   seconds_gate_before=t_gate_before,
                   seconds_gate_after=t_gate_after)
         if not after.ok:
-            failures.append({"phase": "graph", "stage": st.key,
+            failures.append({"phase": phase, "stage": st.key,
                              "kind": "gate-after", "code": RC_GATE,
                              "detail": _first_fail(after)})
             per_stage.append((st, "GATE-AFTER", dt))
@@ -665,8 +666,11 @@ def main():
                     help="comma-separated stages to skip. Core stages: "
                          + ",".join(CORE_STAGES)
                          + ". Graph stages: " + ",".join(stages.KEYS))
-    ap.add_argument("--phase", choices=("core", "graph", "all"), default="all",
-                    help="which half to run (default: all)")
+    ap.add_argument("--phase", choices=("core", "graph", "compose", "all"),
+                    default="all",
+                    help="which part to run (default: all). core = bundle "
+                         "to boxes; graph = boxes to `grouped`; compose = "
+                         "`grouped` to a furnished scene")
     ap.add_argument("--from", dest="from_key", default=None,
                     help="graph chain: first stage to run")
     ap.add_argument("--until", dest="until_key", default=None,
@@ -696,16 +700,30 @@ def main():
     stop_on_fail = not a.continue_on_fail
     do_core = a.phase in ("core", "all")
     do_graph = a.phase in ("graph", "all")
+    do_compose = a.phase in ("compose", "all")
 
     # --no-llm is a skip like any other, but it is worth naming separately
     # so the summary can say which judgements this scene never got.
     llm_skipped = []
     if a.no_llm:
-        llm_skipped = [s.key for s in stages.CHAIN if s.llm]
+        llm_skipped = [s.key for s in stages.CHAIN + stages.COMPOSE if s.llm]
         skip_graph |= set(llm_skipped)
 
-    selected_graph = (stages.select(a.from_key, a.until_key, skip_graph)
-                      if do_graph else [])
+    # --from / --until name a stage in ONE of the two chains. Work out
+    # which, so `--from supported_by` does not get handed to the graph
+    # selector and rejected as an unknown stage.
+    ck = set(stages.COMPOSE_KEYS)
+    range_is_compose = (a.from_key in ck) or (a.until_key in ck)
+    selected_graph = (
+        stages.select(None if range_is_compose else a.from_key,
+                      None if range_is_compose else a.until_key,
+                      skip_graph)
+        if do_graph else [])
+    selected_compose = (
+        stages.select_compose(a.from_key if range_is_compose else None,
+                              a.until_key if range_is_compose else None,
+                              skip_graph)
+        if do_compose else [])
     core_selected = ([n for n in CORE_STAGES if n not in skip_core]
                      if do_core else [])
 
@@ -737,6 +755,8 @@ def main():
             core_dry_run(sc, skip_core, a.box_thr)
         if do_graph:
             graph_dry_run(sc, selected_graph)
+        if do_compose:
+            graph_dry_run(sc, selected_compose, "COMPOSE")
         if llm_skipped:
             print(f"\n[dry-run] --no-llm would skip: {', '.join(llm_skipped)} "
                   f"— the scene would NOT be complete.")
@@ -770,6 +790,13 @@ def main():
         if do_graph and (not failures or not stop_on_fail):
             per_stage = run_graph(sc, selected_graph, log, failures,
                                   stop_on_fail)
+        # COMPOSE runs on the same machinery and the same checkpoint. It
+        # is a separate phase only because it starts where measurement
+        # stops: everything above describes a room that exists, this
+        # proposes one to build.
+        if do_compose and (not failures or not stop_on_fail):
+            per_stage += run_graph(sc, selected_compose, log, failures,
+                                   stop_on_fail, phase="compose")
 
     # THE CHECK THAT DID NOT EXIST. Until now a scene could end with a
     # stale layer and the runner reported success. A scene is PASS only
@@ -795,7 +822,7 @@ def main():
         final_result = _gate_call(gate.final, sc)
         final_result.print("[gate]")
         if not final_result.ok:
-            failures.append({"phase": "graph", "stage": "(final)",
+            failures.append({"phase": phase, "stage": "(final)",
                              "kind": "gate-final", "code": RC_GATE,
                              "detail": _first_fail(final_result)})
     elif do_graph and partial:

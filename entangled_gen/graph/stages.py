@@ -237,8 +237,115 @@ CHAIN = (
     ),
 )
 
+#: STEP 3 — COMPOSE. Turns the finished graph into an actual furnished
+#: scene: what holds what up, what to buy, where to put it, and then the
+#: fitting pass that stops things clipping.
+#:
+#: KEPT AS ITS OWN TUPLE, NOT APPENDED TO CHAIN, for two reasons. The
+#: graph chain ends at `grouped` and that is a real boundary — everything
+#: above is measurement of a room that exists, everything here is
+#: proposal about a room being built. And these modules are less settled:
+#: PLAN_COMPOSE_LOOP.md says the later ones are "direction only, not
+#: designed", and until 2026-08-11 they were run BY HAND, one at a time,
+#: with the user gating each. There is no driver anywhere in the repo.
+#:
+#: THE ORDER IS READ OFF THE CODE, NOT INVENTED. Each module names the
+#: file it cannot start without — consistency wants supported_by.json,
+#: pick wants shopping.json, fit_walk wants fit_check.json and picks.json
+#: — so the dependency order is a fact about the modules. Wiring them
+#: here makes them RUNNABLE AND CHECKED. It does not make them ruled on;
+#: that is still the user's, gate by gate.
+COMPOSE = (
+    Stage(
+        "supported_by", "decide what holds each object up",
+        lambda sc: [PY, "compose/supported_by.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/supported_by.json",),
+        llm=True,
+    ),
+    Stage(
+        "consistency", "check every contact edge against both endpoints' "
+                       "support",
+        lambda sc: [PY, "compose/consistency.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/consistency.json",),
+        inputs=("compose/supported_by.json",),
+        llm=True,
+    ),
+    Stage(
+        "snap", "seat each object against what supports it",
+        lambda sc: [PY, "compose/snap.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/snap.json",),
+        inputs=("compose/supported_by.json",),
+        llm=True,
+        note="This is the stage that re-seats the boxes SHELL_EPS lifted "
+             "off the floor, so a scene that has not reached it still "
+             "shows floor-standing objects a few centimetres in the air.",
+    ),
+    Stage(
+        "propose_edits", "propose the box and identity edits the checks "
+                         "asked for",
+        lambda sc: [PY, "compose/propose_edits.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/edit_proposals.json",),
+        inputs=("compose/consistency.json", "compose/supported_by.json"),
+        llm=True,
+    ),
+    Stage(
+        "shopping", "turn the settled objects into a shopping list",
+        lambda sc: [PY, "compose/shopping.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/shopping.json",),
+        inputs=("compose/supported_by.json", "compose/edit_proposals.json"),
+        llm=True,
+    ),
+    Stage(
+        "pick", "choose an asset for every item on the list",
+        lambda sc: [PY, "compose/pick.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/picks.json",),
+        inputs=("compose/shopping.json",),
+        llm=True,
+    ),
+    Stage(
+        "fit_preview", "place the chosen assets in the room",
+        lambda sc: [PY, "compose/fit_preview.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/fitted_preview.json",),
+        inputs=("compose/picks.json",),
+    ),
+    Stage(
+        "fit_check", "report what clips and what leaves the room",
+        lambda sc: [PY, "compose/fit_check.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/fit_check.json",),
+        inputs=("compose/fitted_preview.json",),
+        note="REPORT ONLY — it fixes nothing. This is the file the "
+             "Collision-Free number should be read from, because it "
+             "measures the PLACED MESHES rather than the graph's boxes.",
+    ),
+    Stage(
+        "fit_declip", "push clipping pairs apart until nothing overlaps",
+        lambda sc: [PY, "compose/fit_declip.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/fit_declip.json",),
+        inputs=("compose/fitted_preview.json",),
+    ),
+    Stage(
+        "fit_walk", "swap a candidate when the chosen one does not fit",
+        lambda sc: [PY, "compose/fit_walk.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/fit_walk.json",),
+        inputs=("compose/fit_check.json", "compose/picks.json"),
+    ),
+)
+
+COMPOSE_KEYS = tuple(s.key for s in COMPOSE)
+
 KEYS = tuple(s.key for s in CHAIN)
 BY_KEY = {s.key: s for s in CHAIN}
+BY_KEY.update({s.key: s for s in COMPOSE})
 
 #: the layer the chain must end on for a scene to count as finished
 FINAL_LAYER = "grouped"
@@ -249,7 +356,19 @@ def get(key):
         return BY_KEY[key]
     except KeyError:
         raise SystemExit(
-            f"unknown stage '{key}'. The chain is: {', '.join(KEYS)}")
+            f"unknown stage '{key}'. The graph chain is: "
+            f"{', '.join(KEYS)}. Compose is: {', '.join(COMPOSE_KEYS)}")
+
+
+def select_compose(from_key=None, until_key=None, skip=()):
+    """The compose stages to run, same rules as select()."""
+    skip = {s.strip() for s in skip if s and s.strip()}
+    lo = COMPOSE_KEYS.index(from_key) if from_key else 0
+    hi = (COMPOSE_KEYS.index(until_key) if until_key
+          else len(COMPOSE_KEYS) - 1)
+    if lo > hi:
+        raise SystemExit(f"--from {from_key} comes after --until {until_key}")
+    return [s for s in COMPOSE[lo:hi + 1] if s.key not in skip]
 
 
 def select(from_key=None, until_key=None, skip=()):
@@ -273,15 +392,21 @@ def select(from_key=None, until_key=None, skip=()):
 
 
 def describe():
-    """The chain as a human-readable table. Printed by run_scene --list."""
-    w = max(len(k) for k in KEYS)
-    lines = [f"{'stage'.ljust(w)}  {'reads':9s} {'writes':9s} cost  what it does"]
-    lines.append("-" * (w + 60))
-    for s in CHAIN:
-        cost = ("LLM" if s.llm else "") + ("+GPU" if s.llm and s.gpu else
-                                           ("GPU" if s.gpu else ""))
-        lines.append(f"{s.key.ljust(w)}  {(s.reads or '-'):9s} "
-                     f"{(s.writes or '-'):9s} {cost:5s} {s.title}")
+    """Both chains as a human-readable table. Printed by run_scene --list."""
+    w = max(len(k) for k in KEYS + COMPOSE_KEYS)
+    lines = []
+    for title, group in (("GRAPH CHAIN — the room as measured", CHAIN),
+                         ("COMPOSE — the room as furnished", COMPOSE)):
+        lines.append("")
+        lines.append(title)
+        lines.append(f"{'stage'.ljust(w)}  {'reads':9s} {'writes':9s} "
+                     f"{'cost':7s} what it does")
+        lines.append("-" * (w + 62))
+        for s in group:
+            cost = ("LLM" if s.llm else "") + ("+GPU" if s.llm and s.gpu
+                                               else ("GPU" if s.gpu else ""))
+            lines.append(f"{s.key.ljust(w)}  {(s.reads or '-'):9s} "
+                         f"{(s.writes or '-'):9s} {cost:7s} {s.title}")
     return "\n".join(lines)
 
 
