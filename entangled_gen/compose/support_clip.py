@@ -16,9 +16,11 @@ at Y's surface. This module cuts every ON node's box at its supporter:
 Evidence-based, scene-agnostic, deterministic; no-op for nodes without an
 ON edge. PREVIEW BY DEFAULT: writes compose/support_clip_preview.json +
 scene_manifest_supportclip_preview.json (viewer layer) and touches neither
-scene_graph.json nor any manifest. --apply rewrites graph['resolved']
-geometry in place, preserving the original per node as geometry_observed
-with full per-plane provenance (surgery on the record, never silent).
+scene_graph.json nor any manifest. --apply rewrites geometry in place in
+THE CURRENT LAYER — whichever layer scene_state says is the state of the
+scene, not the hand-named `resolved` this used to cut — preserving the
+original per node as geometry_observed with full per-plane provenance
+(surgery on the record, never silent).
 
 Run:  python compose/support_clip.py --scene living_marble [--apply]
 """
@@ -48,7 +50,13 @@ def main():
     sd = paths.scene_dir(a.scene)
     gf = sd / "scene_graph.json"
     g = json.loads(gf.read_text(encoding="utf-8"))
-    res = g["resolved"]
+    # THE CURRENT LAYER, not `resolved`. This module cuts a box at its
+    # supporter's surface, so both boxes have to be the ones the scene
+    # actually has; `resolved` is pre-vote, and cutting a supporter that
+    # has since changed size puts the plane in the wrong place. The name
+    # is kept because --apply writes back into THIS layer and must stamp
+    # THIS layer — see the stamp below.
+    layer_name, res = scene_state.current(g)
     nodes = {n["id"]: n for n in res["nodes"]}
 
     # measured floor beats bootstrap floor
@@ -115,6 +123,7 @@ def main():
             n.setdefault("flags", []).append("support_clipped")
 
     report = {"scene": a.scene, "stage": "support_clip",
+              "layer": layer_name,     # which layer was read, and cut
               "params": {"PEN_TOL": PEN_TOL, "OVERHANG": OVERHANG},
               "floor_y": floor_y, "applied": bool(a.apply),
               "n_on_nodes": len(supports),
@@ -143,16 +152,24 @@ def main():
         json.dumps(man, indent=2))
 
     if a.apply:
-        # --apply is box surgery on `resolved`, so `resolved` is what this
-        # run wrote and the file must say so. The stamp also marks voted,
-        # settled and everything after them stale: they were elected from
-        # the boxes we just cut, so a finished scene is no longer finished
-        # once this flag is used. Without the stamp that invalidation is
-        # completely silent — one flag and the whole downstream stack is
-        # quietly wrong while the end-of-run gate still reports it clean.
-        scene_state.stamp(g, "resolved")
+        # --apply is box surgery on THE LAYER WE READ, so that is the layer
+        # the stamp must name. The node dicts above came out of it and were
+        # edited in place, so the write-back needs no copying — but the
+        # stamp does need the right name: stamping `resolved` after cutting
+        # `grouped` would sweep every layer after `resolved` stale,
+        # including the one holding the boxes we just wrote, and would tell
+        # the file that a layer this run never touched is current. A stamp
+        # naming the wrong layer is worse than no stamp at all.
+        # The stamp still marks everything AFTER this layer stale: those
+        # layers were built from the boxes we just cut, so a finished scene
+        # is no longer finished once this flag is used. Without it that
+        # invalidation is completely silent — one flag and the whole
+        # downstream stack is quietly wrong while the end-of-run gate still
+        # reports it clean.
+        scene_state.stamp(g, layer_name)
         gf.write_text(json.dumps(g, indent=1), encoding="utf-8")
-        print(f"[clip] APPLIED to graph[resolved] ({report['n_clipped']} nodes)")
+        print(f"[clip] APPLIED to graph[{layer_name}] "
+              f"({report['n_clipped']} nodes)")
     print(f"[clip] ON nodes {len(supports)}; clipped {report['n_clipped']}; "
           f"preview -> compose/support_clip_preview.json")
     for c in clips:

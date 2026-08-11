@@ -62,6 +62,11 @@ sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
 from fit_check import (load_placed, cell_keys, PITCH,  # noqa: E402
                        CONTACT_CELLS)
+# scene_state lives in the sibling graph/ package, not beside us, so its
+# directory has to go on the path too (same two-step the other compose
+# modules use, e.g. uniform_instances.py).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "graph"))
+import scene_state  # noqa: E402
 
 TOL_M = 0.02      # slack around the fit box a mesh may use
 FLAT_H = 0.06     # items shorter than this never participate in clips
@@ -153,13 +158,22 @@ def main():
     # exemption on the hug lock
     graph = json.loads((paths.scene_dir(args.scene) / "scene_graph.json")
                        .read_text(encoding="utf-8"))
-    observed = {}
+    # THE CURRENT LAYER carries this testimony, with `judged` kept only as
+    # a fallback for older graphs that have no layer. Reading `judged`
+    # alone returned nothing for exactly the nodes the pipeline changed: a
+    # piece the judges SPLIT off never existed in `judged`, and a node
+    # merged away is still in it — so the tucked-item exemption below never
+    # fired for them.
+    app_src = {n["id"]: (n.get("appearance") or {})
+               for n in scene_state.nodes(graph)}
     for jn in graph.get("judged", {}).get("nodes", []):
-        wd = ((jn.get("appearance") or {}).get("facing") or {})\
-            .get("world_dir")
+        app_src.setdefault(jn["id"], jn.get("appearance") or {})
+    observed = {}
+    for nid, app in app_src.items():
+        wd = (app.get("facing") or {}).get("world_dir")
         if wd:
-            observed[jn["id"]] = (wd[0] * float(r2r[0]),
-                                  wd[1] * float(r2r[2]))
+            observed[nid] = (wd[0] * float(r2r[0]),
+                             wd[1] * float(r2r[2]))
 
     ids = sorted(by_item)
     cells = {i: cell_keys(by_item[i]).copy() for i in ids}

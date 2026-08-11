@@ -355,7 +355,11 @@ def main():
 
     gpath = paths.scene_dir(args.scene) / "scene_graph.json"
     graph = json.loads(gpath.read_text(encoding="utf-8"))
-    res = graph["resolved"]
+    # THE CURRENT LAYER, not `resolved`. Snapping moves a box onto its
+    # support plane, so it has to start from the box that was actually
+    # elected: `resolved` is pre-vote, and load_pool_members() above already
+    # reads the current layer for the same scene — the two must agree.
+    _layer, res = scene_state.current(graph)
     boxes = {n["id"]: {"mn": list(n["geometry"]["aabb_min"]),
                        "mx": list(n["geometry"]["aabb_max"])}
              for n in res["nodes"]}
@@ -378,10 +382,16 @@ def main():
             top[o["id"]] = sb[0]
             options[o["id"]] = sb
 
-    # judge suspect-box pointers riding in the resolved layer
+    # Judge suspect-box pointers ride on edges. Live edges come from the
+    # current layer with everything else; `dropped_edges` is deliberately
+    # still read from `resolved`, because it is that stage's RECORD of the
+    # edges it threw away and no later layer copies it forward. The pointer
+    # is a judge's note about an object, not geometry, so it stays valid
+    # even though the box it doubts has since been re-elected.
     suspects = {}
-    for sec in ("edges", "dropped_edges"):
-        for e in res.get(sec, []):
+    for sec in (res.get("edges") or [],
+                (graph.get("resolved") or {}).get("dropped_edges") or []):
+        for e in sec:
             oid = e.get("suspect_box")
             if oid:
                 suspects.setdefault(oid, []).append(

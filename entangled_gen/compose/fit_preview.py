@@ -35,6 +35,11 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
 from arch_walls import wall_axis_planes  # noqa: E402
+# scene_state lives in the sibling graph/ package, not beside us, so its
+# directory has to go on the path too (same two-step the other compose
+# modules use, e.g. uniform_instances.py).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "graph"))
+import scene_state  # noqa: E402
 
 sys.path.insert(0, str(paths.REPO_ROOT / "composition"))
 from assets_thor import load_asset  # noqa: E402
@@ -210,13 +215,22 @@ def main():
     # upstream -- the room already shows which way things face). RAW
     # world_dir -> render frame. Detected objects use this; invented
     # adds/swap-ins keep the wall/room-middle heuristic fallback.
-    observed_face = {}
+    # THE CURRENT LAYER carries this testimony, with `judged` kept only as
+    # a fallback for older graphs that have no layer. Reading `judged`
+    # alone returned nothing for exactly the nodes the pipeline changed: a
+    # piece the judges SPLIT off never existed in `judged`, and a node
+    # merged away is still in it — so those items silently fell back to the
+    # wall/room-middle guess instead of the facing the room actually shows.
+    face_src = {n["id"]: (n.get("appearance") or {})
+                for n in scene_state.nodes(graph)}
     for jn in graph.get("judged", {}).get("nodes", []):
-        wd = ((jn.get("appearance") or {}).get("facing") or {})\
-            .get("world_dir")
+        face_src.setdefault(jn["id"], jn.get("appearance") or {})
+    observed_face = {}
+    for nid, app in face_src.items():
+        wd = (app.get("facing") or {}).get("world_dir")
         if wd:
-            observed_face[jn["id"]] = (wd[0] * float(r2r[0]),
-                                       wd[1] * float(r2r[2]))
+            observed_face[nid] = (wd[0] * float(r2r[0]),
+                                  wd[1] * float(r2r[2]))
 
     # PILLOW EVIDENCE (user GT 08-03: the bed lies SIDE-against the
     # wall, so wall-hug's touching-wall=back assumption broke): a

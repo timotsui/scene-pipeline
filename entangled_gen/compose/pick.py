@@ -55,6 +55,11 @@ from PIL import Image, ImageDraw
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+# scene_state lives in the sibling graph/ package, not beside us, so its
+# directory has to go on the path too (same two-step the other compose
+# modules use, e.g. uniform_instances.py).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "graph"))
+import scene_state  # noqa: E402
 
 sys.path.insert(0, str(paths.REPO_ROOT / "composition"))
 
@@ -282,13 +287,24 @@ def parse_response(text, batch):
 
 # --------------------------------------------------------------------------
 
-def testimony_of(graph, oid):
+def appearance_map(graph):
+    """Each node's appearance testimony, read from THE CURRENT LAYER, with
+    `judged` kept only as a fallback for older graphs that have no layer.
+
+    Reading `judged` alone returned nothing for exactly the nodes the
+    pipeline changed: a piece the judges SPLIT off never existed in
+    `judged`, and a node merged away is still in it. Same fix, and same
+    reason, as compose/supported_by.py's appearance lookup."""
+    app = {n["id"]: (n.get("appearance") or {})
+           for n in scene_state.nodes(graph)}
     for jn in graph.get("judged", {}).get("nodes", []):
-        if jn["id"] != oid:
-            continue
-        ap = jn.get("appearance") or {}
-        if not ap.get("description"):
-            break
+        app.setdefault(jn["id"], jn.get("appearance") or {})
+    return app
+
+
+def testimony_of(graph, oid):
+    ap = appearance_map(graph).get(oid) or {}
+    if ap.get("description"):
         bits = []
         if ap.get("colors"):
             bits.append("/".join(ap["colors"][:3]))

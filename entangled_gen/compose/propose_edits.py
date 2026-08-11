@@ -102,6 +102,11 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
 from arch_walls import wall_axis_planes  # noqa: E402
+# scene_state lives in the sibling graph/ package, not beside us, so its
+# directory has to go on the path too (same two-step the other compose
+# modules use, e.g. uniform_instances.py).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "graph"))
+import scene_state  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -391,8 +396,11 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
     place; every box carries box_source="estimated_prior"."""
     if not (adds or swaps):
         return
-    boxes = {n["id"]: n["geometry"]
-             for n in graph["resolved"]["nodes"]}
+    # Boxes come from THE CURRENT LAYER, not `resolved`. Placement packs a
+    # new object against its neighbours' measured extents, so reading the
+    # pre-vote boxes would scan free space in a room whose furniture is the
+    # wrong size and in the wrong place.
+    boxes = {n["id"]: n["geometry"] for n in scene_state.nodes(graph)}
     # .get + skip: a W5 polygon CONNECTOR wall carries no axis-aligned
     # value_raw — it must not blow up this map (outline-only geometry)
     shell = {n["id"]: n["geometry"]["plane"]["value_raw"]
@@ -784,7 +792,11 @@ def main():
     cdir = paths.compose_dir(args.scene)
     gpath = paths.scene_dir(args.scene) / "scene_graph.json"
     graph = json.loads(gpath.read_text(encoding="utf-8"))
-    res = graph["resolved"]
+    # names from THE CURRENT LAYER, not `resolved`: this is the inventory
+    # the model is shown and the vocabulary the proposals must speak. A
+    # node the judges split is absent from `resolved` and a merged-away one
+    # is still in it, so the pre-vote list both invents and omits objects.
+    _layer, res = scene_state.current(graph)
     names = {n["id"]: n["name"] for n in res["nodes"]}
 
     sbp = cdir / "supported_by.json"
@@ -957,8 +969,11 @@ def main():
         # the item lines so the trade is arithmetic, and CODE validates
         # the envelope in step 3, never the model. Proposals only --
         # nothing enters the scene state before screening rules.
-        boxes = {n["id"]: n["geometry"]
-                 for n in graph["resolved"]["nodes"]}
+        # the loop's working inventory is measured from THE CURRENT LAYER,
+        # not `resolved` — the sizes in these item lines are what scene-
+        # scales every reply, so pre-vote boxes would quietly rescale the
+        # whole round.
+        boxes = {n["id"]: n["geometry"] for n in scene_state.nodes(graph)}
         xs_raw, zs_raw, floor_raw, ceil_raw = wall_axis_planes(graph["nodes"])
         dims = (f'room ~{xs_raw[-1] - xs_raw[0]:.1f} x '
                 f'{zs_raw[-1] - zs_raw[0]:.1f} m, '

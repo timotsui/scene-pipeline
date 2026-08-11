@@ -52,6 +52,11 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
+# scene_state lives in the sibling graph/ package, not beside us, so its
+# directory has to go on the path too (same two-step the other compose
+# modules use, e.g. uniform_instances.py).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "graph"))
+import scene_state  # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -161,7 +166,12 @@ def main():
 
     gpath = paths.scene_dir(args.scene) / "scene_graph.json"
     graph = json.loads(gpath.read_text(encoding="utf-8"))
-    res = graph["resolved"]
+    # THE CURRENT LAYER, not `resolved`. `resolved` is where identity was
+    # settled, but it is PRE-VOTE: every stage after it re-elected boxes,
+    # split nodes and moved edges with them. Auditing `resolved` edges
+    # would rule on relations the scene no longer has, and name them from
+    # an inventory that is missing the pieces the judges created.
+    _layer, res = scene_state.current(graph)
     edges = res["edges"]
     names = {n["id"]: n["name"] for n in res["nodes"]}
 

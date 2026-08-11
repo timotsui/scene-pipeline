@@ -753,7 +753,12 @@ def main():
 
     gpath = paths.scene_dir(args.scene) / "scene_graph.json"
     graph = json.loads(gpath.read_text(encoding="utf-8"))
-    res = graph["resolved"]
+    # THE CURRENT LAYER, not `resolved` — the same reason the appearance
+    # map below moved. Every candidate line here is measured geometry (the
+    # gravity scan, the beneath window, wall/floor proximity), so reading
+    # the pre-vote boxes would judge what holds up an object that is no
+    # longer that size, in that place, or in the scene at all.
+    _layer, res = scene_state.current(graph)
     nodes = res["nodes"]
     edges = res["edges"]
     arch_planes = {n["id"]: n["geometry"]["plane"] for n in graph["nodes"]
