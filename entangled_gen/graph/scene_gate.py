@@ -358,12 +358,14 @@ def quality_notes(scene, g):
         if unjudged:
             pairs = ", ".join(f"{e['a']}~{e['b']}" for e in unjudged[:6])
             out.append(("WARN", f"{len(unjudged)} SAME_CANDIDATE edge(s) in "
-                                f"`{name}` have no verdict ({pairs}) — the "
+                                f"`{name}` have no verdict ({pairs}). The "
                                 f"vote proposed them by moving the boxes, "
-                                f"and the chain has no judge that answers "
-                                f"a candidate raised after the vote. "
-                                f"materialize merges only SAME verdicts, "
-                                f"so these ship as separate objects."))
+                                f"and the Phase-B2 loop-back is what "
+                                f"answers them — run `j1_repairs` "
+                                f"(judge_pairs --edges-from voted_edges) "
+                                f"before j8. materialize merges only SAME "
+                                f"verdicts, so until it runs these ship "
+                                f"as separate objects."))
             break
     # WAS THIS SCENE VOTED IN ONE PIECE? slicevote sets canon_eligible
     # false when the run was partial (`--only`) or when the boxes it

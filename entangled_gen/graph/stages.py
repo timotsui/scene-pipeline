@@ -157,6 +157,51 @@ CHAIN = (
              "Both judges below read it by that name and refuse to run "
              "without it, so the ordering is enforced twice.",
     ),
+    # ---- PHASE B2, THE LOOP-BACK ------------------------------------
+    # USER ARCHITECTURE RULING 08-07 (docs/PLAN_VOTEBOX_DOWNSTREAM.md
+    # "PHASE B2"): "after slice vote the scene goes all the way back up
+    # to geometric edges and down the judges again — just with two more
+    # judges at the end."
+    #
+    # So the vote does not hand straight to J8. The rebuilt edges go back
+    # through the SAME judge chain first — J0 triages the new nesting
+    # candidates, J1 answers only genuinely new pairs, J4 names and J6
+    # appearance are pure cache hits because the crops did not change —
+    # and only THEN do J8/J9 run.
+    #
+    # ORDER IS EXPLICIT AND IT MATTERS: J8 must read its relational facts
+    # from the rebuilt edges (the obj_063 stimulus-gap lesson). Running
+    # J8 first is judging on facts the vote has already invalidated.
+    #
+    # ⚠ THESE TWO WERE MISSING FROM THIS TABLE UNTIL 2026-08-11, because
+    # the 11-step list in docs/AUTOMATION_READINESS.md omitted them and
+    # this table was built from that list. The cost of the omission was
+    # not theoretical: with J1 never re-run, a SAME_CANDIDATE pair the
+    # VOTE created (two chairs at 96% containment) reached materialize
+    # with no verdict and shipped as two objects — and it was written up
+    # as "the chain has no judge for this", when the chain has had one
+    # since 08-07 and this table had simply left it out.
+    Stage(
+        "j0_retriage", "J0: triage the pairs the vote's new boxes propose",
+        lambda sc: [PY, "graph/triage_pairs.py", "--scene", sc,
+                    "--edges-from", "voted_edges"],
+        reads="voted", writes=None,
+        graph_keys=("voted_edges",),
+        llm=True,
+        note="Runs ON graph['voted_edges'], not on the record. Only "
+             "genuinely new nesting candidates cost a call.",
+    ),
+    Stage(
+        "j1_repairs", "J1: same-or-different on the pairs the vote created",
+        lambda sc: [PY, "graph/judge_pairs.py", "--scene", sc,
+                    "--edges-from", "voted_edges"],
+        reads="voted", writes=None,
+        graph_keys=("voted_edges",),
+        llm=True,
+        note="This is the stage that answers a duplicate the VOTE made by "
+             "moving boxes — the two-chairs case. Its SAME verdicts ride "
+             "on the voted_edges block and materialize applies them.",
+    ),
     Stage(
         "j8", "J8: is this one object or several?",
         lambda sc: [PY, "graph/judge_multiplicity.py", "--scene", sc],
@@ -241,13 +286,22 @@ CHAIN = (
 #: scene: what holds what up, what to buy, where to put it, and then the
 #: fitting pass that stops things clipping.
 #:
-#: KEPT AS ITS OWN TUPLE, NOT APPENDED TO CHAIN, for two reasons. The
-#: graph chain ends at `grouped` and that is a real boundary — everything
-#: above is measurement of a room that exists, everything here is
-#: proposal about a room being built. And these modules are less settled:
-#: PLAN_COMPOSE_LOOP.md says the later ones are "direction only, not
-#: designed", and until 2026-08-11 they were run BY HAND, one at a time,
-#: with the user gating each. There is no driver anywhere in the repo.
+#: KEPT AS ITS OWN TUPLE, NOT APPENDED TO CHAIN, because the boundary is
+#: real: everything above `grouped` measures a room that EXISTS, and
+#: everything here proposes one to build.
+#:
+#: ⚠ CORRECTION (2026-08-11). An earlier version of this note said these
+#: modules were "direction only, not designed". THAT WAS WRONG, and it
+#: came from quoting line 8 of PLAN_COMPOSE_LOOP.md — written 07-26G at
+#: the very start of that work — while ignoring the record in the body of
+#: the same document. The gate table there shows `supported_by` PASSED
+#: 07-31 (re-affirmed by R7), `consistency` PASSED 08-01, the S3 add-pass
+#: redesign a USER PASS with "make it canon", and S3 v4 built with the
+#: user in-session as canon.
+#:
+#: What was genuinely missing was not the design but the DRIVER: these
+#: were run by hand, one command at a time, and no script chained them.
+#: That is what this table fixes.
 #:
 #: THE ORDER IS READ OFF THE CODE, NOT INVENTED. Each module names the
 #: file it cannot start without — consistency wants supported_by.json,
