@@ -38,8 +38,17 @@ carries a sidecar holding the hash of (eye, aim, fov, res, clip, ply
 identity, box). Mismatch = the png is DELETED so the renderer must
 redraw it. Match = crash-resume.
 
-    python graph/node_views.py --scene living_marble           # decide
-    python graph/node_views.py --scene living_marble --render   # + GPU
+RENDERING IS THE DEFAULT (2026-08-11). The GPU pass used to need
+--render, so a forgotten flag made this stage exit 0 having planned the
+views and drawn none, and the next stage read whatever pictures the
+PREVIOUS run happened to leave behind. An unattended pass over 100
+scenes must not be able to succeed silently that way, so the default is
+now "do the work" and --no-render is the explicit opt-out. --render is
+still accepted and does nothing. Either way the plan file is written —
+only the GPU work is optional.
+
+    python graph/node_views.py --scene living_marble              # + GPU
+    python graph/node_views.py --scene living_marble --no-render  # plan
 
 Out: out/<scene>/graph/node_views/<node>_<view>.png + .params.json
      out/<scene>/graph/node_views.json     the view set per node
@@ -413,7 +422,10 @@ def gate(sc, nid, v, geo, suffix=""):
         png.unlink()
         print(f"[views] {stem}: {old or 'NO sidecar'} -> {h} — png DELETED",
               flush=True)
-    side.write_text(json.dumps({"hash": h, **payload}, indent=1))
+    # The sidecar is how a LATER run knows which camera drew the png next
+    # to it, so a half-written one either costs a GPU re-render or, worse,
+    # parses with the wrong hash. It is small; write it whole or not at all.
+    paths.write_atomic(side, json.dumps({"hash": h, **payload}, indent=1))
     if png.exists():
         return "keep", stem, h, None
     # Is there an OLDER picture of this view, from before this module
@@ -544,6 +556,32 @@ def box_corners(geo):
                     float)
 
 
+def whole_image(p):
+    """True if the png on disk is a complete, readable picture.
+
+    The module docstring's fingerprint promise covers the WSL renders,
+    which carry a params sidecar and a hash compare. The box overlays
+    below have neither: they are judged fresh purely by being newer than
+    their source. A power cut during the save (docs/POWER_CRASHES.md)
+    leaves a truncated png whose mtime is newer than its source, so every
+    later run would keep it, and node_evidence would hand exactly that
+    file to J9 as the node's one picture of the object. An unattended run
+    has to repair a half-written picture, not present it as evidence.
+
+    verify() reads the file's structure without decoding the pixels, so
+    it is cheap, and it raises on a file that stops early. Pillow leaves
+    the image object unusable afterwards, which is why this opens the
+    file only to check it and the caller re-opens for the real read.
+    """
+    from PIL import Image
+    try:
+        with Image.open(p) as im:
+            im.verify()
+        return True
+    except Exception:                                        # noqa: BLE001
+        return False
+
+
 def draw_boxes(sc, rows):
     """Draw each node's box onto every picture taken of it.
 
@@ -570,9 +608,20 @@ def draw_boxes(sc, rows):
             if not src.exists():
                 continue
             dst = sc.out / v["file"].replace(".png", "_box.png")
+            # The mtime test comes first because it is the cheap one: a
+            # picture older than its source is being redrawn anyway and
+            # never needs reading. Only a picture that looks fresh is
+            # opened and checked, because "fresh" here is a guess made
+            # from a timestamp, and a png cut off mid-save looks fresher
+            # than the picture it was drawn from.
             if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
-                v["box_file"] = dst.name
-                continue
+                if whole_image(dst):
+                    v["box_file"] = dst.name
+                    continue
+                dst.unlink()
+                print(f"[views] {dst.name}: truncated png (a run died "
+                      "while saving it) — DELETED, drawing it again",
+                      flush=True)
             im = Image.open(src).convert("RGB")
             cam = vote_cams.make_cam(v["eye"], v["aim"], v["fov"], im.width)
             u, vv, z = cam.project(cn)
@@ -992,7 +1041,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--render", action="store_true",
-                    help="run the WSL gsplat batch for the missing views")
+                    help="accepted for backward compatibility; rendering "
+                         "is now the default (use --no-render to opt out)")
+    ap.add_argument("--no-render", dest="no_render", action="store_true",
+                    help="plan the views but render nothing (no GPU)")
     ap.add_argument("--include-culled", action="store_true",
                     help="also render the cameras the cull REJECTED, so "
                          "the rejection can be judged from a picture "
@@ -1020,11 +1072,14 @@ def main():
     sc.out.mkdir(parents=True, exist_ok=True)
     inc = a.include_culled or a.culled_only
     rows, targets = plan(sc, inc, a.culled_only)
-    if targets and a.render:
+    if targets and not a.no_render:
         render(sc, targets)
         rows, targets = plan(sc, inc, a.culled_only)  # report truth
     draw_boxes(sc, rows)
-    (sc.sd / "graph" / "node_views.json").write_text(json.dumps(
+    # node_evidence reads this file and refuses to attach pictures if it
+    # disagrees with the layer it was aimed at, so a half-written copy
+    # would stop the next stage dead. Written beside itself and renamed.
+    paths.write_atomic(sc.sd / "graph" / "node_views.json", json.dumps(
         {"scene": a.scene, "layer": sc.layer, "res": RES,
          "renderer": "analyzer/render_targets_wsl.py (WSL gsplat)",
          "cameras": "graph/view_cams.py",

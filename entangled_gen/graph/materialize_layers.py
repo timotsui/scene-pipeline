@@ -135,10 +135,19 @@ STILL NOT IN THIS PASS: the targeted appearance pass for nodes the
 splits created (a piece inherits its parent's description, which is a
 guess) -- listed as an open question on the report.
 
+WRITING IS THE DEFAULT (2026-08-11). The layer used to be written only
+when --apply was passed, so a forgotten flag made this stage exit 0
+having written nothing while the next stage read the PREVIOUS run's
+graph['grouped'] as if it were current. An unattended pass over 100
+scenes must not be able to succeed silently that way, so the default is
+now "do the work" and --dry-run is the explicit opt-out. --apply is
+still accepted and does nothing. --report-only keeps its exact old
+meaning: write the html report, not the graph.
+
 Run:
   python graph/materialize_layers.py --scene living_marble
   python graph/materialize_layers.py --scene living_marble --report-only
-  python graph/materialize_layers.py --scene living_marble --apply
+  python graph/materialize_layers.py --scene living_marble --dry-run
 """
 import argparse
 import copy
@@ -1442,7 +1451,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--apply", action="store_true",
-                    help="write graph['grouped'] (ADDITIVE) + the report")
+                    help="accepted for backward compatibility; writing is "
+                         "now the default (use --dry-run to opt out)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="report what would happen and write nothing")
     ap.add_argument("--report-only", action="store_true",
                     help="write graph/materialize_report.html but NOT the "
                          "graph")
@@ -1462,9 +1474,9 @@ def main():
     m.print_report()
 
     rpath = m.sdir / "graph" / "materialize_report.html"
-    if not (a.apply or a.report_only):
+    if a.dry_run:
         print("\n[materialize] DRY -- nothing written "
-              "(--report-only for the html, --apply for the layer)")
+              "(this is --dry-run; omit it to write)")
         return
     try:
         write_report(m, rpath)
@@ -1472,7 +1484,7 @@ def main():
     except Exception as e:                              # noqa: BLE001
         print(f"\n[materialize] REPORT FAILED ({type(e).__name__}: "
               f"{str(e)[:160]}) -- continuing; the layer is still written")
-    if not a.apply:
+    if a.report_only:
         print("[materialize] --report-only: graph NOT written")
         return
 
@@ -1483,7 +1495,11 @@ def main():
     before = {k: v for k, v in m.graph.items() if k != out_layer}
     m.graph[out_layer] = m.layer()
     scene_state.stamp(m.graph, out_layer)   # declare it IN THE FILE
-    m.gpath.write_text(json.dumps(m.graph, indent=1), encoding="utf-8")
+    # This pass runs straight after two GPU stages, which is exactly when
+    # the machine is most likely to cut out (docs/POWER_CRASHES.md), so
+    # the graph is written beside itself and renamed rather than
+    # truncated and re-streamed. See paths.write_atomic.
+    paths.write_atomic(m.gpath, json.dumps(m.graph, indent=1))
 
     after = json.loads(m.gpath.read_text(encoding="utf-8"))
     changed = [k for k in set(before) | (set(after) - {out_layer})

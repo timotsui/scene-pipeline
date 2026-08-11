@@ -53,8 +53,16 @@ WHAT THIS MODULE DOES — one edit, on the whole graph:
   geometry, or vote information left behind in a sidecar so a later
   stage has to go looking for it.
 
-Run:  python graph/build_voted.py --scene living_marble          (dry)
-      python graph/build_voted.py --scene living_marble --apply
+WRITING IS THE DEFAULT (2026-08-11). The layer used to be written only
+when --apply was passed, so a forgotten flag made this stage exit 0
+having written nothing while the next stage read the PREVIOUS run's
+graph['voted'] as if it were current. An unattended pass over 100 scenes
+must not be able to succeed silently that way, so the default is now "do
+the work" and --dry-run is the explicit opt-out. --apply is still
+accepted and does nothing.
+
+Run:  python graph/build_voted.py --scene living_marble
+      python graph/build_voted.py --scene living_marble --dry-run   (dry)
 """
 import argparse
 import json
@@ -244,8 +252,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--apply", action="store_true",
-                    help="write graph['voted'] (ADDITIVE); without it "
-                         "NOTHING is written")
+                    help="accepted for backward compatibility; writing is "
+                         "now the default (use --dry-run to opt out)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="report what would happen and write nothing")
     a = ap.parse_args()
     graph, layer, sd = build(a.scene)
     c, em = layer["counts"], layer["edge_meta"]
@@ -269,14 +279,18 @@ def main():
         print(f"           {d['rule']} -> {d['passed']}")
     print(f"[voted] open questions: {len(layer['open_questions'])}")
 
-    if not a.apply:
-        print("[voted] DRY -- nothing written (rerun with --apply)")
+    if a.dry_run:
+        print("[voted] DRY -- nothing written (this is --dry-run; omit it "
+              "to write)")
         return
     before = {k: v for k, v in graph.items() if k != LAYER}
     graph[LAYER] = layer
     scene_state.stamp(graph, LAYER)   # declare it IN THE FILE
     p = sd / "scene_graph.json"
-    p.write_text(json.dumps(graph, indent=1), encoding="utf-8")
+    # The graph is the whole scene and nothing upstream of it can be
+    # re-derived cheaply, so it is never truncated in place: write beside
+    # it, flush to the disk, rename. See paths.write_atomic.
+    paths.write_atomic(p, json.dumps(graph, indent=1))
     after = json.loads(p.read_text(encoding="utf-8"))
     changed = [k for k in set(before) | (set(after) - {LAYER})
                if k != "layer"

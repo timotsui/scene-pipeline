@@ -130,7 +130,28 @@ existing constant rather than inventing one keeps this a statement of
 meaning instead of a number fitted to a scene. The bottom pad is the
 largest on purpose: it shows what the object sits on.
 
-    python graph/node_evidence.py --scene living_marble     # decide
+THE DEFAULTS ARE INVERTED, AND HOLES ARE FATAL (2026-08-11, for
+unattended running). This module used to do nothing at all unless it was
+handed three separate flags — --apply --recut --reshoot — and it exited 0
+when it was handed none of them. Over a hundred scenes with nobody
+watching, a forgotten flag is a run that reports success having done no
+work, and the next stage then reads the PREVIOUS run's answer as if it
+were this one's. So the work is now the default and the opting out is
+what has to be spelled out: --dry-run, --no-recut, --no-reshoot. The
+three old flags are still accepted and mean nothing, because docs,
+handoffs and shell history all pass them.
+
+For the same reason a layer with holes in it is now a hard stop. Run
+without the repairs and some nodes ended up with a picture that was
+PLANNED but never PRODUCED — "43 node(s) with a picture, 2 problem(s)",
+exit 0, and a judge downstream reads that layer as proof. A gap in the
+evidence stops the scene on purpose. --allow-holes writes it anyway and
+records the fact inside the layer, so a later reader can see the
+evidence was knowingly incomplete.
+
+    python graph/node_evidence.py --scene living_marble               # do it
+    python graph/node_evidence.py --scene living_marble --dry-run     # decide only
+    python graph/node_evidence.py --scene living_marble --no-reshoot  # no GPU
 """
 import argparse
 import html
@@ -1091,7 +1112,7 @@ def write_report(sc, rows, out):
             # A RESHOOT NODE MUST NEVER BE SHOWN A RE-CUT PREVIEW —
             # SECOND FIX (user 2026-08-10 late). R-S2-75 fixed this for
             # the case where an aimed picture EXISTS; run without
-            # --reshoot and it fell straight back through to the
+            # --no-reshoot and it fell straight back through to the
             # preview branch, advertising the repair this node was
             # denied and hiding the one actually chosen. The reviewer
             # is judging whether a reshoot is warranted, so the honest
@@ -1224,7 +1245,8 @@ def chosen_picture(sc, r):
         fs = r.get("reshoot_files") or []
         if not fs:
             return None, ("planned reshoot but no aimed picture attached "
-                          "— run node_views.py then --reshoot")
+                          "— run node_views.py, and do not pass "
+                          "--no-reshoot")
         # THE MAIN VIEW BY NAME, NEVER "WHATEVER IS FIRST".
         #
         # BUG 2026-08-11, user-found: this took fs[0], and when the
@@ -1239,7 +1261,8 @@ def chosen_picture(sc, r):
         if f is None:
             return None, (
                 "the `main` render is missing — node_views planned it but "
-                "the file is not on disk (run node_views.py --render). "
+                "the file is not on disk (re-run node_views.py, which "
+                "renders by default). "
                 f"{len(fs)} other view(s) are attached and stay "
                 "SUPPLEMENTARY; a cardinal view is not a main photo")
         return {"source": "aimed_render", "view": f.get("view"),
@@ -1249,8 +1272,8 @@ def chosen_picture(sc, r):
     if rep == "recut":
         cut = next((c for c in r.get("crops") or [] if c.get("recut")), None)
         if not cut:
-            return None, ("planned re-cut but none taken — run with "
-                          "--recut")
+            return None, ("planned re-cut but none taken — run without "
+                          "--no-recut")
         return {"source": "recut", "view": cut.get("view"),
                 "path": f"graph/node_evidence/recut/{cut['recut']}",
                 "why": r.get("repair_why")}, None
@@ -1266,7 +1289,21 @@ def chosen_picture(sc, r):
     return None, f"no picture rule for repair `{rep}`"
 
 
-def write_layer(sc, rows, apply_it):
+HOLES_SHOWN = 12        # enough to recognise the pattern, short enough
+#                         to read in a log; the rest are counted
+
+
+def _hole_list(ids):
+    """The nodes with no picture, named. A count alone sends whoever
+    reads the log back to the json to find out which ones."""
+    if not ids:
+        return "(none)"
+    head = ", ".join(ids[:HOLES_SHOWN])
+    rest = len(ids) - HOLES_SHOWN
+    return head + (f" +{rest} more" if rest > 0 else "")
+
+
+def write_layer(sc, rows, apply_it, allow_holes=False):
     """graph['shown'] — the whole `settled` layer, with every node's
     CURRENT picture named on it.
 
@@ -1287,6 +1324,8 @@ def write_layer(sc, rows, apply_it):
         ((n["id"], n) for n in nodes)
     by_id = dict(it)
     named = problems = 0
+    holes = []                  # the nodes with no picture, by id, so the
+    #                             refusal below can NAME them
     for r in rows:
         nd = by_id.get(r["id"])
         if nd is None:
@@ -1296,6 +1335,7 @@ def write_layer(sc, rows, apply_it):
             nd["shown"] = {"picture": None, "problem": err,
                            "repair": r.get("repair")}
             problems += 1
+            holes.append(r["id"])
             continue
         # THE MAIN PHOTO, PLUS EVERY OTHER CORRECT VIEW OF THIS OBJECT
         # (user 2026-08-11: "each object have a set of images. one is the
@@ -1333,7 +1373,11 @@ def write_layer(sc, rows, apply_it):
              "run": {"stage": "node_evidence", "from_layer": BOX_LAYER,
                      "status": "UNTESTED"},
              "counts": {"nodes": len(by_id), "with_picture": named,
-                        "problems": problems},
+                        "problems": problems,
+                        # only ever True when someone asked for it; it
+                        # travels with the file so a later reader can see
+                        # the evidence was knowingly incomplete
+                        "allow_holes": bool(allow_holes and problems)},
              "note": ("every node's CURRENT picture. graph/crops is the "
                       "detection record and is untouched; these entries "
                       "SUPERSEDE it for anything that shows a node to a "
@@ -1341,13 +1385,46 @@ def write_layer(sc, rows, apply_it):
     print(f"[evidence] layer `{LAYER}`: {named} node(s) with a picture, "
           f"{problems} problem(s)")
     if not apply_it:
-        print("[evidence] DRY — layer NOT written (rerun with --apply)")
+        # A DRY RUN NEVER FAILS ON HOLES. Nothing was written, so there is
+        # no incomplete evidence for anyone to read — reporting them is
+        # the whole job here.
+        if problems:
+            print(f"[evidence] {problems} node(s) would have NO picture: "
+                  + _hole_list(holes))
+        print("[evidence] DRY — layer NOT written "
+              "(this is --dry-run; omit it to write)")
         return layer
+    # A GAP IN THE EVIDENCE STOPS THE SCENE. A node with no picture is a
+    # node a judge downstream will still read off this layer and treat as
+    # proof, so writing it half-finished is worse than not writing it: the
+    # scene looks done and the verdicts are made on nothing.
+    if problems and not allow_holes:
+        print(f"[evidence] REFUSING TO WRITE graph['{LAYER}']: "
+              f"{problems} of {len(by_id)} node(s) have no picture.")
+        print(f"[evidence]   {_hole_list(holes)}")
+        print("[evidence]   Their picture was PLANNED but never PRODUCED. "
+              "The layer was NOT written and the graph is untouched.")
+        print("[evidence]   A judge downstream would read this layer as "
+              "proof, so an incomplete one stops the scene on purpose. "
+              "Fix the missing pictures (usually: re-run node_views.py, "
+              "which now renders by default), "
+              "or pass --allow-holes to write it anyway and record the "
+              "gap in the layer.")
+        raise SystemExit(2)
+    if problems:
+        print(f"[evidence] WARNING: writing graph['{LAYER}'] with "
+              f"{problems} node(s) that have NO picture — --allow-holes "
+              f"was passed, so the gap is deliberate and is recorded in "
+              f"the layer as counts.allow_holes. {_hole_list(holes)}")
     before = {k: v for k, v in graph.items() if k != LAYER}
     graph[LAYER] = layer
     scene_state.stamp(graph, LAYER)
     p = sc.sd / "scene_graph.json"
-    p.write_text(json.dumps(graph, indent=1), encoding="utf-8")
+    # This is a GPU stage, and a power cut mid-write would leave the whole
+    # scene's graph truncated with no way to rebuild it short of re-running
+    # detection, lifting and description. Write beside it and rename.
+    # See paths.write_atomic.
+    paths.write_atomic(p, json.dumps(graph, indent=1))
     after = json.loads(p.read_text(encoding="utf-8"))
     changed = [k for k in set(before) | (set(after) - {LAYER})
                if k != "layer"
@@ -1363,19 +1440,29 @@ def write_layer(sc, rows, apply_it):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
+    # THE THREE OLD FLAGS ARE KEPT AND DO NOTHING. They are what every
+    # doc, handoff and shell line in this project passes, so removing
+    # them would turn working commands into errors; what they asked for
+    # is simply the default now.
     ap.add_argument("--apply", action="store_true",
-                    help="write graph['shown'] — the layer naming each "
-                         "node's current picture. Without it the layer "
-                         "is computed and reported but not written.")
+                    help="accepted for backward compatibility; this is "
+                         "now the default (use --dry-run to opt out)")
     ap.add_argument("--reshoot", action="store_true",
-                    help="attach the aimed pictures that serve each "
-                         "reshoot node. Renders NOTHING — node_views.py "
-                         "owns the GPU batch; run it first with "
-                         "--layer settled --only <the reshoot ids>.")
+                    help="accepted for backward compatibility; this is "
+                         "now the default (use --no-reshoot to opt out)")
     ap.add_argument("--recut", action="store_true",
-                    help="perform the planned re-cuts (same photographs, "
-                         "new rectangles; no GPU, nothing rendered). "
-                         "Without it this module only decides.")
+                    help="accepted for backward compatibility; this is "
+                         "now the default (use --no-recut to opt out)")
+    ap.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="report what would happen and write nothing")
+    ap.add_argument("--no-recut", dest="no_recut", action="store_true",
+                    help="do not re-cut crops from existing photos")
+    ap.add_argument("--no-reshoot", dest="no_reshoot", action="store_true",
+                    help="do not render any new views (no GPU)")
+    ap.add_argument("--allow-holes", dest="allow_holes",
+                    action="store_true",
+                    help="write graph['shown'] even when some nodes have "
+                         "no picture; the gap is recorded in the layer")
     a = ap.parse_args()
     sc = Scene(a.scene)
     rows = [plan_repair(judge(sc, nid)) for nid in sc.cur]
@@ -1383,19 +1470,32 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     cut = skip = shots = 0
     problems = []
-    if a.recut:
+    # A DRY RUN TOUCHES NOTHING ON DISK. Re-cutting wipes and rebuilds
+    # graph/node_evidence/recut, which is a real edit to the scene — a
+    # flag named "write nothing" must not make it. The cost is that a dry
+    # run reports the holes as they stand BEFORE any repair, not as the
+    # real run would leave them, so the count below is a picture of the
+    # current state and not a prediction. The print says so.
+    if a.dry_run:
+        print("[evidence] DRY -- no re-cuts, no reshoots, nothing written. "
+              "The problem count below is the state as it stands now, NOT "
+              "what a real run would leave.", flush=True)
+    if not a.no_recut and not a.dry_run:
         cut, skip = do_recuts(sc, rows, out)
-    if a.reshoot:
+    if not a.no_reshoot and not a.dry_run:
         shots, problems = attach_reshoots(sc, rows)
-    write_layer(sc, rows, a.apply)
+    write_layer(sc, rows, not a.dry_run, a.allow_holes)
+    if a.dry_run:
+        _summarise(a, rows, cut, skip, shots, problems, sc, out)
+        return
     (out / "node_evidence.json").write_text(json.dumps(
         {"scene": a.scene, "layer": sc.layer, "status": "UNTESTED",
          "step": ("B2 — re-cuts PERFORMED (no GPU, nothing rendered). "
-                  "B3 the reshoots (after the user's go), B4 writes the "
-                  "`shown` layer." if a.recut else
+                  "B3 the reshoots, B4 writes the `shown` layer."
+                  if not a.no_recut else
                   "B1 — DECIDES ONLY. No pixels are written and nothing "
-                  "is rendered. Pass --recut to perform the re-cuts."),
-         "reshoot": {"attached": bool(a.reshoot), "pictures": shots,
+                  "is rendered, because --no-recut was passed."),
+         "reshoot": {"attached": not a.no_reshoot, "pictures": shots,
                      "problems": problems,
                      "renders_nothing": "node_views.py owns the cameras "
                                         "and the GPU batch; this only "
@@ -1403,7 +1503,7 @@ def main():
                                         "that exist (a reused view's "
                                         "picture is an earlier run's, "
                                         "not node_views/)"},
-         "recut": {"performed": bool(a.recut), "files": cut,
+         "recut": {"performed": not a.no_recut, "files": cut,
                    "skipped_degenerate": skip,
                    "dir": "graph/node_evidence/recut",
                    "note": "the same photograph cut to a new rectangle "
@@ -1419,6 +1519,13 @@ def main():
                                "re-used rather than re-invented"},
          "rows": rows}, indent=1))
     write_report(sc, rows, out)
+    _summarise(a, rows, cut, skip, shots, problems, sc, out)
+
+
+def _summarise(a, rows, cut, skip, shots, problems, sc, out):
+    """What the run did, in words. Called by both paths — a dry run stops
+    before the report page is written but still owes the same account of
+    what it found."""
     n, rep = {}, {}
     for r in rows:
         for f in r["fires"]:
@@ -1428,8 +1535,9 @@ def main():
           f"{sum(1 for r in rows if r['fires'])} fire")
     for k, v in sorted(n.items(), key=lambda t: -t[1]):
         print(f"   {v:>3}  {k}")
-    done = ([] + (["re-cuts taken"] if a.recut else [])
-            + (["reshoots attached"] if a.reshoot else []))
+    did = not a.dry_run          # a dry run performed none of it
+    done = ([] + (["re-cuts taken"] if did and not a.no_recut else [])
+            + (["reshoots attached"] if did and not a.no_reshoot else []))
     print("the repair plan"
           + (f" ({', '.join(done)}):" if done else " (nothing performed):"))
     for k, v in sorted(rep.items(), key=lambda t: -t[1]):
@@ -1437,20 +1545,21 @@ def main():
     blocked = [r["id"] for r in rows if r["repair"] == "blocked"]
     if blocked:
         print(f"   BLOCKED, named not dropped: {', '.join(blocked)}")
-    if a.reshoot:
+    if did and not a.no_reshoot:
         print(f"reshoot pictures attached: {shots} "
               f"(rendered nothing — node_views owns the GPU)")
         for p in problems:
             print(f"   PROBLEM: {p}")
-    if a.recut:
+    if did and not a.no_recut:
         print(f"re-cuts written: {cut}"
               + (f"  ({skip} skipped, degenerate)" if skip else "")
               + "   graph/crops untouched")
     else:
         want = sum(1 for r in rows if r["repair"] == "recut")
         print(f"nothing performed — {want} nodes want a re-cut; "
-              f"pass --recut to take them")
-    print(f"-> {out / 'index.html'}")
+              f"drop --no-recut to take them")
+    if not a.dry_run:
+        print(f"-> {out / 'index.html'}")
 
 
 if __name__ == "__main__":

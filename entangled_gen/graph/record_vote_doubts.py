@@ -1,12 +1,12 @@
 """RECORD VOTE DOUBTS — typed open questions from the slice-vote election
 (USER RULING 2026-08-06 late: the vote's doubt flags are RECORDED, never
 decided on; judges consume them. USER GO 2026-08-07: record-proper
-integration — the description-making pass — is no longer gated; --apply
+integration — the description-making pass — is no longer gated; the run
 folds the doubts into scene_graph.json as the additive `vote` block).
 
 Two outputs:
 1. SIDECAR graph/vote_doubts.json (always) — the typed doubt list.
-2. --apply: scene_graph.json gains a top-level additive `vote` block
+2. scene_graph.json gains a top-level additive `vote` block
    (record-then-judge pattern, same as triage_meta etc.: nodes are NEVER
    mutated; the block references them by id). Per node: vote status,
    escalation tiers, slice provenance, typed doubts each with a
@@ -64,7 +64,15 @@ source. If the auto rules miss a real case, that is an honest miss for
 downstream/eval to reveal, or a scene-agnostic rule-design decision
 taken with the user at a gate.
 
-Run:  python graph/record_vote_doubts.py --scene living_marble [--apply]
+WRITING IS THE DEFAULT (2026-08-11). This stage used to write the `vote`
+block only when --apply was passed, so a forgotten flag made the run exit
+0 having done nothing and the next stage quietly read the PREVIOUS run's
+answer. An unattended pass over 100 scenes must not be able to succeed
+silently that way, so the default is now "do the work" and --dry-run is
+the explicit opt-out. --apply is still accepted and does nothing.
+
+Run:  python graph/record_vote_doubts.py --scene living_marble
+      python graph/record_vote_doubts.py --scene living_marble --dry-run
 """
 import argparse
 import json
@@ -223,8 +231,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--apply", action="store_true",
-                    help="fold the doubts into scene_graph.json as the "
-                         "additive `vote` block")
+                    help="accepted for backward compatibility; writing is "
+                         "now the default (use --dry-run to opt out)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="report what would happen and write nothing")
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
     rep_f = sd / "vote" / "slicevote_report.json"
@@ -348,20 +358,22 @@ def main():
                            "status": status, "doubts": d})
 
     outd = sd / "graph"
-    outd.mkdir(exist_ok=True)
     out = outd / "vote_doubts.json"
+    if a.dry_run:
+        print(f"[doubts] DRY -- {len(doubts)} node(s) with doubts; would "
+              f"write {out} and the scene_graph.json `vote` block "
+              "(this is --dry-run; omit it to write)", flush=True)
+        return
+    outd.mkdir(exist_ok=True)
     out.write_text(json.dumps(
         {"scene": a.scene,
          "source": "graph/record_vote_doubts.py — typed open questions "
                    "from the slice-vote election. Consumers: multiplicity "
-                   "judge + same-product judge (+ scene_graph.json vote "
-                   "block via --apply).",
+                   "judge + same-product judge (+ the scene_graph.json "
+                   "vote block this same run writes).",
          "n_nodes_with_doubts": len(doubts), "nodes": doubts}, indent=1))
     print(f"[doubts] {len(doubts)} node(s) with doubts -> {out}",
           flush=True)
-
-    if not a.apply:
-        return
 
     gf = sd / "scene_graph.json"
     if not gf.exists():
@@ -391,9 +403,10 @@ def main():
                 "AUTO-DOUBTS ONLY (Rule #1) — no user-routing channel.",
         "nodes": nodes_block,
     }
-    tmp = gf.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(g, indent=1))
-    tmp.replace(gf)
+    # This stage invented the temp-then-rename here, and every other
+    # stage now does the same through one helper. Use it, so there is a
+    # single place the rule lives and the whole chain writes alike.
+    paths.write_atomic(gf, json.dumps(g, indent=1))
     n_doubt = sum(1 for v in nodes_block.values() if v.get("doubts"))
     print(f"[doubts] applied: scene_graph.json `vote` block — "
           f"{len(nodes_block)} nodes ({n_doubt} with doubts)", flush=True)

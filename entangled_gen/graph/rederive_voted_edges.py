@@ -18,11 +18,19 @@ This module closes that loop. Same derivation (build_edges.derive_edges
                geometry and is listed in unvoted_ids)
     planes    the record's envelope nodes, unchanged
 
-WRITES NOTHING WITHOUT --apply. The default run prints the Gate-B2 DIFF
-(what appeared / what dissolved, per edge type, vs the resolved edges)
-for the user gate. With --apply the result lands ADDITIVELY under
-graph["voted_edges"] -- the record layer, the judged layer and the
-resolved layer are untouched, so this is a new layer, not a rewrite.
+EVERY RUN PRINTS THE GATE-B2 DIFF (what appeared / what dissolved, per
+edge type, vs the resolved edges) for the user gate, and then writes the
+result ADDITIVELY under graph["voted_edges"] -- the record layer, the
+judged layer and the resolved layer are untouched, so this is a new
+layer, not a rewrite.
+
+WRITING IS THE DEFAULT (2026-08-11). The write used to need --apply, so a
+forgotten flag made this stage exit 0 having written nothing while the
+next stage read the PREVIOUS run's graph["voted_edges"] as if it were
+current. An unattended pass over 100 scenes must not be able to succeed
+silently that way, so the default is now "do the work" and --dry-run is
+the explicit opt-out (the diff still prints). --apply is still accepted
+and does nothing.
 
 The judges can be pointed at that layer with
     python graph/triage_pairs.py --scene S --edges-from voted_edges
@@ -30,7 +38,7 @@ The judges can be pointed at that layer with
 
 Run:
   python graph/rederive_voted_edges.py --scene living_marble
-  python graph/rederive_voted_edges.py --scene living_marble --apply
+  python graph/rederive_voted_edges.py --scene living_marble --dry-run
 """
 import argparse
 import copy
@@ -71,7 +79,7 @@ def layer_of(graph, edges_from):
     layer = graph.get("voted_edges")
     if not layer:
         raise SystemExit("[voted_edges] no graph['voted_edges'] -- run "
-                         "graph/rederive_voted_edges.py --apply first")
+                         "graph/rederive_voted_edges.py first")
     return layer
 
 
@@ -204,8 +212,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scene", required=True)
     ap.add_argument("--apply", action="store_true",
-                    help="write graph['voted_edges'] (additive); "
-                         "without it NOTHING is written")
+                    help="accepted for backward compatibility; writing is "
+                         "now the default (use --dry-run to opt out)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="report what would happen and write nothing")
     ap.add_argument("--date", default=None,
                     help="date stamped into the layer header "
                          "(default: today)")
@@ -236,9 +246,9 @@ def main():
                       old_nesting, d.nesting, names)
     print_diff(diff, unvoted, len(det), d.edge_summary)
 
-    if not args.apply:
-        print("[rederive] DRY -- nothing written (rerun with --apply after "
-              "the gate)")
+    if args.dry_run:
+        print("[rederive] DRY -- nothing written (this is --dry-run; omit "
+              "it to write)")
         return
 
     graph["voted_edges"] = {
@@ -251,7 +261,9 @@ def main():
         "edge_summary": d.edge_summary,
         "diff_vs_resolved": diff,
     }
-    gpath.write_text(json.dumps(graph, indent=1), encoding="utf-8")
+    # Never truncate the graph in place: it holds the whole scene and the
+    # stages that made it are not cheap to run again. See paths.write_atomic.
+    paths.write_atomic(gpath, json.dumps(graph, indent=1))
     print(f"[rederive] wrote graph['voted_edges'] into {gpath} "
           f"({len(d.edges)} edges) -- every other block untouched")
 
