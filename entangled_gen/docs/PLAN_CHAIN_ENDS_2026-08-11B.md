@@ -207,6 +207,40 @@ OEM-locked, and the lock does not survive a reboot.
   `crop_pano.py`'s bundle fallback now resolves harvest bundles instead
   of raising a bare `StopIteration`.
 
-  Remaining in step 2 — deleting the six dead-lane stages from
-  `run_scene.py` — is held until the INTAKE tuple is ready, so the repo
-  never has a `--phase core` that does nothing.
+- **STEPS 2 AND 3 DONE** — `f496c99`, R-S2-93. `--phase core` walks
+  `stages.INTAKE`, the map's lane. The dead lane's six stages and their
+  hand-written driver are out of the runner; the modules stay on disk.
+  The funnel's flags are named constants and its filenames derive from
+  them.
+
+  Two gate bugs found doing it. **`scene_gate` loaded `scene_graph.json`
+  unconditionally, and the whole funnel runs before that file exists —
+  the first genuinely fresh scene would have died at its first stage.**
+  Undiscoverable on a dev scene. And `stale_inputs` walked `CHAIN` only,
+  so COMPOSE's `inputs` were decorative; now it walks all four and
+  immediately found two of §4b's five contaminating files stale on
+  `autotest_bedroom`. File stages report WARN, not FAIL — two findings
+  are structural false positives (`scene_scale` rewrites its own input in
+  place; the closing pass rewrites `rotation_check`'s).
+
+- **STEP 4 DONE** — `045f9a5`, R-S2-94. `RECORD` is a fourth tuple and
+  `--phase record` a fourth phase. `--phase graph` keeps meaning "the
+  vote onward". Also: **`run_fleet --phase` offered only
+  `("core","graph","all")`** — the hundred-scene driver could not be
+  asked for compose at all. Both runners now read one
+  `stages.PHASES_ORDER`.
+
+- **STEP 5 DONE** — `3435216`. `--bundle` creates the scene and writes
+  `bundle_path.txt`, refuses to repoint an existing scene, and refuses a
+  bundle with no prompt, splat or collider.
+
+- **THE CHAIN IS UNBROKEN.** One command plans **45 stages**: 11 intake,
+  10 record+judge, 12 graph, 12 compose. Verified on a real unclaimed
+  harvest world — `--scene fresh01 --bundle <uuid>` produced a scene
+  directory containing one file and a complete plan to the end.
+
+- **STEP 6 IS BLOCKED ON THE USER, AND ONLY ON THAT.** The run needs the
+  GPU clock lock applied from an ADMIN shell — `nvidia-smi -lgc 0,1500`
+  — which this session cannot do. See R-S2-95: neither the lock nor its
+  scheduled task can be verified from an unelevated shell, so the receipt
+  the command prints is the only proof.
