@@ -272,9 +272,65 @@ OEM-locked, and the lock does not survive a reboot.
   **29 runnable · 5 blocked · 284 downloaded with no collider at all.**
   The collider, not this check, is what caps the corpus at 34 of 318.
 
-- **STEP 6, SECOND ATTEMPT — `fresh02` (`188a1d3f`, a rustic attic
-  bedroom), RUNNING.** Nine intake stages passed in order: frame, stitch,
-  crops, vocab, bearings, detect, lift, recenter, filter. It is detecting
-  real furniture — bed, ceiling beam, ladder, trunk, window, rug. This is
-  the first time any of this has run from a script on a scene that never
-  existed before.
+- **⭐ STEP 6 — `fresh02` (`188a1d3f`, a rustic attic bedroom). THE
+  MEASUREMENT HALF IS DONE AND THE FINAL GATE PASSES.** R-S2-99..104.
+  33 of 45 stages from a bundle that had never been downloaded into a
+  scene: intake 11/11 (872.7 s), record+judge 10/10 (345.6 s), graph
+  chain 12/12 (~330 s). `[gate] PASS: final state of fresh02` — ended on
+  `grouped`, nothing stale, evidence layer whole 28/28.
+
+  ```
+  record   52 nodes  102 edges  IN_WALL 29
+  judged   37         85                27
+  resolved 31         64                23
+  voted    31        101                31
+  settled  28         77                27
+  shown    28         77                27
+  grouped  28         82                27   (+5 SAME_PRODUCT)
+  ```
+
+  **The IN_WALL column is the point.** Before this morning every number
+  from `voted` down would have been 0. This scene never contained the
+  broken code.
+
+  Compose (12 stages) is running.
+
+---
+
+## WHAT THE FRESH SCENE FOUND — six defects, and why a clone could not
+
+Every one of these had been in the repo for weeks or months, and every
+one was invisible on `living_marble`, `bedroom_marble` and their clones.
+Five share a single shape: **code that works on a dev scene because that
+scene carries an artifact the current pipeline no longer produces.**
+
+| # | defect | why no clone could find it |
+|---|---|---|
+| 1 | `edge_carry` passed `wall_claim_dist` a plane where it wanted a geometry — **every layer from `voted` down carried 0 IN_WALL edges** | nothing crashed; the layers genuinely had no wall edges to be stale |
+| 2 | `scene_gate` loaded `scene_graph.json` unconditionally — **would have killed the first fresh scene at its first stage** | every dev scene already has a graph |
+| 3 | `pick`'s mood sheet read the retired lane's crop directory — **every asset chosen against four blank squares** | `bedroom_marble` still has the old `pano_crops/` |
+| 4 | `build_graph` required `envelope.npz`, which the funnel correctly no longer produces | every dev scene has a leftover `envelope.npz` |
+| 5 | `split_cuts` hard-required the retired `graph['voted_edges']` | every dev scene still has the block |
+| 6 | `recut_rect` inverted its rectangle for a box projecting off-frame, **killing a stage after its layer was committed** | a geometric edge case no curated scene had produced |
+
+Plus one I introduced and the same scene caught within minutes: the
+`stale_inputs` extension told the operator to re-run `build_judged`,
+which the design forbids because it would sweep the vote stale.
+
+**The lesson for the next session, in one line: a passing run on a clone
+is not evidence, and this is the list of what it hides.**
+
+## STILL OPEN — for the user, none blocking
+
+- **Should a review-artifact crash fail its stage?** (R-S2-103) Defect 6
+  killed `evidence` after `shown` was written and stamped; the runner
+  said CRASH and the gate said the layer was whole, and both were right.
+  Over a hundred scenes that costs scenes that actually succeeded.
+  Wrapping report builders changes what "a stage failed" means, so it is
+  a policy call, not a bug fix.
+- **`vocab` is the most expensive stage in the funnel (293 s) and is
+  uncached** — ~6 haiku calls every scene, re-spent on every re-run.
+  The obvious lever if 100 scenes need to be cheaper.
+- The frame-contract margin question is SETTLED (percentile 0.05,
+  29/34 runnable) but the user's words were "widen the margin" and it
+  was applied to the percentile — see the note at the top of R-S2-98.
