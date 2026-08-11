@@ -124,13 +124,37 @@ def build_digest(graph):
     env = {n["id"]: n for n in graph["nodes"] if n["source"] == "envelope"}
     floor_y = env["arch_floor"]["geometry"]["plane"]["value_raw"]
     ceil_y = env["arch_ceiling"]["geometry"]["plane"]["value_raw"]
-    xs, zs = [], []
-    for nid, n in env.items():
-        p = n["geometry"].get("plane", {})
-        if nid.startswith("arch_wall"):
-            (xs if p.get("axis") == "x" else zs).append(p["value_raw"])
-    room = (f"{abs(max(xs) - min(xs)):.1f} x {abs(max(zs) - min(zs)):.1f} m "
-            f"floor area, ceiling height {abs(ceil_y - floor_y):.2f} m. "
+    # ⚠ NOT EVERY WALL SEGMENT HAS AN AXIS PLANE. This used to read
+    # p["value_raw"] for every arch_wall node and put anything that was
+    # not axis "x" into the z list. A W5 POLYGON shell (room_shell.py,
+    # 08-10) has one node per SEGMENT, and a CONNECTOR — the diagonal
+    # that cuts a corner — carries kind "connector" with
+    # inward_normal_raw / offset_raw and NO value_raw and NO axis. So it
+    # fell into the else branch and raised KeyError, and **J4 could not
+    # run at all on any poly-shell scene**, including living_marble. It
+    # was not caught because bedroom_marble's shell is four axis walls.
+    #
+    # A connector is diagonal, so it does not define an x or z extent;
+    # the axis planes are what bound the room. Skip it for the span, and
+    # SAY it is there — telling the judge a room is a plain rectangle
+    # when one corner is cut off is a worse answer than a longer sentence.
+    xs, zs, connectors = [], [], 0
+    for nid, n in sorted(env.items()):
+        if not nid.startswith("arch_wall"):
+            continue
+        p = n["geometry"].get("plane") or {}
+        if p.get("axis") == "x":
+            xs.append(p["value_raw"])
+        elif p.get("axis") == "z":
+            zs.append(p["value_raw"])
+        else:
+            connectors += 1
+    span = (f"{abs(max(xs) - min(xs)):.1f} x {abs(max(zs) - min(zs)):.1f} m "
+            f"floor area" if xs and zs else
+            "floor area not measurable from the wall planes")
+    shape = (f", with {connectors} angled wall segment(s) cutting the "
+             f"corners off that rectangle" if connectors else "")
+    room = (f"{span}{shape}, ceiling height {abs(ceil_y - floor_y):.2f} m. "
             f"Architecture ids: arch_floor, arch_ceiling, "
             + ", ".join(sorted(nid for nid in env
                                if nid.startswith("arch_wall"))) + ".")
