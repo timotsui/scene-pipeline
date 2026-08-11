@@ -721,12 +721,70 @@ def axis_cost(ours, glts):
                       "numbers and are NOT comparable as value for money."}
 
 
+#: Words a prompt uses that NOTHING can be placed for — qualities, moods,
+#: materials-as-adjectives, parts of the room's description rather than
+#: things in it. Kept explicit and printed in the report so the choice can
+#: be argued with; a matcher nobody can inspect is not a measurement.
+#: Grown from the two Marble prompts in use; extend it when a new prompt
+#: introduces a new abstraction, never to make a number look better.
+ABSTRACT_NOUNS = {
+    # feelings and qualities
+    "sense", "elegance", "comfort", "warmth", "focus", "atmosphere",
+    "tone", "style", "mood", "feel", "look", "charm", "character",
+    # visual properties, not objects
+    "texture", "finish", "colour", "color", "color palette",
+    "colour palette", "palette", "line", "shape", "pattern", "detail",
+    "accent", "metal accent", "illumination", "lighting", "light",
+    "brightness", "shade", "tint",
+    # abstractions and collectives that name no single thing
+    "object", "item", "thing", "piece", "collection", "assortment",
+    "arrangement", "seating", "storage", "space", "area", "room",
+    "scene", "side", "corner", "center", "centre", "foreground",
+    "background", "surface", "floor plan", "layout",
+    # things outside the room, or the room's own fabric
+    "view", "garden", "greenery", "outdoors", "environment", "sunlight",
+    "daylight", "wall", "floor", "ceiling",
+    # descriptors that arrive as nouns
+    "minimalist", "realistic", "modern", "contemporary",
+}
+
+
+def _is_abstract(noun):
+    """Is this prompt noun something nothing could be placed for?
+
+    Matches the whole phrase or its head word, so "metal accent" and
+    "accent" both go, and "color palette" goes even though "palette"
+    alone might be a real object elsewhere."""
+    n = noun.strip().lower()
+    if n in ABSTRACT_NOUNS:
+        return True
+    head = n.split()[-1] if n.split() else n
+    return head in ABSTRACT_NOUNS
+
+
 def axis_prompt_fidelity(prompt_text, ours, glts):
     """Which of the prompt's nouns each method's output names, and what
     each method names that the prompt never mentioned."""
-    nouns = vocab.extract_vocab(prompt_text, staples=False)
+    raw_nouns = vocab.extract_vocab(prompt_text, staples=False)
+
+    # A PROMPT NOUN IS ONLY A FAIR TEST IF SOMETHING COULD BE PLACED FOR
+    # IT. vocab_from_prompt builds a DETECTION vocabulary, where a word
+    # too many costs nothing, so it happily returns "sense", "elegance",
+    # "comfort", "warmth", "texture", "illumination". Neither method can
+    # put an elegance in a room. Leaving them in the denominator made the
+    # living room read "23 prompt nouns, ours named 6" when ours had in
+    # fact named SIX OF THE SIX placeable things the prompt asked for.
+    # That is not a small distortion, it is the whole number.
+    #
+    # The filter is a published stop-list rather than a cleverer parser,
+    # because a rule a reader can audit beats one they must trust. Both
+    # the kept and the dropped lists go into the report.
+    nouns = [n for n in raw_nouns if not _is_abstract(n)]
+    dropped = [n for n in raw_nouns if _is_abstract(n)]
     res = {"label": "COMPARABLE",
            "prompt_nouns": nouns, "n_prompt_nouns": len(nouns),
+           "prompt_nouns_all": raw_nouns,
+           "prompt_nouns_dropped_as_abstract": dropped,
            "noun_source": "vocab_from_prompt.extract_vocab(text, "
                           "staples=False) — the repo's own extractor. The "
                           "staples (door, window, pillow, curtain, ceiling "
@@ -783,7 +841,21 @@ def axis_physical(ours, glts):
                            f"conditioner and a ceiling light are all "
                            f"correctly floating, so on a RECONSTRUCTION "
                            f"this is a description of the room, not an "
-                           f"error count.",
+                           f"error count. TWO MORE REASONS OUR SIDE FLOATS "
+                           f"AND GLTS DOES NOT, both structural rather "
+                           f"than defects: (1) GLTS PLACES objects ON a "
+                           f"floor it invented, so a floor-standing object "
+                           f"cannot float by construction — a zero here is "
+                           f"the method's premise, not an achievement; "
+                           f"(2) ours is measured at the `grouped` layer, "
+                           f"BEFORE compose/snap re-seats anything, and "
+                           f"the room-shell epsilon (SHELL_EPS, 0.05 m) "
+                           f"deliberately lifts the floor plane — so a "
+                           f"sofa reported at 0.10-0.14 m is the known "
+                           f"pre-snap state of the chain, not a "
+                           f"reconstruction that lost the floor. Read the "
+                           f"heights: centimetres are the epsilon, metres "
+                           f"are a ceiling light.",
            },
            "methods": {}}
     if ours.get("available") and (ours.get("room") or {}).get("available"):
