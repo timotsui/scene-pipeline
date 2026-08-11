@@ -1,14 +1,23 @@
 """run_scene.py — run one scene end to end, unattended, with a checkpoint
 between every stage.
 
-A scene is built in THREE PHASES, and NONE of them is written down here.
-The order is data in graph/stages.py — three tables — and this file walks
+A scene is built in FOUR PHASES, and NONE of them is written down here.
+The order is data in graph/stages.py — four tables — and this file walks
 whichever of them `--phase` selects. Add a stage there and it runs here;
 nothing else has to learn it.
 
     core     INTAKE   the Marble bundle becomes a measured room
-    graph    CHAIN    that room becomes a settled scene graph
+    record   RECORD   that room becomes a scene graph, identities settled
+    graph    CHAIN    the vote onward, to `grouped`
     compose  COMPOSE  that graph becomes a furnished room
+
+⚠ `record` IS NEW ON 2026-08-11B, AND ITS ABSENCE IS WHY NO FRESH SCENE
+COULD EVER FINISH. `CHAIN` begins at the vote and reads `resolved`, and
+nothing in any table BUILT `resolved` — the ten designed stages from
+build_graph to materialize_verdicts existed as modules and as prose, and
+in no runnable order. Both test scenes only worked because they were
+clones that already had that layer. `--phase graph` still means "the vote
+onward", which is what it has meant in every handoff.
 
 ⚠ `--phase core` CHANGED MEANING ON 2026-08-11. It used to run a lane
 whose outputs nothing downstream read — crop_pano into pano_crops/,
@@ -142,6 +151,7 @@ PY = sys.executable
 #: Nothing about a phase is written out here any more.
 PHASES = {
     "core":    (stages.INTAKE,  stages.INTAKE_KEYS,  "INTAKE"),
+    "record":  (stages.RECORD,  stages.RECORD_KEYS,  "RECORD + JUDGE"),
     "graph":   (stages.CHAIN,   stages.KEYS,         "GRAPH CHAIN"),
     "compose": (stages.COMPOSE, stages.COMPOSE_KEYS, "COMPOSE"),
 }
@@ -853,6 +863,7 @@ def parse_skip(raw):
         raise SystemExit(
             f"--skip: unknown stage(s) {', '.join(unknown)}.\n"
             f"  intake : {', '.join(stages.INTAKE_KEYS)}\n"
+            f"  record : {', '.join(stages.RECORD_KEYS)}\n"
             f"  graph  : {', '.join(stages.KEYS)}\n"
             f"  compose: {', '.join(stages.COMPOSE_KEYS)}")
     return skip
@@ -910,9 +921,11 @@ def main():
     ap.add_argument("--skip", default="",
                     help="comma-separated stage keys to skip, from any "
                          "phase. Intake: " + ",".join(stages.INTAKE_KEYS)
+                         + ". Record: " + ",".join(stages.RECORD_KEYS)
                          + ". Graph: " + ",".join(stages.KEYS)
                          + ". Compose: " + ",".join(stages.COMPOSE_KEYS))
-    ap.add_argument("--phase", choices=("core", "graph", "compose", "all"),
+    ap.add_argument("--phase",
+                    choices=tuple(stages.PHASES_ORDER) + ("all",),
                     default="all",
                     help="which part to run (default: all). core = the "
                          "INTAKE funnel, bundle to a measured room; graph "
@@ -958,6 +971,7 @@ def main():
     skip = parse_skip(a.skip)
     stop_on_fail = not a.continue_on_fail
     do_core = a.phase in ("core", "all")
+    do_record = a.phase in ("record", "all")
     do_graph = a.phase in ("graph", "all")
     do_compose = a.phase in ("compose", "all")
 
@@ -968,8 +982,8 @@ def main():
     # sweep now, and --no-llm on a fresh scene means no word list at all.
     llm_skipped = []
     if a.no_llm:
-        llm_skipped = [s.key for s in
-                       stages.INTAKE + stages.CHAIN + stages.COMPOSE if s.llm]
+        llm_skipped = [s.key for s in stages.INTAKE + stages.RECORD
+                       + stages.CHAIN + stages.COMPOSE if s.llm]
         skip |= set(llm_skipped)
 
     # --from / --until name a stage in ONE of the three tables. Work out
@@ -983,10 +997,13 @@ def main():
                 a.until_key if a.until_key in group_keys else None)
 
     fk_i, uk_i = _range_for(stages.INTAKE_KEYS)
+    fk_r, uk_r = _range_for(stages.RECORD_KEYS)
     fk_g, uk_g = _range_for(stages.KEYS)
     fk_c, uk_c = _range_for(stages.COMPOSE_KEYS)
     selected_core = (stages.select_intake(fk_i, uk_i, skip)
                      if do_core else [])
+    selected_record = (stages.select_record(fk_r, uk_r, skip)
+                       if do_record else [])
     selected_graph = stages.select(fk_g, uk_g, skip) if do_graph else []
     selected_compose = (stages.select_compose(fk_c, uk_c, skip)
                         if do_compose else [])
@@ -1005,6 +1022,7 @@ def main():
     print(f"[run_scene] scene={sc}  phase={a.phase}  bundle={bundle}"
           f"  skip={sorted(skip) or 'none'}")
     for label, sel, want in (("intake", selected_core, do_core),
+                             ("record+judge", selected_record, do_record),
                              ("graph chain", selected_graph, do_graph),
                              ("compose", selected_compose, do_compose)):
         if want:
@@ -1013,13 +1031,17 @@ def main():
     if llm_skipped:
         print(f"[run_scene] --no-llm: skipping {', '.join(llm_skipped)}")
 
-    gpu_warning(selected_core, selected_graph, selected_compose)
+    gpu_warning(selected_core, selected_record, selected_graph,
+                selected_compose)
 
     if a.dry_run:
         print("\n[run_scene] DRY RUN — nothing below is executed, and no run "
               "log is written.")
         if do_core:
             graph_dry_run(sc, selected_core, "INTAKE", final_gate=False)
+        if do_record:
+            graph_dry_run(sc, selected_record, "RECORD + JUDGE",
+                          final_gate=False)
         if do_graph:
             graph_dry_run(sc, selected_graph)
         if do_compose:
@@ -1066,6 +1088,10 @@ def main():
         if do_core:
             per_stage += run_graph(sc, selected_core, log, failures,
                                    stop_on_fail, phase="core")
+
+        if do_record and (not failures or not stop_on_fail):
+            per_stage += run_graph(sc, selected_record, log, failures,
+                                   stop_on_fail, phase="record")
 
         if do_graph and (not failures or not stop_on_fail):
             per_stage += run_graph(sc, selected_graph, log, failures,

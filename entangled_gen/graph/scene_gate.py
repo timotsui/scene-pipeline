@@ -286,7 +286,8 @@ def stale_inputs(scene, graph):
     """
     sd = paths.scene_dir(scene)
     out = []
-    for st in stages.INTAKE + stages.CHAIN + stages.COMPOSE:
+    for st in (stages.INTAKE + stages.RECORD + stages.CHAIN
+               + stages.COMPOSE):
         if not st.inputs:
             continue
 

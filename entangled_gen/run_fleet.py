@@ -89,6 +89,8 @@ for _p in (HERE, HERE / "graph"):
         sys.path.insert(0, str(_p))
 
 import scene_gate as gate     # noqa: E402  the checkpoint, for final()
+import stages                 # noqa: E402  the phase names, so this
+                              # driver and run_scene cannot disagree
 
 PY = sys.executable
 RUNNER = HERE / "run_scene.py"
@@ -699,11 +701,18 @@ def build_parser():
                         "of finding them one re-run at a time.")
 
     g = ap.add_argument_group("passed through to run_scene.py")
-    g.add_argument("--phase", choices=("core", "graph", "all"), default="all")
+    # ⚠ `record` AND `compose` WERE BOTH MISSING FROM THIS LIST until
+    # 2026-08-11B — so the driver written to run a hundred scenes
+    # overnight could not be asked for the compose phase at all, and the
+    # new record phase would have been rejected as an invalid choice.
+    # Kept in step with run_scene's own --phase by reading the same table.
+    g.add_argument("--phase",
+                   choices=tuple(stages.PHASES_ORDER) + ("all",),
+                   default="all")
     g.add_argument("--from", dest="from_key", default=None,
-                   help="graph chain: first stage to run")
+                   help="first stage to run, in whichever table names it")
     g.add_argument("--until", dest="until_key", default=None,
-                   help="graph chain: last stage to run")
+                   help="last stage to run, in whichever table names it")
     g.add_argument("--skip", default="",
                    help="comma-separated stages to skip")
     g.add_argument("--no-llm", action="store_true",

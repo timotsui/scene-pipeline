@@ -406,6 +406,183 @@ INTAKE = (
 
 INTAKE_KEYS = tuple(s.key for s in INTAKE)
 
+#: STEP 4g/J — RECORD, then JUDGE. The measured room becomes a scene
+#: graph, and the graph's identities get settled: what is one object and
+#: what is two, what each thing is called, what is really there.
+#:
+#: ⚠ THIS IS THE HALF THAT WAS MISSING FROM EVERY TABLE UNTIL 2026-08-11B,
+#: and it is the reason a fresh bundle could not reach the vote. `CHAIN`
+#: starts at the vote and reads `resolved`; nothing built `resolved`. Both
+#: test scenes only ever worked because they were clones that already had
+#: that layer. Ten designed stages simply were not written down anywhere a
+#: runner could execute them.
+#:
+#: THE ORDER IS RULED, not chosen here — PIPELINE.md:301-312 and
+#: PLAN_SCENE_GRAPH.md:234:
+#:
+#:     G1 build_graph  ->  G2 build_edges                  stamps `record`
+#:     J0 triage_pairs ->  J1 judge_pairs  ->  J5 judge_near
+#:     J2 build_judged ->  J3 judge_names  ->  J4 judge_coherence
+#:                                                         stamps `judged`
+#:     J6 describe_nodes  ->  J7 materialize_verdicts    stamps `resolved`
+#:
+#: ⚠ THE NUMBERING IS J3 = NAMES, J4 = COHERENCE. PLAN_VOTEBOX_DOWNSTREAM
+#: said "J4 names" twice and was corrected 08-11; older copies and
+#: anyone's memory may still have it the wrong way round.
+#:
+#: `graph/judge_cases.py` is RETIRED — its own docstring says "do not wire
+#: it into any orchestration"; describe_nodes absorbed its queue
+#: machinery. It is not here, and it should not be added.
+#:
+#: KEPT SEPARATE FROM `CHAIN` ON PURPOSE. `--phase graph` has meant "the
+#: vote onward" in every handoff and every command line, and that meaning
+#: is worth keeping. This is `--phase record`.
+#:
+#: WHY THERE IS NO LOOP HERE. J4 runs ONCE and its flags are a queue, not
+#: a re-scan trigger; J6 runs ONCE and what it does not settle SHIPS; J7
+#: is deterministic and cached. That is a deliberate design ruling
+#: (PIPELINE.md, "There is NO iteration loop at the graph stage"), not an
+#: omission. The one loop-back in this pipeline is Phase B2, and it runs
+#: AFTER the vote — see the CHAIN table below.
+RECORD = (
+    Stage(
+        "build_graph", "G1: turn the measured objects into graph nodes, "
+                       "with their pictures",
+        lambda sc: [PY, "graph/build_graph.py", "--scene", sc,
+                    "--manifest", MANIFEST_F30,
+                    "--pool", LIFT_POOL,
+                    "--crop-src", RIG_CROPS],
+        artifacts=("scene_graph.json",),
+        inputs=(MANIFEST_F30, LIFT_POOL, "room_shell.json"),
+        note="The manifest's objects become nodes VERBATIM — no "
+             "pre-merged dedup, so both halves of every duplicate-suspect "
+             "pair are nodes and merging stays a judge's verdict. It also "
+             "cuts each node its crops, and turns the room shell's "
+             "polygon into one architecture node per wall SEGMENT. The "
+             "three paths are passed rather than left to the module's "
+             "defaults, which hardcode the same strings a fourth time.",
+    ),
+    Stage(
+        "build_edges", "G2: work out what is on, in, or against what",
+        lambda sc: [PY, "graph/build_edges.py", "--scene", sc],
+        writes="record",
+        inputs=("room_shell.json",),
+        note="Pure geometry, no judgement: ON, IN, IN_WALL, ATTACHED, "
+             "INTERPENETRATES, the SAME_CANDIDATE queue and the NEAR "
+             "fallbacks that stop anything floating unexplained. STAMPS "
+             "`record`, which is why this row and not G1 declares the "
+             "layer. Self-checks and exits 1 on a frame or invariant "
+             "violation.",
+    ),
+    Stage(
+        "j0", "J0: which box-inside-box pairs are worth a look?",
+        lambda sc: [PY, "graph/triage_pairs.py", "--scene", sc,
+                    "--edges-from", "record"],
+        reads="record",
+        artifacts=("graph/triage_pairs_cache.json",),
+        llm=True,
+        note="ONE cheap text call over the whole docket. Containment >= "
+             "0.90 pairs are exactly what the SAME_CANDIDATE IoU floor "
+             "deliberately excludes, so without this they never reach a "
+             "judge at all. Asymmetric by design: nominate on doubt, "
+             "because a wrong nomination costs one crop call and a wrong "
+             "skip ships a duplicate.",
+    ),
+    Stage(
+        "j1", "J1: same object or two?",
+        lambda sc: [PY, "graph/judge_pairs.py", "--scene", sc,
+                    "--edges-from", "record"],
+        reads="record",
+        artifacts=("graph/judge_pairs_cache.json",),
+        llm=True,
+        note="Crops of both, one verdict per SAME_CANDIDATE edge. A "
+             "fragment of a thing IS that thing (SAME); its contents are "
+             "not (DISTINCT). Additive — nothing is merged here; J2 "
+             "materializes it.",
+    ),
+    Stage(
+        "j5", "J5: what is holding up the things that appear to float?",
+        lambda sc: [PY, "graph/judge_near.py", "--scene", sc],
+        reads="record",
+        artifacts=("graph/judge_near_cache.json",),
+        llm=True,
+        note="RUNS AFTER J1 AND THE ORDER IS LOAD-BEARING: it folds J1's "
+             "SAME verdicts first, so one object detected twice cannot "
+             "occupy two slots on a floater's menu of candidate supports. "
+             "That ordering became a refusal on 2026-08-11B; before, "
+             "running it early was silently wrong.",
+    ),
+    Stage(
+        "build_judged", "J2: apply the merges and re-point everything",
+        lambda sc: [PY, "graph/build_judged.py", "--scene", sc],
+        reads="record", writes="judged",
+        inputs=("graph/judge_pairs_cache.json", "graph/judge_near_cache.json"),
+        note="Zero model calls — union-find over the SAME verdicts, then "
+             "the edges re-derived and the judgements carried across. "
+             "Reproducible at any time from the record plus the caches, "
+             "which is what makes the record safe to treat as immutable.",
+    ),
+    Stage(
+        "j3", "J3: give every object its real name",
+        lambda sc: [PY, "graph/judge_names.py", "--scene", sc],
+        reads="judged",
+        artifacts=("graph/judge_names_cache.json",),
+        llm=True,
+        note="⚠ J3 IS NAMES. PLAN_VOTEBOX_DOWNSTREAM.md said 'J4 names' "
+             "twice and was corrected on 08-11; if a doc disagrees, this "
+             "and PIPELINE.md:301-312 are right.",
+    ),
+    Stage(
+        "j4", "J4: does the room as a whole make sense?",
+        lambda sc: [PY, "graph/judge_coherence.py", "--scene", sc],
+        reads="judged",
+        artifacts=("graph/judge_coherence_cache.json",),
+        llm=True,
+        note="Text only, and it runs ONCE — its flags are a queue for J6, "
+             "never a trigger to re-scan. AFTER J3 AND THAT MATTERS: its "
+             "cache key hashes a digest that quotes every object's name, "
+             "so running it on provisional names caches an answer about "
+             "names that are about to change. A refusal since 08-11B.",
+    ),
+    Stage(
+        "j6", "J6: describe each object, and settle what J4 flagged",
+        lambda sc: [PY, "graph/describe_nodes.py", "--scene", sc],
+        reads="judged",
+        artifacts=("graph/appearance_cache_v2.json",),
+        llm=True,
+        note="THE LAST JUDGE OF THIS HALF, and it runs ONCE: what it does "
+             "not settle SHIPS. Appearance for every node, plus the "
+             "existence and rename adjudications J4 queued — each with a "
+             "zoomed-out context tile, because identity is unanswerable at "
+             "tight-crop zoom (the obj_138 door-frame lesson).",
+    ),
+    Stage(
+        "resolved", "J7: turn every verdict into the shipping object set",
+        lambda sc: [PY, "graph/materialize_verdicts.py", "--scene", sc],
+        reads="judged", writes="resolved",
+        inputs=("graph/appearance_cache_v2.json",
+                "graph/judge_coherence_cache.json",
+                "graph/judge_names_cache.json"),
+        llm=True,
+        note="Rejected, structural and disputed nodes leave, each with its "
+             "reason recorded; the judges' sentences become the closed "
+             "edge vocabulary. BOX GEOMETRY IS VERBATIM — no surgery here, "
+             "by the user's stage-contract ruling of 07-26; moving boxes "
+             "is the vote's job, and it is the next stage. This is the "
+             "CANONICAL HANDOFF: `resolved` is where measurement ends and "
+             "the CHAIN table below begins.",
+    ),
+)
+
+RECORD_KEYS = tuple(s.key for s in RECORD)
+
+#: THE PHASES, IN THE ORDER A SCENE GOES THROUGH THEM, named once so that
+#: run_scene and run_fleet cannot drift apart on what `--phase` accepts.
+#: They did: run_fleet offered ("core", "graph", "all") and so could not
+#: be asked for compose at all — on the driver whose whole job is running
+#: a hundred scenes unattended.
+PHASES_ORDER = ("core", "record", "graph", "compose")
+
 CHAIN = (
     Stage(
         "vote", "elect a box for every object from its own plan and "
@@ -905,6 +1082,7 @@ FIT_CLOSING = ("fit_preview", "fit_declip")
 
 KEYS = tuple(s.key for s in CHAIN)
 BY_KEY = {s.key: s for s in INTAKE}
+BY_KEY.update({s.key: s for s in RECORD})
 BY_KEY.update({s.key: s for s in CHAIN})
 BY_KEY.update({s.key: s for s in COMPOSE})
 
@@ -912,8 +1090,8 @@ BY_KEY.update({s.key: s for s in COMPOSE})
 # the funnel and the chain both have a stage that could plausibly be
 # called "lift" or "filter". Catch it at import, not at 3 a.m.
 _seen = {}
-for _group, _name in ((INTAKE, "INTAKE"), (CHAIN, "CHAIN"),
-                      (COMPOSE, "COMPOSE")):
+for _group, _name in ((INTAKE, "INTAKE"), (RECORD, "RECORD"),
+                      (CHAIN, "CHAIN"), (COMPOSE, "COMPOSE")):
     for _s in _group:
         if _s.key in _seen:
             raise SystemExit(
@@ -932,9 +1110,11 @@ def get(key):
         return BY_KEY[key]
     except KeyError:
         raise SystemExit(
-            f"unknown stage '{key}'. Intake is: {', '.join(INTAKE_KEYS)}. "
-            f"The graph chain is: {', '.join(KEYS)}. "
-            f"Compose is: {', '.join(COMPOSE_KEYS)}")
+            f"unknown stage '{key}'.\n"
+            f"  intake : {', '.join(INTAKE_KEYS)}\n"
+            f"  record : {', '.join(RECORD_KEYS)}\n"
+            f"  graph  : {', '.join(KEYS)}\n"
+            f"  compose: {', '.join(COMPOSE_KEYS)}")
 
 
 def _select(group, keys, from_key=None, until_key=None, skip=()):
@@ -955,6 +1135,11 @@ def _select(group, keys, from_key=None, until_key=None, skip=()):
 def select_intake(from_key=None, until_key=None, skip=()):
     """The intake stages to run, same rules as select()."""
     return _select(INTAKE, INTAKE_KEYS, from_key, until_key, skip)
+
+
+def select_record(from_key=None, until_key=None, skip=()):
+    """The record/judge stages to run, same rules as select()."""
+    return _select(RECORD, RECORD_KEYS, from_key, until_key, skip)
 
 
 def select_compose(from_key=None, until_key=None, skip=()):
@@ -984,11 +1169,13 @@ def select(from_key=None, until_key=None, skip=()):
 
 def describe():
     """Both chains as a human-readable table. Printed by run_scene --list."""
-    w = max(len(k) for k in INTAKE_KEYS + KEYS + COMPOSE_KEYS)
+    w = max(len(k) for k in INTAKE_KEYS + RECORD_KEYS + KEYS + COMPOSE_KEYS)
     lines = []
     for title, group in (("INTAKE — the bundle becomes a measured room",
                           INTAKE),
-                         ("GRAPH CHAIN — the room as measured", CHAIN),
+                         ("RECORD + JUDGE — the room becomes a graph, and "
+                          "its identities get settled", RECORD),
+                         ("GRAPH CHAIN — the vote onward", CHAIN),
                          ("COMPOSE — the room as furnished", COMPOSE)):
         lines.append("")
         lines.append(title)
