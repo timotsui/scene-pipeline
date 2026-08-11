@@ -267,13 +267,20 @@ def load_json(p, what, required=True):
 
 def vote_report_boxes(sdir, graph):
     """{id: {box_name: {lo,hi}}} from the vote's own report (the only
-    place vote2 lives). Preferred location is the scene's vote/;
-    the vote block's recorded absolute built_from is the fallback."""
+    place vote2 lives). Preferred location is the scene's vote/; the
+    `voted` layer's recorded built_from is the fallback for a scene whose
+    report has been moved. (That fallback read graph['vote']['built_from']
+    until 2026-08-11, when the block was retired; build_voted records the
+    same provenance on the layer.)"""
     p = sdir / VOTE_REPORT
     if not p.exists():
-        rec = (graph.get("vote") or {}).get("built_from")
-        if rec and Path(rec).exists():
-            p = Path(rec)
+        rec = (graph.get("voted") or {}).get("built_from") or ""
+        # the layer states its sources in one sentence; pull the report
+        # out of it rather than trusting the whole string as a path
+        for tok in str(rec).split():
+            if tok.endswith("slicevote_report.json") and Path(tok).exists():
+                p = Path(tok)
+                break
     rep = load_json(p, "vote report (slicevote_report.json)")
     return ({r["id"]: (r.get("boxes") or {}) for r in rep["results"]},
             str(p))
@@ -282,25 +289,25 @@ def vote_report_boxes(sdir, graph):
 def same_verdict_pairs(graph):
     """SAME_CANDIDATE edges whose J1 verdict is SAME. [(a, b, verdict)].
 
-    LOOK IN BOTH BLOCKS, AND PREFER THE ONE J1 ACTUALLY WRITES TO
-    (fixed 2026-08-11). This used to read `(graph["voted"] or
-    graph["voted_edges"])` — the docstring said `voted_edges`, the code
-    took `voted` whenever it existed, which is always. `voted`'s edges
-    are edge_carry's re-derived copy, made at build time with whatever
-    verdicts existed THEN; `voted_edges` is the block `judge_pairs.py
-    --edges-from voted_edges` writes new verdicts into. So re-judging a
-    SAME_CANDIDATE pair after the vote had no effect at all: the answer
-    went into `voted_edges` and this function never looked there.
+    `voted` IS THE PLACE, and since 2026-08-11 it is the only one.
 
-    That matters because the vote MOVES BOXES and can create duplicate
-    pairs that no judge saw before it (docs/PLAN_AUTOMATION_2026-08-11,
-    the two chairs at 96% containment). Re-judging them is the intended
-    repair, and it silently did nothing.
+    THE BUG THIS FUNCTION WAS BORN FROM, kept because the shape recurs.
+    It used to read `(graph["voted"] or graph["voted_edges"])` — the
+    docstring said `voted_edges`, the code took `voted` whenever it
+    existed, which was always. But J1's post-vote re-judgement wrote into
+    `voted_edges`, so a SAME_CANDIDATE pair re-judged after the vote had
+    no effect at all: the answer went somewhere this function never
+    looked. That matters because the vote MOVES BOXES and can create
+    duplicate pairs no judge saw before it (the two chairs at 96%
+    containment). Re-judging them is the intended repair, and it silently
+    did nothing. Two places to write one fact is what made it possible.
 
-    Now: every SAME verdict in EITHER block counts, keyed by the pair so
-    the same edge is never applied twice, and `voted_edges` wins a
-    disagreement because it is where a later, deliberate re-judgement
-    lands."""
+    The half-layer is now retired and `judge_pairs --edges-from voted`
+    writes into the voted LAYER's own edges — the same list this reads
+    first. `voted_edges` is still swept, and swept SECOND, purely for
+    scenes on disk that were judged before the change; a fresh scene
+    never has the block. Verdicts are keyed by pair, so no edge is
+    applied twice."""
     seen = {}
     for block in ("voted", "voted_edges"):
         for e in (graph.get(block) or {}).get("edges", []):
@@ -314,14 +321,18 @@ def same_verdict_pairs(graph):
 
 
 def doubts_by_node(sdir, graph):
-    """{id: [doubt]} -- the vote's typed doubts. vote_doubts.json is
-    the sidecar; graph['vote']['nodes'] is the same content folded in."""
+    """{id: [doubt]} -- the vote's typed doubts.
+
+    graph/vote_doubts.json is THE source (record_vote_doubts.py writes
+    it). The `voted` layer's nodes carry the same doubts, folded in by
+    build_voted, and are the fallback for a scene whose sidecar has been
+    moved. graph['vote'] was a third copy and was retired 2026-08-11."""
     p = sdir / "graph" / "vote_doubts.json"
     if p.exists():
         d = json.loads(p.read_text(encoding="utf-8"))
         return {n["id"]: n.get("doubts") or [] for n in d.get("nodes", [])}
-    return {i: n.get("doubts") or []
-            for i, n in ((graph.get("vote") or {}).get("nodes") or {}).items()}
+    return {n["id"]: n.get("doubts") or []
+            for n in (graph.get("voted") or {}).get("nodes") or []}
 
 
 # --------------------------------------------------------------------------

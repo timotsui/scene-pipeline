@@ -368,48 +368,40 @@ def main():
     out.write_text(json.dumps(
         {"scene": a.scene,
          "source": "graph/record_vote_doubts.py — typed open questions "
-                   "from the slice-vote election. Consumers: multiplicity "
-                   "judge + same-product judge (+ the scene_graph.json "
-                   "vote block this same run writes).",
+                   "from the slice-vote election. THE only copy: read by "
+                   "build_voted (folds them onto the `voted` layer's "
+                   "nodes), materialize_layers and scene_gate. The "
+                   "scene_graph.json `vote` block was a second copy and "
+                   "was retired 2026-08-11.",
          "n_nodes_with_doubts": len(doubts), "nodes": doubts}, indent=1))
     print(f"[doubts] {len(doubts)} node(s) with doubts -> {out}",
           flush=True)
 
+    # THE GRAPH IS NOT TOUCHED, AND THAT IS THE CHANGE OF 2026-08-11.
+    #
+    # This stage used to write the same content twice: the sidecar above
+    # AND a graph["vote"] block folding it in. The user's ruling of that
+    # date — the map is right, and things it marks stale leave the chain
+    # — retires the block. It was a node-sidecar with no nodes of its
+    # own, so it could never be the state of the scene, and it was the
+    # second copy of a fact the pipeline already had twice over:
+    #
+    #   the DOUBTS      -> graph/vote_doubts.json, written above, read by
+    #                      build_voted, materialize_layers and the gate
+    #   status / tiers  -> lifted onto every node of the `voted` LAYER by
+    #   / slice            build_voted (VOTE_RULE_KEYS), from this same
+    #                      report and this same preview manifest
+    #
+    # The four modules that read the block now read one of those two.
+    # `status_by_id` above still feeds the sidecar's own per-node status.
     gf = sd / "scene_graph.json"
     if not gf.exists():
-        raise SystemExit("[doubts] no scene_graph.json — nothing to apply "
-                         "into")
-    g = json.loads(gf.read_text())
-    nodes_block = {}
-    for r in rep["results"]:
-        nodes_block[r["id"]] = {
-            "name": r["name"],
-            "status": status_by_id.get(r["id"], ""),
-            "tiers": r["rule"].get("tiers", []),
-            "slice": r["rule"].get("slice", ""),
-        }
-    for n in doubts:
-        nodes_block[n["id"]]["doubts"] = n["doubts"]
-    g["vote"] = {
-        "built": datetime.now().isoformat(timespec="seconds"),
-        "built_from": str(rep_f),
-        "report_status": rep.get("status", ""),
-        "by_status": rep.get("by_status", {}),
-        "note": "ADDITIVE block (record-then-judge): slice-vote election "
-                "provenance + typed doubts per resolved node; nodes are "
-                "never mutated. Boxes live in "
-                "scene_manifest_slicevote_preview.json until the "
-                "materialize pass folds them in (map promotion). "
-                "AUTO-DOUBTS ONLY (Rule #1) — no user-routing channel.",
-        "nodes": nodes_block,
-    }
-    # This stage invented the temp-then-rename here, and every other
-    # stage now does the same through one helper. Use it, so there is a
-    # single place the rule lives and the whole chain writes alike.
-    paths.write_atomic(gf, json.dumps(g, indent=1))
-    n_doubt = sum(1 for v in nodes_block.values() if v.get("doubts"))
-    print(f"[doubts] applied: scene_graph.json `vote` block — "
-          f"{len(nodes_block)} nodes ({n_doubt} with doubts)", flush=True)
+        raise SystemExit("[doubts] no scene_graph.json — the vote's doubts "
+                         "are about its nodes, so a scene with no graph "
+                         "means the chain is being run out of order")
+    print(f"[doubts] the scene graph is NOT written by this stage "
+          f"(graph['vote'] retired 2026-08-11); "
+          f"{len(doubts)} node(s) with doubts live in {out}", flush=True)
 
 
 if __name__ == "__main__":

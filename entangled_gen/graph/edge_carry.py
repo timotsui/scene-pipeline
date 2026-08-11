@@ -46,6 +46,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
+import scene_state                    # noqa: E402
 from build_edges import derive_edges  # noqa: E402
 
 # what a judge writes onto an edge — geometry cannot regenerate any of it
@@ -151,31 +152,41 @@ def carry(nodes, graph, remap, inherit_from=("resolved", "voted_edges"),
         return [], {}, {"status": "NOT DERIVED — the scene has no "
                                   "arch_floor / arch_ceiling envelope "
                                   "nodes"}
-    rec = {n["id"]: n for n in (graph.get("nodes") or [])}
-    res_src = {n["id"]: (n.get("members") or [n["id"]])
-               for n in (graph.get("resolved") or {}).get("nodes") or []}
+    # NEAR reads detection-level truncation facts, so every node has to
+    # arrive carrying the RECORD detections behind it. That walk used to
+    # be written out here; it is now scene_state.member_evidence, shared
+    # with the judges, because two spellings of one rule is how this repo
+    # grows a second source of truth.
+    ev = scene_state.member_evidence(graph)
     det = []
     for n in nodes:
         if not n.get("geometry"):
             continue
-        # NEAR reads detection-level truncation facts, so walk down to the
-        # RECORD nodes: a node's members are resolved ids, a resolved
-        # node's are record ids. One hop is not enough for a split piece.
-        members = []
-        for rid in (n.get("members") or [n["id"]]):
-            for sid in res_src.get(rid, [rid]):
-                m = rec.get(sid)
-                if m:
-                    members += ((m.get("evidence") or {})
-                                .get("members") or [])
         det.append({"id": n["id"], "source": "detection",
                     "label": n.get("name") or "",
                     "geometry": n["geometry"],
-                    "evidence": {"members": members}})
+                    "evidence": {"members": ev(n)}})
 
-    walls = {i: n["geometry"]["plane"] for i, n in env.items()
-             if i.startswith("arch_wall")
-             and n["geometry"].get("plane", {}).get("axis") in ("x", "z")}
+    # THE FULL GEOMETRY, NOT THE PLANE. wall_claim_dist(g, geom) reads
+    # geom["plane"] and geom["extent"] itself (build_edges.py:148-149), so
+    # handing it the plane alone makes every lookup miss: plane.get("plane")
+    # is {}, axis is None, kind is None, and the function returns None for
+    # every wall of every node. The two other callers get this right —
+    # build_edges.py:579 and rederive_voted_edges.py:237 both pass
+    # n["geometry"], with a comment saying W5 needs plane + extent so the
+    # claim can be guarded by the segment's extent.
+    #
+    # ⚠ WHAT THIS COST, measured 2026-08-11 before the fix. edge_carry is
+    # what EVERY whole layer derives its edges with, so the miss was total:
+    # `voted`, `settled`, `shown` and `grouped` each carried ZERO IN_WALL
+    # edges on both living (19 in `resolved`) and bedroom. Nothing crashed
+    # and no count looked wrong, because the layers genuinely had no wall
+    # edges to be stale. The old `axis in ("x","z")` filter was a second,
+    # smaller bug on the same two lines: it dropped W5 CONNECTOR segments
+    # (axis None, kind "connector") — living's five-segment shell arrived
+    # here as four.
+    walls = {i: n["geometry"] for i, n in env.items()
+             if i.startswith("arch_wall")}
     d = derive_edges(det, env,
                      env["arch_floor"]["geometry"]["plane"]["value_raw"],
                      env["arch_ceiling"]["geometry"]["plane"]["value_raw"],

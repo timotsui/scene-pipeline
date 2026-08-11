@@ -73,10 +73,16 @@ class Stage:
     writes     layer that must be present, fresh and stamped AFTER it
     artifacts  files (relative to the scene dir) that must exist and have
                been touched DURING this run
-    graph_keys top-level scene_graph.json blocks that must exist after it
-               — for the stages that edit the graph without adding a
-               layer (`vote`, `voted_edges`: neither has nodes, so
-               neither can ever become the state of the scene)
+    graph_keys top-level scene_graph.json blocks that must exist after
+               this stage — for a stage that edits the graph without
+               adding a layer.
+               ⚠ NO STAGE USES THIS TODAY, on purpose. Its only two users
+               were `vote` and `voted_edges`, the node-sidecar and the
+               edges-only block, and BOTH WERE RETIRED on 2026-08-11 by
+               the ruling that every layer must be whole. The check is
+               kept because the shape is legitimate, but a new row
+               reaching for it should first ask whether what it wants is
+               really a layer, or a file (`artifacts`).
     inputs     FILES this stage consumes that ANOTHER stage produced.
                These are the dependencies the layer chain cannot see, and
                they are the hole this field closes. The stale sweep only
@@ -128,15 +134,18 @@ CHAIN = (
              "difference between runs is code or parameters, never drift.",
     ),
     Stage(
-        "doubts", "write what the vote was unsure about into the graph",
+        "doubts", "write down what the vote was unsure about",
         lambda sc: [PY, "graph/record_vote_doubts.py", "--scene", sc],
         reads="resolved", writes=None,
         artifacts=("graph/vote_doubts.json",),
-        graph_keys=("vote",),
-        note="This is the stage the no-op trap was caught on: without its "
-             "flag it updated vote_doubts.json but NOT the graph `vote` "
-             "block J8 reads, and J8 judged stale doubts. Writing is the "
-             "default now.",
+        note="THE SIDECAR IS THE WHOLE OUTPUT. This stage used to write "
+             "the same doubts twice — the file AND a graph['vote'] block "
+             "— and the no-op trap was caught here: without its flag it "
+             "updated the file but not the block, so J8 judged stale "
+             "doubts. The block is retired (user ruling 2026-08-11), the "
+             "duplication with it, and writing is the default now. "
+             "vote_doubts.json is read by build_voted, materialize_layers "
+             "and the gate; `artifacts` is what proves it was written.",
     ),
     Stage(
         "voted", "build the `voted` layer from the elected boxes",
@@ -145,18 +154,34 @@ CHAIN = (
         inputs=("scene_manifest_slicevote_preview.json",
                 "vote/slicevote_report.json"),
     ),
-    Stage(
-        "voted_edges", "re-derive the edges against the boxes the vote elected",
-        lambda sc: [PY, "graph/rederive_voted_edges.py", "--scene", sc],
-        reads="resolved", writes=None,
-        graph_keys=("voted_edges",),
-        note="Edges follow nodes (edge_carry.py). It reads the RESOLVED "
-             "node set and the voted boxes, and writes graph['voted_edges'] "
-             "— an edges-only block, which is why it is not a layer: a "
-             "block with no nodes can never be the state of the scene. "
-             "Both judges below read it by that name and refuse to run "
-             "without it, so the ordering is enforced twice.",
-    ),
+    # ⚠ THE `voted_edges` STAGE WAS HERE AND IS RETIRED (2026-08-11).
+    #
+    # USER RULING: "I think the pipeline viewer is generally correct.
+    # Items marked Stale should not be in the core pipeline."
+    # pipeline_map.html draws graph['voted_edges'] as a TOMBSTONE, retired
+    # 08-09: every layer must be WHOLE, and edges follow nodes INSIDE a
+    # layer (graph/edge_carry.py). A block with edges and no nodes is the
+    # last half-layer in the pipeline, and it ran beside graph['voted'],
+    # deriving its own second opinion about the same geometry.
+    #
+    # THE LOOP-BACK ITSELF SURVIVES — only its half-layer is gone. J0 and
+    # J1 still re-run after the vote (the 08-07 ruling below); they now
+    # read the voted LAYER's own edges via --edges-from voted.
+    #
+    # PROVED BEFORE REMOVING, not assumed. build_voted already re-derives
+    # the same edges with the same function: edge_carry.carry() calls
+    # build_edges.derive_edges, the identical call rederive_voted_edges
+    # made. Re-derived in memory on 2026-08-11 and compared pair by pair
+    # against graph['voted_edges'] on autotest_living (85 edges) and
+    # autotest_bedroom (145): ZERO pairs in one and not the other, and
+    # identical counts of every edge type. rederive_voted_edges.py stays
+    # on disk, unwired, like every other retirement here.
+    #
+    # (That comparison only held after fixing a real defect the exercise
+    # uncovered: edge_carry passed wall_claim_dist the wall's `plane`
+    # where it expects the whole `geometry`, so every wall lookup missed
+    # and EVERY layer from `voted` on carried zero IN_WALL edges — 18
+    # missing on living, 24 on bedroom. See edge_carry.py:176.)
     # ---- PHASE B2, THE LOOP-BACK ------------------------------------
     # USER ARCHITECTURE RULING 08-07 (docs/PLAN_VOTEBOX_DOWNSTREAM.md
     # "PHASE B2"): "after slice vote the scene goes all the way back up
@@ -184,23 +209,23 @@ CHAIN = (
     Stage(
         "j0_retriage", "J0: triage the pairs the vote's new boxes propose",
         lambda sc: [PY, "graph/triage_pairs.py", "--scene", sc,
-                    "--edges-from", "voted_edges"],
+                    "--edges-from", "voted"],
         reads="voted", writes=None,
-        graph_keys=("voted_edges",),
         llm=True,
-        note="Runs ON graph['voted_edges'], not on the record. Only "
-             "genuinely new nesting candidates cost a call.",
+        note="Runs on the VOTED LAYER's own edges, not on the record. "
+             "Only genuinely new nesting candidates cost a call. No "
+             "`graph_keys` any more: the block it used to require is "
+             "retired, and `reads` already says the layer must be there.",
     ),
     Stage(
         "j1_repairs", "J1: same-or-different on the pairs the vote created",
         lambda sc: [PY, "graph/judge_pairs.py", "--scene", sc,
-                    "--edges-from", "voted_edges"],
+                    "--edges-from", "voted"],
         reads="voted", writes=None,
-        graph_keys=("voted_edges",),
         llm=True,
         note="This is the stage that answers a duplicate the VOTE made by "
              "moving boxes — the two-chairs case. Its SAME verdicts ride "
-             "on the voted_edges block and materialize applies them.",
+             "on the voted layer's own edges and materialize applies them.",
     ),
     Stage(
         "j8", "J8: is this one object or several?",

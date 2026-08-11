@@ -1,4 +1,36 @@
-"""Phase B2 -- LOOP-BACK: re-derive the geometric edges on the VOTED boxes.
+"""RETIRED 2026-08-11. NOT IN ANY CHAIN. Do not wire it into one.
+
+USER RULING of that date: "I think the pipeline viewer is generally
+correct. Items marked Stale should not be in the core pipeline."
+pipeline_map.html draws graph["voted_edges"] as a TOMBSTONE (retired
+08-09): every layer must be WHOLE, and edges follow nodes INSIDE a
+layer. This module's output is an edges-only block sitting beside
+graph["voted"], which is a second opinion about the same geometry — the
+exact pattern R-S2-51 removed everywhere else.
+
+WHAT REPLACED IT: nothing new. graph/build_voted.py already re-derives
+these edges when it writes the layer, by calling edge_carry.carry(),
+which calls the same build_edges.derive_edges this module calls. Checked
+rather than assumed on 2026-08-11 — the layer's edges and this module's
+block were compared pair by pair on autotest_living (85 edges) and
+autotest_bedroom (145): identical sets, identical type counts. (That
+held only after fixing edge_carry's wall lookup, which had been silently
+dropping every IN_WALL edge; see edge_carry.py:176.)
+
+THE PHASE-B2 LOOP-BACK ITSELF IS STILL LIVE — only this half-layer is
+gone. J0 and J1 still re-run after the vote; they read the voted LAYER's
+own edges now:
+    python graph/triage_pairs.py --scene S --edges-from voted
+    python graph/judge_pairs.py  --scene S --edges-from voted
+`--edges-from voted_edges` is refused with that sentence.
+
+IT STAYS ON DISK, unwired, because its Gate-B2 diff print is still a
+useful bench tool for asking what the vote changed about the geometry,
+and because deleting a module is not how this repo retires things.
+
+--- what it does, for anyone using it as a bench tool ---
+
+Phase B2 -- LOOP-BACK: re-derive the geometric edges on the VOTED boxes.
 
 The record's edges (graph/build_edges.py) were derived from the LIFTED
 boxes. Then the judges resolved duplicates (graph[resolved]) and the
@@ -32,11 +64,7 @@ silently that way, so the default is now "do the work" and --dry-run is
 the explicit opt-out (the diff still prints). --apply is still accepted
 and does nothing.
 
-The judges can be pointed at that layer with
-    python graph/triage_pairs.py --scene S --edges-from voted_edges
-    python graph/judge_pairs.py  --scene S --edges-from voted_edges
-
-Run:
+Run (bench tool only — see the retirement notice at the top):
   python graph/rederive_voted_edges.py --scene living_marble
   python graph/rederive_voted_edges.py --scene living_marble --dry-run
 """

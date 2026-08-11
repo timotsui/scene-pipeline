@@ -1034,12 +1034,15 @@ def main():
     # survivor still carries the doubts and the status of what it came
     # from. Without this every settled piece looks doubt-free, which would
     # quietly make it eligible to become the size exemplar.
+    # From the `voted` LAYER's own nodes. This read the retired
+    # graph["vote"] block until 2026-08-11; build_voted writes the same
+    # election status onto each node as `vote.status`, from the same
+    # report, so the values are identical and there is one source.
     status_src = {}
-    cnodes = (g.get("vote") or {}).get("nodes") or {}
-    if isinstance(cnodes, dict):
-        for nid, c in cnodes.items():
-            if isinstance(c, dict):
-                status_src[nid] = c.get("status")
+    for n in (g.get("voted") or {}).get("nodes") or []:
+        v = n.get("vote")
+        if isinstance(v, dict):
+            status_src[n["id"]] = v.get("status")
     doubts = {n["id"]: (pick(doubts, n) or []) for n in nodes}
     status_by = {n["id"]: pick(status_src, n) for n in nodes}
 
@@ -1053,8 +1056,12 @@ def main():
                          .get("nodes") or {}).items():
             if isinstance(ent, dict) and ent.get("appearance"):
                 appearance[nid] = ent["appearance"]
-    # the recorded relations (post-vote layer when it exists)
-    edges = ((g.get("voted_edges") or {}).get("edges")
+    # The recorded relations, newest first: the `voted` LAYER's own edges
+    # (2026-08-11 — they were read from the retired graph['voted_edges']
+    # half-layer until then), that block for scenes built before the
+    # change, then the record's.
+    edges = ((g.get("voted") or {}).get("edges")
+             or (g.get("voted_edges") or {}).get("edges")
              or g.get("edges") or [])
     anchors = anchors_from_edges(edges, {n["id"]: n for n in nodes})
 

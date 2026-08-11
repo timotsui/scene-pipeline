@@ -289,8 +289,14 @@ in `docs/PLAN_VOTEBOX_DOWNSTREAM.md` "PHASE B2":
 
 The real fault was in `graph/stages.py`, which was built from THIS FILE's
 step list and inherited its omission: it went `voted_edges -> j8` with no
-loop-back. Fixed — `j0_retriage` and `j1_repairs` are now rows, both with
-`--edges-from voted_edges`. Full account in REVIEW_LOG R-S2-88.
+loop-back. Fixed — `j0_retriage` and `j1_repairs` are now rows. Full
+account in REVIEW_LOG R-S2-88.
+
+⚠ **The flag changed on 2026-08-11 (R-S2-89): it is `--edges-from voted`,
+not `--edges-from voted_edges`.** The `voted_edges` half-layer is retired
+by user ruling — every layer must be whole, so the two judges read the
+voted LAYER's own edges. The old spelling now refuses with a message
+saying this. The loop-back itself is unchanged and still runs.
 
 **J2 is NOT part of the loop-back**, checked against every primary record:
 the ruling names J0 and J1 only, and the merge itself lands at

@@ -65,9 +65,8 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
-import paths  # noqa: E402
-from rederive_voted_edges import (layer_of,          # noqa: E402
-                                   overlay_voted_geometry)
+import paths          # noqa: E402
+import scene_state    # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -255,11 +254,12 @@ def main():
     ap.add_argument("--pair", default=None,
                     help='re-judge one edge, e.g. "obj_007|obj_057" '
                          "(cache entry overwritten)")
-    ap.add_argument("--edges-from", choices=("record", "voted_edges"),
+    ap.add_argument("--edges-from", choices=("record", "voted", "voted_edges"),
                     default="record",
                     help="which layer to judge: the record (default, "
-                         "lifted boxes) or graph['voted_edges'] (the "
-                         "Phase-B2 loop-back re-derive on voted boxes)")
+                         "lifted boxes) or `voted` (the Phase-B2 "
+                         "loop-back, on the boxes the vote elected). "
+                         "`voted_edges` is retired and refuses.")
     args = ap.parse_args()
 
     gdir = paths.scene_dir(args.scene)
@@ -267,17 +267,22 @@ def main():
     crops_dir = gdir / "graph" / "crops"
     cache_path = gdir / "graph" / "judge_pairs_cache.json"
     graph = json.loads(gpath.read_text())
-    nodes = {n["id"]: n for n in graph["nodes"]}
-    floor_y = nodes["arch_floor"]["geometry"]["plane"]["value_raw"]
+    # the floor plane is architecture and lives in the RECORD whatever
+    # layer is being judged — no later layer carries the arch nodes
+    floor_y = ({n["id"]: n for n in graph["nodes"]}
+               ["arch_floor"]["geometry"]["plane"]["value_raw"])
 
-    # LAYER: the record's edges, or the voted loop-back layer's (node
-    # facts then quote the voted boxes those edges were derived from).
-    layer = layer_of(graph, args.edges_from)
-    if layer is None:
-        edges_list = graph["edges"]
-    else:
-        edges_list = layer.setdefault("edges", [])
-        nodes = overlay_voted_geometry(nodes, gdir, layer)
+    # WHICH LAYER'S EDGES — see the same block in triage_pairs.py.
+    # `voted_edges` is RETIRED (user ruling 2026-08-11) and accepted here
+    # only to fail with a sentence that says what to do instead.
+    if args.edges_from == "voted_edges":
+        raise SystemExit(
+            "[judge_pairs] --edges-from voted_edges is RETIRED (user "
+            "ruling 2026-08-11). The Phase-B2 loop-back still runs; it "
+            "reads the voted LAYER's own edges now. Use "
+            "--edges-from voted.")
+    view = scene_state.judge_view(graph, args.edges_from)
+    nodes, edges_list = view.nodes, view.edges
 
     queue = [e for e in edges_list if e["type"] == "SAME_CANDIDATE"]
     if args.pair:
@@ -359,13 +364,12 @@ def main():
     cache["meta"]["calls"] = cache["meta"].get("calls", 0) + calls
     cache_path.write_text(json.dumps(cache, indent=1))
     # meta rides with the layer that was judged (the record's stays put)
-    meta = (graph if layer is None else layer).setdefault(
-        "judge_pairs_meta", {})
+    meta = view.meta_into.setdefault("judge_pairs_meta", {})
     meta.update({"model": args.model, "last_run": date.today().isoformat(),
                  "cumulative_calls": cache["meta"]["calls"],
                  "judged": sum(1 for e in queue if "verdict" in e),
                  "unresolved": len(failed)})
-    gpath.write_text(json.dumps(graph, indent=1))
+    paths.write_atomic(gpath, json.dumps(graph, indent=1))
     print(f"[judge_pairs] wrote {gpath} -- {meta['judged']}/{len(queue)} "
           f"judged, {len(failed)} unresolved"
           + (f" (FAILED: {failed})" if failed else ""))

@@ -53,9 +53,8 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
-import paths  # noqa: E402
-from rederive_voted_edges import (layer_of,          # noqa: E402
-                                   overlay_voted_geometry)
+import paths          # noqa: E402
+import scene_state    # noqa: E402
 
 MODEL = "sonnet"
 CALL_TIMEOUT_S = 480
@@ -158,30 +157,33 @@ def main():
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--dry", action="store_true",
                     help="list candidates only; no LLM, no write")
-    ap.add_argument("--edges-from", choices=("record", "voted_edges"),
+    ap.add_argument("--edges-from", choices=("record", "voted", "voted_edges"),
                     default="record",
                     help="which layer to triage: the record (default, "
-                         "lifted boxes) or graph['voted_edges'] (the "
-                         "Phase-B2 loop-back re-derive on voted boxes)")
+                         "lifted boxes) or `voted` (the Phase-B2 "
+                         "loop-back, on the boxes the vote elected). "
+                         "`voted_edges` is retired and refuses.")
     args = ap.parse_args()
 
     sdir = paths.scene_dir(args.scene)
     gpath = sdir / "scene_graph.json"
     graph = json.loads(gpath.read_text(encoding="utf-8"))
-    det = {n["id"]: n for n in graph["nodes"]
-           if n.get("source") == "detection"}
 
-    # LAYER: record (nesting on the nodes, edges top-level) or the voted
-    # loop-back layer (nesting + edges inside graph["voted_edges"]).
-    layer = layer_of(graph, args.edges_from)
-    if layer is None:
-        edges_list = graph["edges"]
-        nesting_src = {nid: (n.get("nesting") or [])
-                       for nid, n in det.items()}
-    else:
-        edges_list = layer.setdefault("edges", [])
-        nesting_src = layer.get("nesting") or {}
-        det = overlay_voted_geometry(det, sdir, layer)
+    # WHICH LAYER'S EDGES. The record's, or a later layer's own — every
+    # layer is whole, so its edges live inside it beside its nodes.
+    #
+    # `voted_edges` WAS a third option and is RETIRED (user ruling
+    # 2026-08-11: the map is right, and it draws the half-layer as a
+    # tombstone). It is still accepted here only so an old command line
+    # out of a handoff fails with this sentence instead of an argparse
+    # "invalid choice" that does not say what to do.
+    if args.edges_from == "voted_edges":
+        raise SystemExit(
+            "[triage] --edges-from voted_edges is RETIRED (user ruling "
+            "2026-08-11). The Phase-B2 loop-back still runs; it reads the "
+            "voted LAYER's own edges now. Use --edges-from voted.")
+    view = scene_state.judge_view(graph, args.edges_from)
+    det, edges_list, nesting_src = view.nodes, view.edges, view.nesting
 
     # pairs already before the judge (any source) -- skip
     have = {frozenset((e["a"], e["b"])) for e in edges_list
@@ -299,11 +301,10 @@ def main():
     meta = {"date": str(date.today()), "prompt_version": PROMPT_VERSION,
             "candidates": len(cands), "nominated": nom, "skipped": skips,
             "degraded": failed}
-    if layer is None:
-        graph["triage_meta"] = meta
-    else:
-        layer["triage_meta"] = meta      # the record's meta stays untouched
-    gpath.write_text(json.dumps(graph, indent=1), encoding="utf-8")
+    # the meta rides with the layer that was triaged, so a loop-back pass
+    # never overwrites what the record's own pass reported
+    view.meta_into["triage_meta"] = meta
+    paths.write_atomic(gpath, json.dumps(graph, indent=1))
     print(f"[triage] wrote {gpath} -- {nom} nominated, {skips} skipped"
           + (", DEGRADED (some candidates unjudged)" if failed else ""))
     for c in cands:

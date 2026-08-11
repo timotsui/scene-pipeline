@@ -115,6 +115,126 @@ def edges(graph):
     return (lay or {}).get("edges") or []
 
 
+def member_evidence(graph):
+    """A resolver: `f(node)` -> the RECORD detection records behind it.
+
+    Every judge that reads pixels needs `evidence.members` — the per-view
+    detections, each with the crop file cut for it. Only the RECORD nodes
+    carry those. A later layer's node carries `members`, a list of ids,
+    and the hops are not uniform: a `voted` node's members are record
+    ids, but after a J8 split a `settled` node's members are RESOLVED
+    ids, so one hop is not enough. This walks both, with each id standing
+    for itself when it is not a cluster.
+
+    ONE DEFINITION ON PURPOSE. edge_carry did this walk inline to build
+    NEAR's truncation facts and judge_pairs got the same thing a
+    different way (overlay voted boxes onto record nodes, keep the
+    record's crops); two spellings of one rule is how this repo has
+    repeatedly grown a second source of truth. Callers that need the
+    record node itself, not its evidence, should still index `graph`."""
+    rec = {n["id"]: n for n in (graph.get("nodes") or [])}
+    res_src = {n["id"]: (n.get("members") or [n["id"]])
+               for n in (graph.get("resolved") or {}).get("nodes") or []}
+
+    def resolve(node):
+        out = []
+        for rid in (node.get("members") or [node["id"]]):
+            for sid in res_src.get(rid, [rid]):
+                m = rec.get(sid)
+                if m:
+                    out += ((m.get("evidence") or {}).get("members") or [])
+        return out
+
+    return resolve
+
+
+class JudgeView:
+    """What a pair judge needs from ONE layer, in one shape.
+
+    `nodes`    {id: node} for the layer's object nodes, each carrying a
+               `label` whatever the layer calls it (the record says
+               `label`, every later layer inherits `name` from
+               `resolved`). Geometry is the layer's own — no overlay.
+    `edges`    THE list inside the graph, not a copy: a judge appends its
+               nominations to it and writing the graph persists them.
+    `nesting`  {node id: [containment facts]}, however the layer stores
+               them — on the nodes in the record, in a block afterwards.
+    `meta_into` the dict a judge should write its run metadata into, so
+               the record's metadata is never overwritten by a re-judge
+               of a later layer.
+
+    WHY THIS EXISTS. Until 2026-08-11 the two loop-back judges got this
+    from `rederive_voted_edges.layer_of` plus an `overlay_voted_geometry`
+    call that pasted voted boxes onto RECORD nodes. That module wrote a
+    half-layer, `graph['voted_edges']`, which the user retired on 08-11
+    (every layer must be whole; edges follow nodes inside a layer). The
+    judges still have to run on the voted edges as a second pass — so
+    they read the voted LAYER's own edges, and the accessor moved here,
+    beside the chain it is reading.
+    """
+
+    __slots__ = ("name", "nodes", "edges", "nesting", "meta_into")
+
+    def __init__(self, name, nodes, edges, nesting, meta_into):
+        self.name = name
+        self.nodes = nodes
+        self.edges = edges
+        self.nesting = nesting
+        self.meta_into = meta_into
+
+
+def judge_view(graph, name):
+    """A JudgeView onto layer `name`. Raises SystemExit if it is absent.
+
+    `record` is the irregular one — its nodes and edges are the file's
+    top level and its nesting facts sit on the nodes — so it is handled
+    here and no judge has to know."""
+    if name == "record":
+        det = {n["id"]: n for n in (graph.get("nodes") or [])
+               if n.get("source") == "detection"}
+        return JudgeView(
+            "record", det, graph.setdefault("edges", []),
+            {nid: (n.get("nesting") or []) for nid, n in det.items()},
+            graph)
+
+    if name not in NAMES:
+        raise SystemExit(
+            f"[scene_state] '{name}' is not a layer. The chain is: "
+            f"{', '.join(NAMES)}.")
+    lay = _layer(graph, name)
+    if not lay or not lay.get("nodes"):
+        raise SystemExit(
+            f"[scene_state] the scene has no `{name}` layer — the stage "
+            f"that writes it has not run. Present: "
+            f"{', '.join(present(graph, include_stale=True)) or 'nothing'}.")
+
+    # Two things every later layer needs adapting for, and both are the
+    # reason this helper exists rather than each judge doing it:
+    #
+    #  * NAME vs LABEL. The record says `label`; every layer from
+    #    `resolved` on inherits `name`. The judges' prompts quote
+    #    `label`, so give them one spelling.
+    #  * NO EVIDENCE BLOCK. A later layer's node carries `members` (ids)
+    #    and no `evidence`, so a judge indexing it for crops finds
+    #    nothing and silently judges on no pictures. Walk down to the
+    #    record and attach the real detections.
+    #
+    # The nodes here are COPIES. A judge appends verdicts to EDGES, which
+    # are the graph's own list; nothing is expected to write a node
+    # through this view, and a copy makes that safe rather than subtle.
+    ev = member_evidence(graph)
+    det = {}
+    for n in lay["nodes"]:
+        if not n.get("geometry"):
+            continue
+        det[n["id"]] = dict(n,
+                            label=n.get("label") or n.get("name") or "",
+                            evidence={**(n.get("evidence") or {}),
+                                      "members": ev(n)})
+    return JudgeView(name, det, lay.setdefault("edges", []),
+                     lay.get("nesting") or {}, lay)
+
+
 def stamp(graph, name, note="", run_id=None):
     """Record IN THE FILE which layer is current, and MARK EVERY LAYER
     AFTER IT STALE.

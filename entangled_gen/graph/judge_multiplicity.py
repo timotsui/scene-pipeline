@@ -51,10 +51,12 @@ splitting a real single object, blessing one box around two real
 instances, or picking the occlusion-shaved box over the true extent.
 
 FACTS FROM THE GRAPH'S OWN EDGES (v2.1, the obj_063 rule): every
-relational fact in the docket line is READ from graph["voted_edges"]
-— the 4g2 edges re-derived on the VOTED boxes by the Phase-B2
-loop-back (graph/rederive_voted_edges.py), carrying J0 triage and J1
-SAME_CANDIDATE verdicts. J8 computes NO private overlap lists: the v2
+relational fact in the docket line is READ from the `voted` layer's edges
+— the 4g2 edges re-derived on the VOTED boxes by graph/edge_carry.py when
+build_voted wrote the layer, carrying J0 triage and J1 SAME_CANDIDATE
+verdicts. (Until 2026-08-11 this read the graph["voted_edges"] half-layer
+written by graph/rederive_voted_edges.py; that module is retired and the
+layer's own edges are the same set.) J8 computes NO private overlap lists: the v2
 private top-6 list dropped obj_063 (the other sofa, ~85% of its volume
 inside obj_011's box) behind six pillows and the judge ruled the sofa
 case without the decisive fact. Same-class neighbours are NEVER
@@ -621,9 +623,11 @@ def post_judge_conflicts(ids, before, after, verdicts):
     return out
 
 
-# ---- relational facts: READ from graph["voted_edges"] -------------------
+# ---- relational facts: READ from the `voted` LAYER's edges --------------
 # J8 computes NO private overlap lists (the obj_063 rule, v2.1). Everything
-# below only FORMATS the loop-back's own edges.
+# below only FORMATS edges someone else derived. Source changed 2026-08-11
+# from the retired graph["voted_edges"] half-layer to the voted layer's own
+# edge list; same derivation, same numbers, one fewer source of truth.
 
 def other_end(nid, e):
     return e["b"] if e["a"] == nid else e["a"]
@@ -703,7 +707,7 @@ def settled_note(o, settled):
 
 
 def edge_fact_line(nid, e, names, neighbor_ids, settled=None):
-    """One fact line for one edge of graph['voted_edges'] that touches
+    """One fact line for one edge of the `voted` layer that touches
     this node — the relation phrased from THIS node's side, with the
     edge's own evidence numbers, plus the J1 verdict when the edge is a
     judged SAME_CANDIDATE, plus (v2.4) the SETTLED-BOX addendum when an
@@ -2094,21 +2098,52 @@ def main():
     a = ap.parse_args()
     sd = paths.scene_dir(a.scene)
     g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
-    vote = g.get("vote") or {}
-    if not vote:
-        raise SystemExit("[multiplicity] no vote block — run "
-                         "record_vote_doubts.py first")
+    # EVERYTHING THE VOTE DECIDED COMES FROM THE `voted` LAYER (2026-08-11,
+    # user ruling: every layer is whole, and the two half-blocks this used
+    # to read are retired).
+    #
+    #   was  g["vote"]["nodes"][id]        -> voted node's own `vote` and
+    #                                         `doubts` fields, written by
+    #                                         build_voted from the same
+    #                                         report and the same file
+    #   was  g["voted_edges"]["edges"]     -> the voted layer's own edges,
+    #                                         re-derived on the elected
+    #                                         boxes by edge_carry
+    #
+    # The swap is not a re-interpretation: build_voted lifts the vote
+    # report's own fields onto each node (build_voted.VOTE_RULE_KEYS
+    # covers tiers and slice) and reads the same graph/vote_doubts.json,
+    # and edge_carry runs the same build_edges.derive_edges the retired
+    # module ran. Verified on 2026-08-11: the layer's re-derived edge set
+    # and graph['voted_edges'] agreed pair-for-pair on both test scenes.
+    vlayer = g.get("voted") or {}
+    if not vlayer.get("nodes"):
+        raise SystemExit("[multiplicity] no `voted` layer — run "
+                         "graph/build_voted.py first; J8 reads the vote's "
+                         "own record and its relational facts from that "
+                         "layer and computes neither itself")
+    # ⚠ `tiers` AND `slice` ARE DEFAULTED, and they have to be. The
+    # retired block wrote `r["rule"].get("tiers", [])` for every node, so
+    # a vote-EXEMPT one (kept_wall, kept_ceiling — no slice ladder ever
+    # ran) still arrived carrying [] and "". build_voted only lifts the
+    # rule keys that EXIST, so those nodes reach here without the keys at
+    # all — and the docket card does "→".join(c["tiers"]) unguarded.
+    # Living's obj_018 is exactly that case: vote-exempt, and in the
+    # docket on a rebox doubt. Without these defaults J8 raises KeyError
+    # on it. Same values the block produced, so the cards are unchanged.
+    vote = {"nodes": {n["id"]: {"tiers": [], "slice": "",
+                                **(n.get("vote") or {}),
+                                "name": n.get("name"),
+                                "doubts": n.get("doubts") or []}
+                      for n in vlayer["nodes"]}}
     nodes = g["resolved"]["nodes"]
     by_id = {n["id"]: n for n in nodes}
-    # v2.1: relational facts come from the loop-back's voted-edge layer.
-    # No layer -> no facts -> the judge would rule blind, so this is fatal.
-    ce = g.get("voted_edges") or {}
-    if not ce.get("edges"):
-        raise SystemExit("[multiplicity] no graph['voted_edges'] — run "
-                         "graph/rederive_voted_edges.py (Phase B2 "
-                         "loop-back) first; J8 v2.1 reads its relational "
-                         "facts from that layer and computes none itself")
-    edges = ce["edges"]
+    edges = vlayer.get("edges") or []
+    if not edges:
+        raise SystemExit("[multiplicity] the `voted` layer has no edges — "
+                         "build_voted derives them with edge_carry, so an "
+                         "empty set means that derivation failed rather "
+                         "than that the room has no relations")
     names = {n["id"]: n["name"] for n in nodes}
     voted_boxes = {}
     prev = sd / "scene_manifest_slicevote_preview.json"

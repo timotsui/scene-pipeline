@@ -324,18 +324,41 @@ def quality_notes(scene, g):
     this scene was really measured, so a hundred runs can be sorted by
     it afterwards instead of all looking alike."""
     out = []
-    # The vote's own doubts, recorded per node in graph['vote'] by
-    # record_vote_doubts. `slice_fallback` is the one that says how much
-    # of this scene was really measured: the plan view found nothing, so
-    # the slice fell back to a full-height wedge that only constrains
-    # left-right and the box shipped roughly as it arrived.
-    vn = (g.get("vote") or {}).get("nodes") or {}
-    it = vn.items() if isinstance(vn, dict) else ((n.get("id"), n) for n in vn)
-    fb = [nid for nid, n in it
+    # The vote's own doubts. THE SOURCE IS THE SIDECAR, graph/
+    # vote_doubts.json, not a graph block: this note is wanted straight
+    # after the `doubts` stage, and `voted` — the layer that folds the
+    # same doubts onto its nodes — does not exist yet at that point. (It
+    # read the graph['vote'] block until 2026-08-11, when that block was
+    # retired as a second copy.)
+    #
+    # `slice_fallback` is the doubt that says how much of this scene was
+    # really measured: the plan view found nothing, so the slice fell
+    # back to a full-height wedge that only constrains left-right and the
+    # box shipped roughly as it arrived.
+    dp = paths.scene_dir(scene) / "graph" / "vote_doubts.json"
+    vn = {}
+    if dp.exists():
+        try:
+            vn = {n["id"]: n for n in
+                  (json.loads(dp.read_text(encoding="utf-8")).get("nodes")
+                   or [])}
+        except (ValueError, KeyError, TypeError):
+            out.append(("WARN", "graph/vote_doubts.json is unreadable, so "
+                                "the slice-fallback count is missing from "
+                                "this scene's report"))
+    fb = [nid for nid, n in vn.items()
           if any((d or {}).get("kind") == "slice_fallback"
                  for d in (n.get("doubts") or []))]
+    # THE DENOMINATOR IS EVERY NODE THE VOTE SAW, not every node that
+    # raised a doubt. The sidecar lists only the doubted ones (30 of 46
+    # on living), so counting its length would silently shrink the
+    # denominator and make the same scene look worse — "9 of 30" where
+    # the honest number is "9 of 46". The vote runs on `resolved`, and
+    # the doubts are keyed by those pre-settlement ids, so that is the
+    # set to measure against.
+    n_all = len((g.get("resolved") or {}).get("nodes") or []) or len(vn)
     if fb:
-        out.append(("INFO", f"{len(fb)} of {len(vn)} node(s) fell back to a "
+        out.append(("INFO", f"{len(fb)} of {n_all} node(s) fell back to a "
                             f"full-height wedge: the plan view found "
                             f"nothing, so nothing re-measured the box and "
                             f"it shipped roughly as it arrived. PARKED by "
@@ -363,7 +386,7 @@ def quality_notes(scene, g):
                                 f"vote proposed them by moving the boxes, "
                                 f"and the Phase-B2 loop-back is what "
                                 f"answers them — run `j1_repairs` "
-                                f"(judge_pairs --edges-from voted_edges) "
+                                f"(judge_pairs --edges-from voted) "
                                 f"before j8. materialize merges only SAME "
                                 f"verdicts, so until it runs these ship "
                                 f"as separate objects."))
