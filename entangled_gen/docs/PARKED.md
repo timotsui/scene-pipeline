@@ -1,0 +1,138 @@
+# PARKED — known, understood, and deliberately not being worked on
+
+Opened 2026-08-11 by user instruction: *"Right now I annex the top view
+problem and anything specific to j9. They are not the most important fish
+to fry. But please document them explicitly somewhere obvious."*
+
+**This file is not a bug list.** Everything here is a decision to WAIT.
+Each item is understood, measured, and has a named consequence. None of
+them stops a scene; all of them make scenes worse in a way that is
+counted and reported rather than hidden.
+
+**Nothing in here should be "fixed" opportunistically.** They are parked
+because the user has other priorities, not because nobody has noticed.
+If you are an agent reading this mid-run: leave these alone and say so.
+
+Where these show up while parked:
+- `graph/scene_gate.py` reports the top-view cost as an INFO line on
+  EVERY scene, so it appears in every fleet report.
+- `run_fleet.py`'s morning table carries those INFO lines beside each
+  scene's verdict.
+
+---
+
+## 1. THE TOP VIEW — `ctop` has never detected anything
+
+**Parked 2026-08-11. Previously out of scope by the same ruling
+(AUTOMATION_READINESS §4.1); re-affirmed after the fresh-scene numbers
+came in much worse.**
+
+### What it is
+
+The vote's plan view has two cameras:
+
+| camera | where | detections |
+|---|---|---|
+| `top` | inside the room, looking down | **22 of 23** |
+| `ctop` | above the ceiling, ceiling deleted, near-vertical | **0 of 11** |
+
+`ctop` is the FALLBACK camera, so by design it is handed the hardest
+objects — tall things, things high on shelves, things `top` could not
+see. It has never once produced a detection.
+
+### What it costs
+
+When the plan view finds nothing, the slice falls back to a full-height
+wedge. A wedge only constrains left–right, so **nothing re-measures the
+box and it ships roughly as it arrived from detection.**
+
+Measured, per scene, at the `grouped` layer:
+
+```
+living room   9 of 46 objects (20%)
+bedroom      55 of 82 objects (67%)
+```
+
+The bedroom is the honest number for a room this was NOT developed
+against, and it is three times worse. Two thirds of that scene's objects
+were never actually measured by the vote.
+
+`materialize` flags them `slice_fallback`; `scene_gate.quality_notes`
+counts them on every scene and prints the count with a pointer here.
+
+### Why it is not a quick fix
+
+It is a design question about how the vote sees tall and flat objects,
+not a broken camera. `ctop` looks nearly straight down through a deleted
+ceiling; whatever is wrong is about what that view can show a detector,
+which is a modelling decision, not a parameter.
+
+### What NOT to do meanwhile
+
+Do not tune thresholds to make the number look better. The count is a
+measurement of how much of a scene was really measured; a lower number
+obtained by loosening a gate is worse than an honest high one.
+
+---
+
+## 2. ANYTHING SPECIFIC TO J9 (same-product grouping)
+
+**Parked 2026-08-11.** J9 runs, produces verdicts, and the chain
+completes. These are open questions about the QUALITY of what it is
+shown and what it is asked, not about whether it works.
+
+### 2.1 How many pictures each member is shown
+
+`graph/judge_same_product.py` -> `member_crop_paths()` early-returns
+`[shown[mid]]` — the main photo alone — when a node has one.
+`CROPS_PER_MEMBER` is 2 and the sheet builder already lays out two side
+by side, so the second slot is simply unused.
+
+Each node also carries supplementary views (235 across the living scene)
+that J9 is NOT given. For a "same product?" judgement two angles may
+well beat one. Changing it changes what the judge sees, so it wants a
+ruling rather than a tweak.
+
+⚠ If those views are ever switched on: some are **cone-culled** —
+occluders in front of the object were deleted — and each is marked
+`occluders_removed`. The user has ruled that acceptable as evidence, but
+the judge is not currently told. If they go in, say so in the prompt.
+
+### 2.2 The chair pool on `living_marble`
+
+The old gate question was "obj_021+028 vs obj_041+068 — two chair models
+or one?". **It no longer applies**: `obj_068` was merged into `obj_020`
+by J1 (96% containment, recorded in `obj_020.merged_from`). The pool is
+now five: `obj_010, obj_020, obj_021, obj_028, obj_041`. The question
+has to be asked again against that set.
+
+### 2.3 J9 degrades rather than refusing
+
+With no `shown` layer, or a stale one, J9 falls back to detector crops
+and says so in the log — then completes normally. That was a deliberate
+choice so a scene that skipped `node_evidence` still finishes. In an
+unattended run it means a scene can be judged on crops cut around boxes
+that have since moved, and still report success. The gate reports the
+fallback; nothing refuses on it.
+
+---
+
+## WHAT IS *NOT* PARKED, AND IS OFTEN CONFUSED WITH THESE
+
+Do not read this file as parking the whole vote or the whole judge
+chain. Still live, still expected to work:
+
+- the Phase-B2 loop-back (J0/J1 re-run on `voted_edges` before J8) —
+  this was MISSING from the stage table until 2026-08-11 and is now in;
+  it is what answers a duplicate the vote itself created
+- everything in the compose chain
+- the record -> judged -> resolved half, which is not yet automated
+
+---
+
+## HOW TO UN-PARK
+
+Delete the item from this file in the same commit that fixes it, and say
+in the REVIEW_LOG that it was un-parked and by whose ruling. An item
+that is fixed but still listed here is worse than one that was never
+listed, because the next reader will trust the list.

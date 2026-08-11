@@ -1,5 +1,9 @@
 # PLAN — make the graph chain run unattended over 100 scenes
 
+> ⚠ **PARKED:** the top-view (`ctop`) problem and all J9-specific
+> questions — see [PARKED.md](PARKED.md). User ruling 2026-08-11.
+
+
 Opened 2026-08-11 (overnight, orchestrated). Source of the work:
 `docs/AUTOMATION_READINESS.md` §5. User ask: *"fix this and make sure we
 can run 100 scenes automated with smooth and no problems, with clear

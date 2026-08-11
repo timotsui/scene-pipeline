@@ -338,8 +338,9 @@ def quality_notes(scene, g):
         out.append(("INFO", f"{len(fb)} of {len(vn)} node(s) fell back to a "
                             f"full-height wedge: the plan view found "
                             f"nothing, so nothing re-measured the box and "
-                            f"it shipped roughly as it arrived "
-                            f"(AUTOMATION_READINESS 4.1)"))
+                            f"it shipped roughly as it arrived. PARKED by "
+                            f"user ruling 2026-08-11 — see docs/PARKED.md "
+                            f"§1. Reported, never tuned."))
     # SAME_CANDIDATE EDGES THAT REACHED THE END UNJUDGED (found 2026-08-11).
     # build_edges proposes "these two might be one object" geometrically;
     # J1 (judge_pairs) answers it — but J1 runs on the RECORD, before the

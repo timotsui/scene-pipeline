@@ -1,5 +1,11 @@
 # RUNNING THE GRAPH CHAIN UNATTENDED — how to run it, and what is still broken
 
+> ⚠ **PARKED ITEMS live in [PARKED.md](PARKED.md)** — the top-view
+> (`ctop`) problem and everything specific to J9 were parked by user
+> ruling 2026-08-11. They are counted and reported on every scene, and
+> are deliberately not being worked on.
+
+
 Written 2026-08-11, rewritten the same day after the work in
 `docs/PLAN_AUTOMATION_2026-08-11.md` landed. The goal this serves is
 Rule #1: **the pipeline runs itself over ~100 scenes with no human in the
