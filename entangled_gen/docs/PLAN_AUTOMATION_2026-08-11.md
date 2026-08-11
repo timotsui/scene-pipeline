@@ -379,6 +379,73 @@ graph['layer']['canonical']"*. That scene's `resolved` was written by
 HOLE B in the wild, on a real scene, unprompted. It self-heals the moment
 any stamping stage runs.
 
+---
+
+## 4c. THE THREE-SCENE RUN — and the blocker only a fresh scene could show
+
+Scenes chosen so they were NOT alike: `autotest_bedroom` (a genuinely
+fresh room, 82 objects, never voted), `autotest_living` (already
+finished), `autotest_living2` (mid-chain, and named as a prefix-sibling
+of the first on purpose, to test for glob collisions — there were none).
+
+```
+[1/3] autotest_bedroom: CRASHED at graph/settled  0h03m18s
+[2/3] autotest_living:  PASS                      0h01m55s
+[3/3] autotest_living2: PASS                      0h09m58s
+      2 passed, 1 not, in 0h15m11s
+```
+
+**THE CRASH IS THE POINT. `materialize_layers --settle-only` — the
+geometry pass that runs BEFORE J9 — required J9's output file.** On a
+fresh scene that file cannot exist, so `--settle-only` could never
+succeed on a scene that had not already been through the chain once. It
+was invisible for as long as it existed because every scene it was
+developed on had a stale `same_product.json` lying around from an earlier
+session. A hundred-scene run would have failed on scene 1.
+
+Fixed: optional in the constructor, required in `run()` where the
+verdicts are actually applied. The fresh scene then ran its remaining
+stages and PASSED — 82/82 nodes with a picture, chain ended on `grouped`,
+nothing stale. **3 of 3 now pass.**
+
+The two other scenes ran and passed WHILE the first was failing, which is
+the isolation property the fleet exists for.
+
+### WHERE THE TIME GOES
+
+```
+stage      n    total   share    mean     max   worst scene
+views      2    540.2   59.3%   270.1   495.0   autotest_living2
+j8         3    203.6   22.4%    67.9   197.1   autotest_bedroom
+j9         2    136.1   15.0%    68.1    84.4   autotest_living2
+j8s        3     24.3    2.7%     8.1    14.2   autotest_living
+evidence   2      4.0    0.4%
+doubts / voted / voted_edges / settled / grouped: under a second each
+```
+
+Rendering views is ~60% of the cost and scales with how many boxes moved;
+the judges are ~40%. The seven bookkeeping stages together are under two
+seconds. On the fresh scene alone, `views` was 81% of the run.
+
+### A QUALITY FINDING THE TABLE SURFACED
+
+**On the fresh bedroom, 55 of 82 objects (67%) were never re-measured** —
+the vote's plan view found nothing and the box shipped roughly as it
+arrived. On the living room it is 9 of 46 (20%). Same machinery, three
+times worse on a room it was not developed against.
+
+Nothing is broken; the scene simply is not measured, and it says so. This
+is the `ctop` defect (§6.1 / AUTOMATION_READINESS 4.1) and it remains out
+of scope by ruling — but it is much more expensive than the one-scene
+figure suggested, and that is worth knowing before scaling to 100.
+
+### THE MACHINE
+
+17,139 GPU samples on 08-11: peak 1500 MHz, peak 104 W, **zero samples
+above the lock**, including under J8's eight concurrent workers. No
+crashes. Compare the unlocked July record on the same card: 2415 MHz,
+203 W.
+
 ### Findings to carry (not fixed tonight)
 
 - ⚠ **THE CHAIN HAS NO JUDGE FOR A DUPLICATE THE VOTE ITSELF CREATES.**
