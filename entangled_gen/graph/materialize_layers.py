@@ -344,7 +344,21 @@ class Materialize:
         gdir = self.sdir / "graph"
         self.mult = load_json(gdir / "multiplicity.json", "J8 verdicts")
         self.cuts = load_json(gdir / "split_cuts.json", "J8s split cuts")
-        self.sameprod = load_json(gdir / "same_product.json", "J9 verdicts")
+        # J9's VERDICTS ARE OPTIONAL HERE, AND ON A FRESH SCENE THEY MUST
+        # BE (fixed 2026-08-11, found on the first genuinely new scene).
+        # This module runs TWICE: `--settle-only` writes the geometry
+        # layer BEFORE J9 has been asked anything, and the full pass adds
+        # J9's grouping afterwards. Requiring same_product.json in the
+        # constructor made the FIRST pass depend on the output of a stage
+        # that has not run yet — so `--settle-only` could never succeed on
+        # a scene that had not already been through the chain once. It
+        # went unnoticed because the scenes it was developed on all had a
+        # stale same_product.json lying around from an earlier session.
+        #
+        # Absent is now simply "no grouping yet". The full pass still
+        # refuses without it — see run(), where it is actually needed.
+        self.sameprod = load_json(gdir / "same_product.json", "J9 verdicts",
+                                  required=False)
         self.doubts = doubts_by_node(self.sdir, self.graph)
 
         self.nodes = {}          # id -> proposed node (insertion ordered)
@@ -1131,6 +1145,19 @@ class Materialize:
                 conflicts=len(self.conflicts),
                 open_questions=len(self.opens), phase="settle_only")
             return self
+        # THE FULL PASS IS THE ONE THAT ACTUALLY NEEDS J9. The constructor
+        # loads same_product.json optionally, because `--settle-only`
+        # legitimately runs before J9 exists; the requirement belongs
+        # here, where the verdicts are about to be applied. Without this
+        # the full pass would quietly write `grouped` with no grouping in
+        # it and call that a finished scene.
+        if self.sameprod is None:
+            raise SystemExit(
+                "[materialize] no graph/same_product.json — J9 has not "
+                "run for this scene, so there is no grouping to apply. "
+                "Run graph/judge_same_product.py first, or use "
+                "--settle-only if you only meant to write the geometry "
+                "layer.")
         # rule 5 RESIZES boxes since 2026-08-10, so the geometric edge
         # re-derivation must run AFTER it — the edges follow the nodes
         self.same_product()
