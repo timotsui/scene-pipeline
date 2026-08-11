@@ -461,6 +461,31 @@ def scene_lock(sc, what="scene run", stale_after=7200.0):
 
 
 @_contextlib.contextmanager
+def dir_lock(directory, what="run", tag="dirlock", stale_after=7200.0):
+    """One writer for an arbitrary output directory. Fails fast, like
+    scene_lock, and for the same reason.
+
+    scene_lock only covers OUR out/<scene> folders. This is for output
+    directories that are not ours — the GL-TreeSearch baseline writes
+    into its own checkout, and two runs of the same scene there
+    interleave just as destructively.
+
+    WHY IT EXISTS (2026-08-11). Two GLTS runs of the same scene were
+    started by accident, minutes apart, into one output root. Both
+    reported success; the second to finish overwrote the first's run
+    record, and the numbered artifacts in between were written by two
+    processes at once. Nothing on disk said so, and the numbers went
+    into a comparison table before anyone noticed. scene_lock had
+    already closed exactly this hole for our own pipeline; the baseline
+    runner simply never got the same treatment."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    with _file_lock(directory / ".run.lock", what, stale_after, tag,
+                    wait=False):
+        yield
+
+
+@_contextlib.contextmanager
 def _file_lock(lock_path, what, stale_after, tag, wait):
     """The shared body of gpu_lock and scene_lock. `wait` picks between
     queueing politely and refusing outright. Release is in a finally, so

@@ -217,7 +217,14 @@ def run_one(scene, end_step=FULL_END, start_step=0, dry=False, timeout_s=14400):
         needs_gpu = end_step >= 14
         ctx = (paths.gpu_lock(f"GLTS blender {scene}") if needs_gpu
                else _null_ctx())
-        with ctx:
+        # ONE RUN PER OUTPUT ROOT. Two runs of the same scene interleave
+        # into one directory and the second to finish overwrites the
+        # first's record — which happened on 2026-08-11 and put a mixture
+        # of two runs into a comparison table. Isolating by SCENE was
+        # never enough; the missing rule was one writer per scene, the
+        # same rule scene_lock already enforces for our own pipeline.
+        with paths.dir_lock(root, f"glts {scene} steps {start_step}.."
+                            f"{end_step}", tag=f"gltslock:{scene}"), ctx:
             proc = subprocess.Popen(argv, cwd=str(HERE), text=True,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
