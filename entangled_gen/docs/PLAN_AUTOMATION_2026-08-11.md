@@ -478,6 +478,83 @@ bedroom run, through Blender, took ~87 min (R-S2 2026-07-14). Comparing
 our 57 min against a 13-stop GLTS run would flatter us; say which is
 which every time either number is used.
 
+---
+
+## 4e. COMPOSE — the last third of the pipeline joins the chain
+
+User: *"remember we are here to make the pipeline so it can run for 100
+scenes fresh."* That reframed the compose work, and two facts came out of
+looking properly:
+
+**THERE WAS NO COMPOSE DRIVER.** `compose_chain.log` exists because those
+modules were run BY HAND, one at a time, with the user gating each. No
+script in the repo chains them.
+
+**COMPOSE WAS OUTSIDE THE AUTOMATED CHAIN.** `stages.CHAIN` ended at
+`grouped`, so none of this session's checkpoint machinery covered the
+stage that produces the actual output. Everything built tonight stopped
+one step short of the deliverable.
+
+Now: three phases, one command, the same gate on both sides of every
+stage — `core` (bundle to boxes), `graph` (boxes to `grouped`, 11
+stages), `compose` (`grouped` to furnished, 10 stages).
+
+**The compose order is READ OFF THE CODE, not invented.** Each module
+names the file it cannot start without — `consistency` wants
+`supported_by.json`, `pick` wants `shopping.json`, `fit_walk` wants
+`fit_check.json` and `picks.json` — so the dependency order is a fact
+about the modules. Kept as its own tuple rather than folded into CHAIN,
+because the boundary is real (above `grouped` measures a room that
+exists; below proposes one to build) and because PLAN_COMPOSE_LOOP.md
+still calls the later modules "direction only, not designed". Wiring
+them makes them RUNNABLE AND CHECKED, not ruled on.
+
+### THE BUG THAT MADE COMPOSE WORTH AUTOMATING
+
+Every geometry consumer in `compose/` read `graph["resolved"]` — the
+layer as it stood BEFORE the vote elected anything:
+
+```
+living   29 of 45 shared objects moved >5 cm
+         glass door 6.04 m wide -> 0.02 m (300x), centre moved 3.30 m
+         desk volume x0.16, chair x0.07, ceiling light x0.03
+         obj_011 GONE — split into obj_011#1, so compose placed a node
+         that no longer exists and missed its replacement
+bedroom  31 of 82 moved. bookshelf volume x11.09, plant moved 1.69 m
+```
+
+Compose retrieves an asset sized to the box, places it, snaps it, then
+declips it — so all four inherited the error, and the collision-free
+guarantee was making WRONG geometry non-overlapping. Almost certainly why
+the earlier composed output was judged bad.
+
+An oversight, not a decision, and the files said so: `supported_by.py`
+had already fixed its APPEARANCE lookup to the current layer, with a
+comment about split pieces and merged nodes, while the boxes and edges
+three lines above stayed on `resolved`.
+
+Fixed at seven geometry sites and three appearance sites.
+`support_clip` needed most care because it MUTATES: it now reads the
+current layer, writes into that same layer, and stamps THAT layer —
+stamping `resolved` after cutting `grouped` would have swept stale the
+very layer holding the boxes it had just written.
+
+⚠ ONE SITE LEFT ON `resolved` DELIBERATELY: `snap.py`'s suspect-box scan
+reads `dropped_edges`, which exists ONLY in `resolved` — no later layer
+carries it forward (checked across all six live graphs). Binding it to
+the current layer would have silently lost the one real `suspect_box`
+pointer on the bedroom. It is a judge's note about an object, not
+geometry. Flagged, not called settled.
+
+### CORRECTION TO AN EARLIER CLAIM IN THIS DOC'S NARRATIVE
+
+It was said that compose "has never run past its first module on a
+current scene". That came from `living_marble`, which holds only
+`supported_by.json`. **`bedroom_marble` has a full compose history** —
+snap, picks, shopping, fit_check, fit_declip, fit_walk, plus experiment
+variants. Compose HAS run end to end before; it was never automated, and
+never re-run after the vote changed the boxes.
+
 ### Findings to carry (not fixed tonight)
 
 - ⚠ **THE CHAIN HAS NO JUDGE FOR A DUPLICATE THE VOTE ITSELF CREATES.**
