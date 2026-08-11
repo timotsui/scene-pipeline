@@ -343,6 +343,42 @@ it. `run_fleet` now kills the Windows tree with `taskkill /T /F`,
 confirms the pid is gone, and then makes a separate best-effort
 `wsl -e pkill` — reporting what it found rather than assuming.
 
+### PROVED BY ACCIDENT — a hard kill, and the locks recovered
+
+A mistyped command started a full vote on the finished clone (`--until
+settled` with no `--from` starts at `vote`, not where you meant). It was
+killed with `taskkill /T /F` mid-render. That was an unplanned but exact
+rehearsal of the power-cut case:
+
+- **Both lock files outlived their owners** — `out/gpu.lock` and the
+  scene's `.scene.lock`. The next acquirer broke each one in 0.01 s and
+  0.00 s respectively, naming the dead pid and what it had been doing.
+  This is the PID-liveness rule earning its keep: a timeout-only design
+  would have stalled every later scene for two hours.
+- **The scene itself was undamaged.** `autotest_living` still passed its
+  final gate on `grouped`, 46/46 nodes with a picture — because the vote
+  writes its manifest at the END, and every whole-scene write is atomic.
+
+### A REAL USABILITY BUG THE FIRST LONG RUN EXPOSED
+
+The vote on `autotest_bedroom` was run as `--until vote`. It succeeded —
+42 minutes, `after` gate PASS — and then the runner reported **FAIL**,
+because the final gate asked "did the chain reach `grouped`?" and it had
+not. It had not because that is what was asked for.
+
+FIXED. A deliberately partial run (`--until` short of the end, `--skip`,
+`--no-llm`) now reports **INCOMPLETE**, never FAIL, prints which option
+made it partial, and says how to check the scene properly. Reporting an
+obeyed instruction as a failure is how a gate teaches people to ignore
+it, which is the one thing it cannot survive.
+
+Also surfaced by that run, and genuinely correct: `scene_state.check()`
+FAILED with *"newest whole layer is 'resolved' but nothing has stamped
+graph['layer']['canonical']"*. That scene's `resolved` was written by
+`materialize_verdicts` before tonight's stamping fix — so the gate found
+HOLE B in the wild, on a real scene, unprompted. It self-heals the moment
+any stamping stage runs.
+
 ### Findings to carry (not fixed tonight)
 
 - ⚠ **THE CHAIN HAS NO JUDGE FOR A DUPLICATE THE VOTE ITSELF CREATES.**

@@ -774,22 +774,40 @@ def main():
     # THE CHECK THAT DID NOT EXIST. Until now a scene could end with a
     # stale layer and the runner reported success. A scene is PASS only
     # when the final gate says the run finished.
+    # "DID THE RUN FINISH" IS ONLY A FAIR QUESTION OF A WHOLE RUN.
+    # The final gate asks whether the chain reached `grouped`. Asked of a
+    # deliberately partial run — `--until vote`, `--skip j9`, `--no-llm` —
+    # the answer is no, and it is no because that is what was ASKED FOR.
+    # Reporting that as a failure trains people to ignore the gate, which
+    # is the one thing it cannot survive. So a partial run is INCOMPLETE,
+    # never FAIL, and the reason is printed.
+    # `skip_graph` already absorbs --no-llm's stages, so subtract them
+    # back out or the same cause would be reported twice.
+    user_skipped = sorted(skip_graph - set(llm_skipped))
+    partial = [r for r in (
+        ("--no-llm (the judges never ran)" if a.no_llm else None),
+        (f"--until {a.until_key}" if a.until_key
+         and a.until_key != stages.KEYS[-1] else None),
+        (f"--skip {', '.join(user_skipped)}" if user_skipped else None),
+    ) if r]
     final_result = None
-    if do_graph and not a.no_llm:
+    if do_graph and not partial:
         final_result = _gate_call(gate.final, sc)
         final_result.print("[gate]")
         if not final_result.ok:
             failures.append({"phase": "graph", "stage": "(final)",
                              "kind": "gate-final", "code": RC_GATE,
                              "detail": _first_fail(final_result)})
-    elif do_graph and a.no_llm:
-        print("\n[gate] final check SKIPPED: --no-llm means the judges never "
-              "ran, so the chain cannot have reached "
-              f"`{stages.FINAL_LAYER}`. This scene is not complete.")
+    elif do_graph and partial:
+        print(f"\n[gate] final check SKIPPED: this run was deliberately "
+              f"partial ({'; '.join(partial)}), so the chain was never "
+              f"going to reach `{stages.FINAL_LAYER}`. THE SCENE IS NOT "
+              f"COMPLETE — run it without those options, or check it with "
+              f"`python graph/scene_gate.py --scene {sc} --final`.")
 
     dt = time.time() - t_start
-    verdict = "PASS" if not failures and not a.no_llm else "FAIL"
-    if not failures and a.no_llm:
+    verdict = "PASS" if not failures and not partial else "FAIL"
+    if not failures and partial:
         verdict = "INCOMPLETE"
     log_path = log.write(verdict, failures, final_result)
 
