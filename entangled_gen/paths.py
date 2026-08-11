@@ -87,13 +87,42 @@ def seg_dir(sc):
 
 
 def pano_crops_dir(sc):
-    """Pinhole crops sliced from a bundle equirect (crop_pano.py, week8)."""
+    """Pinhole crops sliced from a BUNDLE equirect (crop_pano.py, week8).
+
+    ⚠ NOT THE PIPELINE'S CROPS. This is the retired week8 object-ID lane
+    (docs/PIPELINE.md, "The pano path"). The canonical funnel renders its
+    own pano and crops it into rig_crops_dir() below; nothing downstream
+    reads this directory, and on a scene built the canonical way it does
+    not exist at all. If you are reaching for crops, you almost certainly
+    want rig_crops_dir()."""
     return scene_dir(sc) / "pano_crops"
 
 
 def seg_pano_dir(sc):
-    """seg_views outputs on the pano crops (week8 object-ID path)."""
+    """seg_views outputs on the pano crops — the RETIRED week8 lane.
+    See the warning on pano_crops_dir(); the canonical detections live in
+    rig_dir(sc)/"seg_batched20"."""
     return scene_dir(sc) / "seg_pano"
+
+
+def rig_dir(sc, rig="rig_sp0"):
+    """THE SELF-RENDERED PANO RIG — the canonical funnel's working dir.
+
+    Everything the scene graph is actually built from lives here: the
+    self-rendered equirect and its meta, the 20 pinhole crops with their
+    camera sidecars, the batched detections and masks, the lift pool, and
+    the recentre round's retake shots. Named for the standpoint, so a
+    second standpoint would be rig_sp1.
+
+    Added 2026-08-11 because "rig_sp0" was spelled by hand in about ten
+    modules; the ones edited since go through here."""
+    return scene_dir(sc) / rig
+
+
+def rig_crops_dir(sc, rig="rig_sp0"):
+    """The 20 pinhole crops the whole pipeline sees the room through
+    (crop_pano.py --out-dir), each with a same-stem .json camera sidecar."""
+    return rig_dir(sc, rig) / "crops"
 
 
 def package_dir(sc):

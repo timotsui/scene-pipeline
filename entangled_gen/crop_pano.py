@@ -75,8 +75,23 @@ def main():
     if a.pano:
         panof = Path(a.pano)
     else:
-        from vocab_from_prompt import bundle_prompt_file
-        panof = next(bundle_prompt_file(a.scene).parent.glob("*_pano.png"))
+        # THE CANONICAL FUNNEL ALWAYS PASSES --pano (the self-rendered
+        # equirect from pano_stitch.py), so this branch is the bundle
+        # fallback only. It used to be a bare next() on "*_pano.png",
+        # which matches the deprecated 07-07 manual downloads and NONE of
+        # the 300-plus harvest bundles — those carry pano_rgb_0.png. On a
+        # real bundle it raised StopIteration with no message at all.
+        # vocab_build.find_pano was fixed for exactly this on 08-06; this
+        # is the same rule, and it says what went wrong.
+        from vocab_build import find_pano
+        panof = find_pano(a.scene)
+        if panof is None:
+            raise SystemExit(
+                f"[crop] no equirect pano for scene '{a.scene}'. Pass "
+                f"--pano (the funnel passes rig_sp0/pano_selfrender.png "
+                f"from pano_stitch.py), or put a *pano*.png / *pano*.jpg "
+                f"in the bundle that out/{a.scene}/bundle_path.txt "
+                f"points at.")
 
     Image.MAX_IMAGE_PIXELS = None
     pano = np.asarray(Image.open(panof).convert("RGB"), np.float32)

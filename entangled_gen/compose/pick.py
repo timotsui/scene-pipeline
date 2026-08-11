@@ -132,12 +132,25 @@ FIRM_PREFIX = ("Your previous response was malformed. This time output "
 
 def build_mood_sheet(scene, out_path):
     """2x2 grid of the four level pano crops -- the room's look & feel.
-    Missing crops leave their cell white (honest, printed)."""
+
+    ⚠ THIS READ THE WRONG DIRECTORY UNTIL 2026-08-11, and it was silent
+    about it. It looked in paths.pano_crops_dir() — the RETIRED week8
+    lane — which the canonical funnel never creates. On living_marble
+    that directory does not exist, so all four cells came out white and
+    the model choosing EVERY asset in the room was handed a blank square
+    with one line of text as its only sense of the room's style. Nothing
+    failed; the sheet was produced, the run passed. The crops are named
+    identically in both places, so this was purely the directory.
+
+    Missing crops still leave their cell white, because a partial sheet
+    is better evidence than none — but say so loudly and say what it
+    costs, since nobody reads a quiet line in an unattended run."""
     cell = 512
     im = Image.new("RGB", (cell * 2, cell * 2), (255, 255, 255))
+    crops = paths.rig_crops_dir(scene)
     missing = []
     for i, yaw in enumerate(MOOD_YAWS):
-        p = paths.pano_crops_dir(scene) / f"pano_{yaw}_pp00.webp"
+        p = crops / f"pano_{yaw}_pp00.webp"
         if not p.exists():
             missing.append(p.name)
             continue
@@ -145,7 +158,12 @@ def build_mood_sheet(scene, out_path):
         im.paste(tile, ((i % 2) * cell, (i // 2) * cell))
     im.save(out_path)
     if missing:
-        print(f"[pick] mood sheet missing crops: {missing}")
+        got = len(MOOD_YAWS) - len(missing)
+        print(f"[pick] ⚠ MOOD SHEET DEGRADED: {got} of {len(MOOD_YAWS)} "
+              f"cells filled — missing {missing} under {crops}. Every "
+              f"style choice in this scene is being made with that much "
+              f"less of the room visible; {'NONE' if not got else 'part'} "
+              f"of the room's look reached the model.", flush=True)
     return out_path
 
 
