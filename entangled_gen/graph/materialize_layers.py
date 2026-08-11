@@ -34,11 +34,14 @@ fires is recorded on the node's `provenance` list:
      sidecar, which is a verdict file, not a geometry source:
        "vote"            -> the vote report's boxes.vote2
        "pano"            -> the vote report's boxes.pano
-       "rebox_candidate" -> the rejected face-on re-box the vote recorded
-                            on its own rebox_rejected_smaller doubt. On a
-                            vote-EXEMPT node this is the judge ADOPTING
-                            the smaller MEASURED box over the pre-vote
-                            prior that ships today.
+       "rebox_candidate" -> the face-on measurement the vote recorded on
+                            its own doubt: rebox_rejected_smaller's
+                            proposed_box, or (2026-08-10, the R-S2-58
+                            ballot fix) rebox_truncated's
+                            measured_candidate — the raw measurement
+                            before priors refilled the clipped sides. On
+                            a vote-EXEMPT node this is the judge ADOPTING
+                            the MEASURED box over the prior that ships.
        "current"|"either"-> explicit NO-OPs: the shipping box stands
                             (rule `j8_box_ruling_noop`).
      Applying = `j8_box_swap` when the named box differs from the shipping
@@ -76,10 +79,25 @@ fires is recorded on the node's `provenance` list:
      voted volume in the component, ties broken lexicographically and
      recorded). The survivor's BOX IS NOT UNIONED -- it keeps its voted
      box verbatim; only identity bookkeeping moves.
-  5. J9 SAME-PRODUCT. Every group with same_object true annotates each of
-     its set members with {product_group, canonical_size}. NO BOX IS
-     RESIZED: the canonical size is SHOPPING's input, an annotation only
-     (open decision 3 in the plan: per-node boxes stay honest).
+  5. J9 SAME-PRODUCT (USER RULING 2026-08-10: "same product is only a
+     relationship — the sizing is already embedded in the scene graph").
+     Every group with same_object true is applied as a real EDIT:
+       - RELATIONSHIP: pairwise SAME_PRODUCT edges between the set
+         members (judge-created, like J0's semantic nominations). No
+         size rides on the relationship.
+       - SIZE INTO THE NODES: every member's box becomes the determined
+         product size, fitted to that member's OWN orientation (boxes
+         are room-axis-aligned, so the same door on two perpendicular
+         walls swaps width/thickness — the long floor side goes to the
+         member's longer floor axis). Anchor = the SUPPORT FACE (user
+         ruling): ceiling-mounted keep their top on the ceiling,
+         wall-flush keep the wall-side face on the wall, everything
+         else keeps its bottom; unanchored axes resize about center.
+       - The pre-resize box, the exemplar, the axis fit and the anchors
+         all land in provenance. This deliberately repairs a bad member
+         through the set's agreement (obj_018's truncation artifact).
+     Because boxes now MOVE here, edge re-derivation runs AFTER this
+     rule in the full pass (the edges follow the nodes).
   6. UNCLEAR / OPEN DOUBTS. A node whose J8 outcome is UNCLEAR, or which
      still carries unresolved vote doubts, ships UNCHANGED and is listed
      in open_questions. A doubt counts as CLOSED only when the node got a
@@ -193,6 +211,22 @@ def geom_from_lohi(lo, hi, ndigits=3):
     return {"aabb_min": lo, "aabb_max": hi,
             "center": [round((lo[i] + hi[i]) / 2, ndigits) for i in range(3)],
             "size": [round(hi[i] - lo[i], ndigits) for i in range(3)]}
+
+
+def fit_size_to_member(size, member_size):
+    """Express a product size [w,h,d] in ONE member's own orientation.
+
+    Boxes are room-axis-aligned, so the same product standing on two
+    perpendicular walls swaps its two floor dimensions: the product's
+    long floor side goes on the member's own longer floor axis. Height
+    (y in this y-down frame) never moves. Returns (fitted_size,
+    axis_map). SHARED with the J9 box view -- one rule, so the picture
+    and the graph can never disagree about which way a size lies."""
+    p_h = size[1]
+    p_long, p_short = sorted((size[0], size[2]), reverse=True)
+    if member_size[0] >= member_size[2]:
+        return [p_long, p_h, p_short], "x=long"
+    return [p_short, p_h, p_long], "z=long"
 
 
 def volume(g):
@@ -388,6 +422,11 @@ class Materialize:
                     return d["proposed_box"], ("graph/vote_doubts.json "
                                                "rebox_rejected_smaller."
                                                "proposed_box")
+                if d.get("kind") == "rebox_truncated" \
+                        and d.get("measured_candidate"):
+                    return d["measured_candidate"], (
+                        "graph/vote_doubts.json rebox_truncated."
+                        "measured_candidate")
             return None, "graph/vote_doubts.json"
         return None, ""
 
@@ -849,41 +888,131 @@ class Materialize:
                 "judged_edges_lost_to_node_removal") or []))
 
     # -- rule 5 ----------------------------------------------------------
+    def _support_anchors(self):
+        """What each node rests on, read off the SETTLED layer's edges —
+        the layer J9 judged. Returns (ceiling_ids, wall_by_id) where
+        wall_by_id[nid] = (axis, wall_value_raw) of its claimed wall."""
+        ceiling, wall = set(), {}
+        s_edges = (self.graph.get("settled") or {}).get("edges") or []
+        s_nodes = {n["id"]: n for n in
+                   (self.graph.get("settled") or {}).get("nodes") or []}
+        for e in s_edges:
+            if e.get("type") == "ATTACHED" and e.get("b") == "arch_ceiling":
+                ceiling.add(e.get("a"))
+            if e.get("type") == "IN_WALL" and e.get("a") not in wall:
+                ev = e.get("evidence") or {}
+                ax = ev.get("wall_axis")
+                val = ev.get("wall_value_raw")
+                if ax is None or val is None:
+                    plane = ((s_nodes.get(e.get("b")) or {})
+                             .get("geometry") or {}).get("plane") or {}
+                    ax = ax or plane.get("axis")
+                    val = val if val is not None else plane.get("value_raw")
+                if ax in ("x", "z") and val is not None:
+                    wall[e.get("a")] = (ax, float(val))
+        return ceiling, wall
+
     def same_product(self):
-        annotated = groups_true = 0
+        """USER RULING 2026-08-10: same product = a RELATIONSHIP; the size
+        goes INTO the member nodes, fitted to each member's orientation,
+        anchored at its support face. See the module docstring, rule 5."""
+        resized = groups_true = 0
+        self.product_edges = []
+        ceiling, wall = self._support_anchors()
+        AX = {"x": 0, "y": 1, "z": 2}
         for gi, grp in enumerate((self.sameprod or {}).get("groups", []), 1):
             if not grp.get("same_object"):
                 continue
             groups_true += 1
             label = f"g{gi}_{re.sub('[^a-z0-9]+', '_', grp['name'].lower())}"
             size = grp.get("canonical_size")
+            exemplar = grp.get("canonical_size_from")
+            present = []
             for mid in grp.get("set_members") or []:
-                if mid in self.nodes:
-                    self.nodes[mid]["product_group"] = label
-                    self.nodes[mid]["canonical_size"] = size
-                    self.prov(mid, "j9_same_product_annotation",
-                              product_group=label, canonical_size=size,
-                              members=grp.get("set_members"),
-                              note="ANNOTATION ONLY -- no box resized; the "
-                                   "canonical size is shopping's input, not "
-                                   "geometry")
-                    annotated += 1
+                if mid not in self.nodes:
+                    gone = next((d for d in self.dropped
+                                 if d["id"] == mid), None)
+                    self.conflict(
+                        mid, "J9 named a set member that the node set "
+                             "no longer contains",
+                        {"rule": "j9_same_product",
+                         "claim": f"member of {label}",
+                         "canonical_size": size},
+                        {"rule": gone["rule"] if gone else "unknown",
+                         "claim": gone["why"] if gone
+                         else "node not present"})
+                    self.open_q(mid, "product_member_missing",
+                                f"J9 set member of {label} is not in the "
+                                f"proposed node set -- the size could not "
+                                f"be applied")
                     continue
-                gone = next((d for d in self.dropped if d["id"] == mid), None)
-                self.conflict(mid, "J9 named a set member that the node set "
-                                   "no longer contains",
-                              {"rule": "j9_same_product",
-                               "claim": f"member of {label}",
-                               "canonical_size": size},
-                              {"rule": gone["rule"] if gone else "unknown",
-                               "claim": gone["why"] if gone
-                               else "node not present"})
-                self.open_q(mid, "product_member_missing",
-                            f"J9 set member of {label} is not in the "
-                            f"proposed node set -- the group annotation "
-                            f"could not be placed")
+                present.append(mid)
+                if not size:
+                    continue
+                g = self.nodes[mid]["geometry"]
+                old_size = list(g["size"])
+                lo, hi = list(g["aabb_min"]), list(g["aabb_max"])
+                # fit the product size to THIS member's orientation:
+                # long floor side -> the member's longer floor axis
+                # (fit_size_to_member -- the one shared rule, also drawn
+                # by the J9 box view)
+                new, axis_map = fit_size_to_member(size, old_size)
+                # anchors, per axis (y-down frame: floor = MAX y, so the
+                # bottom face is aabb_max[1] and the top is aabb_min[1])
+                anchors = []
+                for ax_name, ns in (("x", new[0]), ("y", new[1]),
+                                    ("z", new[2])):
+                    i = AX[ax_name]
+                    if ax_name == "y":
+                        if mid in ceiling:
+                            hi[i] = lo[i] + ns          # top stays put
+                            anchors.append("y:top(ceiling)")
+                        else:
+                            lo[i] = hi[i] - ns          # bottom stays put
+                            anchors.append("y:bottom")
+                    elif mid in wall and wall[mid][0] == ax_name:
+                        w = wall[mid][1]
+                        if abs(lo[i] - w) <= abs(hi[i] - w):
+                            hi[i] = lo[i] + ns          # wall face = lo
+                        else:
+                            lo[i] = hi[i] - ns          # wall face = hi
+                        anchors.append(f"{ax_name}:wall")
+                    else:
+                        c = (lo[i] + hi[i]) / 2
+                        lo[i], hi[i] = c - ns / 2, c + ns / 2
+                        anchors.append(f"{ax_name}:center")
+                g["aabb_min"] = [round(v, 3) for v in lo]
+                g["aabb_max"] = [round(v, 3) for v in hi]
+                g["size"] = [round(h - l, 3)
+                             for l, h in zip(g["aabb_min"], g["aabb_max"])]
+                g["center"] = [round((l + h) / 2, 4)
+                               for l, h in zip(g["aabb_min"], g["aabb_max"])]
+                self.nodes[mid]["product_group"] = label
+                changed = g["size"] != [round(v, 3) for v in old_size]
+                self.prov(mid, "j9_same_product_size",
+                          product_group=label, size_from=exemplar,
+                          box_was={"size": old_size},
+                          axis_fit=axis_map, anchors=anchors,
+                          note=("product size written into the node in its "
+                                "own orientation (USER RULING 2026-08-10); "
+                                "the relationship itself is the "
+                                "SAME_PRODUCT edges")
+                          if changed else
+                          "exemplar (or already at product size) -- "
+                          "no geometric change")
+                if changed:
+                    resized += 1
+            for i, a in enumerate(present):
+                for b in present[i + 1:]:
+                    self.product_edges.append({
+                        "type": "SAME_PRODUCT", "a": a, "b": b,
+                        "zone": "judged",
+                        "evidence": {"set": label, "size_from": exemplar},
+                        "caveats": [],
+                        "source": "judge_same_product"})
         self.stats.update(j9_groups_same=groups_true,
-                          j9_annotated=annotated)
+                          j9_resized=resized,
+                          j9_product_edges=len(self.product_edges))
 
     # -- cross-verdict consistency ---------------------------------------
     def cross_checks(self):
@@ -965,8 +1094,8 @@ class Materialize:
         self.box_rulings()
         self.splits()
         self.same_merges()
-        self.edges()
         if settle_only:
+            self.edges()
             self.open_doubts()
             self.stats.update(
                 resolved_in=len(self.graph["resolved"]["nodes"]),
@@ -974,7 +1103,11 @@ class Materialize:
                 conflicts=len(self.conflicts),
                 open_questions=len(self.opens), phase="settle_only")
             return self
+        # rule 5 RESIZES boxes since 2026-08-10, so the geometric edge
+        # re-derivation must run AFTER it — the edges follow the nodes
         self.same_product()
+        self.edges()
+        self.edge_list += getattr(self, "product_edges", [])
         self.cross_checks()
         self.open_doubts()
         self.stats.update(
@@ -1062,8 +1195,8 @@ class Materialize:
         ann = []
         if node:
             if node.get("product_group"):
-                ann.append(f"{node['product_group']} · canonical "
-                           f"{node.get('canonical_size')}")
+                ann.append(f"{node['product_group']} · product size "
+                           f"applied to the box")
             for r in node.get("represents_dropped_pieces") or []:
                 ann.append(f"represents {r['from_node']} {r['piece']}")
         opens = [o for o in self.opens if o["node"] == nid]
@@ -1110,7 +1243,8 @@ class Materialize:
                 "nodes it never touched, so neighbours-only is not "
                 "enough), with judge status/verdict/triage inherited and "
                 "grafted back because geometry cannot regenerate them",
-                "5 J9 same-product annotation (canonical_size, NO resize)",
+                "5 J9 same-product: SAME_PRODUCT edges + product size "
+                "written into member boxes (user ruling 2026-08-10)",
                 "6 UNCLEAR / open doubts ship unchanged",
             ],
             "sources": {
@@ -1152,8 +1286,9 @@ class Materialize:
               f"{s['j8s_covered_by_existing']}) · "
               f"J1 SAME pairs {s['j1_same_pairs']} -> merged away "
               f"{s['j1_merged_away']} · "
-              + (f"J9 groups {s['j9_groups_same']} -> annotated "
-                 f"{s['j9_annotated']}" if "j9_groups_same" in s
+              + (f"J9 groups {s['j9_groups_same']} -> resized "
+                 f"{s['j9_resized']}, SAME_PRODUCT edges "
+                 f"{s['j9_product_edges']}" if "j9_groups_same" in s
                  else "J9 NOT APPLIED (--settle-only)"))
         print(f"[materialize] conflicts: {s['conflicts']} · open questions: "
               f"{s['open_questions']} · nodes carrying open doubts: "

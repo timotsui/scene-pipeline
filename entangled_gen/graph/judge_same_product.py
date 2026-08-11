@@ -14,6 +14,10 @@ to see groups without any LLM call.
    (2.5 m), geometric shared-anchor detection (nearest node with >=2x
    footprint area). Sizes prefer the slice-vote election preview when it
    exists. Vote doubts (graph/vote_doubts.json) ride along as context.
+   SUB-OBJECTS SKIP THE POOLS (user rule 2026-08-10): a `sub_object`-
+   flagged node (a small find inside a parent) is never pooled — bought
+   by its own box and photos; recorded as excluded, never silent. It
+   still faces J1/J8 like any node.
 2. CONTACT SHEETS (PLAN_VOTEBOX_DOWNSTREAM.md Phase B upgrade): per group
    one image, graph/same_product_sheets/group_<n>_<label>.png — one row
    per member (id + voted size at left, up to 2 evidence crops resized
@@ -82,6 +86,9 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(GRAPH_DIR))   # sibling stage modules (split_cuts)
 import paths  # noqa: E402
 from vote_cams import make_cam  # noqa: E402  (THE camera math, shared)
+from materialize_layers import fit_size_to_member  # noqa: E402  (THE
+#   axis-fit rule, shared -- the box view must draw the size exactly the
+#   way materialize will write it, or the picture lies about the graph)
 
 # A STAGE MUST NOT DIE ON ITS OWN LOG LINE (2026-08-08): the closing
 # "wrote ... (⚠ UNTESTED)" print raised UnicodeEncodeError under a cp1252
@@ -337,8 +344,13 @@ def slugify(name):
 # One top-down render per group, containing only the gaussians in the
 # union of the set's boxes, with two things drawn on it:
 #   VIOLET  each member's own voted box (thick + named on the exemplar)
-#   PINK    the canonical size, drawn at every member's box CENTRE
+#   PINK    the canonical size, fitted to EACH member's own orientation
+#           (fit_size_to_member, the rule materialize applies) and drawn
+#           at that member's box CENTRE
 # so "one size for the whole set" can be read against each real instance.
+# The fit matters: a size copied verbatim from one member pokes through
+# the wall of a member facing the other way (USER RULING 2026-08-10 --
+# a product's size is expressed in each member's own orientation).
 # Centre-aligned on purpose: no up-axis assumption is made anywhere here
 # (this frame is y-down and sign mistakes on up have bitten before).
 BOXVIEW_PAD = 0.25           # m — breathing room around the union box
@@ -395,7 +407,11 @@ def build_box_view(sc_mod, splat, gr, verdict, boxes, out_dir, gi):
         if not csize:
             break
         c = b["center"]
-        h = [float(v) / 2 for v in csize]
+        # the size in THIS member's orientation, not the exemplar's --
+        # the shared rule, so this picture shows what materialize writes
+        fitted, _ = fit_size_to_member([float(v) for v in csize],
+                                       b["size"])
+        h = [v / 2 for v in fitted]
         lo = [c[k] - h[k] for k in range(3)]
         hi = [c[k] + h[k] for k in range(3)]
         sc_mod.draw_box_wire(dr, cam, lo, hi, COL_CANON, 3, (10, 7))
@@ -419,8 +435,8 @@ def build_box_view(sc_mod, splat, gr, verdict, boxes, out_dir, gi):
                            f"from, its own measured box", False),
             (COL_MEMBER, "the other set members, each its own measured "
                          "box", False),
-            (COL_CANON, f"the size being bought {csize} m, drawn at every "
-                        f"member's centre", True)]
+            (COL_CANON, f"the size being bought {csize} m, drawn at each "
+                        f"member's centre in ITS OWN orientation", True)]
     for col, text, dash in rows:
         x = 12
         for seg in range(0, 46, 12 if dash else 46):
@@ -569,11 +585,18 @@ def _set_card(s, colour="#0a7d28"):
             f'&mdash; {len(s["members"])} of the same product</b>: '
             f'{", ".join(s["members"])}')
     if size and src:
-        head += (f'<br><b>buy one at {size} m</b> &mdash; copied verbatim '
-                 f'from <b>{src}</b>, the member measured best'
+        # print the size the way a person reads it — the raw triple is in
+        # room-axis order, which swaps width/thickness with the member's
+        # orientation (the door bug, user 2026-08-10)
+        pl, ps = sorted((size[0], size[2]), reverse=True)
+        head += (f'<br><b>product size {pl} wide &times; {size[1]} tall '
+                 f'&times; {ps} thick (m)</b> &mdash; measured from '
+                 f'<b>{src}</b>, the member measured best'
                  + (f' (one of {tied} equally good; height decided it)'
                     if tied > 1 else "")
-                 + f'. These {len(s["members"])} disagree by '
+                 + '. Each member&rsquo;s box gets this size in its own '
+                 'orientation when the graph is materialized.'
+                 + f' These {len(s["members"])} disagree by '
                  f'<b>{basis.get("set_spread_long_m")} m</b> on the long '
                  f'floor side, {basis.get("set_spread_short_m")} m on the '
                  f'short one, {basis.get("set_spread_height_m")} m on '
@@ -592,10 +615,60 @@ def _set_card(s, colour="#0a7d28"):
             f'margin:8px 0;background:#fafafa">{head}</div>')
 
 
-def write_index(groups, sheets_dir, verdicts=None):
-    """The review page. --dry-run writes the sheets alone; a full run
-    writes each pool's outcome above its sheet — every set, every object
-    left alone WITH ITS REASON, and the box view per set."""
+def _grounding_card(gr, doubts, status_by):
+    """Dry-run review: WHY these members share a pool (the name, nothing
+    else) and the exact per-member facts the judge's prompt will carry —
+    so the pooling and the stimulus can be reviewed BEFORE any call."""
+    rows = []
+    for m in gr["members"]:
+        ap = m.get("appearance") or {}
+        bits = []
+        if ap.get("colors"):
+            bits.append("colours " + "/".join(ap["colors"]))
+        if ap.get("material"):
+            bits.append("material " + str(ap["material"]))
+        if ap.get("style"):
+            bits.append("style " + str(ap["style"]))
+        anc = ", ".join(f"{t.lower()} {nm}"
+                        for t, _b, nm in (m.get("anchors") or [])[:3])
+        d = doubts.get(m["id"]) or []
+        st = status_by.get(m["id"])
+        rows.append(
+            f'<tr><td style="white-space:nowrap"><b>{m["id"]}</b>'
+            + (f'<br><small>{st}</small>' if st else "")
+            + ('<br><small style="color:#a11">NO PHOTO</small>'
+               if not m.get("n_crops") else "")
+            + f'</td><td style="white-space:nowrap">{m["size"]} m'
+            f'<br><small>at {m["center"]}</small></td>'
+            f'<td>{ap.get("description") or "<i>no J6 description</i>"}'
+            + (f'<br><small>{"; ".join(bits)}</small>' if bits else "")
+            + f'</td><td><small>{anc or "&mdash;"}</small></td>'
+            f'<td><small>{", ".join(d) if d else "&mdash;"}</small>'
+            '</td></tr>')
+    return (
+        '<div style="border-left:6px solid #1452a3;padding:6px 12px;'
+        'margin:8px 0;background:#f6f9ff">'
+        f'<b style="color:#1452a3">why these {len(gr["members"])} share '
+        'one pool</b>: they are every node in the room named '
+        f'&ldquo;{gr["name"]}&rdquo;. The NAME is the only pooling rule '
+        '&mdash; distance, size and looks are deliberately not pooling '
+        'inputs (the judge decides those). So a wrong name upstream '
+        'puts an object in the wrong pool.'
+        '<table style="border-collapse:collapse;margin-top:6px">'
+        '<tr><th align="left" style="padding:2px 8px 2px 0">member</th>'
+        '<th align="left" style="padding:2px 8px 2px 0">measured</th>'
+        '<th align="left" style="padding:2px 8px 2px 0">described '
+        'earlier (J6)</th>'
+        '<th align="left" style="padding:2px 8px 2px 0">in the room</th>'
+        '<th align="left">vote doubts</th></tr>'
+        + "".join(rows) + "</table></div>")
+
+
+def write_index(groups, sheets_dir, verdicts=None, grounding=None):
+    """The review page. --dry-run writes the sheets plus a GROUNDING card
+    per pool (how the pool formed, what the judge will be told); a full
+    run writes each pool's outcome above its sheet — every set, every
+    object left alone WITH ITS REASON, and the box view per set."""
     rows = []
     for i, gr in enumerate(groups, 1):
         cov = ", ".join(f"{m['id']}:{m.get('n_crops', 0)}"
@@ -604,6 +677,9 @@ def write_index(groups, sheets_dir, verdicts=None):
                     if not m.get("n_crops")]
         v = (verdicts or {}).get(i) or {}
         body = ""
+        if grounding:
+            body += _grounding_card(gr, grounding.get("doubts") or {},
+                                    grounding.get("status") or {})
         reasons = {r["id"]: r.get("reason") or ""
                    for r in (v.get("assignments") or [])}
         for s in v.get("sets") or []:
@@ -667,7 +743,25 @@ def write_index(groups, sheets_dir, verdicts=None):
         "the others that are the same product, or leaves it alone, and "
         "says why either way. Code then picks which member's measured "
         "box becomes the size to buy.</p>"
-        + ("<p><b>Sheets only &mdash; no verdicts in this file.</b></p>"
+        + (("<p><b>GROUNDING REVIEW &mdash; no verdicts in this file.</b> "
+            "Pools formed from graph['"
+            + str((grounding or {}).get("layer") or "?")
+            + "'] by ONE rule: same name, whole room (the 2.5 m distance "
+            "rule was retired 2026-08-08 &mdash; it had split the lights "
+            "in two by placement and never docketed the bookshelves, "
+            "doors, sofas or plants at all). Each blue card shows the "
+            "facts the judge's prompt will carry, verbatim in kind.</p>"
+            + (("<p><b>Never judged (name has only one instance):</b> "
+                + ", ".join(f"{i} ({n})" for i, n in
+                            (grounding or {}).get("singles") or [])
+                + "</p>")
+               if (grounding or {}).get("singles") else "")
+            + (("<p><b>Excluded (sub-objects, user rule 08-10):</b> "
+                + ", ".join(f"{i} ({n})" for i, n in
+                            (grounding or {}).get("subs") or [])
+                + " &mdash; small finds inside a parent; bought by their "
+                "own box and photos, never pooled.</p>")
+               if (grounding or {}).get("subs") else ""))
            if not verdicts else "")
         + "".join(rows), encoding="utf-8")
     print(f"[same_product] wrote {sheets_dir / 'index.html'}", flush=True)
@@ -837,6 +931,30 @@ def main():
               "RAW vote manifest, which J8/J8s/J1 may have superseded. "
               "Run materialize_layers.py --settle-only --apply first.",
               flush=True)
+    # SUB-OBJECTS SKIP THE POOLS (user rule 2026-08-10): a node flagged
+    # sub_object — a small find INSIDE a parent during a close-up retake
+    # (magazines on a shelf) — is small and usually inconsequential, so it
+    # is never pooled for product identity; it is bought by its own box
+    # and photos. Structural flag, not a class list (Rule #1). Accepted
+    # trade, on record: the pool was the one place two such finds could be
+    # seen side by side; a rare duplicate among them now ships unmerged.
+    # They still face J1 and J8 like any node — this skips ONLY J9.
+    rec_flags = {n["id"]: ((n.get("provenance") or {}).get("flags") or [])
+                 for n in g["nodes"]}
+    def _is_sub(node):
+        for key in ([node["id"], node.get("_origin")]
+                    + list(node.get("_merged") or [])
+                    + list(node.get("members") or [])):
+            if key and "sub_object" in rec_flags.get(key, []):
+                return True
+        return False
+    sub_nodes = [n for n in nodes if _is_sub(n)]
+    nodes = [n for n in nodes if not _is_sub(n)]
+    if sub_nodes:
+        print(f"[same_product] {len(sub_nodes)} sub-object node(s) skip "
+              f"the pools (user rule 08-10 — bought by their own box): "
+              f"{[n['id'] for n in sub_nodes]}", flush=True)
+
     doubts = {}
     df = sd / "graph" / "vote_doubts.json"
     if df.exists():
@@ -887,7 +1005,15 @@ def main():
     sheet_paths = build_sheets(groups, src_nodes, crops_dir, sheets_dir)
 
     if a.dry_run:
-        write_index(groups, sheets_dir)
+        n_by_name = {}
+        for n in nodes:
+            n_by_name[n["name"]] = n_by_name.get(n["name"], 0) + 1
+        singles = sorted((n["id"], n["name"]) for n in nodes
+                         if n_by_name[n["name"]] == 1)
+        write_index(groups, sheets_dir, grounding={
+            "layer": cv_name or "resolved (FALLBACK — not settled)",
+            "doubts": doubts, "status": status_by, "singles": singles,
+            "subs": [(n["id"], n["name"]) for n in sub_nodes]})
         print("[same_product] dry run — sheets built, no LLM calls, "
               "no same_product.json", flush=True)
         return
@@ -1171,6 +1297,12 @@ def main():
                               "SET in the shape older consumers read "
                               "(same_object / set_members / "
                               "canonical_size).",
+         "excluded_sub_objects": [
+             {"id": n["id"], "name": n["name"],
+              "why": "sub_object flag (user rule 2026-08-10) — a small "
+                     "find inside a parent; bought by its own box and "
+                     "photos, never pooled for product identity"}
+             for n in sub_nodes],
          "pools": pools,
          "groups": results}, indent=1, ensure_ascii=False),
         # EXPLICIT utf-8: ensure_ascii=False writes the judges' em-dashes

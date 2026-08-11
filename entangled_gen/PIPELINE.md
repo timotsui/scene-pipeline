@@ -6,6 +6,23 @@ see `paths.py`). No stage imports another stage's internals. Therefore:
 **swapping a method for any stage = writing the same output files in the same
 format.** Nothing downstream knows or cares which implementation produced them.
 
+**CONTRACT CHANGES 2026-08-10 (R-S2-66..71, details in docs/REVIEW_LOG.md):**
+- `pano_recenter.py` SP4 children now carry `members_inline` evidence
+  (view + 2D rect + scene-relative image path); `build_graph.py` cuts their
+  crops like any member's. A node with zero crops = counted loud warning.
+- `graph/crops/` and `graph/crops_ctx/` are WIPED AND REBUILT every run
+  (skip-existing served dead objects' pictures across scene re-runs).
+  `build_graph.py --recrop` is gone.
+- The vote records a blocked re-box measurement as a ballot candidate
+  (`rebox_rejected_smaller.proposed_box` / `rebox_truncated.measured_candidate`
+  in `graph/vote_doubts.json`); J8 can ship it (`rebox_candidate`). The gate
+  escalates, never decides.
+- materialize rule 5 (J9): SAME_PRODUCT is pairwise EDGES; the product size is
+  written INTO each member's box in its own orientation, support-face
+  anchored. No `canonical_size` node field. Edges re-derive after the resize.
+- `sub_object`-flagged nodes skip J9's pools (recorded in
+  `same_product.json.excluded_sub_objects`); they still face J1/J8.
+
 ## Stages and their file contracts
 
 | # | stage | current method | reads | writes (THE CONTRACT) |

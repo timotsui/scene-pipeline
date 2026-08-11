@@ -205,7 +205,9 @@ def doubt_text(d):
         return (f"face-on re-box measured only {d['n_measured_sides']} of "
                 f"{REBOX_IN_PLANE_SIDES} in-plane sides — {edges} ran off "
                 "the frame and kept their prior extents; what this box "
-                "contains is unresolved — multiplicity judge territory")
+                "contains is unresolved — multiplicity judge territory"
+                + ("; the raw measurement rides this doubt as a ballot "
+                   "candidate" if d.get("measured_candidate") else ""))
     if k == "exemption":
         why = {"kept_wall": "wall-flush geometric exemption",
                "kept_ceiling": "ceiling-mount geometric exemption",
@@ -315,6 +317,14 @@ def main():
                 and len(rb.get("truncated_edges") or [])
                 >= REBOX_TRUNC_MIN_EDGES):
             kept_sides = rb.get("truncation_kept_sides") or []
+            # THE BALLOT (R-S2-58 fix, 2026-08-10): the raw measurement —
+            # what the face-on view saw BEFORE the truncation guard put
+            # priors back on the clipped sides — rides the doubt as
+            # measured_candidate, so J8's ballot has a second name (the
+            # same shape as rebox_rejected_smaller.proposed_box, which is
+            # how run 14 was able to ship obj_018's small box). Older
+            # vote records have no "measured" field; the doubt then
+            # carries no candidate, exactly as before.
             d.append({"kind": "rebox_truncated",
                       "plane": rb.get("plane", "?"),
                       "truncated_edges": list(rb["truncated_edges"]),
@@ -324,7 +334,11 @@ def main():
                       "score": (float(rb["score"])
                                 if rb.get("score") is not None else None),
                       "claimed": int(rb.get("claimed") or 0),
-                      "final_box": rebox_final_box(boxes, rb.get("to"))})
+                      "final_box": rebox_final_box(boxes, rb.get("to")),
+                      **({"measured_candidate": rebox_proposed_box(
+                              boxes["original"], rb["measured"])}
+                         if rb.get("measured") and boxes.get("original")
+                         else {})})
         if status.startswith("kept"):
             d.append({"kind": "exemption", "status": status})
         for x in d:

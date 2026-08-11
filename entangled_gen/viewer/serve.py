@@ -115,17 +115,15 @@ def box_sources(sc):
          + _svstat +                      # counted, never hand-written
          ". Per-box status + doubt flags in each object's "
          "flags field. Preview manifest — runner wiring pending"),
-        ("parallax_voted", "parallax retake · voted (preview)", "archive",
-         sd / "scene_manifest_parallax_preview.json", "#65ff8f",
-         "PREVIEW — experiments/parallax_retake.py: per-node side view "
-         "from a second standpoint; original ray axis cut away, then the "
-         "original masks' points refiltered through the established depth "
-         "slab (all axes re-derived). Nodes with no elected box keep the record box "
-         "(flagged) and are absent from this layer"),
+        # parallax_voted REMOVED from the HUD 2026-08-10 (user: retired
+        # shot systems are not mentioned) — the manifest was written only
+        # by the retired retake experiments (parallax_retake.py, then
+        # clobbered by pool_retake.py — two writers, one filename) and is
+        # archived with them under archive_2026-08-10_retired_shots/.
         # set A / set B (two-standpoint experiment) REMOVED from the HUD
         # 2026-08-06 cone session (user: "we no longer need those");
-        # manifests stay on disk (scene_manifest_pano2c.json /
-        # scene_manifest_pano2_sp1.json).
+        # scene_manifest_pano2c.json stays on disk; the sp1 manifests are
+        # archived (2026-08-10, with the bubble rigs).
         # ("support_clipped", ...) removed from HUD — wiring premature
         # until support judgment runs on voted geometry (R-S2-22 note)
         # judge_preview: COMPOSED server-side (judge_preview() below), not

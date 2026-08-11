@@ -292,13 +292,16 @@ FIRM_PREFIX = ("Your previous response was malformed. This time output "
 # crop selection + contact sheets (deterministic)
 # --------------------------------------------------------------------------
 
-def context_crop(nid, m, frames_dir, ctx_dir):
+def context_crop(nid, m, frames_dir, ctx_dir, sdir=None):
     """Context variant of a member crop: the source view cropped to the
     detection box plus a generous margin -- EXTRA below, where support
     lives -- with the box outlined in red so the judge knows which object
     is meant (judge_cases.context_tile pattern; the obj_001 floor-plant
-    lesson). Deterministic, skips existing files. None if no frame."""
-    src = Path(frames_dir) / f'{m["view"]}.webp'
+    lesson). Deterministic, skips existing files. None if no frame.
+    A member may state its own image path ("img", scene-relative --
+    inline retake members do; their shots live outside frames_dir)."""
+    src = (Path(sdir) / m["img"] if m.get("img") and sdir
+           else Path(frames_dir) / f'{m["view"]}.webp')
     if not src.exists():
         return None
     out = ctx_dir / f'{nid}_m{m["member"]:03d}.png'
@@ -841,9 +844,16 @@ def main():
 
     ctx = None
     if not args.no_ctx:
+        # wiped and rebuilt every run (2026-08-10, same rule as
+        # build_graph's graph/crops): node/member NUMBERS change across
+        # scene re-runs, so a leftover file under a reused name is another
+        # object's picture. A stage owns its output folder — rebuilding
+        # means replacing, never topping up.
         ctx_dir = gdir / "graph" / "crops_ctx"
+        if ctx_dir.exists():
+            shutil.rmtree(ctx_dir)
         ctx_dir.mkdir(parents=True, exist_ok=True)
-        ctx = (frames_dir, ctx_dir)
+        ctx = (frames_dir, ctx_dir, gdir)
     todo, hits, no_crops = [], 0, []
     for jn in clusters:
         crops, views = cluster_crops(jn, det, crops_dir, ctx=ctx)

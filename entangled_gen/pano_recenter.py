@@ -303,6 +303,14 @@ def main():
                 lo, hi) > 0.3 for c in children):
             continue      # duplicate sibling
         pid = id_map.get(L["parent"], L["parent"])
+        # KEEP THE PHOTO (2026-08-10): a child minted here used to carry
+        # only its lifted 3D box — the retake view and 2D rect were
+        # dropped, so the node was born with no crop, which starved J6's
+        # description and left J9 judging it blind (living obj_005_c00 /
+        # obj_017_c00, the NO PHOTO rows). members_inline is the same
+        # shape build_graph cuts crops from, with the image path stated
+        # because retake shots live in rc<sfx>/, not the pano crop dir.
+        b = L.get("box") or {}
         children.append({
             "id": f"{pid}_c{sum(1 for c in children if c['parent'] == pid):02d}",
             "label": L["label"], "score": round(L["score"], 3),
@@ -312,7 +320,15 @@ def main():
             "size": [round(float(v), 3) for v in hi - lo],
             "views": [L["view"]], "n_detections": 1, "n_whole":
                 0 if L["trunc"] else 1,
-            "parent": pid, "flags": ["sub_object"]})
+            "parent": pid, "flags": ["sub_object"],
+            "members_inline": ([{
+                "view": L["view"], "label": L["label"],
+                "score": round(L["score"], 3),
+                "box_2d": [round(b["xmin"], 1), round(b["ymin"], 1),
+                           round(b["xmax"], 1), round(b["ymax"], 1)],
+                "truncated": bool(L["trunc"]),
+                "img": (rcdir / f"{L['view']}.webp").relative_to(sd)
+                       .as_posix()}] if b else [])})
     print(f"[sp4] {len(children)} children attached "
           f"({len(children_raw) - len(children)} deduped)", flush=True)
 

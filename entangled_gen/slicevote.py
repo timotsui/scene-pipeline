@@ -1631,6 +1631,14 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
     for k in ip:
         new_lo[k] = float(np.percentile(K[:, k], 1))
         new_hi[k] = float(np.percentile(K[:, k], 99))
+    # THE RAW MEASUREMENT, before the truncation guard re-applies priors.
+    # Recorded so a truncated re-box still carries what the view actually
+    # measured as a BALLOT CANDIDATE for J8 — obj_018's regression
+    # (R-S2-58): the truncated path used to apply its prior-filled box and
+    # record no alternative, so J8's ballot held one name. A gate may say
+    # "not on my authority"; it may not erase the other choice.
+    measured = [[k, round(float(new_lo[k]), 3), round(float(new_hi[k]), 3)]
+                for k in ip]
     # BORDER-TRUNCATION GUARD, part 2: map each truncated image border
     # to the world side it clips (probe: project a small in-plane step
     # from the aim point and read which way it moves on screen), and on
@@ -1658,6 +1666,8 @@ def perp_rebox(nid, name, lo0, hi0, axi, plane_val, side, pid):
                    for k in ip]
     rec["to"] = [[k, round(float(new_lo[k]), 3), round(float(new_hi[k]), 3)]
                  for k in ip]
+    rec["measured"] = measured   # raw, pre-prior — differs from "to" only
+    #                              when the truncation guard kept sides
     # SANITY GUARDS (user rule): a re-box may refine, never jump. Wild
     # candidates are RECORDED, never shipped.
     oc = np.array([0.5 * (lo0[k] + hi0[k]) for k in ip])

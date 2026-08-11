@@ -432,7 +432,13 @@ def named_box(nid, key, report, doubts):
                     and d.get("proposed_box"):
                 return d["proposed_box"], ("vote doubt rebox_rejected_"
                                            "smaller.proposed_box")
-        return None, "vote doubts (no rebox_rejected_smaller.proposed_box)"
+            if d.get("kind") == "rebox_truncated" \
+                    and d.get("measured_candidate"):
+                return d["measured_candidate"], ("vote doubt rebox_"
+                                                 "truncated."
+                                                 "measured_candidate")
+        return None, ("vote doubts (no rebox proposed_box / "
+                      "measured_candidate)")
     return None, ""          # "current" / "either" — the shipping box stands
 
 
@@ -785,11 +791,9 @@ def build_candidates(c):
                         "it changes nothing."})
         if bx.get("rejected"):
             d = next((d for d in c["doubts"]
-                      if d["kind"] == "rebox_rejected_smaller"), {})
-            out.append({
-                "key": "rebox_candidate", "box": bx["rejected"],
-                "colour": "MAGENTA",
-                "what": "the FACE-ON RE-BOX the vote measured in the "
+                      if d["kind"] == "rebox_rejected_smaller"), None)
+            if d:
+                what = ("the FACE-ON RE-BOX the vote measured in the "
                         f"panel and then THREW AWAY (detection score "
                         f"{float(d.get('score', 0.0)):.2f}, "
                         f"{d.get('claimed', '?')} claimed dots; it spans "
@@ -798,7 +802,22 @@ def build_candidates(c):
                         "guard refused a shrink that large). It is the "
                         "ONLY measurement this node has ever had. Shipping "
                         "it ADOPTS that smaller measured box in place of "
-                        "the current one."})
+                        "the current one.")
+            else:
+                d = next((d for d in c["doubts"]
+                          if d["kind"] == "rebox_truncated"), {})
+                what = ("the RAW FACE-ON MEASUREMENT (detection score "
+                        f"{float(d.get('score') or 0.0):.2f}, "
+                        f"{d.get('claimed', '?')} claimed dots). The "
+                        "current box was built by keeping the PRIOR "
+                        "extents on the sides that ran off the frame "
+                        f"({'/'.join(d.get('truncated_edges') or [])}) — "
+                        "so the current box is part guess. This candidate "
+                        "is what the view actually measured, nothing "
+                        "filled in. Shipping it ADOPTS the measurement in "
+                        "place of the prior-filled box.")
+            out.append({"key": "rebox_candidate", "box": bx["rejected"],
+                        "colour": "MAGENTA", "what": what})
     else:
         if bx.get("vote2"):
             out.append({
@@ -1343,7 +1362,7 @@ def annotate(src_png, sheets_dir, out_name, cam, boxes, notch, caption,
             label_at_corner(dr, cam, boxes["rejected"]["lo"],
                             boxes["rejected"]["hi"], "face-on detection",
                             COL_REJECT, im.size)
-            overlay.append("magenta rejected face-on candidate")
+            overlay.append("magenta face-on measurement candidate")
         if boxes.get("pano"):
             draw_box_wire(dr, cam, boxes["pano"]["lo"],
                           boxes["pano"]["hi"], COL_PANO, 3)
@@ -2130,6 +2149,14 @@ def main():
                 if d["kind"] == "rebox_rejected_smaller" and \
                         d.get("proposed_box"):
                     cm["boxes"]["rejected"] = d["proposed_box"]
+                # the R-S2-58 ballot fix (2026-08-10): a truncated re-box
+                # records its RAW measurement; it fills the same candidate
+                # slot so the judge always has a second name. A rejected
+                # measurement wins the slot if both somehow exist.
+                if d["kind"] == "rebox_truncated" and \
+                        d.get("measured_candidate") and \
+                        "rejected" not in cm["boxes"]:
+                    cm["boxes"]["rejected"] = d["measured_candidate"]
             exempt = True
         c = {"id": nid, "name": rn["name"], "scene": a.scene,
              "status": cn.get("status", "?"),

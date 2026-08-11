@@ -74,6 +74,7 @@ Run:  python graph/build_graph.py --scene bedroom_marble
 """
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -113,26 +114,38 @@ def load_inputs(scene, a):
     return p, man, pool, prompt_text
 
 
-def cut_crops(nodes, pool, crop_src, crop_dir, recrop):
+def cut_crops(nodes, pool, crop_src, crop_dir, sdir=None):
     """Deterministic crop per member detection: pad the 2D box by CROP_PAD,
-    clamp to the view image, save PNG. Skips existing files unless --recrop
-    (content is a pure function of view image x box, so skipping is safe)."""
+    clamp to the view image, save PNG.
+
+    THE FOLDER IS WIPED AND REBUILT EVERY RUN (2026-08-10). It used to be
+    topped up ("skip existing files — content is a pure function of view
+    image x box"). That assumption is false ACROSS scene re-runs: node and
+    member NUMBERS are handed out fresh, a leftover file from the old
+    numbering can share a name with a new crop, and skipping serves the
+    dead object's picture (living 08-06 re-run: 9 crops showed other
+    objects; the shelf carried the old coffee table's photo, and J6/J9
+    described what they were shown). A stage owns its output folder:
+    rebuilding means replacing, never topping up. Cutting all crops takes
+    seconds, so the shortcut bought nothing.
+    A member may state its own image path ("img", scene-relative — inline
+    retake members do, their shots live outside crop_src)."""
     from PIL import Image
+    if crop_dir.exists():
+        shutil.rmtree(crop_dir)
     crop_dir.mkdir(parents=True, exist_ok=True)
     cache = {}
-    n_cut = n_skip = n_missing = 0
+    n_cut = n_missing = 0
     for n in nodes:
         for m in n["evidence"]["members"]:
-            src = crop_src / f"{m['view']}.webp"
+            src = (sdir / m["img"] if m.get("img") and sdir
+                   else crop_src / f"{m['view']}.webp")
             if not src.exists():
                 m["crop"] = None
                 n_missing += 1
                 continue
             out = crop_dir / f"{n['id']}_m{m['member']:03d}.png"
             m["crop"] = out.name
-            if out.exists() and not recrop:
-                n_skip += 1
-                continue
             if m["view"] not in cache:
                 cache[m["view"]] = Image.open(src).convert("RGB")
             im = cache[m["view"]]
@@ -146,7 +159,7 @@ def cut_crops(nodes, pool, crop_src, crop_dir, recrop):
                 continue
             im.crop(box).save(out)
             n_cut += 1
-    return n_cut, n_skip, n_missing
+    return n_cut, n_missing
 
 
 def build_detection_nodes(man, pool):
@@ -165,6 +178,24 @@ def build_detection_nodes(man, pool):
                            round(b["xmax"], 1), round(b["ymax"], 1)],
                 "truncated": bool(L.get("trunc")),
                 "crop": None,          # cut_crops() fills
+            })
+        # INLINE members (2026-08-10): SP4's enrichment children are found
+        # on RETAKE views whose detections never enter the pool, so they
+        # carry their evidence inline — view + 2D rect + the image path
+        # (retake shots live outside crop_src). Without this the child is
+        # born photo-less: no crop, no J6 description, a NO PHOTO row at
+        # J9. Member numbers count within the node (pool indexes are
+        # meaningless here); crop filenames stay unique via the node id.
+        for j, im in enumerate(o.get("members_inline") or []):
+            members.append({
+                "member": j,
+                "view": im["view"],
+                "label": im["label"],
+                "score": im["score"],
+                "box_2d": im["box_2d"],
+                "truncated": bool(im.get("truncated")),
+                "img": im.get("img"),
+                "crop": None,
             })
         members.sort(key=lambda m: -m["score"])
         distinct = sorted({m["label"] for m in members} | {o["label"]})
@@ -391,8 +422,8 @@ def main():
     ap.add_argument("--crop-src", default=CROPSRC_DEFAULT)
     ap.add_argument("--no-crops", action="store_true",
                     help="skip crop cutting (crop refs stay null)")
-    ap.add_argument("--recrop", action="store_true",
-                    help="re-cut crops even if the files exist")
+    # --recrop is GONE (2026-08-10): the crops folder is now wiped and
+    # rebuilt on every run, so there is nothing to opt into.
     a = ap.parse_args()
     scene = a.scene
     sdir = paths.scene_dir(scene)
@@ -410,11 +441,20 @@ def main():
         arch_src = "envelope grid bounds (PLACEHOLDER — run room_shell.py)"
     nodes = det_nodes + env_nodes
 
-    n_cut = n_skip = n_missing = 0
+    n_cut = n_missing = 0
     if not a.no_crops:
-        n_cut, n_skip, n_missing = cut_crops(
+        n_cut, n_missing = cut_crops(
             det_nodes, pool, input_paths["crop_src"],
-            sdir / "graph" / "crops", a.recrop)
+            sdir / "graph" / "crops", sdir=sdir)
+    # a node with ZERO crops is invisible to every crop-fed judge (J1, J6
+    # describe, J9) for the rest of the pipeline — on an unattended run
+    # that must be loud, counted from the data, never silent
+    photoless = [n["id"] for n in det_nodes
+                 if not any(m.get("crop")
+                            for m in n["evidence"]["members"])]
+    if photoless and not a.no_crops:
+        print(f"[record] WARNING {len(photoless)} node(s) with NO crop — "
+              f"blind to J1/J6/J9: {', '.join(photoless)}")
 
     naming_nodes = [n["id"] for n in det_nodes if n["label_provisional"]]
 
@@ -451,8 +491,7 @@ def main():
             "envelope_nodes": len(env_nodes),
             "label_provisional_nodes": len(naming_nodes),
             "same_candidate_pairs": 0,     # build_edges.py fills
-            "crops": {"cut": n_cut, "skipped_existing": n_skip,
-                      "missing": n_missing},
+            "crops": {"cut": n_cut, "missing": n_missing},
         },
         "open_questions": {
             # SAME_CANDIDATE pairs are computed from geometry by
@@ -474,7 +513,7 @@ def main():
           f"(open naming question): {naming_nodes}")
     print("[record] same-candidate pairs: computed from geometry by "
           "build_edges.py (no pre-merge dedup stage)")
-    print(f"[record] crops: {n_cut} cut, {n_skip} already on disk, "
+    print(f"[record] crops: folder rebuilt, {n_cut} cut, "
           f"{n_missing} missing/degenerate")
     print(f"[record] generation prompt: "
           f"{'attached (' + str(len(prompt_text)) + ' chars)' if prompt_text else 'NOT FOUND (lineage.generation_prompt = null)'}")
