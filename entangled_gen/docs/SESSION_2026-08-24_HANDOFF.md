@@ -27,6 +27,25 @@ also carries supplementary views (235 across the scene) that it is NOT
 being given. For a "same product?" judgement two angles may beat one.
 Changing it changes what the judge sees, so it wants a ruling.
 
+WHERE THAT CHANGE IS MADE, if the user says yes:
+`graph/judge_same_product.py` -> `member_crop_paths()`. It early-returns
+`[shown[mid]]` — the main photo alone — when the node has one. To give the
+judge more, append from `graph['shown'][nodes][id]['shown']['views']`
+(each entry has `path`, `view`, and `occluders_removed`) up to
+`CROPS_PER_MEMBER` (currently 2, line ~112). The sheet builder already
+lays out up to that many side by side, so nothing else needs touching.
+⚠ Some supplementary views are cone-culled — occluders in front of the
+object were deleted. `occluders_removed` marks them. The user ruled that
+acceptable for evidence but the judge is not currently told; if those go
+in, say so in the prompt.
+
+**RUNNING THINGS (both were left alive at session close, may not be):**
+- viewer: launch via WMI `Win32_Process.Create` (a plain background
+  process dies with the tool shell's job object) —
+  `python -u viewer\serve.py --scene living_marble --port 8321`
+- GPU watcher: `tools/watch_gpu.ps1`, launch the same way. See
+  docs/POWER_CRASHES.md §6.
+
 **Then:** `judge_same_product.py --scene living_marble` (LLM), followed by
 `materialize_layers.py --scene living_marble --apply` to rebuild
 `grouped`, which is correctly marked stale.
