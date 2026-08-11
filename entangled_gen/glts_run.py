@@ -132,6 +132,50 @@ def _count_calls(log_text):
     return None, None
 
 
+#: what a completed run must have left behind, per stop-step. GLTS numbers
+#: its outputs, so the last file is the proof the last step ran.
+FINAL_ARTIFACT = {0: "1_room_size.json",
+                  LAYOUT_END: "13_furniture_layout.json",
+                  FULL_END: "16_scene.glb"}
+
+
+def _completed(root, end_step):
+    """Did this run actually FINISH, or did it exit 0 having given up?
+
+    GLTS RETURNS 0 EVEN WHEN THE SCENE FAILED. Observed 2026-08-11: the
+    bedroom run stopped at step 11 because the model returned a 26-
+    character string for a field GLTS caps at 25, retried three times,
+    recorded the failure in failed_instructions.json — and exited 0. The
+    launcher is a shell script whose last command succeeded, so the
+    return code describes the script, not the scene.
+
+    This is the same hazard the rest of this pipeline was audited for: a
+    stage that succeeds and does nothing. Trusting rc here would have put
+    a half-finished baseline into a comparison table. So completion is
+    judged by what is ON DISK — the numbered artifact the last step
+    writes — and by GLTS's own failure log."""
+    fail_f = root / "failed_instructions.json"
+    failed = []
+    if fail_f.exists():
+        try:
+            failed = json.loads(fail_f.read_text(encoding="utf-8")) or []
+        except (ValueError, OSError):
+            failed = [{"error": "failed_instructions.json unreadable"}]
+    if failed:
+        steps = []
+        for e in failed:
+            for s in (e.get("failed_steps") or []):
+                steps.append(f"step {s.get('step_index')} "
+                             f"({s.get('step_name')})")
+        return False, ("GLTS recorded a failure: "
+                       + (", ".join(steps) or "see failed_instructions.json")), failed
+    want = FINAL_ARTIFACT.get(end_step)
+    if want and not (root / "0" / want).exists():
+        return False, (f"no {want} — the run stopped before step "
+                       f"{end_step} finished"), failed
+    return True, "", failed
+
+
 def run_one(scene, end_step=FULL_END, start_step=0, dry=False, timeout_s=14400):
     """One scene through GLTS, timed, isolated, recorded."""
     prompt, prompt_src = scene_prompt(scene)
@@ -194,6 +238,7 @@ def run_one(scene, end_step=FULL_END, start_step=0, dry=False, timeout_s=14400):
     log = "".join(chunks)
     paths.write_atomic(log_path, log)
     calls, how = _count_calls(log)
+    done, why, failed = _completed(root, end_step)
 
     res = {
         "scene": scene,
@@ -202,7 +247,12 @@ def run_one(scene, end_step=FULL_END, start_step=0, dry=False, timeout_s=14400):
         "ended": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "seconds": round(dt, 1),
         "returncode": rc,
-        "ok": rc == 0,
+        # rc==0 is NOT enough — see _completed(). A run is ok only when it
+        # left the artifact its last step writes and logged no failure.
+        "ok": rc == 0 and done,
+        "completed": done,
+        "incomplete_why": why,
+        "glts_failed_instructions": failed,
         "steps": [start_step, end_step],
         "model_calls": calls,
         "model_calls_counted_by": how,
@@ -214,10 +264,14 @@ def run_one(scene, end_step=FULL_END, start_step=0, dry=False, timeout_s=14400):
         if (root / "0").exists() else [],
     }
     paths.write_atomic(result_path(scene), json.dumps(res, indent=1))
-    print(f"[glts] {scene}: {'ok' if rc == 0 else f'FAILED rc={rc}'} "
-          f"in {dt/60:.1f} min"
+    verdict = ("ok" if res["ok"] else
+               f"FAILED rc={rc}" if rc != 0 else
+               "INCOMPLETE (exited 0 but did not finish)")
+    print(f"[glts] {scene}: {verdict} in {dt/60:.1f} min"
           + (f", {calls} model calls" if calls else "")
           + f" -> {result_path(scene)}", flush=True)
+    if not done:
+        print(f"[glts] {scene}: {why}", flush=True)
     return res
 
 
