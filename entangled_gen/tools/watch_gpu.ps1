@@ -1,7 +1,7 @@
-# watch_gpu.ps1 — crash forensics logger for the laptop's hard power-off problem.
+# watch_gpu.ps1 - crash forensics logger for the laptop's hard power-off problem.
 #
 # WHY THIS EXISTS
-#   This machine hard-powers-off under GPU burst (no bugcheck, no minidump —
+#   This machine hard-powers-off under GPU burst (no bugcheck, no minidump -
 #   Windows logs Kernel-Power 41 with BugcheckCode=0, i.e. it lost power
 #   mid-instruction). When that happens there is NO postmortem evidence unless
 #   something was writing the GPU/battery state to disk as it went.
@@ -9,7 +9,7 @@
 # WHAT IT DOES
 #   Samples once a second and appends ONE LINE PER SAMPLE, flushed and closed
 #   every time, so the last line on disk is the last moment the machine was
-#   alive. That last line is the whole point — do not buffer it.
+#   alive. That last line is the whole point - do not buffer it.
 #
 # COLUMNS
 #   timestamp, gpu_temp_C, gpu_power_W, sm_clock_MHz, gpu_mem_MiB, gpu_util_%, ac_online, batt_rate_mW, batt_pct
@@ -63,7 +63,7 @@ $query = 'timestamp,temperature.gpu,power.draw,clocks.sm,memory.used,utilization
     $line = $_.Trim()
     if ($line.Length -eq 0) { return }
     $p = Get-PowerState
-    # Add-Content opens, writes and closes — the line is on disk before the
+    # Add-Content opens, writes and closes - the line is on disk before the
     # next sample is taken. That survives a power cut; a buffered stream does not.
     Add-Content -Path $OutFile -Encoding utf8 -Value ("{0}, {1}, {2}, {3}" -f $line, $p[0], $p[1], $p[2])
 }

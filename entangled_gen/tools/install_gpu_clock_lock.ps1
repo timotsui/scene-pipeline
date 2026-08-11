@@ -1,8 +1,8 @@
-# install_gpu_clock_lock.ps1 — register the boot-time GPU clock lock.
+# install_gpu_clock_lock.ps1 - register the boot-time GPU clock lock.
 #
 # WHY: this laptop hard-powers-off under GPU burst load. The fix is
 #   nvidia-smi -lgc 0,1500  (see docs/POWER_CRASHES.md). Windows has no
-#   persistence mode, so the lock dies on every reboot — and since the failure
+#   persistence mode, so the lock dies on every reboot - and since the failure
 #   IS a reboot, every crash silently clears it and the next run goes
 #   unprotected. A boot-triggered task closes that gap.
 #
@@ -22,7 +22,7 @@ if (-not (Test-Path $Exe)) { throw "nvidia-smi not found at $Exe" }
 # Replace any previous version of this task so re-running is safe.
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
-    Write-Host "Existing '$TaskName' found — replacing it."
+    Write-Host "Existing '$TaskName' found - replacing it."
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
@@ -37,7 +37,7 @@ $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' `
 
 # The default task settings would sabotage this on a laptop: Windows refuses to
 # start tasks on battery and kills running ones when you unplug. Both are
-# disabled explicitly — the lock must hold regardless of power source.
+# disabled explicitly - the lock must hold regardless of power source.
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
