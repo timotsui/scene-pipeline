@@ -640,8 +640,26 @@ def recut_rect(prj, w, h):
     ps = max(CTX_PAD_SIDE * bw, CTX_MIN_PAD)
     pt = max(CTX_PAD_TOP * bh, CTX_MIN_PAD)
     pb = max(CTX_PAD_BOTTOM * bh, CTX_MIN_PAD)
-    return (max(0, int(x0 - ps)), max(0, int(y0 - pt)),
-            min(w, int(x1 + ps)), min(h, int(y1 + pb)))
+    # ⚠ CLAMP EACH EDGE INTO THE PHOTO, NOT EACH EDGE INDEPENDENTLY.
+    # The old form was `max(0, left) ... min(w, right)`, which is fine
+    # while the box overlaps the photo and produces an INVERTED rectangle
+    # when it does not: a box entirely off the left gives left=0 and a
+    # negative right; entirely off the right gives left>w and right=w.
+    # PIL then raises "Coordinate 'right' is less than 'left'" and the
+    # whole stage dies — which is what happened on the first fresh scene,
+    # AFTER `shown` had been written and stamped, so the stage failed
+    # having already succeeded. A box can project off-frame for an
+    # ordinary reason: the aimed view that best frames one object need
+    # not contain another.
+    #
+    # Clamping into range keeps the rectangle valid and DEGENERATE (zero
+    # width or height) for a box that is fully outside, which the
+    # caller's existing `width > 3 and height > 3` guard already skips.
+    cx0 = min(max(0, int(x0 - ps)), w)
+    cy0 = min(max(0, int(y0 - pt)), h)
+    cx1 = min(max(0, int(x1 + ps)), w)
+    cy1 = min(max(0, int(y1 + pb)), h)
+    return (cx0, cy0, max(cx0, cx1), max(cy0, cy1))
 
 
 # ---- B2: performing the re-cuts ----------------------------------------

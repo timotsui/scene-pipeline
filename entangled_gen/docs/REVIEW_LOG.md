@@ -1684,3 +1684,27 @@ detect 180.7s  lift 7.0s  recenter 208.4s  filter 0.1s  scale 106.4s  shell 1.7s
 - **FIXED STRUCTURALLY, not with a special case.** An input that a LATER stage declares as its own artifact is a designed loop-back, and is skipped. Built from the tables, so there is no exception list to keep in step. Required giving `j0_retriage` and `j1_repairs` the artifacts they write — which they had NEVER declared, so those two LLM stages also had no no-op protection at all until now. Two holes, one fix.
 - **VERIFIED:** fresh02 now reports only its two TRUE failures (ended on `voted`, no `shown` layer); both dev scenes still PASS.
 - **RUNNING TALLY OF DEFECTS ONLY A FRESH SCENE COULD FIND: five.** edge_carry's silent IN_WALL loss, scene_gate loading a graph the funnel has not written, pick's mood sheet on the retired lane, build_graph's stale envelope precondition, split_cuts' retired-block requirement — plus this false positive, which a fresh scene caught within minutes of my writing it.
+
+## R-S2-103 - A STAGE THAT FAILED AFTER IT HAD ALREADY SUCCEEDED (2026-08-11B)
+- **`evidence` CRASHED WITH ITS LAYER ALREADY WRITTEN.** The log reads: "layer `shown`: 28 node(s) with a picture, 0 problem(s)" -> "wrote graph['shown']" -> "additive check: PASS" -> Traceback. The gate then confirmed "evidence layer whole: 28/28 nodes have a picture". The stage did its job, stamped it, and then died BUILDING THE HUMAN REVIEW PAGE.
+- **ROOT CAUSE, scene-agnostic:** `node_evidence.recut_rect` clamped each edge of the crop rectangle INDEPENDENTLY — `max(0, left) … min(w, right)`. That is fine while the box overlaps the photo and INVERTS when it does not: a box entirely off the left gives left=0 and a negative right; entirely off the right gives left>w and right=w. PIL raises "Coordinate 'right' is less than 'left'". A box projecting off-frame is ORDINARY, not exotic — the aimed view that best frames one object need not contain another.
+- **FIXED** by clamping each edge INTO the photo, which makes an off-frame box DEGENERATE (zero width or height) rather than inverted — and the caller's existing `width > 3 and height > 3` guard already skips those. Tested against seven cases (inside, off each of the four sides, straddling, larger than the photo): all valid, PIL accepts every one, and the in-frame result is byte-identical to before.
+- **THE CLASS IS WORTH MORE THAN THE INSTANCE, AND IT IS NOT FIXED.** A REVIEW ARTIFACT took down a stage whose real output was already committed. On a hundred unattended scenes any such crash costs a scene that had actually succeeded, and leaves an incoherent state: the runner says CRASH, the gate says the layer is whole, and both are right. Whether `write_report`-style builders should be allowed to fail their stage is a POLICY question, not a bug — wrapping them changes what "a stage failed" means. **NOT DECIDED HERE. Flagged for the user.**
+- **SIX defects now that only a fresh scene could find**, and this one is the first of a new kind: not a stale artifact every dev scene happens to carry, but a geometric edge case no curated scene had produced.
+
+## R-S2-104 - ⭐ THE MEASUREMENT HALF IS DONE: RAW BUNDLE -> `grouped`, FINAL GATE PASS (2026-08-11B)
+- **`[gate] PASS: final state of fresh02`.** Ended on `grouped`, no stale layers, evidence layer whole 28/28. **33 of 45 stages — the entire measurement half — from a Marble bundle that had never been downloaded into a scene, with no human in the loop.**
+- **THE WHOLE LAYER CHAIN, EVERY LAYER WHOLE:**
+```
+record   52 nodes  102 edges  IN_WALL 29
+judged   37         85                27
+resolved 31         64                23
+voted    31        101                31
+settled  28         77                27
+shown    28         77                27
+grouped  28         82                27      (+5 SAME_PRODUCT from J9)
+```
+- **READ THE IN_WALL COLUMN.** Every layer carries wall edges. **Before this morning every number from `voted` down would have been 0** — silently, on every scene the project has ever built. This scene has never contained the broken code, so the column is not a repair, it is what the pipeline produces when it is right.
+- **BOTH RETIREMENTS HOLD ON A SCENE BUILT ENTIRELY UNDER THEM:** `graph['voted_edges']` and `graph['vote']` are absent, and nothing wanted them.
+- **THIS IS THE CLAIM THE 08-25B HANDOFF SAID COULD NOT BE MADE**, and it can now be made in the exact form that handoff demanded: backed by a scene that had never run before. What it does NOT yet cover is compose — 12 stages, running now.
+- **THE HONEST COST, from the run logs:** intake 872.7 s, record+judge 345.6 s, graph chain ~330 s of stage time, plus six fix-and-resume cycles that a clean run would not pay. Call it ~26 minutes of machine time per scene for the measurement half, of which the single most expensive stage is `vocab` at 293 s and UNCACHED.
