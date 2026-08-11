@@ -658,16 +658,33 @@ def load_glts(scene, root_override=None):
             if isinstance(entry, dict):
                 retrieved_names.extend(str(k) for k in entry)
         n_retrieved = len(retrieved_names)
+
+    # FURNITURE AND SMALL OBJECTS ARE PLACED BY DIFFERENT STEPS, so they
+    # must not be counted against each other. GLTS names a small object
+    # for its parent — "coffee table_ceramic vase" is the vase ON the
+    # coffee table — and those are placed at step 14, not 13. A run
+    # stopped at 13 has therefore not lost them; it has not reached them.
+    # Counting all 28 retrieved names against 5 placed would manufacture
+    # a 23-object failure out of a 8-object one, which is the kind of
+    # inflated number this whole report exists to avoid.
+    def _is_small(n):
+        return "_" in n
     placed = {o["name"].lower() for o in objs}
-    lost = [n for n in retrieved_names
+    furn_retrieved = [n for n in retrieved_names if not _is_small(n)]
+    small_retrieved = [n for n in retrieved_names if _is_small(n)]
+    lost = [n for n in furn_retrieved
             if n.lower() not in placed
             and n.lower() not in GLTS_NON_OBJECTS]
+    reached_small = bool(small and _load("14_small_object_layout.json"))
 
     out.update({
         "available": bool(objs) or dim is not None,
         "objects": objs, "object_source": src,
         "retrieved_count": n_retrieved,
         "retrieved_names": retrieved_names,
+        "retrieved_furniture": furn_retrieved,
+        "retrieved_small_objects": small_retrieved,
+        "small_object_step_reached": reached_small,
         "retrieved_but_not_placed": lost,
         "dropped_as_architecture": dropped,
         "room_dimension": dim,
@@ -1131,14 +1148,24 @@ def scene_html(rec):
         gm = rec.get("glts_meta") or {}
         if gm.get("retrieved_count"):
             lost = gm.get("retrieved_but_not_placed") or []
-            h.append(f'<p class="note"><b>GLTS intent vs result:</b> '
-                     f'{gm["retrieved_count"]} objects were retrieved at '
-                     f'step 11, {d["glts_object_count"]} survived into the '
-                     f'final placement — {len(lost)} were lost during the '
-                     f'search. This is why its prompt fidelity above is '
-                     f'low: not that it never planned them, but that they '
-                     f'did not survive. Lost: '
-                     f'{e(", ".join(lost)) if lost else "none"}.</p>')
+            nf = len(gm.get("retrieved_furniture") or [])
+            ns = len(gm.get("retrieved_small_objects") or [])
+            small_note = (
+                "" if gm.get("small_object_step_reached") else
+                f" The other {ns} retrieved name(s) are SMALL OBJECTS "
+                f"(named for their parent, e.g. "
+                f"<code>coffee table_ceramic vase</code>), which step 14 "
+                f"places; this run stopped before it, so they are not "
+                f"counted as lost — it never reached them.")
+            h.append(f'<p class="note"><b>GLTS intent vs result:</b> of '
+                     f'{nf} FURNITURE items retrieved at step 11, '
+                     f'{d["glts_object_count"]} survived into the final '
+                     f'placement — {len(lost)} were lost during the search. '
+                     f'This is why its prompt fidelity above is low: not '
+                     f'that it never planned them, but that they did not '
+                     f'survive. Lost: '
+                     f'{e(", ".join(lost)) if lost else "none"}.{small_note}'
+                     f'</p>')
     return "".join(h)
 
 
@@ -1235,8 +1262,9 @@ def console(rec):
         g = rec.get("glts_meta") or {}
         if g.get("retrieved_count"):
             lost = g.get("retrieved_but_not_placed") or []
-            print(f"     glts intent vs result: {g['retrieved_count']} "
-                  f"objects retrieved, {d['glts_object_count']} placed"
+            nf = len(g.get("retrieved_furniture") or [])
+            print(f"     glts intent vs result: {nf} furniture retrieved, "
+                  f"{d['glts_object_count']} placed"
                   + (f" - {len(lost)} lost in the search "
                      f"({', '.join(lost[:6])}"
                      + (" ..." if len(lost) > 6 else "") + ")" if lost else ""))
