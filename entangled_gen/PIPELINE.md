@@ -408,9 +408,12 @@ the symptom: conflicts went 2 -> 0.
 
 Position: between graph["resolved"] and S1. Its boxes become
 graph["voted"] (see THE LAYER CHAIN above) — the manifest is the stage's
-raw output, the LAYER is what everything downstream reads. Still not in
-the canonical runner; dashed node on pipeline_map.html. Design lineage: docs/SLICEVOTE.md; evidence
-trail: docs/REVIEW_LOG.md R-S2-26.
+raw output, the LAYER is what everything downstream reads. IN THE RUNNER
+SINCE 2026-08-11: it is the first row of graph/stages.py, so
+`run_scene.py` runs it like any other stage. ⚠ pipeline_map.html still
+draws it as a dashed node and has NOT been updated — the map is the
+user's authority and is theirs to change. Design lineage:
+docs/SLICEVOTE.md; evidence trail: docs/REVIEW_LOG.md R-S2-26, R-S2-84.
 
 - `slicevote.py --scene <s> [--only ids] [--gate 3]`
   - reads: scene_graph.json (resolved), cached pool top/ctop renders,

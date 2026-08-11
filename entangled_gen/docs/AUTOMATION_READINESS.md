@@ -1,275 +1,403 @@
-# RUNNING THE GRAPH CHAIN UNATTENDED — what is missing, and how to finish it
+# RUNNING THE GRAPH CHAIN UNATTENDED — how to run it, and what is still broken
 
-Written 2026-08-11. The goal this serves is Rule #1: **the pipeline runs
-itself over ~100 scenes with no human in the loop.**
+Written 2026-08-11, rewritten the same day after the work in
+`docs/PLAN_AUTOMATION_2026-08-11.md` landed. The goal this serves is
+Rule #1: **the pipeline runs itself over ~100 scenes with no human in the
+loop.**
 
-Everything from the vote onward currently runs BY HAND, one command at a
-time. That is how it was run on 2026-08-10/11 and it worked — but a
-human chose each command and each flag. This file is what a next agent
-needs to make that unnecessary.
-
----
-
-## 1. THE CHAIN, IN ORDER, WITH THE FLAGS THAT ACTUALLY DO SOMETHING
-
-Verified by running it end to end on `living_marble`, 2026-08-11.
-
-```
- 1  slicevote.py                  --scene S
- 2  graph/record_vote_doubts.py   --scene S --apply
- 3  graph/build_voted.py          --scene S --apply
- 4  graph/rederive_voted_edges.py --scene S --apply
- 5  graph/judge_multiplicity.py   --scene S                 (J8,  LLM)
- 6  graph/split_cuts.py           --scene S                 (J8s, LLM)
- 7  graph/materialize_layers.py   --scene S --settle-only --apply   -> settled
- 8  graph/node_views.py           --scene S --layer settled [--render]
- 9  graph/node_evidence.py        --scene S --recut --reshoot --apply -> shown
-10  graph/judge_same_product.py   --scene S                 (J9,  LLM)
-11  graph/materialize_layers.py   --scene S --apply                 -> grouped
-```
-
-**STEP 7 AND STEP 11 ARE THE SAME MODULE, AND THE DIFFERENCE MATTERS.**
-`materialize_layers` writes `settled` with `--settle-only` and `grouped`
-without it. Run the full one too early and you write `grouped` from a
-state J9 has not seen — which is exactly the mistake made on 08-11 and
-why `grouped` ended the night marked stale. Geometry first (7), group
-last (11).
-
-**WHY 8 AND 9 SIT WHERE THEY DO.** `node_evidence` reads `settled` BY
-NAME, never "whatever is current", because it feeds J9 and `grouped` is
-J9's own output — evidence taken from `grouped` would hand J9 back its
-own verdict as proof of itself. So step 7 must have run, and step 11
-must not have.
-
-**STEP 8 IS USUALLY FREE.** On the 08-11 run it needed 0 renders for 33
-of 35 repairs, because the vote's own renders already framed the boxes.
-`--render` only costs GPU when a node genuinely has no usable picture.
+The first version of this file said the chain was not automatable and
+listed what to fix. That is done. **The eleven hand-typed commands are
+gone, the flags are inverted, and a gate runs between every stage.** If
+you are holding an old command line from a handoff or from shell history,
+read §3 before you use it — the flags on it no longer mean what they used
+to.
 
 ---
 
-## 2. THE BLOCKERS — WHAT MUST BE FIXED BEFORE THIS CAN BE LEFT ALONE
+## 1. HOW YOU ACTUALLY RUN THIS
 
-### 2.1 Six stages do NOTHING without a flag, and exit 0 doing it
+One scene, both phases, end to end:
 
-| stage | silently a no-op unless you pass |
+```
+python run_scene.py --scene living_marble
+```
+
+Many scenes, one after another, with nobody watching:
+
+```
+python run_fleet.py --scenes bedroom_marble,living_marble
+python run_fleet.py                     # every scene with a splat on disk
+```
+
+With no `--scenes` and no `--scenes-file`, the fleet takes
+`paths.gen_scenes()` — every folder under `out/` that has a `gen_raw.ply`.
+Names are checked against disk BEFORE anything runs, so a typo costs you a
+second and not a night.
+
+### run_scene.py — the useful options
+
+| flag | when you reach for it |
 |---|---|
-| `record_vote_doubts` | `--apply` |
-| `build_voted` | `--apply` |
-| `rederive_voted_edges` | `--apply` |
-| `materialize_layers` | `--apply` |
-| `node_views` | `--render` |
-| `node_evidence` | `--apply --recut --reshoot` (three of them) |
+| `--scene S` | required, except with `--list`. |
+| `--phase core\|graph\|all` | `core` = pictures to 3D boxes. `graph` = the vote to `grouped`. Use `graph` when the geometry is already built and you only want the chain. |
+| `--from K` / `--until K` | re-run a slice of the graph chain, e.g. `--from settled --until j9` after fixing something in the middle. Keys come from `graph/stages.py`. |
+| `--skip a,b` | drop named stages. One flag covers both phases — core names and graph keys both work. An unknown name stops the run instead of being ignored. |
+| `--no-llm` | run only the free stages. Use it to shake out plumbing without spending model calls. The scene will NOT be complete, the final gate is skipped, and the summary says so loudly. |
+| `--dry-run` | print every command and every gate check that WOULD happen, and execute nothing. Use it before a long night. |
+| `--list` | print the chain as a table and exit. No scene needed. |
+| `--continue-on-fail` | keep going after a failure and report all of them, instead of stopping at the first. |
+| `--box-thr F` | GroundingDINO box threshold for the core `seg` stage (default 0.35). |
 
-This is the single biggest hazard. A runner that forgets a flag gets
-**success and no work done**, and the next stage reads the previous
-run's answer. `record_vote_doubts` is the case already on record: without
-`--apply` it updates `vote_doubts.json` but NOT the graph `vote` block
-J8 reads, and J8 has judged stale doubts because of it.
+### run_fleet.py — the useful options
 
-**THE FIX: invert the defaults.** `--apply` becomes the default; add
-`--dry-run` to opt out. The safe default for an unattended chain is "do
-the thing", because a missing flag should be an error, not silence.
-Every one of these already prints a clear DRY line, so the dry path
-survives as an explicit choice.
+| flag | when you reach for it |
+|---|---|
+| `--scenes a,b` / `--scenes-file f` | an explicit list. The file takes one name per line; `#` comments and blank lines are ignored. |
+| `--exclude a,b` | drop scenes from whichever list you gave. |
+| `--resume` | skip every scene whose final gate ALREADY passes. A fleet interrupted at scene 60 restarts without redoing the first 59. |
+| `--scene-timeout S` | seconds one scene may take before it is killed and recorded as `timeout`. Default 4 hours; `0` means no limit. This is the outer bound on a wedged scene. |
+| `--stop-on-fail` | stop the whole fleet at the first scene that does not pass. Off by default, on purpose: one bad scene must not stop the night. |
+| `--dry-run` | print the plan — scene list, per-scene command line, timeout, report paths — and run nothing. |
+| `--phase`, `--from`, `--until`, `--skip`, `--no-llm`, `--box-thr` | passed straight through to `run_scene.py` and mean there exactly what they mean there. |
 
-### 2.2 `node_evidence` writes a layer with HOLES and calls it done
-
-Run it with `--apply` but without `--recut --reshoot` and it writes
-`graph['shown']` with `problems: N` — nodes whose picture was planned but
-never produced. Observed: `43 node(s) with a picture, 2 problem(s)`, exit
-0. On scene 57 of 100 that is a silent hole in the evidence a judge then
-uses.
-
-**THE FIX:** refuse to write the layer when `problems > 0` unless an
-explicit `--allow-holes` is passed. A gap in the evidence layer should
-stop the scene.
-
-### 2.3 Nothing checks the run FINISHED
-
-A scene can end with `grouped` marked stale and the runner reports
-success. The information is all there — `scene_state.check()` passes,
-`graph['layer']['stale']` lists it, the log says
-`[state] ... marked stale` — but nothing gates on it.
-
-**THE FIX:** an end-of-scene gate that fails the scene when any layer in
-`graph['layer']['stale']` is non-empty, or when
-`scene_state.current_name(graph) != 'grouped'`.
-
-### 2.4 The chain is not in the runner at all
-
-`run_scene.py` stops at `lift_pano` / `manifest_pano_to_raw` — the
-geometric core. Steps 1–11 above exist only in this file and in whatever
-a human remembers. PIPELINE.md still says of the vote: *"Still not in
-the canonical runner; dashed node on pipeline_map.html."*
-
-**THE FIX:** extend `run_scene.py` with the 11 steps, `--skip` support
-per stage as it already has, and stop-on-first-failure as it already
-does. The order and the flags then live in ONE place.
+Every fleet writes `out/fleet_<runid>.json` and `out/fleet_<runid>.html`:
+one row per scene with its verdict, its time, the stage it died on, and
+the gate's WARN/INFO lines. That page, not console scrollback, is what
+you read in the morning. Each scene also writes
+`out/<scene>/run_scene_<utc>.json`.
 
 ---
 
-## 3. THE SCAN — HOW TO CHECK A SCENE RAN PROPERLY
+## 2. THE CHAIN IS NO LONGER WRITTEN DOWN HERE
 
-Run these after a scene. Each is cheap and answers one question.
+The old version of this file listed eleven commands with their flags.
+That list is gone, because a list in prose cannot be executed, checked or
+resumed, and a second copy of it goes stale the day someone edits the
+first.
 
-### 3.1 Did every stage actually write?
-
-```powershell
-python -c "
-import json,sys; sys.path.insert(0,'graph'); import scene_state
-g=json.load(open(r'<scene_dir>/scene_graph.json',encoding='utf-8'))
-print('live layers :', scene_state.present(g))
-print('stale       :', (g.get('layer') or {}).get('stale'))
-print('current     :', scene_state.current_name(g))
-print('check()     :', scene_state.check(g))
-"
-```
-
-PASS = live layers end at `grouped`, `stale` is empty, `check()` is True.
-
-### 3.2 Did the evidence layer come out whole?
-
-```powershell
-python -c "
-import json
-g=json.load(open(r'<scene_dir>/scene_graph.json',encoding='utf-8'))
-sh=g.get('shown') or {}
-print(sh.get('counts'))
-"
-```
-
-PASS = `with_picture == nodes` and `problems == 0`.
-
-### 3.3 Did the judges see the new evidence or fall back?
-
-Grep the J9 log for the line it prints every run:
+**The order is data in `graph/stages.py`.** One row per stage: the layer
+it reads, the layer it writes, the files it must produce, whether it
+spends model calls, whether it wants the GPU. `run_scene.py` walks that
+table; the eleven commands appear nowhere in it. To see the chain:
 
 ```
-[same_product] evidence: graph['shown']: N node(s) carry a picture
+python run_scene.py --list          # or: python graph/stages.py
 ```
 
-FAIL = `graph['shown'] absent` or `graph['shown'] is STALE` — the judge
-silently used detector crops instead.
+Two pieces of hard-won reasoning live in that order and are worth keeping
+in front of you. Both are also written in `stages.py` next to the rows
+they explain.
 
-### 3.4 How much of the vote was actually measured?
+**`materialize_layers` runs TWICE, and the `--settle-only` one must come
+first.** The same module writes `settled` with `--settle-only` and
+`grouped` without it. `grouped` is J9's own output. Run the full one
+early and you write `grouped` from a state J9 has never seen — the
+mistake made by hand on 08-11, and why `grouped` ended that night marked
+stale. Geometry first, group last.
 
-```
-grep -c "FALLBACK WEDGE" <scene>/slicevote_*.log
-```
-
-On living_marble this was **11 of 31** slices. A fallback wedge means the
-plan view found nothing and the box shipped roughly as it arrived — see
-§4.1. Worth recording per scene; a scene where most slices fell back has
-not really been measured.
-
-### 3.5 Are the flags right?
-
-The no-op trap in §2.1 is invisible from output. Until the defaults are
-inverted, check the actual command line:
-
-```
-grep -E "record_vote_doubts|build_voted|rederive|materialize|node_evidence" run.log \
-  | grep -v -- "--apply"
-```
-
-Any hit is a stage that did nothing.
+**`node_evidence` reads `settled` BY NAME, never "whatever is current".**
+Its output is the evidence J9 judges on, and `grouped` is J9's verdict.
+Evidence taken from `grouped` would hand J9 back its own answer as proof
+of itself. This is also why the gate requires a stage's input layer to be
+"present and fresh" rather than "current": re-running a middle stage while
+a later layer exists is legal, reading a STALE layer is not.
 
 ---
 
-## 4. KNOWN DEFECTS THAT SURVIVE INTO EVERY SCENE
+## 3. THE FLAGS ARE INVERTED NOW
 
-### 4.1 `ctop` plan shots have NEVER detected anything — 0 for 11
+Six stages used to do nothing without a flag and exit 0 doing it. That is
+fixed by turning it round: **writing is the DEFAULT everywhere.**
+
+| stage | how you opt OUT of the work now |
+|---|---|
+| `record_vote_doubts` | `--dry-run` |
+| `build_voted` | `--dry-run` |
+| `rederive_voted_edges` | `--dry-run` |
+| `materialize_layers` | `--dry-run` |
+| `node_views` | `--no-render` |
+| `node_evidence` | `--dry-run`, `--no-recut`, `--no-reshoot` |
+
+`node_evidence` also has `--allow-holes` (see §4).
+
+**THE OLD FLAGS STILL PARSE AND DO NOTHING.** `--apply`, `--render`,
+`--recut` and `--reshoot` are still accepted so that no old script, doc or
+handoff crashes — but they are no-ops. This matters in one direction:
+an old command line does not fail, it just quietly does more than the
+person who wrote it expected. `node_views.py --scene S` renders;
+`node_views.py --scene S --render` renders too and always did. But
+`node_evidence.py --scene S --apply` now also recuts and reshoots.
+Nothing silently does LESS than it looks like, which is the failure mode
+that mattered, but do not read an old line as documentation.
+
+---
+
+## 4. THE GATE — `graph/scene_gate.py`
+
+The gate asks the questions no stage can answer about itself, and it asks
+them between every pair of stages.
+
+```
+python graph/scene_gate.py --scene S --report          # the whole scan
+python graph/scene_gate.py --scene S --final           # did the run finish
+python graph/scene_gate.py --scene S --before evidence
+python graph/scene_gate.py --scene S --after evidence --since <epoch>
+```
+
+- `--before K` — the layer stage K reads is present and NOT stale.
+- `--after K` — stage K wrote the layer, the graph blocks and the files it
+  promised, and (with `--since`) wrote them DURING this run. The mtime
+  test is the generic way to catch a stage that exits 0 having done
+  nothing: a file that merely exists proves only that some earlier run
+  made it.
+- `--final` — the chain ended on `grouped`, no layer is stale, and the
+  evidence layer is whole.
+- `--report` — the per-stage scan plus the final check, read-only.
+
+### Exit codes
+
+| code | meaning |
+|---|---|
+| 0 | pass |
+| 1 | an ordinary crash |
+| 2 | `node_evidence` REFUSED: the evidence layer would have had holes |
+| 3 | a gate failed |
+
+`run_scene.py` uses the same four, and passes a stage's 2 through so a
+fleet can tell a refusal from a crash. Its own usage errors leave by the
+crash door (1) rather than argparse's default 2, so a typo is never
+mistaken for a refusal.
+
+### FAILURE versus WARN/INFO — the important distinction
+
+**The gate checks the MACHINERY, not the answers.** A box can be legal
+and wrong. So:
+
+- **FAIL** = something is broken. The scene stops. Missing layer, stale
+  layer, promised file not written this run, chain did not end on
+  `grouped`, evidence layer with holes.
+- **WARN / INFO** = a quality number. It is recorded on the scene, shown
+  in the fleet table, and **never fails a scene.** Where the acceptable
+  line falls is the user's judgement, not the gate's.
+
+The quality numbers it reports (`scene_gate.quality_notes`):
+
+| line | what it means |
+|---|---|
+| INFO — N nodes fell back to a full-height wedge | the plan view found nothing, so nothing re-measured the box and it shipped roughly as it arrived. This is the §5.1 `ctop` defect, counted per scene. |
+| WARN — N SAME_CANDIDATE edges have no verdict | the vote moved boxes into a new "these might be one object" pair, and no judge in the chain answers a candidate raised after the vote. They ship as separate objects. See §5.4. |
+| WARN — the vote is not canon-eligible | the vote run was partial (`--only`) or merged boxes from more than one code revision. Everything built on top inherits that. |
+| WARN — J8 / J8s / J9: N of M verdicts DEFAULTED | the call failed and a default was recorded instead of a decision. One is noise; forty means a token expired and the scene is confident-looking fiction. |
+| INFO — N nodes carry a supplementary view with occluders deleted | the judge saw the object unobstructed, which a photograph would not be. |
+
+---
+
+## 5. THE SCAN — the gate does it for you
+
+The old version of this file had five hand-typed python one-liners here.
+They are gone. `scene_gate.py --report` runs all of them:
+
+- live layers, stale layers, current layer, `scene_state.check()`
+- the `shown` counts (`nodes` / `with_picture` / `problems`)
+- per-stage before/after, with the reason for every failure
+- the quality numbers of §4
+
+```
+python graph/scene_gate.py --scene S --report
+```
+
+PASS = live layers end at `grouped`, nothing stale, `check()` true,
+evidence layer whole. There is nothing left here to type by hand.
+
+---
+
+## 6. THE DEFECTS THAT SURVIVE
+
+None of these is fixed. Each says whether it STOPS a run or merely makes a
+scene worse.
+
+### 6.1 `ctop` plan shots have NEVER detected anything — 0 for 11
+**OPEN. Does not stop a run. Makes the scene worse.**
 
 The vote's plan view has two cameras: `top` (inside the room) and `ctop`
 (above the ceiling, ceiling deleted, near-vertical). Measured on
 living_marble: **`top` 22 detections / 23 shots, `ctop` 0 / 11.**
 
-`ctop` is the fallback, so it is handed the hardest objects by design —
+`ctop` is the fallback, so by design it is handed the hardest objects —
 tall things and things high on shelves. On living that was all three
-bookshelves, all five magazines, the floor lamp, plant and tv stand.
-When it fails the slice falls back to a full-height wedge that only
-constrains left–right, so nothing re-measures the box and it ships
-roughly as it arrived. `materialize` now flags these as
-`slice_fallback` open questions, which is how to find them per scene.
+bookshelves, all five magazines, the floor lamp, the plant and the tv
+stand. When it fails, the slice falls back to a full-height wedge that
+only constrains left–right, so nothing re-measures the box and it ships
+roughly as it arrived. The gate counts these per scene as INFO.
 
-NOT a regression, NOT caused by the R-S2-77 rewiring: the pre-rewiring
-borrowed renders are the SAME pictures (mean pixel difference < 2/255).
-It has presumably always been this way and was invisible because the
-review sheet did not show the plan shot. It does now.
+Not a regression: the pre-rewiring borrowed renders are the SAME pictures
+(mean pixel difference < 2/255). It has presumably always been this way
+and was invisible because the review sheet did not show the plan shot.
 
-### 4.2 `node_views.py --only <ids>` REWRITES the whole plan file
+**Explicitly OUT OF SCOPE.** It is a design question about how the vote
+sees tall and flat objects, it needs the user's judgement, and the chain
+runs without solving it — it just measures those objects poorly and says
+so.
 
-It writes `node_views.json` containing ONLY the named nodes, silently
-shrinking the file every downstream reader trusts. Fine for a scoped
-repair, wrong if anything later expects the whole scene.
+### 6.2 `node_views.py --only <ids>` REWRITES the whole plan file
+**OPEN. Does not stop a run; corrupts the plan if you use the flag.**
 
-### 4.3 The GPU clock lock does not survive a reboot
+`--only` filters the node set and then writes `node_views.json` containing
+ONLY the named nodes, silently shrinking the file every downstream reader
+trusts. Fine for a scoped repair you are watching; wrong if anything later
+expects the whole scene. The automated chain never passes `--only`, so
+this is a hazard for hand repair, not for a fleet.
 
-This machine hard-powers-off under GPU burst (docs/POWER_CRASHES.md).
-The mitigation is `nvidia-smi -lgc 0,1500`, applied per boot — and since
-the failure IS a reboot, **a crash always clears the lock and the retry
-runs unprotected.**
+### 6.3 Big objects cannot be framed from inside the room
+**OPEN. Does not stop a run. Makes the evidence weaker.**
 
-✅ **CLOSED 2026-08-11.** `tools/install_gpu_clock_lock.ps1` was run and
-registered the scheduled task **`GPUClockLock`** — `nvidia-smi -lgc 0,1500`
-as SYSTEM at every startup, on-battery restrictions disabled. After a crash
-the lock is back before anyone logs in.
+`view_cams.standoff` wants `1.5 x half-extent / tan(27.5deg)`, which for a
+3 m object is ~4.6 m in a room 4.7 m wide. The camera is pulled back
+toward the capture standpoint instead of the view being dropped (culls
+fell 114 -> 53), but a camera pulled 5 m is no longer really the view it
+claims to be. `pulled_in_m` on each view records how far it moved; treat
+large values with suspicion.
 
-⚠ Note a claim made when this was proposed and later found FALSE: an
-unelevated session CANNOT fire the task with `schtasks /run`. A task
-running as SYSTEM is not visible or startable by a standard user (access
-denied on query, run, and reading the task file). The task covers the BOOT
-case, which was the hole that mattered; re-applying mid-session still needs
-an admin shell.
+### 6.4 THE CHAIN HAS NO JUDGE FOR A DUPLICATE THE VOTE ITSELF CREATES
+**OPEN. Does not stop a run. Ships a duplicate object.**
 
-### 4.4 Big objects cannot be framed from inside the room
+`build_edges` proposes SAME_CANDIDATE edges — "these two might be one
+object" — and J1 (`judge_pairs.py`) answers them. But **J1 runs on the
+RECORD, long before the vote.** The vote then moves every box, and that
+can propose a BRAND NEW candidate that no judge in the chain ever sees. On
+`living_marble` it did: two chairs, `obj_020` and `obj_068`, ended up 96%
+contained in one another. `materialize` merges only pairs whose verdict is
+SAME, so an unjudged candidate is silently not merged and the scene ships
+a duplicate object.
 
-`view_cams.standoff` wants `1.5 x half-extent / tan(27.5deg)`, which for
-a 3 m object is ~4.6 m in a room 4.7 m wide. The 08-11 change pulls the
-camera back toward the capture standpoint instead of dropping the view
-(culls fell 114 -> 53), but a camera pulled 5 m is no longer really the
-view it claims to be. `pulled_in_m` on each view records how far it
-moved; treat large values with suspicion.
+Found 2026-08-11 by re-running the documented chain on a clone and
+comparing node by node: the clone came out with 46 settled nodes,
+`living_marble` has 45. It was invisible because `living_marble`'s
+`settled` layer HAS the merge, recorded 08-10 — but its `voted` and
+`voted_edges` were rebuilt on 08-11, AFTER, and both stages re-derive
+edges geometrically with nothing carrying a verdict forward. So the merge
+survives only as a fossil in a layer whose inputs are gone. Re-run the
+chain today and it does not happen.
+
+Answering it means either a judge that runs on post-vote candidates or a
+rule that carries J1's verdicts across the vote. Both are design decisions
+with the user's name on them. **What was done instead: the gate now WARNs
+on every scene when a SAME_CANDIDATE edge reaches the end with no
+verdict**, so the hole is counted on all 100 runs rather than silently
+absorbed.
+
+### 6.5 J8's concurrency of 8 multiplies GPU renders, not just model lanes
+**OPEN, REPORTED NOT CHANGED. Can take the machine down mid-fleet.**
+
+`CONCURRENCY = 8` in `judge_multiplicity.py` and `judge_same_product.py`
+(user ruling 08-04: "lanes are couriers, compute is cloud-side"). But J8
+builds its stimulus INSIDE the worker, so up to 8 concurrent WSL
+rasterisations can run at once — on the machine whose failure mode is GPU
+burst (`docs/POWER_CRASHES.md`). Behind those lanes there is no rate-limit
+backoff either: one immediate retry, then a default verdict.
+
+Not changed, because reversing a user ruling is a judgement and not a
+repair. If a fleet keeps dying on J8, this is the first thing to look at.
+
+### 6.6 `subprocess.run(..., shell=True)` timeouts do not kill a WSL render
+**OPEN. Costs hours; leaves orphans that fight the next run for the GPU.**
+
+The child process is `cmd.exe`; the real work is inside WSL and keeps the
+GPU after Python gives up. `node_views`' own timeout is 7200 s, so one
+wedged render costs two hours before anyone finds out.
+`run_fleet --scene-timeout` is the outer bound, but killing the
+`run_scene.py` process does not kill a renderer it started inside WSL
+either. **If you see repeated `timeout` rows in a morning report, check
+for orphans (`wsl -e ps aux`, and `nvidia-smi`) before starting another
+fleet.**
+
+### 6.7 `graph['shown']` stores supplementary view paths ABSOLUTE
+**OPEN. Harmless on one machine; breaks a moved scene folder.**
+
+The main picture path is relative to the scene dir; the supplementary view
+paths are absolute. Mixed, and it means a scene folder cannot be moved,
+copied or archived without breaking those references. Not a blocker for
+100 runs on one machine — each run rewrites them. Worth a one-line fix in
+`node_evidence.write_layer`.
+
+### 6.8 The GPU clock lock — CLOSED
+`tools/install_gpu_clock_lock.ps1` registered the scheduled task
+**`GPUClockLock`**: `nvidia-smi -lgc 0,1500` as SYSTEM at every startup.
+Since the failure IS a reboot, the lock is back before anyone logs in.
+Note one claim made when this was proposed and later found FALSE: an
+unelevated session CANNOT fire the task with `schtasks /run`. Re-applying
+the lock mid-session still needs an admin shell.
 
 ---
 
-## 5. FOR THE NEXT AGENT — THE ORDER I WOULD DO IT IN
-
-1. **Install the GPU clock task** (§4.3). Everything else is pointless if
-   the machine dies mid-run. One elevated click.
-2. **Invert the six defaults** (§2.1). Mechanical, low risk, and it
-   removes the failure mode that is hardest to notice. Re-run the chain
-   on `living_marble` afterwards and diff the graph against
-   `_pre_*_backup.json` — nothing should change.
-3. **Make `node_evidence` refuse holes** (§2.2). Small.
-4. **Extend `run_scene.py`** with steps 1–11 (§2.4). This is where the
-   order stops living in a person's head.
-5. **Add the end-of-scene gate** (§2.3), then run TWO scenes back to back
-   unattended and check §3 on both.
-6. Only then scale up.
-
-**Do not** attempt §4.1 (the `ctop` failure) as part of this. It is a
-design question about how the vote sees tall and flat objects, it needs
-the user's judgement, and the chain runs without solving it — it just
-measures those objects poorly and says so.
-
----
-
-## 6. WHAT IS ALREADY SAFE
+## 7. WHAT IS ALREADY SAFE
 
 Worth knowing so it is not re-litigated:
 
 - **Stale layers resolve themselves.** Writing layer N marks N+1..end
   stale automatically (`scene_state.stamp`), and a stale layer is skipped
-  by `current()`. On a fresh scene nothing downstream exists so the sweep
+  by `current()`. On a fresh scene nothing downstream exists, so the sweep
   does nothing.
 - **J9 degrades instead of failing.** No `shown` layer, or a stale one,
-  and it falls back to detector crops and SAYS SO in the log. A scene
-  that skipped `node_evidence` still completes.
-- **The vote stage is deterministic.** `obj_010` voted twice under one
-  sha/params gave identical intermediates to the digit, so differences
-  between runs are code or parameters, never drift.
+  and it falls back to detector crops and SAYS SO in the log. A scene that
+  skipped `node_evidence` still completes — which is exactly why the
+  gate's own `final()` FAILs when the `shown` counts are missing.
+- **The vote is deterministic.** `obj_010` voted twice under one
+  sha/params gave identical intermediates to the digit, so a difference
+  between runs is code or parameters, never drift.
 - **Every stage prints an additive check** — how many other top-level
   graph blocks it touched. Should always be 0.
 - **Renders are fingerprinted.** A changed camera DELETES the stale png
-  rather than silently reusing it.
+  rather than silently reusing it. **The one exception has just been
+  fixed:** the `_box.png` overlays have no params sidecar and were judged
+  fresh purely by being newer than their source — and a power cut during
+  `im.save` leaves a truncated png NEWER than its source, which every
+  later run would keep and hand to J9 as the node's one picture.
+  `node_views.whole_image()` now verifies any overlay that looks fresh,
+  deletes a truncated one, and draws it again.
+- **The scene graph is written atomically everywhere.** `paths.write_atomic`
+  writes beside the target and renames, so a reader sees the whole old
+  file or the whole new one and never a mixture. `scene_graph.json` is
+  1.5 MB, holds the WHOLE scene, and is NOT re-derivable — detection,
+  lifting, description and edges all sit upstream. Four stages used to
+  truncate it to zero and stream it back, two of them right after a GPU
+  stage, which is exactly where this machine cuts out.
+- **A corrupt preview manifest is now fatal** instead of being swallowed
+  and rewritten with only this run's ids.
+- **A model outage is now fatal.** Auth, invalid-key and credit-balance
+  errors used to be caught by the same handler as a timeout and become a
+  full set of confident-looking defaults, exit 0.
+
+---
+
+## 8. EVIDENCE — and its limits
+
+The chain was run end to end **unattended** on a throwaway 2.0 GB clone of
+`living_marble` (`autotest_living`), so that the real scene's open J9 gate
+was not consumed. `evidence -> j9 -> grouped` ran through `run_scene.py`
+with no human in the loop:
+
+```
+[run_scene] PASS  scene=autotest_living  93.5s
+  ok  evidence  settled -> shown     2.0s
+  ok  j9        shown   -> -        91.3s
+  ok  grouped   shown   -> grouped   0.2s
+  final gate: PASS
+    PASS  the chain ended on `grouped`
+    PASS  no stale layers
+    PASS  evidence layer whole: 46/46 nodes have a picture
+```
+
+J9 really ran — 91 s of real model calls, not a stub. **This is the first
+run of this pipeline whose completion was CHECKED rather than assumed.**
+
+The gate's negative cases were proved too: asked to run `evidence` while
+`settled` was stale it refused and named the layer whose rewrite
+invalidated it; told that `doubts` had just run when it had not, it caught
+the lie from the artifact's mtime.
+
+**BE HONEST ABOUT WHAT THIS IS.** It is ONE scene, and only the last three
+stages of it ran unattended — the slow GPU stages were driven by hand
+first. Nothing here is evidence that 100 scenes will run. It is evidence
+that the machinery to run them, and to notice when they go wrong, now
+exists. The 100-scene claim is not made.
