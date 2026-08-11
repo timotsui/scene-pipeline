@@ -56,6 +56,90 @@ for _p in (HERE, HERE.parent):
 
 PY = sys.executable
 
+import paths  # noqa: E402  (after the sys.path preamble above)
+
+
+# ==========================================================================
+# THE FUNNEL'S PARAMETERS — the flags that used to live only in memory
+# ==========================================================================
+#
+# docs/SESSION_2026-08-25B_HANDOFF.md §5d: "~20 hand-run commands, several
+# with flags that live only in memory". These are those flags. Naming them
+# here does two things: the INTAKE table below builds its command lines
+# from them, and the four modules that HARDCODE the filenames they produce
+# have somewhere to import from instead.
+#
+# ⚠ EVERY VALUE HERE CHANGES A FILENAME DOWNSTREAM. They are not tuning
+# knobs — `LIFT_SUFFIX` alone renames the lift pool and three manifests,
+# and `SCORE_THR` is baked into the f30 name. Changing one without
+# re-running the whole funnel gives a scene whose stages disagree about
+# what its files are called.
+
+#: the standpoint's working directory. pano_recenter HARDCODES this one
+#: (pano_recenter.py:69 — it has no --rig), so it is not free.
+RIG = "rig_sp0"
+
+#: pano_lift --suffix. THE `c` IN EVERY DOWNSTREAM NAME. pano_lift mints
+#: it (pano_lift.py:106,117,127), pano_recenter must be given the same
+#: letter or it cannot find its inputs (pano_recenter.py:74-75), and
+#: manifest_filter carries it through.
+#: ⚠ pipeline_map.html:1048 prints pano_lift's command WITHOUT --suffix
+#: while :1055 claims lift_poolc.json as its output. The map is
+#: internally inconsistent there; REVIEW_LOG.md:1557 and the handoff §5d
+#: both record `pano_lift --suffix c` as the real command, and the files
+#: on disk are named with the c. Following the code and the log.
+LIFT_SUFFIX = "c"
+
+#: seg_batched --out-dir's leaf. THE "20" IS A NAMING CONVENTION FOR
+#: --box-thr 0.20, not a derivation — nothing in the code links them, and
+#: a run at 0.35 writing to this directory would look identical. Recorded
+#: here so the convention is at least written down beside the value it
+#: refers to.
+SEG_DIR = "seg_batched20"
+
+#: seg_batched --box-thr / --topk for the suffix-c run
+#: (docs/PLAN_SELF_PANO_RIG.md:27-28). Module defaults are 0.35 / 30.
+#: Permissive on purpose: the vote and the judges are what say no.
+DET_BOX_THR = 0.20
+DET_TOPK = 40
+
+#: pano_lift --min-score / --gate-peak (pipeline_map.html:1048). Equal to
+#: each other on purpose, which makes the gate a no-op — the map says so
+#: on the node itself. Module defaults are 0.35 / 0.40.
+LIFT_MIN_SCORE = 0.20
+LIFT_GATE_PEAK = 0.20
+
+#: manifest_filter --thr. f30 ADOPTED (108 -> 102 on living); the "30" in
+#: the filename is round(SCORE_THR * 100).
+SCORE_THR = 0.30
+
+#: The canonical filenames, DERIVED from the values above rather than
+#: spelled out. slicevote.py:1038-1042 and scene_scale.py:159 hardcode
+#: these same four strings at module level with no override; this is the
+#: place for them to import from when that is fixed.
+MANIFEST_RC = f"scene_manifest_pano2{LIFT_SUFFIX}_rc.json"
+MANIFEST_F30 = (f"scene_manifest_pano2{LIFT_SUFFIX}_rc"
+                f"_f{round(SCORE_THR * 100):02d}.json")
+LIFT_POOL = f"{RIG}/lift_pool{LIFT_SUFFIX}.json"
+DETECTIONS = f"{RIG}/{SEG_DIR}/detections.json"
+RIG_CROPS = f"{RIG}/crops"
+SELF_PANO = f"{RIG}/pano_selfrender.png"
+BEARINGS = f"{RIG}/vocab_bearings.json"
+
+
+def _abs(scene, rel):
+    """An absolute path inside the scene directory, as a string.
+
+    ⚠ THIS IS NOT COSMETIC, and getting it wrong is silent. crop_pano and
+    seg_batched take their directory arguments as a bare `Path(...)` with
+    no scene-dir join (crop_pano.py:76,87; seg_batched.py:68,97,98), and
+    run_scene spawns every stage with cwd = THE REPO (run_scene.py:317).
+    So the relative strings the map prints — `--out-dir rig_sp0/crops` —
+    would create `entangled_gen/rig_sp0/crops` and quietly write the
+    whole scene's crops into the source tree, where the next stage would
+    not find them and the scene after would inherit them."""
+    return str(paths.scene_dir(scene) / rel)
+
 # Written 2026-08-11 against the verified 08-11 living_marble run
 # (docs/AUTOMATION_READINESS.md section 1). The flags shown are the ones
 # that survive the default-inversion of the same date: writing is now the
@@ -120,6 +204,207 @@ class Stage:
     def __repr__(self):
         return f"<Stage {self.key}: {self.reads or '-'} -> {self.writes or '-'}>"
 
+
+#: STEP 1-2 — INTAKE. The Marble bundle becomes a measured room: a frame,
+#: a self-rendered pano, twenty crops, a word list, detections, 3D boxes,
+#: a scale and a room shell. Everything the graph chain reads.
+#:
+#: ⚠ THIS TUPLE REPLACES `run_scene.py`'s OLD `--phase core`, WHICH WAS A
+#: DIFFERENT LANE ENTIRELY. That one ran crop_pano (default out-dir) ->
+#: vocab_from_prompt -> seg_views -> seg_pano_overlay -> lift_pano ->
+#: manifest_pano_to_raw and wrote pano_crops/, seg_pano/ and
+#: scene_manifest_pano.json. NOTHING DOWNSTREAM READS ANY OF THEM: the
+#: chain reads rig_sp0/crops/, rig_sp0/seg_batched20/detections.json,
+#: rig_sp0/lift_poolc.json and scene_manifest_pano2c_rc_f30.json. Proof
+#: from disk: out/living_marble — the scene the entire chain was verified
+#: against — has no pano_crops/ and no seg_pano/ at all. That lane is
+#: docs/PIPELINE.md's "pano path — week8 object-ID lane"; the modules stay
+#: on disk, out of the runner. USER RULING 2026-08-11: the map is right,
+#: and what it marks stale leaves the core pipeline.
+#:
+#: THE ORDER IS THE MAP'S (pipeline_map.html, nodes INTAKE, P1-P6, N1, 4w).
+#: `envelope.py` is NOT here: the map parks it 07-26 and draws it with no
+#: outgoing arrow — its only reader is the viewer's bench layer.
+#:
+#: ⚠ THE MAP'S COMMAND STRINGS ARE NOT RUNNABLE, and this table is built
+#: from the CODE, not from them. Three ways they fall short:
+#:   * seg_batched's --views-dir and --out-dir are required=True and
+#:     appear in neither the map string nor any doc's command line;
+#:   * the map prints pano_lift without --suffix while claiming its
+#:     c-suffixed outputs (see LIFT_SUFFIX above);
+#:   * the paths are relative, and the runner's cwd is the repo (see
+#:     _abs above).
+#: Every flag below is either a named constant at the top of this file or
+#: an absolute path derived from the scene. Nothing is a literal typed
+#: twice.
+INTAKE = (
+    Stage(
+        "frame", "read the bundle's frame: floor, ceiling, up, and the "
+                 "collider in the pipeline's own coordinates",
+        lambda sc: [PY, "frame_bootstrap.py", "--scene", sc],
+        artifacts=("frame_bootstrap.json", "collider_registered.glb",
+                   "collider_registration.json"),
+        note="THE ONE STAGE THAT NEEDS THE COLLIDER, and therefore the "
+             "reason the corpus ceiling is 34 of 323 harvested worlds "
+             "rather than all of them (frame_bootstrap.py:61 refuses "
+             "without one). Nothing later needs it: pano_lift measures "
+             "against the splat. It also converts the .spz to gen_raw.ply "
+             "if that is missing, and REFUSES on a bundle whose collider "
+             "does not sit inside the splat's bounds rather than guessing "
+             "a frame — the trusted-bundle contract of 08-06.",
+    ),
+    Stage(
+        "stitch", "render the room's own 360° pano from the splat",
+        lambda sc: [PY, "pano_stitch.py", "--scene", sc],
+        artifacts=(SELF_PANO, f"{RIG}/pano_selfrender_meta.json"),
+        gpu=True,
+        note="Six cube faces through WSL gsplat, stitched to an 8192x4096 "
+             "equirect, eye at the room centre + 1.6 m. The pipeline looks "
+             "at the room through THIS, not through the bundle's own pano "
+             "— which is why 318 of the 323 harvested worlds having no "
+             "pano_rgb_0.png does not disqualify them. Resumable: the six "
+             "faces are cached under a fingerprint of the camera and the "
+             "splat, so a re-run after a crash re-renders none of them.",
+    ),
+    Stage(
+        "crops", "cut twenty pinhole views out of that pano",
+        lambda sc: [PY, "crop_pano.py", "--scene", sc,
+                    "--pano", _abs(sc, SELF_PANO),
+                    "--out-dir", _abs(sc, RIG_CROPS)],
+        artifacts=(f"{RIG_CROPS}/pano_y000_pp00.webp",
+                   f"{RIG_CROPS}/pano_y000_pp00.json"),
+        inputs=(SELF_PANO,),
+        note="20 cameras: 8 yaws level, 8 at -40°, 4 at +40°, 75° fov, "
+             "960 px. Each gets a same-stem .json with its camera, which "
+             "is what makes the lift possible later. THE --out-dir IS THE "
+             "WHOLE POINT of this invocation: without it crop_pano writes "
+             "to pano_crops/, the retired lane's directory, and nothing "
+             "downstream would find them.",
+    ),
+    Stage(
+        "vocab", "decide what words to look for in this room",
+        lambda sc: [PY, "vocab_build.py", "--scene", sc],
+        artifacts=("vocab.json",),
+        llm=True,
+        note="The prompt's nouns UNION what a model actually sees in the "
+             "pano — intent plus observation, because a generated room "
+             "contains things the prompt never mentioned. About six haiku "
+             "calls, NOT cached, so a re-run re-spends them. Degrades leg "
+             "by leg and says which: no pano skips the look pass, a failed "
+             "concreteness pass keeps every term.",
+    ),
+    Stage(
+        "bearings", "ask roughly which direction each word is in",
+        lambda sc: [PY, "pano_bearings.py", "--scene", sc],
+        artifacts=(BEARINGS,),
+        inputs=("vocab.json", SELF_PANO),
+        llm=True,
+        note="ONE call. Turns the word list into a per-view word list, so "
+             "the detector is not asked about a bed while looking at the "
+             "kitchen wall. A term the model cannot place stays GLOBAL — "
+             "searched everywhere — so this can only narrow work, never "
+             "lose an object. Not cached.",
+    ),
+    Stage(
+        "detect", "find and segment those words in every view",
+        lambda sc: [PY, "seg_batched.py", "--scene", sc,
+                    "--views-dir", _abs(sc, RIG_CROPS),
+                    "--glob", "pano_*.webp",
+                    "--out-dir", _abs(sc, f"{RIG}/{SEG_DIR}"),
+                    "--bearings", _abs(sc, BEARINGS),
+                    "--box-thr", str(DET_BOX_THR),
+                    "--topk", str(DET_TOPK)],
+        artifacts=(DETECTIONS,),
+        inputs=("vocab.json", BEARINGS,
+                f"{RIG_CROPS}/pano_y000_pp00.webp"),
+        gpu=True,
+        note="GroundingDINO + SAM, terms batched about five at a time "
+             "because a long prompt scores every term worse (the 07-26 "
+             "batching effect). Writes detections.json after EVERY view, "
+             "so a crash halfway leaves a usable file. --box-thr and "
+             "--topk are deliberately permissive: this stage's job is to "
+             "miss nothing, and the vote and the judges are what say no.",
+    ),
+    Stage(
+        "lift", "turn the masks into 3D boxes",
+        lambda sc: [PY, "pano_lift.py", "--scene", sc,
+                    "--seg-dir", SEG_DIR,
+                    "--suffix", LIFT_SUFFIX,
+                    "--min-score", str(LIFT_MIN_SCORE),
+                    "--gate-peak", str(LIFT_GATE_PEAK)],
+        artifacts=(LIFT_POOL, f"scene_manifest_pano2{LIFT_SUFFIX}.json",
+                   f"scene_manifest_pano2{LIFT_SUFFIX}_gated.json"),
+        inputs=(DETECTIONS, f"{RIG}/pano_selfrender_meta.json"),
+        note="Each mask's rays meet the splat's own points — no collider "
+             "involved. Every camera is re-verified against the pano "
+             "before it is trusted (a mini-G1 correlation check) and a "
+             "camera that fails is SKIPPED and printed, not guessed at. "
+             "--seg-dir is relative to the rig dir, unlike the two "
+             "absolute paths the detect stage needs; that asymmetry is "
+             "the modules', not this table's.",
+    ),
+    Stage(
+        "recenter", "go back and look properly at whatever was seen badly",
+        lambda sc: [PY, "pano_recenter.py", "--scene", sc,
+                    "--suffix", LIFT_SUFFIX,
+                    "--min-score", str(LIFT_MIN_SCORE)],
+        artifacts=(MANIFEST_RC,),
+        inputs=(LIFT_POOL, f"scene_manifest_pano2{LIFT_SUFFIX}_gated.json"),
+        gpu=True,
+        note="THE FILTER, and the most valuable stage in the funnel. For "
+             "every weak object it re-crops the pano aimed straight at it "
+             "and re-detects: confirms, REFUTES (the object is deleted), "
+             "or ENRICHES — zooming into a shelf turns what it contains "
+             "into child objects with their own photos. Uncapped, because "
+             "the shots are free CPU resamples of a pano we already have. "
+             "The GPU is the seg_views child it spawns on the retakes.",
+    ),
+    Stage(
+        "filter", "drop the detections too weak to keep",
+        lambda sc: [PY, "manifest_filter.py", "--scene", sc,
+                    "--manifest", MANIFEST_RC,
+                    "--thr", str(SCORE_THR)],
+        artifacts=(MANIFEST_F30,),
+        inputs=(MANIFEST_RC,),
+        note="108 -> 102 on living, and f30 is the adopted setting. "
+             "NOTHING IS DELETED: what falls below the bar moves to a "
+             "`filtered_out` list in the same file, flagged, so a later "
+             "question about a missing object has an answer. Dedup was "
+             "RETIRED here on 07-26 — duplicates stay, because merging "
+             "two detections is a judge's verdict, not a threshold's.",
+    ),
+    Stage(
+        "scale", "measure how far off metric the room is, and fix it",
+        lambda sc: [PY, "scene_scale.py", "--scene", sc],
+        artifacts=("scene_scale.json",),
+        inputs=(MANIFEST_F30,),
+        llm=True,
+        note="One cached call asks, per detected class, what size that "
+             "kind of thing usually is and whether it is a reliable ruler "
+             "at all; only the reliable ones measure. The scene is then "
+             "rescaled IN PLACE — splat, collider, frame, every manifest, "
+             "the lift pool, the pano eye — with *_prescale.* backups, and "
+             "a second apply is REFUSED. Too little agreement and it "
+             "degrades to 1.0 and says so rather than guessing.",
+    ),
+    Stage(
+        "shell", "measure the walls, floor and ceiling",
+        lambda sc: [PY, "room_shell.py", "--scene", sc],
+        artifacts=("room_shell.json",),
+        inputs=("frame_bootstrap.json",),
+        note="W4 USER PASS 08-09. Default mode now runs the polygon fit "
+             "itself: one segment per wall INCLUDING the angled connectors "
+             "that cut a corner off, so an L-shaped room is not forced "
+             "into a rectangle. A failed fit degrades to the v1 four "
+             "planes and records `polygon_error` — never a silent skip. "
+             "⚠ Two separate readers were found on 2026-08-11 assuming "
+             "every wall is an axis plane (edge_carry, judge_coherence); "
+             "both crashed or went silent on a connector. Anything new "
+             "reading room_shell.json must handle kind=='connector'.",
+    ),
+)
+
+INTAKE_KEYS = tuple(s.key for s in INTAKE)
 
 CHAIN = (
     Stage(
@@ -619,8 +904,24 @@ FIT_MAX_ROUNDS = 6
 FIT_CLOSING = ("fit_preview", "fit_declip")
 
 KEYS = tuple(s.key for s in CHAIN)
-BY_KEY = {s.key: s for s in CHAIN}
+BY_KEY = {s.key: s for s in INTAKE}
+BY_KEY.update({s.key: s for s in CHAIN})
 BY_KEY.update({s.key: s for s in COMPOSE})
+
+# A key in two tuples would make --skip and --from silently ambiguous, and
+# the funnel and the chain both have a stage that could plausibly be
+# called "lift" or "filter". Catch it at import, not at 3 a.m.
+_seen = {}
+for _group, _name in ((INTAKE, "INTAKE"), (CHAIN, "CHAIN"),
+                      (COMPOSE, "COMPOSE")):
+    for _s in _group:
+        if _s.key in _seen:
+            raise SystemExit(
+                f"stage key '{_s.key}' is in both {_seen[_s.key]} and "
+                f"{_name}. Keys are how --skip / --from / --until name a "
+                f"stage, so they must be unique across all three tables.")
+        _seen[_s.key] = _name
+del _seen, _group, _name, _s
 
 #: the layer the chain must end on for a scene to count as finished
 FINAL_LAYER = "grouped"
@@ -631,19 +932,34 @@ def get(key):
         return BY_KEY[key]
     except KeyError:
         raise SystemExit(
-            f"unknown stage '{key}'. The graph chain is: "
-            f"{', '.join(KEYS)}. Compose is: {', '.join(COMPOSE_KEYS)}")
+            f"unknown stage '{key}'. Intake is: {', '.join(INTAKE_KEYS)}. "
+            f"The graph chain is: {', '.join(KEYS)}. "
+            f"Compose is: {', '.join(COMPOSE_KEYS)}")
+
+
+def _select(group, keys, from_key=None, until_key=None, skip=()):
+    """The stages of one table to run, honouring --from / --until / --skip."""
+    skip = {s.strip() for s in skip if s and s.strip()}
+    for label, key in (("--from", from_key), ("--until", until_key)):
+        if key and key in skip:
+            raise SystemExit(f"{label} {key} is also in --skip: the range "
+                             f"cannot start or end on a stage that is not "
+                             f"going to run")
+    lo = keys.index(from_key) if from_key else 0
+    hi = keys.index(until_key) if until_key else len(keys) - 1
+    if lo > hi:
+        raise SystemExit(f"--from {from_key} comes after --until {until_key}")
+    return [s for s in group[lo:hi + 1] if s.key not in skip]
+
+
+def select_intake(from_key=None, until_key=None, skip=()):
+    """The intake stages to run, same rules as select()."""
+    return _select(INTAKE, INTAKE_KEYS, from_key, until_key, skip)
 
 
 def select_compose(from_key=None, until_key=None, skip=()):
     """The compose stages to run, same rules as select()."""
-    skip = {s.strip() for s in skip if s and s.strip()}
-    lo = COMPOSE_KEYS.index(from_key) if from_key else 0
-    hi = (COMPOSE_KEYS.index(until_key) if until_key
-          else len(COMPOSE_KEYS) - 1)
-    if lo > hi:
-        raise SystemExit(f"--from {from_key} comes after --until {until_key}")
-    return [s for s in COMPOSE[lo:hi + 1] if s.key not in skip]
+    return _select(COMPOSE, COMPOSE_KEYS, from_key, until_key, skip)
 
 
 def select(from_key=None, until_key=None, skip=()):
@@ -668,9 +984,11 @@ def select(from_key=None, until_key=None, skip=()):
 
 def describe():
     """Both chains as a human-readable table. Printed by run_scene --list."""
-    w = max(len(k) for k in KEYS + COMPOSE_KEYS)
+    w = max(len(k) for k in INTAKE_KEYS + KEYS + COMPOSE_KEYS)
     lines = []
-    for title, group in (("GRAPH CHAIN — the room as measured", CHAIN),
+    for title, group in (("INTAKE — the bundle becomes a measured room",
+                          INTAKE),
+                         ("GRAPH CHAIN — the room as measured", CHAIN),
                          ("COMPOSE — the room as furnished", COMPOSE)):
         lines.append("")
         lines.append(title)

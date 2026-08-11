@@ -1,27 +1,29 @@
 """run_scene.py — run one scene end to end, unattended, with a checkpoint
 between every stage.
 
-A scene is built in TWO PHASES, and this file is the one place where the
-whole thing is written down.
+A scene is built in THREE PHASES, and NONE of them is written down here.
+The order is data in graph/stages.py — three tables — and this file walks
+whichever of them `--phase` selects. Add a stage there and it runs here;
+nothing else has to learn it.
 
-THE GEOMETRIC CORE takes the Marble bundle and turns pictures into 3D
-boxes. It is the verified Session-A path and it has not changed:
+    core     INTAKE   the Marble bundle becomes a measured room
+    graph    CHAIN    that room becomes a settled scene graph
+    compose  COMPOSE  that graph becomes a furnished room
 
-    bundle (out/<scene>/bundle_path.txt)
-      -> crop_pano             pinhole crops from the equirect pano
-      -> vocab_from_prompt     detection vocab (prompt nouns + synonyms)
-      -> seg_views             GroundingDINO + SAM over the crops
-      -> seg_pano_overlay      gate artifacts (pano overlay + crop montage)
-      -> lift_pano             mask rays ∩ collider -> scene_manifest_pano.json
-      -> manifest_pano_to_raw  raw-frame variants (panoraw_{a,b,c})
+⚠ `--phase core` CHANGED MEANING ON 2026-08-11. It used to run a lane
+whose outputs nothing downstream read — crop_pano into pano_crops/,
+seg_views into seg_pano/, lift_pano into scene_manifest_pano.json, the
+"week8 object-ID lane" of docs/PIPELINE.md. out/living_marble, the scene
+the whole chain was verified against, had neither directory. By the
+user's ruling that the pipeline map is right and what it marks stale
+leaves the core pipeline, `core` now walks the map's actual funnel
+(stages.INTAKE): frame_bootstrap -> pano_stitch -> crop_pano into
+rig_sp0/crops -> vocab_build -> pano_bearings -> seg_batched -> pano_lift
+-> pano_recenter -> manifest_filter -> scene_scale -> room_shell. An old
+command line saying `--phase core` now runs something different, and
+better.
 
-THE GRAPH CHAIN takes the scene graph from the vote to `grouped`: eleven
-steps that until 2026-08-11 lived only in docs/AUTOMATION_READINESS.md
-and in whatever a person remembered. This file does NOT repeat them. The
-order is data in graph/stages.py, and this runner walks that table. Add a
-stage there and it runs here; nothing else has to learn it.
-
-THE CHECKPOINT IS THE POINT. Around every graph-chain stage we ask
+THE CHECKPOINT IS THE POINT. Around every stage of every phase we ask
 graph/scene_gate.py two questions the stage cannot answer about itself:
 
     before  is the layer this stage reads present and NOT STALE?
@@ -135,12 +137,14 @@ import stages                 # noqa: E402  the chain, as data
 
 PY = sys.executable
 
-#: the geometric core, in order. Names here are what --skip takes.
-CORE_STAGES = ("crop", "vocab", "seg", "overlay", "lift", "variants")
-
-#: which core stages want the GPU, so the clock-lock warning can fire for
-#: a core-only run too (docs/POWER_CRASHES.md).
-CORE_GPU = {"seg", "lift"}
+#: THE THREE PHASES, each a table in graph/stages.py. `--phase` picks one
+#: (or `all`), and every one of them is walked by the same gated runner.
+#: Nothing about a phase is written out here any more.
+PHASES = {
+    "core":    (stages.INTAKE,  stages.INTAKE_KEYS,  "INTAKE"),
+    "graph":   (stages.CHAIN,   stages.KEYS,         "GRAPH CHAIN"),
+    "compose": (stages.COMPOSE, stages.COMPOSE_KEYS, "COMPOSE"),
+}
 
 # Failure kinds, and the exit code each one means. Kept together so the
 # mapping is impossible to get out of step with the docstring.
@@ -410,166 +414,28 @@ def adopt_bundle(scene, bundle):
 
 
 # --------------------------------------------------------------------------
-# the geometric core — unchanged behaviour
+# THE GEOMETRIC CORE IS GONE FROM HERE — IT IS A TABLE NOW
 # --------------------------------------------------------------------------
-
-def stage_crop(sc):
-    run([PY, "crop_pano.py", "--scene", sc])
-    n = len(list(paths.pano_crops_dir(sc).glob("pano_*.webp")))
-    return {"crops": n}
-
-
-def stage_vocab(sc):
-    """vocab_from_prompt prints '# N terms ...' then the GD prompt on the last
-    line. Capture it, persist to seg_pano/vocab.txt, return the prompt string."""
-    out = run([PY, "vocab_from_prompt.py", "--scene", sc], capture=True)
-    lines = [ln for ln in out.splitlines() if ln.strip()]
-    vocab = lines[-1].strip()
-    seg = paths.seg_pano_dir(sc)
-    seg.mkdir(parents=True, exist_ok=True)
-    (seg / "vocab.txt").write_text(vocab + "\n", encoding="utf-8")
-    n_terms = len([t for t in vocab.split(".") if t.strip()])
-    return {"vocab": vocab, "terms": n_terms}
-
-
-def stage_seg(sc, vocab, box_thr):
-    run([PY, "seg_views.py", "--scene", sc,
-         "--views-dir", str(paths.pano_crops_dir(sc)),
-         "--glob", "pano_*.webp",
-         "--out-dir", str(paths.seg_pano_dir(sc)),
-         "--prompt", vocab,
-         "--box-thr", str(box_thr)])
-    dets = json.loads((paths.seg_pano_dir(sc) / "detections.json").read_text())
-    return {"detections": sum(len(v) for v in dets.values()),
-            "views_with_dets": sum(1 for v in dets.values() if v)}
-
-
-def stage_overlay(sc):
-    run([PY, "seg_pano_overlay.py", "--scene", sc])
-    return {}
-
-
-def stage_lift(sc):
-    run([PY, "lift_pano.py", "--scene", sc])
-    man = json.loads((paths.scene_dir(sc) / "scene_manifest_pano.json").read_text())
-    return {"objects": len(man.get("objects", []))}
-
-
-def stage_variants(sc):
-    run([PY, "manifest_pano_to_raw.py", "--scene", sc])
-    variants = sorted(p.name for p in paths.scene_dir(sc).glob("scene_manifest_panoraw_*.json"))
-    return {"variants": variants}
-
-
-def core_dry_run(sc, skip, box_thr):
-    """What the core WOULD run. The seg command is shown with a placeholder
-    prompt because the real one is whatever the vocab stage prints on this
-    run, and a dry run does not run it."""
-    plan = [
-        ("crop", [PY, "crop_pano.py", "--scene", sc]),
-        ("vocab", [PY, "vocab_from_prompt.py", "--scene", sc]),
-        ("seg", [PY, "seg_views.py", "--scene", sc,
-                 "--views-dir", str(paths.pano_crops_dir(sc)),
-                 "--glob", "pano_*.webp",
-                 "--out-dir", str(paths.seg_pano_dir(sc)),
-                 "--prompt", "<vocab from the vocab stage>",
-                 "--box-thr", str(box_thr)]),
-        ("overlay", [PY, "seg_pano_overlay.py", "--scene", sc]),
-        ("lift", [PY, "lift_pano.py", "--scene", sc]),
-        ("variants", [PY, "manifest_pano_to_raw.py", "--scene", sc]),
-    ]
-    print("\n[dry-run] GEOMETRIC CORE")
-    for name, argv in plan:
-        if name in skip:
-            print(f"  skip  {name}")
-            continue
-        print(f"  run   {name}")
-        print(f"        $ {' '.join(str(a) for a in argv)}")
-    print("  (the core has no gate; its outputs are judged by the user on "
-          "the gate artifacts printed in the summary)")
-
-
-def run_core(sc, skip, box_thr, log, failures, stop_on_fail):
-    """The six geometric stages, in order, exactly as they always ran.
-
-    The core has no scene_gate checkpoint: it predates the scene graph and
-    its outputs are manifests, not layers. Its stages are logged the same
-    way so one run log covers the whole scene."""
-    summary = {}
-    vocab = None
-
-    def call(name, fn):
-        """One core stage: time it, log it, and turn a failure into a
-        recorded failure instead of an immediate exit, so that
-        --continue-on-fail means the same thing in both phases."""
-        if name in skip:
-            log.skipped("core", name, "skipped by --skip")
-            return None
-        mark = len(ARGV_TRACE)
-        t0 = time.time()
-        started = _utc_iso()
-        try:
-            out = fn()
-        except SystemExit as e:
-            dt = time.time() - t0
-            log.stage("core", name, _since_mark(mark), RC_CRASH, dt,
-                      note=str(e), started=started, ended=_utc_iso())
-            failures.append({"phase": "core", "stage": name,
-                             "kind": "crashed", "code": RC_CRASH,
-                             "detail": str(e)})
-            print(f"[run_scene] FAILED core stage `{name}`: {e}", flush=True)
-            return "FAILED"
-        dt = time.time() - t0
-        log.stage("core", name, _since_mark(mark), 0, dt,
-                  started=started, ended=_utc_iso())
-        summary[name] = out
-        return out
-
-    for name in CORE_STAGES:
-        if name == "crop":
-            if call("crop", lambda: stage_crop(sc)) == "FAILED" and stop_on_fail:
-                return summary
-        elif name == "vocab":
-            r = call("vocab", lambda: stage_vocab(sc))
-            if r == "FAILED":
-                if stop_on_fail:
-                    return summary
-            elif r is not None:
-                vocab = r["vocab"]
-            if vocab is None:
-                # Either the stage was skipped or it failed; a previous run
-                # may have left the prompt on disk, which is what --skip
-                # vocab is for.
-                vf = paths.seg_pano_dir(sc) / "vocab.txt"
-                vocab = vf.read_text(encoding="utf-8").strip() if vf.exists() else None
-        elif name == "seg":
-            if "seg" in skip:
-                log.skipped("core", "seg", "skipped by --skip")
-                continue
-            if not vocab:
-                msg = ("seg stage needs a vocab (run the vocab stage or "
-                       "provide seg_pano/vocab.txt)")
-                log.stage("core", "seg", [], RC_CRASH, 0.0, note=msg)
-                failures.append({"phase": "core", "stage": "seg",
-                                 "kind": "crashed", "code": RC_CRASH,
-                                 "detail": msg})
-                print(f"[run_scene] FAILED core stage `seg`: {msg}", flush=True)
-                if stop_on_fail:
-                    return summary
-                continue
-            if call("seg", lambda: stage_seg(sc, vocab, box_thr)) == "FAILED" \
-                    and stop_on_fail:
-                return summary
-        elif name == "overlay":
-            if call("overlay", lambda: stage_overlay(sc)) == "FAILED" and stop_on_fail:
-                return summary
-        elif name == "lift":
-            if call("lift", lambda: stage_lift(sc)) == "FAILED" and stop_on_fail:
-                return summary
-        elif name == "variants":
-            if call("variants", lambda: stage_variants(sc)) == "FAILED" and stop_on_fail:
-                return summary
-    return summary
+#
+# Six hand-written stage functions used to live at this spot: crop, vocab,
+# seg, overlay, lift, variants. They ran a DIFFERENT LANE from the rest of
+# the pipeline — docs/PIPELINE.md's "pano path, week8 object-ID lane" —
+# writing pano_crops/, seg_pano/ and scene_manifest_pano.json, and NOTHING
+# DOWNSTREAM READ ANY OF THEM. The proof was on disk: out/living_marble,
+# the scene the whole chain was verified against, had neither directory.
+#
+# USER RULING 2026-08-11: the pipeline map is right, and what it marks
+# stale leaves the core pipeline. The map draws one intake lane and every
+# later stage reads its outputs, so `--phase core` now walks
+# stages.INTAKE like every other phase — same gate on both sides of every
+# stage, same run log, same timing, same resume. The six modules stay on
+# disk, out of the runner.
+#
+# The old block also had its own bespoke failure handling, a `vocab`
+# variable threaded by hand between two stages, and no gate at all
+# ("the core has no gate; its outputs are judged by the user"). None of
+# that is missed: the table's `artifacts` give the funnel the same no-op
+# trap the graph chain has had since this morning.
 
 
 # --------------------------------------------------------------------------
@@ -965,31 +831,34 @@ def run_compose(sc, selected, log, failures, stop_on_fail, max_rounds):
 # --------------------------------------------------------------------------
 
 def parse_skip(raw):
-    """Split --skip into core stage names and graph stage keys.
+    """--skip as one set of stage keys, validated against all three tables.
 
-    One flag covers both phases because from a user's point of view there
-    is one list of things a scene does. A token that is neither is a typo
-    and stops the run — silently ignoring it would mean a stage the user
-    thought was skipped runs anyway."""
-    core, graph_keys, unknown = set(), set(), []
+    ONE FLAG COVERS EVERY PHASE, because from a user's point of view
+    there is one list of things a scene does. A token in none of the
+    tables is a typo and stops the run — silently ignoring it would mean
+    a stage the user thought was skipped runs anyway.
+
+    One set is enough, and no caller has to know which phase a key
+    belongs to, because stages.py refuses at import to let the same key
+    appear in two tables."""
+    skip, unknown = set(), []
     for tok in (t.strip() for t in raw.split(",")):
         if not tok:
             continue
-        if tok in CORE_STAGES:
-            core.add(tok)
-        elif tok in stages.BY_KEY:
-            graph_keys.add(tok)
+        if tok in stages.BY_KEY:
+            skip.add(tok)
         else:
             unknown.append(tok)
     if unknown:
         raise SystemExit(
             f"--skip: unknown stage(s) {', '.join(unknown)}.\n"
-            f"  core stages : {', '.join(CORE_STAGES)}\n"
-            f"  graph stages: {', '.join(stages.KEYS)}")
-    return core, graph_keys
+            f"  intake : {', '.join(stages.INTAKE_KEYS)}\n"
+            f"  graph  : {', '.join(stages.KEYS)}\n"
+            f"  compose: {', '.join(stages.COMPOSE_KEYS)}")
+    return skip
 
 
-def gpu_warning(selected_graph, core_names):
+def gpu_warning(*selections):
     """Printed once, at startup, when anything in this run wants the GPU.
 
     This machine hard-powers-off under GPU burst — a power-delivery fault,
@@ -997,8 +866,7 @@ def gpu_warning(selected_graph, core_names):
     the crash itself is a reboot, so a crash always clears a lock applied
     by hand. We only remind; applying it needs an admin shell and checking
     it is not this runner's job."""
-    wants = ([s.key for s in selected_graph if s.gpu]
-             + sorted(n for n in core_names if n in CORE_GPU))
+    wants = [s.key for sel in selections for s in sel if s.gpu]
     if not wants:
         return
     print("\n" + "!" * 60)
@@ -1039,17 +907,17 @@ def main():
                          "fresh world needs no hand step. Safe to repeat: "
                          "it refuses rather than silently repointing a "
                          "scene at a different bundle.")
-    ap.add_argument("--box-thr", type=float, default=0.35,
-                    help="GroundingDINO box threshold for the seg stage")
     ap.add_argument("--skip", default="",
-                    help="comma-separated stages to skip. Core stages: "
-                         + ",".join(CORE_STAGES)
-                         + ". Graph stages: " + ",".join(stages.KEYS))
+                    help="comma-separated stage keys to skip, from any "
+                         "phase. Intake: " + ",".join(stages.INTAKE_KEYS)
+                         + ". Graph: " + ",".join(stages.KEYS)
+                         + ". Compose: " + ",".join(stages.COMPOSE_KEYS))
     ap.add_argument("--phase", choices=("core", "graph", "compose", "all"),
                     default="all",
-                    help="which part to run (default: all). core = bundle "
-                         "to boxes; graph = boxes to `grouped`; compose = "
-                         "`grouped` to a furnished scene")
+                    help="which part to run (default: all). core = the "
+                         "INTAKE funnel, bundle to a measured room; graph "
+                         "= that room to `grouped`; compose = `grouped` to "
+                         "a furnished scene")
     ap.add_argument("--from", dest="from_key", default=None,
                     help="graph chain: first stage to run")
     ap.add_argument("--until", dest="until_key", default=None,
@@ -1087,7 +955,7 @@ def main():
     sc = a.scene
     if a.bundle:
         adopt_bundle(sc, a.bundle)
-    skip_core, skip_graph = parse_skip(a.skip)
+    skip = parse_skip(a.skip)
     stop_on_fail = not a.continue_on_fail
     do_core = a.phase in ("core", "all")
     do_graph = a.phase in ("graph", "all")
@@ -1095,55 +963,63 @@ def main():
 
     # --no-llm is a skip like any other, but it is worth naming separately
     # so the summary can say which judgements this scene never got.
+    # THE FUNNEL SPENDS MODEL CALLS TOO (vocab, bearings, scale), which it
+    # did not when the core phase was the old lane — so INTAKE is in this
+    # sweep now, and --no-llm on a fresh scene means no word list at all.
     llm_skipped = []
     if a.no_llm:
-        llm_skipped = [s.key for s in stages.CHAIN + stages.COMPOSE if s.llm]
-        skip_graph |= set(llm_skipped)
+        llm_skipped = [s.key for s in
+                       stages.INTAKE + stages.CHAIN + stages.COMPOSE if s.llm]
+        skip |= set(llm_skipped)
 
-    # --from / --until name a stage in ONE of the two chains. Work out
+    # --from / --until name a stage in ONE of the three tables. Work out
     # which, so `--from supported_by` does not get handed to the graph
-    # selector and rejected as an unknown stage.
-    ck = set(stages.COMPOSE_KEYS)
-    range_is_compose = (a.from_key in ck) or (a.until_key in ck)
-    selected_graph = (
-        stages.select(None if range_is_compose else a.from_key,
-                      None if range_is_compose else a.until_key,
-                      skip_graph)
-        if do_graph else [])
-    selected_compose = (
-        stages.select_compose(a.from_key if range_is_compose else None,
-                              a.until_key if range_is_compose else None,
-                              skip_graph)
-        if do_compose else [])
-    core_selected = ([n for n in CORE_STAGES if n not in skip_core]
+    # selector and rejected as an unknown stage. Keys are unique across
+    # the tables (stages.py enforces it), so this is a lookup, not a guess.
+    def _range_for(group_keys):
+        """(from, until) for this table — each only if it names a stage
+        in it, so a range given for one table does not truncate another."""
+        return (a.from_key if a.from_key in group_keys else None,
+                a.until_key if a.until_key in group_keys else None)
+
+    fk_i, uk_i = _range_for(stages.INTAKE_KEYS)
+    fk_g, uk_g = _range_for(stages.KEYS)
+    fk_c, uk_c = _range_for(stages.COMPOSE_KEYS)
+    selected_core = (stages.select_intake(fk_i, uk_i, skip)
                      if do_core else [])
+    selected_graph = stages.select(fk_g, uk_g, skip) if do_graph else []
+    selected_compose = (stages.select_compose(fk_c, uk_c, skip)
+                        if do_compose else [])
 
     if do_core:
-        # bundle presence is the one precondition of the core phase
+        # bundle presence is the one precondition of the funnel
         bp = paths.scene_dir(sc) / "bundle_path.txt"
         if not bp.exists():
-            raise SystemExit(f"missing {bp} — write the Marble bundle folder "
-                             f"path into it")
-        bundle = bp.read_text().strip()
+            raise SystemExit(
+                f"missing {bp} — pass --bundle <the Marble bundle folder> "
+                f"and this runner writes it for you.")
+        bundle = bp.read_text(encoding="utf-8-sig").strip()
     else:
-        bundle = "(core not run)"
+        bundle = "(intake not run)"
 
     print(f"[run_scene] scene={sc}  phase={a.phase}  bundle={bundle}"
-          f"  box_thr={a.box_thr}"
-          f"  skip={sorted(skip_core | skip_graph) or 'none'}")
-    if do_graph:
-        print(f"[run_scene] graph chain: "
-              f"{', '.join(s.key for s in selected_graph) or 'nothing selected'}")
+          f"  skip={sorted(skip) or 'none'}")
+    for label, sel, want in (("intake", selected_core, do_core),
+                             ("graph chain", selected_graph, do_graph),
+                             ("compose", selected_compose, do_compose)):
+        if want:
+            print(f"[run_scene] {label}: "
+                  f"{', '.join(s.key for s in sel) or 'nothing selected'}")
     if llm_skipped:
         print(f"[run_scene] --no-llm: skipping {', '.join(llm_skipped)}")
 
-    gpu_warning(selected_graph, core_selected)
+    gpu_warning(selected_core, selected_graph, selected_compose)
 
     if a.dry_run:
         print("\n[run_scene] DRY RUN — nothing below is executed, and no run "
               "log is written.")
         if do_core:
-            core_dry_run(sc, skip_core, a.box_thr)
+            graph_dry_run(sc, selected_core, "INTAKE", final_gate=False)
         if do_graph:
             graph_dry_run(sc, selected_graph)
         if do_compose:
@@ -1174,15 +1050,26 @@ def main():
     # so scene_lock REFUSES rather than waits, and names the other pid.
     # It is held for the whole run and released even if a stage raises.
     with paths.scene_lock(sc, f"run_scene {a.phase} (run {runid})"):
-        summary = {}
-        if do_core:
-            summary = run_core(sc, skip_core, a.box_thr, log, failures,
-                               stop_on_fail)
-
         per_stage = []
+        # THE FUNNEL IS WALKED BY THE SAME GATED RUNNER AS EVERYTHING
+        # ELSE (2026-08-11B). It used to have its own hand-written driver
+        # with no checkpoint at all — "the core has no gate; its outputs
+        # are judged by the user" — which meant the one part of the
+        # pipeline that touches the raw bundle was the one part where a
+        # stage could exit 0 having done nothing and go unnoticed. Its
+        # stages write files rather than layers, so the gate checks them
+        # through `artifacts`: the file must exist AND have been written
+        # during that stage's own run.
+        #
+        # `final_gate=False`: the final check asks whether the chain
+        # reached `grouped`, which the funnel does not even try to do.
+        if do_core:
+            per_stage += run_graph(sc, selected_core, log, failures,
+                                   stop_on_fail, phase="core")
+
         if do_graph and (not failures or not stop_on_fail):
-            per_stage = run_graph(sc, selected_graph, log, failures,
-                                  stop_on_fail)
+            per_stage += run_graph(sc, selected_graph, log, failures,
+                                   stop_on_fail)
         # COMPOSE runs on the same machinery and the same checkpoint. It
         # is a separate phase only because it starts where measurement
         # stops: everything above describes a room that exists, this
@@ -1206,9 +1093,9 @@ def main():
     # Reporting that as a failure trains people to ignore the gate, which
     # is the one thing it cannot survive. So a partial run is INCOMPLETE,
     # never FAIL, and the reason is printed.
-    # `skip_graph` already absorbs --no-llm's stages, so subtract them
+    # `skip` already absorbs --no-llm's stages, so subtract them
     # back out or the same cause would be reported twice.
-    user_skipped = sorted(skip_graph - set(llm_skipped))
+    user_skipped = sorted(skip - set(llm_skipped))
     partial = [r for r in (
         ("--no-llm (the judges never ran)" if a.no_llm else None),
         (f"--until {a.until_key}" if a.until_key
@@ -1261,7 +1148,7 @@ def main():
     log_path = log.write(verdict, failures, final_result)
 
     try:
-        _print_summary(sc, dt, verdict, summary, per_stage, failures,
+        _print_summary(sc, dt, verdict, per_stage, failures,
                        llm_skipped, final_result, log_path,
                        log.data["stages"])
     except Exception as e:                       # noqa: BLE001 — deliberate
@@ -1324,26 +1211,20 @@ def _print_timing(stage_rows, wall_seconds):
           f"gate and startup)")
 
 
-def _print_summary(sc, dt, verdict, summary, per_stage, failures,
+def _print_summary(sc, dt, verdict, per_stage, failures,
                    llm_skipped, final_result, log_path, stage_rows=()):
     print("\n" + "=" * 60)
     print(f"[run_scene] {verdict}  scene={sc}  {dt:.1f}s")
 
-    if "crop" in summary:
-        print(f"  crops         : {summary['crop']['crops']}")
-    if "vocab" in summary:
-        print(f"  vocab terms   : {summary['vocab']['terms']}")
-        print(f"  vocab         : {summary['vocab']['vocab']}")
-    if "seg" in summary:
-        print(f"  detections    : {summary['seg']['detections']}"
-              f" (in {summary['seg']['views_with_dets']} crops)")
-    if "lift" in summary:
-        print(f"  objects       : {summary['lift']['objects']}  -> scene_manifest_pano.json")
-    if "variants" in summary:
-        print(f"  raw variants  : {summary['variants']['variants']}")
+    # The five per-stage result lines that used to print here — crops,
+    # vocab terms, detections, objects, raw variants — belonged to the
+    # RETIRED week8 lane and were fed by its hand-written driver's return
+    # value. The funnel is a gated table now, and what each of its stages
+    # produced is in the run log and in the gate lines beside it, which is
+    # where a hundred scenes' worth of it can actually be read.
 
     if per_stage:
-        print("\n  graph chain:")
+        print("\n  stages:")
         for st, state, secs, rnd in per_stage:
             # The round is printed on the row it belongs to, because four
             # rows called fit_preview with no round are indistinguishable
@@ -1377,16 +1258,12 @@ def _print_summary(sc, dt, verdict, summary, per_stage, failures,
                   f"(exit {f['code']})")
             print(f"      {f['detail']}")
 
-    # These four belong to the GEOMETRIC CORE, so they are only worth
-    # listing when the core actually ran. A graph-only run printed them
-    # as four missing files, which reads like a failure and is not one.
-    if summary:
-        sd = paths.seg_pano_dir(sc)
-        print("\n  gate artifacts (USER judges):")
-        for p in [sd / "pano_overlay.png", sd / "crops_boxes.png",
-                  sd / "manifest_overlay_pano.png",
-                  sd / "manifest_plan_pano.png"]:
-            print(f"    {'OK ' if p.exists() else '?? '}{p}")
+    # The four "gate artifacts (USER judges)" listed here were seg_pano/
+    # overlays from the RETIRED week8 lane — a directory the canonical
+    # funnel never creates, so on any real scene this printed four
+    # missing files and read like a failure. Gone with the lane. What
+    # each funnel stage must produce is declared per stage in
+    # graph/stages.py and checked by the gate on both sides of it.
 
     print(f"\n  run log: {log_path}")
     print(f"  viewer : python viewer/serve.py --scene {sc} --port 8321")

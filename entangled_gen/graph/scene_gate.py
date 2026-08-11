@@ -96,6 +96,25 @@ def load(scene):
     return json.loads(gf.read_text(encoding="utf-8"))
 
 
+def _load_if_needed(scene, graph, stage):
+    """The graph, but ONLY when this stage's checks actually read it.
+
+    ⚠ THE INTAKE FUNNEL RUNS BEFORE THE GRAPH EXISTS. Every stage from
+    frame_bootstrap to room_shell happens before build_graph has written
+    scene_graph.json, and they write FILES, not layers — so none of their
+    checks touch the graph at all. Loading it up front made `before` and
+    `after` raise "[gate] no scene graph" on every one of them, which
+    would have killed the very first genuinely fresh scene at its very
+    first stage. Found 2026-08-11B by asking the gate about a bundle that
+    had never been run; it cannot be found on a dev scene, because every
+    dev scene already has a graph."""
+    if graph is not None:
+        return graph
+    if stage.reads or stage.writes or stage.graph_keys:
+        return load(scene)
+    return None
+
+
 def _layer_state(graph, name):
     """(present, stale) for a layer, using the same 'whole = it has nodes'
     rule the rest of the pipeline uses."""
@@ -107,6 +126,29 @@ def _layer_state(graph, name):
     return present, scene_state.is_stale(graph, name)
 
 
+def _report_missing_inputs(scene, stage, r):
+    """Name the files this stage declared and has not got.
+
+    REPORTED, NEVER REFUSED, and the reason is the fit loop: fit_preview
+    legitimately reads fit_walk.json, rotation_check.json and its OWN
+    prior output, none of which exist on round one. A missing input is
+    normal there and fatal in the funnel, and the gate cannot tell those
+    apart from the table alone — the module can, and does, by crashing.
+    So this puts the fact in the run log, where a hundred scenes' worth
+    of it can be read afterwards, and leaves the verdict to the module.
+
+    It earns its place on the funnel, where a stage that reads a file
+    another stage was supposed to write now says which one is missing
+    instead of dying inside PIL or json."""
+    sd = paths.scene_dir(scene)
+    gone = [rel for rel in stage.inputs if not (sd / rel).exists()]
+    if gone:
+        r.add("INFO", f"declared input(s) not on disk: {', '.join(gone)}"
+                      + (" — normal on the first round of the fit loop"
+                         if stage.key in getattr(stages, "FIT_LOOP", ())
+                         else ""))
+
+
 def before(scene, stage, graph=None):
     """The layer this stage reads must be present and not stale.
 
@@ -115,8 +157,9 @@ def before(scene, stage, graph=None):
     was computed from inputs that no longer exist. Reading it is exactly
     the failure this whole exercise is about, so it is a FAIL and not a
     warning."""
-    g = graph if graph is not None else load(scene)
+    g = _load_if_needed(scene, graph, stage)
     r = Result(f"before `{stage.key}` ({stage.title})")
+    _report_missing_inputs(scene, stage, r)
     if not stage.reads:
         r.add("INFO", "reads no layer")
         return r
@@ -143,7 +186,7 @@ def after(scene, stage, since=None, graph=None):
       * the graph blocks it writes exist
       * the files it writes exist AND were written since the stage started
     """
-    g = graph if graph is not None else load(scene)
+    g = _load_if_needed(scene, graph, stage)
     sd = paths.scene_dir(scene)
     r = Result(f"after `{stage.key}` ({stage.title})")
 
@@ -231,15 +274,61 @@ def stale_inputs(scene, graph):
 
     Returns [(level, message)]. A layer written before `written_at`
     existed reports nothing — "I cannot tell" must never be dressed up as
-    "fine", and it resolves itself the first time the stage re-runs."""
+    "fine", and it resolves itself the first time the stage re-runs.
+
+    ⚠ IT USED TO WALK `CHAIN` ONLY (fixed 2026-08-11B), which made every
+    `inputs` tuple in COMPOSE decorative and would have made INTAKE's the
+    same. A stage with no layer is not exempt from the problem — it is
+    the ordinary case in both of those tables — so the comparison had to
+    stop being "input vs the layer's written_at" and become "input vs
+    WHATEVER THIS STAGE LAST PRODUCED", which for those stages is the
+    oldest of its own declared artifacts.
+    """
     sd = paths.scene_dir(scene)
     out = []
-    for st in stages.CHAIN:
-        if not (st.writes and st.inputs):
+    for st in stages.INTAKE + stages.CHAIN + stages.COMPOSE:
+        if not st.inputs:
             continue
-        built = scene_state.written_at(graph, st.writes)
+
+        # WHEN DID THIS STAGE LAST PRODUCE ANYTHING? A layer stage says so
+        # in the graph. A file stage's answer is the OLDEST of its own
+        # artifacts — oldest, not newest, because if any one of them
+        # predates an input then that one was built from something that no
+        # longer exists, and taking the newest would hide it.
+        # LAYER stages get a FAIL and file stages get a WARN, and the
+        # difference is what the evidence can actually support. A layer's
+        # `written_at` is a stamp, and the layer chain is a straight line:
+        # an input newer than the layer means the layer is wrong. A file
+        # stage has no stamp, so the proxy is its oldest artifact — and
+        # the pipeline has DELIBERATE loop-backs where a later stage
+        # rewrites an earlier one's input, which look identical:
+        #   * scene_scale rescales every scene_manifest_pano*.json IN
+        #     PLACE (scene_scale.py:107), including the very manifest it
+        #     declares as its input, so its input is ALWAYS newer;
+        #   * rotation_check reads fitted_preview.json, and the closing
+        #     place->jiggle pass rewrites that file afterwards, by design.
+        # Failing a scene for those would make the final gate red on
+        # every run, and a gate that is always red is a gate nobody
+        # reads. So: report it, say it might be the loop, do not fail.
+        if st.writes:
+            built = scene_state.written_at(graph, st.writes)
+            made, level = f"`{st.writes}`", "FAIL"
+        else:
+            times = [(sd / rel).stat().st_mtime for rel in st.artifacts
+                     if (sd / rel).exists()]
+            built = min(times) if times else None
+            made, level = f"`{st.key}`'s output", "WARN"
         if built is None:
-            continue                     # predates the stamp; cannot check
+            continue        # never ran, or predates the stamp: cannot tell
+
+        # A STAGE INSIDE THE FIT LOOP CANNOT BE JUDGED THIS WAY. The loop
+        # runs the same four stages repeatedly, and each round is SUPPOSED
+        # to read files a later stage of the previous round wrote — that
+        # is what makes it a loop. Comparing mtimes there reports the loop
+        # working correctly as a fault.
+        if st.key in getattr(stages, "FIT_LOOP", ()):
+            continue
+
         for rel in st.inputs:
             p = sd / rel
             if not p.exists():
@@ -250,12 +339,18 @@ def stale_inputs(scene, graph):
                        f"{newer/60:.0f} min" if newer < 5400 else
                        f"{newer/3600:.1f} h")
                 out.append((
-                    "FAIL",
-                    f"`{st.writes}` was built {ago} BEFORE its "
+                    level,
+                    f"{made} was built {ago} BEFORE its "
                     f"input {rel} was last written. The stage that writes "
-                    f"that file has run since, so `{st.writes}` was built "
+                    f"that file has run since, so {made} was built "
                     f"from something that no longer exists. Re-run "
-                    f"`{st.key}` and everything after it."))
+                    f"`{st.key}` and everything after it."
+                    + ("" if level == "FAIL" else
+                       "  (WARN, not FAIL: this stage writes files rather "
+                       "than a layer, so there is no stamp to compare "
+                       "against — and it may simply be a designed "
+                       "loop-back, where a later stage rewrites this "
+                       "stage's input on purpose.)")))
     return out
 
 
