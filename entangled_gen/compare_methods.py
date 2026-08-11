@@ -191,13 +191,26 @@ def footprint_overlap(a, b):
     return ox * oy
 
 
-def interpenetration(objs):
-    """Every pair of boxes that shares real volume, minus the pairs where
-    one is simply inside the other.
+def interpenetration(objs, support_pairs=frozenset()):
+    """Every pair of boxes that shares real volume, minus the pairs that
+    are SUPPOSED to share it.
+
+    Two exclusions, and both are about the same thing — real objects rest
+    on and tuck into other real objects:
+
+      CONTAINMENT, geometric: one box is almost wholly inside the other,
+      so a book in a bookshelf is not a collision.
+
+      SUPPORT, from the graph: the pair is joined by an ON / IN /
+      IN_WALL / ATTACHED edge. This one cannot be seen geometrically —
+      a chair 56% under a desk looks exactly like a chair 56% inside a
+      desk — which is why the graph's own verdict is used instead of a
+      threshold. Only our side has such edges; GLTS ships none, so its
+      set is empty and its number is unchanged.
 
     Computed IDENTICALLY for both methods — same function, same constants
     — which is the only reason section C can call itself comparable."""
-    pairs, total, contained = [], 0.0, 0
+    pairs, total, contained, supported = [], 0.0, 0, []
     for i in range(len(objs)):
         for j in range(i + 1, len(objs)):
             a, b = objs[i], objs[j]
@@ -209,6 +222,10 @@ def interpenetration(objs):
             if small > 0 and vol >= CONTAINMENT_FRAC * small:
                 contained += 1                  # legitimate: one is inside
                 continue
+            if frozenset((a.get("id"), b.get("id"))) in support_pairs:
+                supported.append({"a": a["name"], "b": b["name"],
+                                  "volume_m3": round(vol, 4)})
+                continue                        # legitimate: it rests there
             total += vol
             pairs.append({"a": a["name"], "b": b["name"],
                           "a_id": a.get("id"), "b_id": b.get("id"),
@@ -217,8 +234,12 @@ def interpenetration(objs):
                           "frac_of_smaller": round(vol / small, 3)
                           if small else None})
     pairs.sort(key=lambda p: -p["volume_m3"])
+    supported.sort(key=lambda p: -p["volume_m3"])
     return {"pairs": len(pairs), "volume_m3": round(total, 4),
-            "ignored_containment_pairs": contained, "worst": pairs[:12]}
+            "ignored_containment_pairs": contained,
+            "ignored_support_pairs": len(supported),
+            "support_examples": supported[:8],
+            "worst": pairs[:12]}
 
 
 def outside_room(objs, room):
@@ -282,11 +303,18 @@ def floating(objs, floor_up):
     return {"count": len(flo), "objects": flo[:20]}
 
 
-def physical_validity(objs, room, floor_up):
+def physical_validity(objs, room, floor_up, support_pairs=frozenset()):
     return {"n_objects": len(objs),
-            "interpenetration": interpenetration(objs),
+            "interpenetration": interpenetration(objs, support_pairs),
             "outside_room": outside_room(objs, room),
             "floating": floating(objs, floor_up)}
+
+
+def support_pair_set(edges):
+    """The pairs the graph says are SUPPOSED to overlap, as a set of
+    frozenset({a_id, b_id}). Empty for any method without typed edges."""
+    return {frozenset((e.get("a"), e.get("b"))) for e in (edges or [])
+            if e.get("type") in SUPPORT_EDGES}
 
 
 # ===================== our side =======================================
@@ -357,6 +385,11 @@ def load_ours(scene):
                 "chain_expected_final": stages.FINAL_LAYER,
                 "n_nodes_in_layer": len(layer.get("nodes") or []),
                 "objects": objs, "raw_to_render": r2r,
+                # The layer's typed edges. The physical axis reads these
+                # to tell a support relationship from a real clip — see
+                # _classify_our_overlaps. Carried from the SAME layer the
+                # boxes came from, so the two can never disagree.
+                "edges": layer.get("edges") or [],
                 "graph": str(gp)})
     out["room"] = load_room_shell(scene)
     return out
@@ -817,6 +850,62 @@ def axis_prompt_fidelity(prompt_text, ours, glts):
     return res
 
 
+#: Edge types that mean "these two boxes SHOULD overlap". The graph
+#: already carries them, so the classification below is the pipeline's
+#: own opinion rather than a guess made here.
+SUPPORT_EDGES = {"ON", "IN", "IN_WALL", "ATTACHED"}
+
+
+def _overlap_notes():
+    """The two things a reader must know before quoting our overlap count.
+
+    WHY THIS EXISTS (2026-08-11, user: "dont we jiggle and walk the
+    candidates? i thought our scenes are collision free"). They were
+    right and the raw number was measuring the wrong thing twice over.
+
+    A reconstruction's boxes are AXIS-ALIGNED BOUNDS OF REAL FURNITURE,
+    and real furniture rests on and tucks into other furniture. A chair
+    under a desk, a pillow on a bed, a book in a shelf — every one of
+    those is a pair of overlapping AABBs and NONE of them is a
+    collision. Counting them as one produced 62 "collisions" on the
+    bedroom, of which the worst were `office chair x desk` and
+    `bed x pillow`: a correct reconstruction, reported as a fault.
+
+    The containment rule already excused the fully-enclosed cases, but
+    partial ones — a chair 56% under a desk — are just as legitimate and
+    it could not see them. The graph can: it types every pair as ON, IN,
+    ATTACHED, NEAR or INTERPENETRATES, and INTERPENETRATES is precisely
+    "these two clip and should not". So the classification is read off
+    the edges instead of re-derived from geometry.
+
+    SECOND, AND BIGGER: collision-freeness in this pipeline is a COMPOSE
+    property, not a graph property. `fit_check` finds clipping,
+    `fit_declip` pushes pairs apart, `fit_walk` swaps an oversized
+    candidate — all on the PLACED RETRIEVED MESHES, which is the thing
+    that actually corresponds to GLTS's output. Measuring the graph's
+    boxes before compose has run compares our raw input against their
+    finished output. The Collision-Free number this report can honestly
+    publish is the composed scene's, and it is not computed here yet."""
+    return {
+        "classification": (
+            "Overlapping pairs are split using the graph's OWN edge "
+            "types: a pair joined by ON / IN / IN_WALL / ATTACHED is a "
+            "support relationship (a chair under a desk, a pillow on a "
+            "bed) and is excluded. GLTS ships no such edges, so nothing "
+            "is excluded on its side and its number is unchanged."),
+        "collision_free_note": (
+            "THIS IS NOT A COLLISION-FREE SCORE AND MUST NOT BE QUOTED "
+            "AS ONE. Collision-freeness in this pipeline is produced by "
+            "the COMPOSE stage (fit_check / fit_declip / fit_walk) "
+            "acting on the placed retrieved meshes — the true "
+            "counterpart of GLTS's output. Compose has not run on this "
+            "scene, so the comparable CF number does not exist yet; "
+            "what is counted here is residual overlap between the "
+            "reconstruction's raw bounding boxes, which is an input to "
+            "declip, not a result."),
+    }
+
+
 def axis_physical(ours, glts):
     res = {"label": "COMPARABLE",
            "rules": {
@@ -860,13 +949,16 @@ def axis_physical(ours, glts):
            "methods": {}}
     if ours.get("available") and (ours.get("room") or {}).get("available"):
         room = ours["room"]
-        res["methods"]["ours"] = dict(
+        m = dict(
             physical_validity(ours["objects"], room["room_box"],
-                              room["floor_up_m"]),
+                              room["floor_up_m"],
+                              support_pair_set(ours.get("edges"))),
             room_box_note="the room box is the bounding box of the measured "
                           "shell; for a non-rectangular room that is "
                           "generous, so 'outside' is a floor for our side, "
                           "never a ceiling. " + room["footprint_source"])
+        m["interpenetration"].update(_overlap_notes())
+        res["methods"]["ours"] = m
     else:
         res["methods"]["ours"] = {
             "available": False,
