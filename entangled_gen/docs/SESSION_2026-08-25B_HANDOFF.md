@@ -109,10 +109,12 @@ Key behaviours that did not exist this morning:
 
 ---
 
-## 4. THE COMPOSE CHAIN IS WRONG AND IS BEING FIXED
+## 4. THE COMPOSE CHAIN WAS WRONG — FIXED 2026-08-11, kept here for the reasoning
 
 An audit against `PLAN_FIT_LOOP.md` and `pipeline_map.html` found three
-independent faults. All three are quoted canon, not opinion.
+independent faults. All three are quoted canon, not opinion. **All three
+are now fixed** (commit 99070c5); the reasoning is kept because the fit
+block's shape is easy to get wrong again.
 
 1. **`fit_check` and `fit_declip` are in the wrong order.** Canon rule 8:
    `fit_preview → fit_declip → fit_check`. `fit_declip` REWRITES
@@ -266,7 +268,7 @@ squares**, with one printed line as the only signal.
 
 ---
 
-## 5g. THE OLD §5 — kept for the ruled order
+## 5g. THE RECORD HALF — the ruled order (referenced from §5f item 5)
 
 ### (original section follows)
 
