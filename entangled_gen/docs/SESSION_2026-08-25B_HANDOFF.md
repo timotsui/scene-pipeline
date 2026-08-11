@@ -13,6 +13,18 @@ half of this same day.)
 
 ---
 
+## 0. THE ONE-LINE TRUTH, ADDED LAST AND THE MOST IMPORTANT THING HERE
+
+**Starting from 100 Marble bundles and nothing else, NOTHING runs
+unattended. Not one stage.** The scene never reaches the first automated
+command. Everything built today is real and works — and it all begins
+after about twenty hand-run commands that no script contains.
+
+Read §5 before believing any other claim in this file, including my own
+earlier ones.
+
+---
+
 ## 1. WHERE THIS GOT TO
 
 The user's goal, restated by them several times: **a pipeline that runs
@@ -126,6 +138,137 @@ Also: `fit_walk` as the LAST row is a guaranteed no-op — only
 rotation_check → closing fit_preview + fit_declip`
 
 ---
+
+## 5. WHAT ACTUALLY STANDS BETWEEN US AND 100 FRESH SCENES
+
+From a third audit, which asked only: point this at 100 new bundles and
+walk away — what happens? Every number below was counted on disk.
+
+### 5a. THE CORE PHASE IS THE WRONG LANE
+
+`run_scene.py --phase core` writes `pano_crops/`, `seg_pano/`,
+`scene_manifest_pano.json`. **Nothing downstream reads any of them.**
+The chain reads `rig_sp0/crops/`, `rig_sp0/seg_batched20/detections.json`,
+`rig_sp0/lift_poolc.json`, `scene_manifest_pano2c_rc_f30.json`.
+
+Proof from disk: `out/living_marble/` has **no `pano_crops/` and no
+`seg_pano/`**. The core phase has never run on the scene the entire chain
+was verified against. `pipeline_map.html` draws the lane that IS used —
+`frame_bootstrap → pano_stitch → crop_pano → vocab_build → pano_bearings
+→ seg_batched → pano_lift → pano_recenter → manifest_filter → scene_scale
+→ room_shell → envelope → build_graph` — and the runner runs different
+modules with different names.
+
+**Decide what the core phase is** before anything else. It is the single
+biggest source of confusion in the repo.
+
+### 5b. FOUR GLOBS CRASH ON EVERY REAL MARBLE BUNDLE
+
+`crop_pano.py:79`, `seg_pano_overlay.py:41`, `lift_pano.py:250` glob
+`*_pano.png`; `lift_pano.py:91` globs `*_collider.glb`. Harvest bundles
+contain `pano_rgb_0.png` and `collider.glb`.
+
+**0 of 318 harvested worlds match.** Bare `next()` with no default, so a
+`StopIteration` traceback with no message. `vocab_build.py:144` was fixed
+for this on 08-06; these four were not. `bedroom_marble` works only
+because its bundle is the deprecated 07-07 manual download.
+
+### 5c. THE REAL CEILING IS 34 SCENES, NOT 100
+
+Counted at `week8/marble-harvest/worlds/`:
+
+```
+worlds 318 · prompt.txt 318 · splats.spz 318
+collider.glb 34 · pano_rgb_0.png 36 · both 33
+```
+
+`frame_bootstrap.py:61` refuses without a collider. Fix the harvester's
+collider step or relax the requirement — otherwise "100 fresh scenes" is
+34.
+
+### 5d. ~20 HAND-RUN COMMANDS, SEVERAL WITH FLAGS THAT LIVE ONLY IN MEMORY
+
+`crop_pano --pano … --out-dir rig_sp0/crops`, `pano_lift --suffix c`,
+`seg_batched --out-dir rig_sp0/seg_batched20`, `manifest_filter --thr 0.30`.
+And `slicevote.py:1038-1042` **hardcodes the filenames those flags
+produce** — `scene_manifest_pano2c_rc_f30.json`, `lift_poolc.json`,
+`seg_batched20/detections.json` — at module level, with no override.
+`compose/supported_by.py:604` derives the same name with a regex; the
+chain's first stage does not.
+
+`bundle_path.txt` has **no producer at all** — a human types one line.
+
+### 5e. THE RECORD HALF, RULED ORDER
+
+```
+G1 build_graph  →  G2 build_edges                      (stamps `record`)
+J0 triage_pairs →  J1 judge_pairs  →  J5 judge_near
+J2 build_judged (stamps `judged`) → J3 judge_names → J4 judge_coherence
+J6 describe_nodes  →  J7 materialize_verdicts          (stamps `resolved`)
+```
+
+Five orderings are enforced by refusals in the code. **Three are not and
+are silently wrong if reversed**: J1→J5 (J5 folds J1's SAME verdicts),
+J3→J4 (J4's cache key hashes the names J3 wrote), J0→J1. Turn those into
+refusals like the five that already exist.
+
+⚠ **J3 = names, J4 = coherence.** `PLAN_VOTEBOX_DOWNSTREAM.md` said "J4
+names" twice; corrected 08-11.
+
+`judge_cases.py` is retired — its docstring says "do not wire it into any
+orchestration".
+
+### 5f. THE SHORTEST PATH, IN ORDER
+
+1. `run_scene.py:825` `NameError: phase` — **a regression I introduced
+   today** (commit c9f28f5). Fires whenever the final gate FAILS, so the
+   run log is lost on exactly the runs that need it. Minutes.
+2. The four bundle globs (5b). Copy `vocab_build.find_pano`. Minutes.
+3. Decide what the core phase is (5a).
+4. Add the intake funnel to `stages.py` as a third tuple. The flags stop
+   being lore the moment they are in the table. Then make `slicevote`
+   derive its filenames instead of hardcoding them.
+5. Add the record/judge chain as a fourth tuple (5e).
+6. Give `bundle_path.txt` a producer — a `--bundle` flag or a one-line
+   `new_scene.py`.
+7. Fix the harvester's collider step (5c).
+8. Declare or delete the five compose loop-back files (see §4b).
+
+1–2 are minutes. 3–6 are wiring, not design: the order is already written
+down correctly in `PIPELINE.md:303-312`. 7 is harvesting. 8 needs a
+ruling.
+
+---
+
+## 4b. ⚠ THE COMPOSE PASS IN §2 IS CONTAMINATED
+
+`autotest_bedroom` is a clone of `bedroom_marble`, which carries hand-fixes
+that steer compose. Five files, all present before the run, none declared
+in `stages.py`, two produced by stages that are not even in the tuple:
+
+| file | read by | what it does |
+|---|---|---|
+| `snap_rulings.json` | `snap.py:493` | hand-written pins marked `USER_RULING` that **outrank the model**, "never expire" |
+| `fit_walk.json` | `fit_preview.py:190` | **overrides the picks** — different meshes get placed |
+| `rotation_check.json` | `fit_preview.py:351` | rotates placed meshes |
+| `fit_feedback.json` | `shopping.py:167` | gates **what gets bought** |
+| prior `fitted_preview.json` | `fit_preview.py:344` | carries a rotation basis from the last run |
+
+A fresh scene has none of them, so it gets a different answer with no
+crash and no warning. **No compose result from a cloned scene means what
+it looks like it means.** Same bug shape as the `--settle-only` one, four
+more times over, and softer — which is worse.
+
+Related: `compose/pick.py:139` builds the room's mood sheet from
+`pano_crops/`, which the current funnel never creates — so on
+`living_marble` the model choosing every asset is shown **four blank white
+squares**, with one printed line as the only signal.
+
+---
+
+## 5g. THE OLD §5 — kept for the ruled order
+
+### (original section follows)
 
 ## 5. THE BIG REMAINING WORK — THE RECORD HALF
 
