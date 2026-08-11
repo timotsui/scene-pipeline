@@ -525,7 +525,7 @@ run (runs 8/9/10), J4/J6 pure cache hits throughout.
 
 - Voted boxes re-enter at 4g2: geometric edge facts re-derived
   mechanically; the SAME judge chain runs down (J0 triage on the new
-  nesting candidates; J1 only on genuinely new pairs; J4 names / J6
+  nesting candidates; J1 only on genuinely new pairs; J3 names / J6
   appearance+existence are pure cache hits — crop stimuli unchanged by
   the vote); then the two NEW benches (J8 split, J9 same-product);
   then materialize. Second pass, not a cycle (vote needed resolved
@@ -533,11 +533,18 @@ run (runs 8/9/10), J4/J6 pure cache hits throughout.
   derives it, Phase D).
 - **ORDER EXPLICIT (user-adopted 08-07 late): B2 runs BEFORE the
   J8/J9 canonical verdicts.** The chain is 4g2 re-derive → J0/J1
-  (J4/J6 cached) → THEN J8/J9 at the end — because J8 must READ
+  (J3/J6 cached) → THEN J8/J9 at the end — because J8 must READ
   its relational facts from the rebuilt 4g2 edges (the obj_063
   stimulus-gap lesson, Phase A). The 08-07 J8 verdict runs (obj_011 /
   obj_019 / obj_024) were DESIGN TRIALS of the machinery, not
   canonical verdicts; canon runs inside this pass.
+  - ⚠ NUMBERING CORRECTED 2026-08-11: this section said
+    "J4 names". NAMES IS J3; J4 is judge_coherence. The
+    authority is the module docstrings, PIPELINE.md and
+    PLAN_SCENE_GRAPH.md, which all agree. No operational
+    effect (neither is a chain row, both are cache hits
+    here) but it is a line someone could wire the wrong
+    module from.
 - Drawn on the map: dashed loop-back edge vote -> 4g2 (legend:
   dashed = loop-back).
 - **USER GATE B2:** edge/triage diff (pairs appeared/dissolved) + any

@@ -264,33 +264,42 @@ fell 114 -> 53), but a camera pulled 5 m is no longer really the view it
 claims to be. `pulled_in_m` on each view records how far it moved; treat
 large values with suspicion.
 
-### 6.4 THE CHAIN HAS NO JUDGE FOR A DUPLICATE THE VOTE ITSELF CREATES
-**OPEN. Does not stop a run. Ships a duplicate object.**
+### 6.4 THE POST-VOTE DUPLICATE — CLOSED, AND THIS SECTION WAS WRONG
+**CLOSED 2026-08-11. Read this before believing any older copy of it.**
 
-`build_edges` proposes SAME_CANDIDATE edges — "these two might be one
-object" — and J1 (`judge_pairs.py`) answers them. But **J1 runs on the
-RECORD, long before the vote.** The vote then moves every box, and that
-can propose a BRAND NEW candidate that no judge in the chain ever sees. On
-`living_marble` it did: two chairs, `obj_020` and `obj_068`, ended up 96%
-contained in one another. `materialize` merges only pairs whose verdict is
-SAME, so an unjudged candidate is silently not merged and the scene ships
-a duplicate object.
+This section used to say "THE CHAIN HAS NO JUDGE FOR A DUPLICATE THE VOTE
+ITSELF CREATES", called it an open design question, and invited the reader
+to solve it. **That was wrong, and it was wrong in the most expensive way
+a document can be: it described a hole that the design had already filled.**
 
-Found 2026-08-11 by re-running the documented chain on a clone and
-comparing node by node: the clone came out with 46 settled nodes,
-`living_marble` has 45. It was invisible because `living_marble`'s
-`settled` layer HAS the merge, recorded 08-10 — but its `voted` and
-`voted_edges` were rebuilt on 08-11, AFTER, and both stages re-derive
-edges geometrically with nothing carrying a verdict forward. So the merge
-survives only as a fossil in a layer whose inputs are gone. Re-run the
-chain today and it does not happen.
+What is true: `build_edges` proposes SAME_CANDIDATE edges and J1
+(`judge_pairs.py`) answers them, and J1's FIRST pass runs on the record,
+before the vote. The vote then moves every box and can propose a brand new
+candidate — on `living_marble`, two chairs 96% contained in one another.
 
-Answering it means either a judge that runs on post-vote candidates or a
-rule that carries J1's verdicts across the vote. Both are design decisions
-with the user's name on them. **What was done instead: the gate now WARNs
-on every scene when a SAME_CANDIDATE edge reaches the end with no
-verdict**, so the hole is counted on all 100 runs rather than silently
-absorbed.
+What this section missed: the design re-runs J0 and J1 on the post-vote
+edges, and has since 2026-08-07. It is a USER ARCHITECTURE RULING recorded
+in `docs/PLAN_VOTEBOX_DOWNSTREAM.md` "PHASE B2":
+
+> "after slice vote the scene goes all the way back up to geometric edges
+> and down the judges again — just with two more judges at the end"
+>
+> ORDER EXPLICIT: B2 runs BEFORE the J8/J9 canonical verdicts. The chain is
+> re-derive -> J0/J1 -> THEN J8/J9 at the end.
+
+The real fault was in `graph/stages.py`, which was built from THIS FILE's
+step list and inherited its omission: it went `voted_edges -> j8` with no
+loop-back. Fixed — `j0_retriage` and `j1_repairs` are now rows, both with
+`--edges-from voted_edges`. Full account in REVIEW_LOG R-S2-88.
+
+**J2 is NOT part of the loop-back**, checked against every primary record:
+the ruling names J0 and J1 only, and the merge itself lands at
+`materialize_layers` rule 4. Re-running `build_judged` would rewrite the
+immutable `judged` layer and sweep the vote stale.
+
+The gate still WARNs when a SAME_CANDIDATE edge reaches the end unjudged —
+but that signal now means "the loop-back stages did not run on this scene",
+not "the design has a hole".
 
 ### 6.5 J8's concurrency of 8 multiplies GPU renders, not just model lanes
 **OPEN, REPORTED NOT CHANGED. Can take the machine down mid-fleet.**
