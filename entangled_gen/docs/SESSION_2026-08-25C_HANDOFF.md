@@ -94,8 +94,10 @@ next run answers whether more are hiding.
    no `out/*/bundle_path.txt` points at it. Then ONE command,
    `--phase all`, and DO NOT touch the scene by hand while it runs.
    ~55 min. If a stage fails: fix at the source scene-agnostically,
-   log it (R-S2-110 onward), resume — and the bar then becomes running
-   ONE MORE fresh world clean, because a resumed run is not the proof.
+   log it at the NEXT FREE R-S2 number (a parallel session's
+   PLAN_COLLIDER_OPTIONAL.md reserved 110+ — see §5), resume — and the
+   bar then becomes running ONE MORE fresh world clean, because a
+   resumed run is not the proof.
 4. **The fleet path** — once one scene runs clean, `run_fleet.py` over
    2–3 scenes (the fresh one + clones) to prove the driver, the resume,
    and the morning report. Read the report the way the user will.
