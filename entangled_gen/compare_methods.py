@@ -1318,7 +1318,19 @@ def render_composed_topdown(scene, room, ppm):
     T = np.concatenate(tris)
     C = np.concatenate(cols)
 
-    bb = room["footprint_bbox_m"] if room.get("available") else None
+    return _paint_topdown(
+        T, C, room.get("footprint_bbox_m") if room.get("available") else None,
+        room.get("polygon_vertices_upright") if room.get("available") else None,
+        ppm), None, meta
+
+
+def _paint_topdown(T, C, room_bbox, poly, ppm):
+    """Painter's-algorithm top-down of triangles T (n,3,3 in plan
+    metres: x, y, up) with per-face colors C (n,3), the room outline on
+    top. One function for BOTH methods' composed renders, so neither
+    side can be prettier by construction. Returns a data URI."""
+    import numpy as np
+    bb = room_bbox
     xs = [T[:, :, 0].min(), T[:, :, 0].max()] + ([bb[0], bb[2]] if bb else [])
     ys = [T[:, :, 1].min(), T[:, :, 1].max()] + ([bb[1], bb[3]] if bb else [])
     mg = 0.3
@@ -1348,22 +1360,166 @@ def render_composed_topdown(scene, room, ppm):
         dr.polygon([(px[i, 0], py[i, 0]), (px[i, 1], py[i, 1]),
                     (px[i, 2], py[i, 2])], fill=tuple(rgb[i]))
 
-    if room.get("available"):
-        poly = room.get("polygon_vertices_upright")
-        if poly:
-            pts = [((v[0] - x0) * sx, (y1 - v[1]) * sx) for v in poly]
-            dr.line(pts + [pts[0]], fill="#111", width=3 * ss)
-        else:
-            dr.rectangle([(bb[0] - x0) * sx, (y1 - bb[3]) * sx,
-                          (bb[2] - x0) * sx, (y1 - bb[1]) * sx],
-                         outline="#111", width=3 * ss)
+    if poly:
+        pts = [((v[0] - x0) * sx, (y1 - v[1]) * sx) for v in poly]
+        dr.line(pts + [pts[0]], fill="#111", width=3 * ss)
+    elif bb:
+        dr.rectangle([(bb[0] - x0) * sx, (y1 - bb[3]) * sx,
+                      (bb[2] - x0) * sx, (y1 - bb[1]) * sx],
+                     outline="#111", width=3 * ss)
     img = img.resize((W // ss, H // ss), Image.LANCZOS)
     dr = ImageDraw.Draw(img)
     f = _font(11)
     bx, by = 12, img.height - 10
     dr.line([(bx, by), (bx + ppm, by)], fill="#111", width=3)
     dr.text((bx, by - 16), "1 m", fill="#111", font=f)
-    return _jpeg_uri(img), None, meta
+    return _jpeg_uri(img)
+
+
+#: same rule glts_run.py and compare use for the GLTS checkout; the
+#: asset store is the repo's own objathor path.
+OBJATHOR = Path(paths.CFG.get(
+    "objathor",
+    r"D:\T\Documents\GeorgiaTech\Summer2026\Research\objathor-assets\2023_09_23"))
+
+
+def render_glts_composed(glts, ppm):
+    """GLTS's composed scene, assembled BY THIS TOOL from GLTS's own
+    outputs and rendered top-down. (data_uri, why_not, meta).
+
+    THE RECIPE IS GLTS'S OWN, transcribed from its blender_placement.py
+    (create_scene / create_object / set_object_dimensions) so this is
+    its step-15 assembly re-executed, not our interpretation of it:
+
+      * asset  = objathor <uid>.pkl.gz named by 11_retrieved_results
+      * verts  = [x, -z, y] (THOR y-up -> z-up), rotated about Z by
+                 (yRotOffset + [180, 90, 0, 270][orientation]) degrees
+      * scale  = x and y exactly to the layout's size; z by the mean of
+                 the x/y factors, capped at twice the exact z fit
+      * anchor = the scaled bbox's bottom-center goes to `location`,
+                 z = 0 on the floor, or the supporting furniture's
+                 scaled height for a small object
+      * small objects only land on parents whose name contains
+                 table / desk / stand / cabinet (their rule, verbatim)
+
+    Colors are the albedo texture sampled at the UVs. The one thing this
+    is NOT is GLTS's Blender/Cycles image: no lighting rig, no floor
+    texture — the caption says so."""
+    if not HAVE_PIL:
+        return None, "Pillow is not installed", None
+    try:
+        import numpy as np
+    except ImportError:
+        return None, "renderer needs numpy", None
+    import gzip
+    import pickle
+
+    d0 = Path(glts.get("dir") or "")
+    if not d0.name or not d0.exists():
+        return None, "GLTS has not been run for this scene", None
+    try:
+        ret = json.loads((d0 / "11_retrieved_results.json").read_text(
+            encoding="utf-8"))
+        fur = json.loads((d0 / "13_furniture_layout.json").read_text(
+            encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, f"missing/unreadable GLTS files: {exc}", None
+    assets = {}
+    for entry in ret.get("objects") or []:
+        for name, info in entry.items():
+            assets[name] = info
+    small_p = d0 / "14_small_object_layout.json"
+    small = None
+    if small_p.exists():
+        try:
+            small = json.loads(small_p.read_text(encoding="utf-8"))
+        except ValueError:
+            small = None
+
+    # the object list, exactly as create_scene builds it
+    objects = []
+    for area in fur.get("areas") or []:
+        for o in area.get("object_list") or []:
+            o = dict(o, supported="floor", uid=(assets.get(o["name"]) or {}).get("uid"))
+            objects.append(o)
+    if small:
+        for area in small.get("areas") or []:
+            for parent, info in area.items():
+                for o in info.get("vis_furnitures_list") or []:
+                    o = dict(o, supported=parent,
+                             uid=(assets.get(f"{parent}_{o['name']}") or {}).get("uid"))
+                    objects.append(o)
+    objects.sort(key=lambda o: 0 if o["supported"] == "floor" else 1)
+
+    ori_to_ang = [180, 90, 0, 270]
+    tris, cols, skipped = [], [], []
+    parent_h = {}
+    for o in objects:
+        name, uid, sup = o.get("name"), o.get("uid"), o["supported"]
+        size = [float(v) for v in o.get("size") or []]
+        loc = [float(v) for v in o.get("location") or []]
+        if not uid or len(size) < 3 or len(loc) < 2:
+            skipped.append(f"{name} (no uid or malformed layout entry)")
+            continue
+        if sup != "floor" and not any(s in sup for s in
+                                      ("table", "desk", "stand", "cabinet")):
+            skipped.append(f"{name} (their rule: parent '{sup}' is not a "
+                           f"supporting type)")
+            continue
+        pk = OBJATHOR / "assets" / uid / f"{uid}.pkl.gz"
+        if not pk.exists():
+            skipped.append(f"{name} (asset {uid} not in the local store)")
+            continue
+        try:
+            with gzip.open(pk) as fh:
+                data = pickle.load(fh)
+        except (OSError, ValueError, pickle.UnpicklingError) as exc:
+            skipped.append(f"{name} (unreadable asset: {exc})")
+            continue
+        v = np.array([[p["x"], -p["z"], p["y"]] for p in data["vertices"]])
+        ang = math.radians(float(data.get("yRotOffset") or 0.0)
+                           + ori_to_ang[int(o.get("orientation") or 0) % 4])
+        ca, sa = math.cos(ang), math.sin(ang)
+        v = v @ np.array([[ca, sa, 0.0], [-sa, ca, 0.0], [0.0, 0.0, 1.0]])
+        cur = v.max(axis=0) - v.min(axis=0)
+        cur[cur == 0] = 1e-6
+        sxy = [size[0] / cur[0], size[1] / cur[1]]
+        s_org = (sxy[0] + sxy[1]) / 2
+        s_tgt = size[2] / cur[2]
+        sz = s_tgt if s_org > s_tgt * 2 else s_org
+        v = v * np.array([sxy[0], sxy[1], sz])
+        zb = parent_h.get(sup, 0.0) if sup != "floor" else 0.0
+        lo, hi = v.min(axis=0), v.max(axis=0)
+        v = v + np.array([loc[0] - (lo[0] + hi[0]) / 2,
+                          loc[1] - (lo[1] + hi[1]) / 2,
+                          zb - lo[2]])
+        if sup == "floor":
+            parent_h[name] = zb + (hi[2] - lo[2])
+        faces = np.array(data["triangles"]).reshape(-1, 3)
+
+        base = np.full((len(faces), 3), 175.0)
+        try:
+            alb = Image.open(OBJATHOR / "assets" / uid / "albedo.jpg")
+            alb = np.asarray(alb.convert("RGB"), dtype=float)
+            uv = np.array([[p["x"], p["y"]] for p in data["uvs"]])
+            iu = np.clip(((uv[:, 0] % 1.0) * (alb.shape[1] - 1)).astype(int),
+                         0, alb.shape[1] - 1)
+            iv = np.clip((((1.0 - uv[:, 1]) % 1.0) * (alb.shape[0] - 1)).astype(int),
+                         0, alb.shape[0] - 1)
+            base = alb[iv, iu][faces].mean(axis=1)
+        except (OSError, ValueError, KeyError, IndexError):
+            pass
+        tris.append(v[faces])
+        cols.append(base)
+
+    if not tris:
+        return None, ("no GLTS object could be assembled: "
+                      + "; ".join(skipped[:6])), None
+    T = np.concatenate(tris)
+    C = np.concatenate(cols)
+    dim = [float(x) for x in glts.get("room_dimension") or [0, 0]]
+    meta = {"assembled": len(tris), "skipped": skipped}
+    return _paint_topdown(T, C, [0.0, 0.0, dim[0], dim[1]], None, ppm), None, meta
 
 
 def build_screens(scene, ours, glts):
@@ -1425,9 +1581,8 @@ def build_screens(scene, ours, glts):
            "outline on top. This is the product view the literature "
            "evaluates on — Holodeck's human study and GLTS's CLIP score "
            "and user study all ran on top-down views of the assembled "
-           "scene. GLTS's runs here stopped at layout (steps 0-13), so "
-           "its equivalent render does not exist; its own plots below "
-           "are its product of record.")
+           "scene. GLTS's equivalent render is below, assembled from "
+           "its own outputs by its own recipe.")
     if rmeta:
         cap += (f" Placed {rmeta['placed']}; "
                 f"{rmeta['not_placed']} not placed (with receipts); "
@@ -1456,6 +1611,30 @@ def build_screens(scene, ours, glts):
         figs.append({"key": "glts_plan", "title": "GLTS's layout, drawn top-down",
                      "caption": "", "source": None, "data_uri": None,
                      "why": glts.get("why", "GLTS has not been run for this scene")})
+
+    # GLTS's composed scene — its own step-15 assembly recipe
+    # (blender_placement.py) re-executed here on its own layout and its
+    # own retrieved objathor assets, rendered by the same rasterizer.
+    uri, why, gmeta = render_glts_composed(glts, ppm)
+    cap = ("GLTS's retrieved assets placed by its own step-15 recipe "
+           "(the rotation table, scale policy, bottom anchoring and "
+           "support rule of its blender_placement.py, re-executed by "
+           "this tool), rendered top-down by the SAME rasterizer at the "
+           "SAME scale as ours. Its runs here stopped at layout, so its "
+           "own Blender/Cycles image does not exist; this differs from "
+           "that image only in lighting and floor texture, not in what "
+           "is where.")
+    if gmeta:
+        cap += f" Assembled {gmeta['assembled']} objects"
+        if gmeta["skipped"]:
+            cap += (f"; skipped {len(gmeta['skipped'])}: "
+                    + "; ".join(gmeta["skipped"]))
+        cap += "."
+    figs.append({"key": "glts_composed",
+                 "title": "GLTS's composed scene, top-down render",
+                 "caption": cap if uri else "",
+                 "source": str(Path(glts.get("dir") or "")) or None,
+                 "data_uri": uri, "why": why, "meta": gmeta})
 
     # GLTS's own plots, as it wrote them — provenance, not our redrawing.
     d0 = Path(glts.get("dir") or "")
