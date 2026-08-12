@@ -31,13 +31,19 @@ and again inside the section.
 
 READ-ONLY. This tool opens scene data and never writes it. The only two
 files it creates are its own report, out/comparison_<runid>.{json,html}.
+The HTML embeds screenshot thumbnails (the stitched pano of the real
+room, both layouts drawn top-down at one shared scale, and GLTS's own
+layout plots) as data URIs, so the page stays a single self-contained
+file; the JSON records where each image came from but never the pixels.
 
     python compare_methods.py --scene living_marble
     python compare_methods.py --scenes living_marble,bedroom_marble
     python compare_methods.py --scene bedroom_marble --glts-root <path>
 """
 import argparse
+import base64
 import html as _html
+import io
 import json
 import math
 import re
@@ -437,6 +443,7 @@ def load_room_shell(scene):
                "this scene's shell has no polygon")
     return {"available": True, "floor_up_m": floor, "ceiling_up_m": ceil,
             "height_m": round(ceil - floor, 3),
+            "polygon_vertices_upright": poly,
             "footprint_area_m2": round(area, 2),
             "footprint_bbox_m": [round(v, 3) for v in bbox],
             "footprint_bbox_size_m": [round(bbox[2] - bbox[0], 3),
@@ -1097,6 +1104,7 @@ def compare_scene(scene, glts_root=None):
                 "--glts-root to pair them explicitly."}
     rec["ours_meta"] = {k: v for k, v in ours.items() if k != "objects"}
     rec["glts_meta"] = {k: v for k, v in glts.items() if k != "objects"}
+    rec["screenshots"] = build_screens(scene, ours, glts)
     rec["A_cost"] = axis_cost(ours_cost(scene), glts.get("cost") or
                               {"available": False,
                                "why": "GLTS has not been run for this scene"})
@@ -1107,6 +1115,214 @@ def compare_scene(scene, glts_root=None):
     rec["C_physical_validity"] = axis_physical(ours, glts)
     rec["D_grounding"] = axis_grounding(ours, glts)
     return rec
+
+
+# ===================== screenshots ====================================
+# The page used to be numbers only, which made every visual claim on it
+# unverifiable without opening three other tools. These figures are
+# review aids for the eye and nothing else: every number on the page is
+# computed from the layout JSONs, never from these pictures.
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    HAVE_PIL = True
+except ImportError:
+    HAVE_PIL = False
+
+#: embedded thumbnails are capped at this width; the originals stay on
+#: disk and the JSON records where they are.
+THUMB_MAX_W = 760
+#: drawn floor plans are capped at this width...
+PLAN_MAX_W = 640
+#: ...and at this zoom, so a tiny room does not become a poster.
+PLAN_PX_PER_M_CAP = 80.0
+
+SCREENS_NOTE = (
+    "Review aids for the eye, nothing more: every number on this page is "
+    "computed from the layout JSONs, not from these pictures. The two "
+    "drawn plans share ONE scale, so the size difference between the two "
+    "room outlines is real — it is section D's grounding gap, visible.")
+
+
+def _font(size):
+    try:
+        return ImageFont.truetype("arial.ttf", size)
+    except OSError:
+        return ImageFont.load_default()
+
+
+def _jpeg_uri(img, quality=85):
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, "JPEG", quality=quality)
+    return ("data:image/jpeg;base64,"
+            + base64.b64encode(buf.getvalue()).decode("ascii"))
+
+
+def thumb_from_file(path, max_w=THUMB_MAX_W):
+    """(data_uri, why_not) for an image on disk, downscaled to max_w."""
+    p = Path(path)
+    if not p.exists():
+        return None, f"no file at {p}"
+    if not HAVE_PIL:
+        return None, "Pillow is not installed, so no thumbnail"
+    try:
+        img = Image.open(p)
+        img.load()
+    except OSError as exc:
+        return None, f"unreadable image: {exc}"
+    if img.width > max_w:
+        img = img.resize((max_w, max(1, round(img.height * max_w / img.width))),
+                         Image.LANCZOS)
+    return _jpeg_uri(img), None
+
+
+def draw_plan(objs, room_bbox, poly, px_per_m, title, color):
+    """A top-down plan: the room outline, every object's footprint as a
+    numbered rectangle, a 1 m scale bar, and the number->name legend.
+
+    Drawn from the SAME common-representation boxes the axes score, which
+    is the point: this is a picture of the numbers, not a new opinion.
+    `room_bbox` is [xmin, ymin, xmax, ymax] in plan metres; `poly` is the
+    traced outline when the shell has one. (data_uri, why_not)."""
+    if not HAVE_PIL:
+        return None, "Pillow is not installed, so no plan drawing"
+    xs = [room_bbox[0], room_bbox[2]]
+    ys = [room_bbox[1], room_bbox[3]]
+    for o in objs:
+        xs += [o["box"][0], o["box"][3]]
+        ys += [o["box"][1], o["box"][4]]
+    m = 0.3                                    # metres of breathing room
+    x0, x1 = min(xs) - m, max(xs) + m
+    y0, y1 = min(ys) - m, max(ys) + m
+    ppm = px_per_m
+    pad, title_h = 8, 24
+    w = max(80, int(math.ceil((x1 - x0) * ppm)))
+    h = max(80, int(math.ceil((y1 - y0) * ppm)))
+
+    leg_f, leg_row = _font(12), 16
+    names = [f"{i}  {o['name'][:30]}" for i, o in enumerate(objs)]
+    n_col = max(1, min(3, (w + 2 * pad) // 200))
+    n_row = int(math.ceil(len(names) / n_col)) if names else 0
+    leg_h = n_row * leg_row + (8 if names else 0)
+
+    img = Image.new("RGB", (w + 2 * pad, title_h + h + 2 * pad + leg_h),
+                    "white")
+    dr = ImageDraw.Draw(img)
+
+    def P(x, y):
+        # plan-north up: metres -> pixels with the y axis flipped
+        return (pad + (x - x0) * ppm, title_h + pad + (y1 - y) * ppm)
+
+    dr.text((pad, 4), title, fill="#111", font=_font(13))
+    if poly:
+        pts = [P(v[0], v[1]) for v in poly]
+        dr.line(pts + [pts[0]], fill="#111", width=3)
+    else:
+        dr.rectangle([P(room_bbox[0], room_bbox[3]),
+                      P(room_bbox[2], room_bbox[1])], outline="#111", width=3)
+    f = _font(11)
+    for i, o in enumerate(objs):
+        b = o["box"]
+        tl, br = P(b[0], b[4]), P(b[3], b[1])
+        dr.rectangle([tl, br], outline=color, width=2)
+        lab = str(i)
+        tb = dr.textbbox((0, 0), lab, font=f)
+        dr.text(((tl[0] + br[0] - tb[2]) / 2, (tl[1] + br[1] - tb[3]) / 2),
+                lab, fill=color, font=f)
+    # the 1 m scale bar, bottom-left inside the plan area
+    bx, by = pad + 4, title_h + pad + h - 10
+    dr.line([(bx, by), (bx + ppm, by)], fill="#111", width=3)
+    dr.text((bx, by - 16), "1 m", fill="#111", font=f)
+    ly = title_h + h + 2 * pad
+    for i, nm in enumerate(names):
+        col, row = divmod(i, n_row) if n_row else (0, 0)
+        dr.text((pad + col * ((w + 2 * pad - 2 * pad) // n_col), ly + row * leg_row),
+                nm, fill="#333", font=leg_f)
+    return _jpeg_uri(img), None
+
+
+def build_screens(scene, ours, glts):
+    """The figure list for one scene. Every figure carries its source
+    path (JSON keeps that) and, when the image could be produced, a data
+    URI (HTML embeds that, JSON drops it)."""
+    figs = []
+
+    pano = paths.scene_dir(scene) / "rig_sp0" / "pano_selfrender.png"
+    uri, why = thumb_from_file(pano)
+    figs.append({"key": "real_room", "wide": True,
+                 "title": "the real room (our input)",
+                 "caption": "The eye-level panorama our pipeline stitched "
+                            "from the splat — the capture our side "
+                            "measured. Input, not output; GLTS never saw "
+                            "it.",
+                 "source": str(pano), "data_uri": uri, "why": why})
+
+    # ONE scale for both plans, so the outlines can be compared by eye.
+    room = ours.get("room") or {}
+    extents = []
+    if ours.get("available") and room.get("available"):
+        bb = room["footprint_bbox_m"]
+        extents.append((bb[2] - bb[0], bb[3] - bb[1]))
+    gdim = glts.get("room_dimension")
+    if glts.get("available") and gdim:
+        extents.append((float(gdim[0]), float(gdim[1])))
+    ppm = PLAN_PX_PER_M_CAP
+    for ew, eh in extents:
+        ppm = min(ppm, PLAN_MAX_W / max(0.5, ew + 0.6))
+
+    if ours.get("available") and room.get("available"):
+        uri, why = draw_plan(
+            ours["objects"], room["footprint_bbox_m"],
+            room.get("polygon_vertices_upright"), ppm,
+            f"ours — measured room, {len(ours['objects'])} boxes",
+            "#1a4d8f")
+        figs.append({"key": "ours_plan",
+                     "title": "our layout, drawn top-down",
+                     "caption": f"The exact boxes scored on this page "
+                                f"(the {ours.get('layer')} layer) inside "
+                                f"the measured room outline. Drawn from "
+                                f"the JSON, not a screenshot of the "
+                                f"viewer.",
+                     "source": ours.get("graph"), "data_uri": uri,
+                     "why": why})
+    else:
+        figs.append({"key": "ours_plan", "title": "our layout, drawn top-down",
+                     "caption": "", "source": None, "data_uri": None,
+                     "why": ours.get("why") or room.get("why", "ours not available")})
+
+    if glts.get("available") and gdim:
+        d = [float(v) for v in gdim]
+        uri, why = draw_plan(
+            glts["objects"], [0.0, 0.0, d[0], d[1]], None, ppm,
+            f"GLTS — invented room, {len(glts['objects'])} boxes",
+            "#8f1a1a")
+        figs.append({"key": "glts_plan",
+                     "title": "GLTS's layout, drawn top-down",
+                     "caption": "Its final placement, drawn by the SAME "
+                                "renderer at the SAME scale as ours, "
+                                "inside the room it invented — the size "
+                                "difference between the two outlines is "
+                                "section D's grounding gap.",
+                     "source": glts.get("dir"), "data_uri": uri, "why": why})
+    else:
+        figs.append({"key": "glts_plan", "title": "GLTS's layout, drawn top-down",
+                     "caption": "", "source": None, "data_uri": None,
+                     "why": glts.get("why", "GLTS has not been run for this scene")})
+
+    # GLTS's own plots, as it wrote them — provenance, not our redrawing.
+    d0 = Path(glts.get("dir") or "")
+    for name in ("13_furniture_layout.png", "14_small_object_layout.png"):
+        p = d0 / name
+        if not d0.name or not p.exists():
+            continue
+        uri, why = thumb_from_file(p, max_w=PLAN_MAX_W)
+        figs.append({"key": f"glts_own_{name.split('_')[0]}",
+                     "title": f"GLTS's own plot ({name})",
+                     "caption": "As GLTS wrote it, untouched — its own "
+                                "picture of the layout above.",
+                     "source": str(p), "data_uri": uri, "why": why})
+
+    return {"note": SCREENS_NOTE, "figures": figs}
 
 
 # ===================== reports ========================================
@@ -1187,6 +1403,24 @@ def scene_html(rec):
          else "NOT AVAILABLE — " + str(gm.get("why"))),
         ("how the two are paired", pv["note"]),
     ]) + "</table>")
+
+    # ---- screenshots
+    sc = rec.get("screenshots")
+    if sc:
+        h.append("<h3>Screenshots</h3>")
+        h.append(f'<p class="note">{e(sc["note"])}</p>')
+        h.append('<div class="figs">')
+        for f in sc["figures"]:
+            h.append('<figure class="wide">' if f.get("wide") else "<figure>")
+            if f.get("data_uri"):
+                h.append(f'<img src="{f["data_uri"]}" alt="{e(f["title"])}">')
+            else:
+                h.append(_missing(f.get("why", "no image")))
+            cap = f'<b>{e(f["title"])}.</b> {e(f.get("caption") or "")}'
+            if f.get("source"):
+                cap += f' <code>{e(f["source"])}</code>'
+            h.append(f"<figcaption>{cap}</figcaption></figure>")
+        h.append("</div>")
 
     # ---- A
     a = rec["A_cost"]
@@ -1350,6 +1584,11 @@ code{font-family:Consolas,monospace;font-size:.9em}
 .trap{border-left:4px solid #111;padding:.5em .8em;background:#f2f2f2}
 .missing{background:#f2f2f2;padding:.3em .5em}
 details{margin:.5em 0}
+.figs{display:flex;flex-wrap:wrap;gap:1em;align-items:flex-start}
+.figs figure{margin:0;flex:1 1 300px;max-width:34em}
+.figs figure.wide{flex-basis:100%;max-width:100%}
+.figs img{max-width:100%;border:1px solid #999;display:block}
+.figs figcaption{font-size:.85em;color:#333;margin-top:.3em}
 """
     h = [f"<title>method comparison {e(runid)}</title>",
          f"<style>{css}</style>",
@@ -1366,6 +1605,11 @@ def console(rec):
     s = rec["scene"]
     om, gm = rec["ours_meta"], rec["glts_meta"]
     print(f"\n=== {s} " + "=" * max(0, 56 - len(s)))
+    figs = (rec.get("screenshots") or {}).get("figures") or []
+    got = sum(1 for f in figs if f.get("data_uri"))
+    print(f"  screenshots: {got}/{len(figs)} embedded in the HTML"
+          + ("" if got == len(figs) else " - missing: " + ", ".join(
+              f["key"] for f in figs if not f.get("data_uri"))))
     print(f"  ours: {om.get('layer') or 'NOT AVAILABLE'}"
           f"{'' if om.get('available') else ' - ' + str(om.get('why'))}"
           f"   glts: {gm.get('object_source') if gm.get('available') else 'NOT RUN - ' + str(gm.get('why'))}")
@@ -1492,12 +1736,25 @@ def main():
 
     out_dir = Path(a.out_dir) if a.out_dir else paths.OUT
     out_dir.mkdir(parents=True, exist_ok=True)
+    # The JSON keeps every figure's source path and whether the HTML got
+    # the image, but never the pixels — a report you can diff should not
+    # carry half a megabyte of base64.
+    json_scenes = []
+    for r in records:
+        rc = dict(r)
+        sc = rc.get("screenshots")
+        if sc:
+            rc["screenshots"] = dict(sc, figures=[
+                {**{k: v for k, v in f.items() if k != "data_uri"},
+                 "embedded_in_html": bool(f.get("data_uri"))}
+                for f in sc["figures"]])
+        json_scenes.append(rc)
     doc = {"runid": runid,
            "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "honesty": HONESTY, "trap": TRAP,
            "glts_root_default": str(GLTS_WIN),
            "glts_root_override": roots or None,
-           "scenes": records}
+           "scenes": json_scenes}
     jp = out_dir / f"comparison_{runid}.json"
     hp = out_dir / f"comparison_{runid}.html"
     paths.write_atomic(jp, json.dumps(doc, indent=1))
