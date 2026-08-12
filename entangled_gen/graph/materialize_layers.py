@@ -1002,6 +1002,23 @@ class Materialize:
                 present.append(mid)
                 if not size:
                     continue
+                # PARTIAL members (user ruling 2026-08-12, R-S2-122): a
+                # piece of a larger unit — one door face of a fitted
+                # wardrobe wall — matches the product's LOOK but is not
+                # another whole one. It keeps the SAME_PRODUCT
+                # relationship and its OWN measured box; writing the
+                # product size into it is how fresh04's real 85 cm-deep
+                # wardrobe got flattened into its ghosts' 6 cm slab.
+                if mid in (grp.get("partial_members") or []):
+                    self.nodes[mid]["product_group"] = label
+                    self.prov(mid, "j9_same_product_size",
+                              product_group=label, size_from=exemplar,
+                              note="PARTIAL member — matches the "
+                                   "product's look but is a piece of a "
+                                   "larger unit; measured box kept, "
+                                   "product size NOT written (user "
+                                   "ruling 2026-08-12)")
+                    continue
                 g = self.nodes[mid]["geometry"]
                 old_size = list(g["size"])
                 lo, hi = list(g["aabb_min"]), list(g["aabb_max"])

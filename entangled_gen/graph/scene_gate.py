@@ -273,6 +273,32 @@ def after(scene, stage, since=None, graph=None):
         else:
             r.add("PASS", f"{rel} written by this run")
 
+    # OPTIONAL artifacts (stages.py, added 2026-08-11C for the collider
+    # pair): a file the stage writes only on some scenes. Absent = fine
+    # and said so; PRESENT = held to exactly the same freshness bar as a
+    # promised artifact, because a present-but-stale copy means the stage
+    # decided this scene should not have the file and left an old one
+    # lying where every consumer would trust it.
+    for rel in getattr(stage, "artifacts_optional", ()):
+        p = artifact_path(scene, rel)
+        if not p.exists():
+            r.add("INFO", f"{rel} absent — optional for this stage "
+                          f"(colliderless scene is the designed case)")
+            continue
+        if since is None:
+            r.add("PASS", f"{rel} exists (optional)")
+            continue
+        age = p.stat().st_mtime
+        if age + MTIME_SLACK_S < since:
+            r.add("FAIL", f"{rel} is OPTIONAL but PRESENT and was NOT "
+                          f"written by this run (last written "
+                          f"{since - age:.0f}s before the stage started). "
+                          f"Either the stage did nothing, or it decided "
+                          f"this scene gets no {rel} and left a stale one "
+                          f"behind for every consumer to trust.")
+        else:
+            r.add("PASS", f"{rel} written by this run (optional)")
+
     if not (stage.writes or stage.graph_keys or stage.artifacts):
         r.add("INFO", "this stage promises no output the gate can check")
     return r

@@ -5,7 +5,7 @@ rule "the wall/floor/ceiling is STATIC"): deterministic position-based
 penetration resolution over the placed preview meshes.
 
 Per relaxation round, every clipping pair (real-mesh voxel overlap on
-the 2 cm lattice, ≤4 shared cells = contact) generates a push-apart
+the 2 cm lattice, â‰¤4 shared cells = contact) generates a push-apart
 along the horizontal axis of least penetration, split between the two
 items PROPORTIONAL TO THEIR REMAINING BUDGET; out-of-bounds items get
 pushed back inside by the static shell. Constraints, all hard:
@@ -61,7 +61,11 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
 from fit_check import (load_placed, cell_keys, PITCH,  # noqa: E402
-                       CONTACT_CELLS)
+                       CONTACT_CELLS, ALLOW_CELLS, ALLOW_L)
+# ALLOW_CELLS (R-S2-117): the user's allowed clipping margin. The solver
+# leaves any overlap at/below it alone â€” those are acceptable touches
+# (asset junk slivers included, by ruling), and authority is spent on
+# the overlaps a viewer would actually notice.
 # scene_state lives in the sibling graph/ package, not beside us, so its
 # directory has to go on the path too (same two-step the other compose
 # modules use, e.g. uniform_instances.py).
@@ -72,6 +76,14 @@ TOL_M = 0.02      # slack around the fit box a mesh may use
 FLAT_H = 0.06     # items shorter than this never participate in clips
 HUG_M = 0.30      # floor item starting this close to a wall keeps it
                   # (same constant as the facing ladder's wall-hug)
+HUG_DRIFT_M = 0.30  # how far a hugging item may be dragged OFF its wall
+#                     to de-clip. USER-SET, twice (2026-08-11C, R-S2-119b):
+#                     first 0.2 — eyeballed on the PRE-normalization room —
+#                     then corrected to 0.3 once the scene proved to be at
+#                     0.66 scale ("now i know that the scene is actually
+#                     miniature. i think 0.3 is reasonable"). Eye-calibrated
+#                     value in TRUE meters; moves on their say-so only,
+#                     like fit_check.ALLOW_L.
 MAX_ROUNDS = 60
 
 KX, KY, KZ = 1 << 42, 1 << 21, 1
@@ -162,7 +174,7 @@ def main():
     # a fallback for older graphs that have no layer. Reading `judged`
     # alone returned nothing for exactly the nodes the pipeline changed: a
     # piece the judges SPLIT off never existed in `judged`, and a node
-    # merged away is still in it — so the tucked-item exemption below never
+    # merged away is still in it â€” so the tucked-item exemption below never
     # fired for them.
     app_src = {n["id"]: (n.get("appearance") or {})
                for n in scene_state.nodes(graph)}
@@ -190,6 +202,10 @@ def main():
     # per-item allowed interval per horizontal axis (box +- TOL_M);
     # wall items locked on their wall-normal axis
     lock = {i: set() for i in ids}
+    #: DIRECTIONAL hug (R-S2-116): {item: {axis: allowed sign}}. The
+    #: sign points AT the hugged wall â€” moving that way is allowed
+    #: (shell-bounded), the opposite way is the drift the hug forbids.
+    hug = {}
     box_iv = {}
     for i in ids:
         pl = place[i]
@@ -207,8 +223,15 @@ def main():
                 lock[i].add(1)
         if pl["mount"] == "ceiling":
             pass   # ceiling items still slide horizontally if pushed
-        # wall-adjacency lock: starting-pose mesh edge within HUG_M of
-        # a wall -> that wall's normal axis is frozen for this item
+        # wall-adjacency HUG: starting-pose mesh edge within HUG_M of a
+        # wall. âš  DIRECTIONAL since 2026-08-11C (R-S2-116). It used to
+        # freeze the whole axis, which also banned sliding CLOSER to the
+        # hugged wall â€” and that froze a wardrobe out of 18 cm of free
+        # space the user could see with the naked eye (fresh04). "Don't
+        # leave your wall" never meant "don't tighten against it": the
+        # allowed sign points AT the hugged wall, the forbidden sign
+        # away from it, and the shell bound is what stops the item at
+        # the wall itself.
         if pl["mount"] == "floor":
             lo, hi = by_item[i].bounds if not isinstance(
                 by_item[i], list) else (None, None)
@@ -226,7 +249,7 @@ def main():
                     # tucked exemption: observed facing TOWARD the wall
                     if obs and (obs[0] * n[0] + obs[1] * n[1]) < -0.3:
                         continue
-                    lock[i].add(axis)
+                    hug.setdefault(i, {})[axis] = -1 if k == 0 else +1
 
     def budget(i, axis, sgn, shell=False):
         """Metres item i may still move along +-axis before meeting a
@@ -238,6 +261,22 @@ def main():
         if axis in lock[i] and not (shell
                                     and place[i]["mount"] == "floor"):
             return 0.0
+        # directional hug: toward the hugged wall is free (the shell
+        # bound below stops the item AT the wall). Away from it: a
+        # BOUNDED allowance (user ruling 2026-08-11C, R-S2-119: "we can
+        # allow the bed to be dragged off the wall a bit" — the bed's
+        # headboard vs the window's protruding frame). The item may
+        # drift off its wall as far as de-clipping demands but must
+        # still END within HUG_DRIFT_M of it — hugging is preserved,
+        # only "flush" stopped being mandatory.
+        if not shell:
+            hd = hug.get(i, {}).get(axis)
+            if hd is not None and sgn != hd:
+                lo_h, hi_h = aabb[i]
+                low_w, high_w = (wx if axis == 0 else wz)
+                gap = ((lo_h[axis] - low_w) if hd < 0
+                       else (high_w - hi_h[axis]))
+                return max(0.0, HUG_DRIFT_M - gap)
         lo, hi = aabb[i]
         if axis == 1:
             if place[i]["mount"] != "wall":
@@ -263,9 +302,15 @@ def main():
         return d
 
     def may_rotate(i):
-        """Floor-mounted, non-flat items only. A wall or ceiling item's
-        yaw is what holds it flat against its surface."""
-        return (place[i]["mount"] == "floor" and i not in flat)
+        """Floor-mounted, non-flat, NOT wall-backed. A wall or ceiling
+        item's yaw is what holds it flat against its surface — and the
+        same is true of a floor item HUGGING a wall (R-S2-118, the
+        15°-yawed wardrobe the user caught on fresh04): its back is
+        flat against the wall, and any yaw digs a corner in. Tucked
+        items (observed facing the wall, e.g. a desk chair) carry no
+        hug entry and keep their rotation freedom."""
+        return (place[i]["mount"] == "floor" and i not in flat
+                and i not in hug)
 
     def cells_at(i, deg):
         """Item i's cells if it were yawed `deg`, at its CURRENT
@@ -315,7 +360,7 @@ def main():
                     n_int = 0
                 else:
                     n_int = len(np.intersect1d(cand, cells[other]))
-                if n_int > CONTACT_CELLS:
+                if n_int > ALLOW_CELLS:
                     continue
                 # it clears. Take it, and make sure it did not simply
                 # move the problem onto a third item.
@@ -329,7 +374,7 @@ def main():
                         continue
                     before = len(np.intersect1d(cells[i], cells[k]))
                     after = len(np.intersect1d(cand, cells[k]))
-                    if after > CONTACT_CELLS and after > before:
+                    if after > ALLOW_CELLS and after > before:
                         worse = True
                         break
                 if worse:
@@ -376,7 +421,7 @@ def main():
                     continue
                 inter = np.intersect1d(cells[a], cells[b],
                                        assume_unique=True)
-                if len(inter) <= CONTACT_CELLS:
+                if len(inter) <= ALLOW_CELLS:
                     continue
                 clips.append((len(inter), a, b, inter))
         clips.sort(key=lambda c: (-c[0], c[1], c[2]))
@@ -418,6 +463,94 @@ def main():
         if not clips or any_move < PITCH / 2:
             break
 
+    # ---- MINIMAL-CLIP PASS (user ruling 2026-08-11C, R-S2-115) --------
+    # "Clipping is allowed, but it must be MINIMAL â€” and not because a
+    # pair is layered on purpose; even paired meshes clip minimally."
+    # The loop above stops at EQUILIBRIUM: in a crowded wall row the
+    # pen/2 pushes cancel and a clip survives at whatever depth the
+    # stall left it. This pass takes every surviving clip, deepest
+    # first, and grinds it down by single 2 cm lattice steps of either
+    # item along its UNLOCKED axes â€” a step is kept only when it
+    # STRICTLY shrinks this pair's intersection and deepens no other
+    # pair beyond where it already is (the try_rotate third-party
+    # guard, cell-exact). Strictly decreasing and step-capped, so it
+    # terminates; what remains after it is the lock-constrained
+    # minimum, not a stall.
+    MC_STEPS = 40       # cap per pair per sweep: 40 cells = 0.8 m slide
+    MC_TOTAL_CAP = 600  # cap on accepted steps overall â€” a runaway stop,
+    #                     far above what a room's wall rows need
+    MC_SWEEPS = 8       # a sweep re-ranks the pairs so a hand-off (door
+    #                     pushed the window) gets its own turn to move on
+
+    def pair_n(i, k):
+        ov = (np.minimum(aabb[i][1], aabb[k][1])
+              - np.maximum(aabb[i][0], aabb[k][0]))
+        if (ov <= 0).any():
+            return 0
+        return len(np.intersect1d(cells[i], cells[k]))
+
+    def mover_total(i):
+        """Total intersection cells of every clip involving i. Only i
+        moves in a trial, so the GLOBAL clip total changes by exactly
+        this number's change â€” net acceptance needs nothing else."""
+        return sum(pair_n(i, k) for k in ids
+                   if k != i and k not in flat)
+
+    mc_log = {}
+    mc_total = 0
+    for _sweep in range(MC_SWEEPS):
+        improved = False
+        mc_pairs = sorted(((pair_n(a, b), a, b)
+                           for ai in range(len(ids))
+                           for a in [ids[ai]] if a not in flat
+                           for b in ids[ai + 1:] if b not in flat),
+                          key=lambda t: -t[0])
+        for n0, a, b in mc_pairs:
+            if n0 <= ALLOW_CELLS:
+                continue
+            steps = 0
+            while (pair_n(a, b) > ALLOW_CELLS and steps < MC_STEPS
+                   and mc_total < MC_TOTAL_CAP):
+                # NET-TOTAL acceptance (the crowded-row lesson): a step
+                # may deepen a neighbour's clip â€” the door hands its
+                # overlap to the panel â€” as long as the mover's TOTAL
+                # strictly falls. A strict no-worsening guard froze
+                # whole wall rows solid; net descent lets the row
+                # shuffle along and still terminates (the total is a
+                # non-negative integer and every step decreases it).
+                best = None                  # (delta, i, axis, sgn)
+                for i in (a, b):
+                    before = mover_total(i)
+                    for axis in (0, 2, 1):
+                        for sgn in (+1, -1):
+                            if budget(i, axis, sgn) < PITCH:
+                                continue
+                            if shift(i, axis, sgn * PITCH) == 0.0:
+                                continue
+                            delta = mover_total(i) - before
+                            shift(i, axis, -sgn * PITCH)   # revert trial
+                            if delta < 0 and (best is None
+                                              or delta < best[0]):
+                                best = (delta, i, axis, sgn)
+                if best is None:
+                    break                    # lock-constrained minimum
+                _, i, axis, sgn = best
+                shift(i, axis, sgn * PITCH)
+                improved = True
+                steps += 1
+                mc_total += 1
+                key = f"{a}~{b}"
+                e = mc_log.setdefault(key, {"a": a, "b": b,
+                                            "cells_before": int(n0),
+                                            "cells_after": None,
+                                            "steps": 0})
+                e["steps"] += 1
+        if not improved:
+            break
+    for e in mc_log.values():
+        e["cells_after"] = int(pair_n(e["a"], e["b"]))
+    mc_log = sorted(mc_log.values(), key=lambda e: -e["cells_before"])
+
     # residual clips after the loop (still on the lattice model)
     residual = []
     for ai in range(len(ids)):
@@ -431,7 +564,7 @@ def main():
                 continue
             n = len(np.intersect1d(cells[a], cells[b],
                                    assume_unique=True))
-            if n > CONTACT_CELLS:
+            if n > ALLOW_CELLS:
                 residual.append({"a": a, "b": b,
                                  "overlap_l": round(
                                      n * PITCH ** 3 * 1000, 2)})
@@ -486,10 +619,15 @@ def main():
            "graph_fingerprint": paths.graph_fingerprint(args.scene),
            "note": "position-based declip; static shell; moves "
                    "quantized to the 2 cm lattice; flat items exempt; "
+                   "minimal-clip pass grinds every surviving clip to its "
+                   "lock-constrained minimum (user ruling 2026-08-11C: "
+                   "clipping allowed but MINIMAL, paired or not); "
                    "verify with compose/fit_check.py",
            "params": {"tol_m": TOL_M, "flat_h": FLAT_H,
-                      "pitch_m": PITCH, "max_rounds": MAX_ROUNDS},
+                      "pitch_m": PITCH, "max_rounds": MAX_ROUNDS,
+                      "mc_steps": MC_STEPS},
            "rounds": log_rounds,
+           "minimal_clip": mc_log,
            "moves": {i: [round(float(v), 3) for v in m]
                      for i, m in sorted(moved.items()) if m.any()},
            "flat_exempt": sorted(flat),

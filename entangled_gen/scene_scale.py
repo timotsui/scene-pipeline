@@ -165,11 +165,34 @@ def main():
     rows = measure(man, priors)
     ratios = np.array([r["ratio"] for r in rows], float)
 
+    # TRIMMED CONSENSUS (user go 2026-08-11C, R-S2-120). A "ruler" that
+    # disagrees with the median by more than TRIM_X in either direction
+    # is not measuring the room's scale — it is a mislabel or a
+    # truncated box wearing a ruler's badge (fresh04: a "wall molding"
+    # that is really a mirror voted 10.8x against a trim-width prior;
+    # a cut-off stool voted 0.19 — while six doors agreed at 0.58-0.70).
+    # Those votes must not poison the AGREEMENT check that guards the
+    # apply. The gate itself (MIN_N, MAX_SPREAD) is untouched: it now
+    # judges the surviving rulers, and the trimmed-away votes are
+    # counted and reported, never hidden.
+    TRIM_X = 2.0
+    n_raw = len(ratios)
+    trimmed_out = []
+    if len(ratios):
+        med0 = float(np.median(ratios))
+        keep = (ratios <= med0 * TRIM_X) & (ratios >= med0 / TRIM_X)
+        trimmed_out = [rows[i]["id"] for i in range(len(rows))
+                       if not keep[i]]
+        ratios = ratios[keep]
+
     if len(ratios):
         s = float(np.median(ratios))
         spread = float(np.median(np.abs(ratios - s)) / s)
     else:
         s, spread = 1.0, 0.0
+    if trimmed_out:
+        print(f"[scale] trimmed {len(trimmed_out)} ruler(s) disagreeing "
+              f">{TRIM_X}x with the median: {', '.join(trimmed_out)}")
     ok = len(ratios) >= MIN_N and spread <= MAX_SPREAD
     if not ok:
         print(f"[scale] WARNING: evidence too weak (n={len(ratios)}, "
@@ -190,7 +213,10 @@ def main():
 
     record = {"scene": sc, "scale_measured": round(s, 4),
               "scale_applied": None, "k": round(k, 4),
-              "n": len(rows), "rel_mad": round(spread, 4),
+              "n": len(rows), "n_used": int(len(ratios)),
+              "n_trimmed": n_raw - int(len(ratios)),
+              "trimmed_ids": trimmed_out,
+              "rel_mad": round(spread, 4),
               "evidence_ok": ok, "rows": rows,
               "priors_used": {r["label"]: priors[r["label"]]
                               for r in rows},
@@ -198,13 +224,45 @@ def main():
                       "scale and regenerate on the post-normalization "
                       "re-run"}
 
-    if a.measure_only or not ok or abs(k - 1.0) < 1e-9:
+    already = bool(boot and boot.get("scale_applied"))
+    if a.measure_only or not ok or abs(k - 1.0) < 1e-9 or already:
         # a measure on an ALREADY-normalized scene is a verification —
-        # it must never clobber the apply's evidence record
-        outname = ("scene_scale_verify.json"
-                   if boot and boot.get("scale_applied")
+        # it must never clobber the apply's evidence record.
+        # ⚠ `already` ROUTES HERE AUTOMATICALLY since R-S2-121: the
+        # runner has no --measure-only, so the two-pass protocol's
+        # regeneration re-ran this stage on the normalized scene and
+        # fell into the second-apply REFUSAL below — a guaranteed crash
+        # for every normalized scene on every re-run (fresh04 found it;
+        # a resumed batch night would have hit it at scale). Verifying
+        # is what a re-measure on a normalized scene IS; the refusal
+        # below still guards the one thing it must (no double apply).
+        outname = ("scene_scale_verify.json" if already
                    else "scene_scale.json")
         (sdir / outname).write_text(json.dumps(record, indent=1))
+        if already:
+            # THE STAGE'S PROMISE IS scene_scale.json (stages.py), and
+            # the gate rightly failed a verify run that left it stale —
+            # the no-op trap caught the first version of this fix. A
+            # verification APPENDS to the apply record instead of
+            # clobbering it: the apply evidence stays, the verification
+            # history accumulates, and the promised file is genuinely
+            # written by this run.
+            main_f = sdir / "scene_scale.json"
+            rec0 = (json.loads(main_f.read_text(encoding="utf-8"))
+                    if main_f.exists() else
+                    {"scene": sc, "note": "verification only — no apply "
+                                          "record was on disk"})
+            from datetime import date as _date
+            rec0.setdefault("verifications", []).append(
+                {"date": str(_date.today()),
+                 "s": round(s, 4), "n_used": int(len(ratios)),
+                 "rel_mad": round(spread, 4)})
+            main_f.write_text(json.dumps(rec0, indent=1))
+            print(f"[scale] scene already normalized "
+                  f"(scale_applied={boot['scale_applied']}) — this "
+                  f"re-measure is a VERIFICATION: s={s:.3f} "
+                  f"(1.0 = perfectly metric); appended to "
+                  f"scene_scale.json")
         print(f"[scale] measure-only record -> {outname}")
         return
 
@@ -217,8 +275,12 @@ def main():
 
     # ---- apply, with originals preserved ----
     ply_f = paths.ply(sc)
+    # colliderless scenes are a designed case since 2026-08-11C
+    # (R-S2-111): frame_bootstrap registers a collider only when the
+    # bundle has one that agrees with the splat
     coll_f = sdir / "collider_registered.glb"
-    for f in (ply_f, coll_f, boot_f):
+    targets = [ply_f, boot_f] + ([coll_f] if coll_f.exists() else [])
+    for f in targets:
         bak = f.with_name(f.stem + "_prescale" + f.suffix)
         if not bak.exists():
             shutil.copyfile(f, bak)
@@ -232,12 +294,16 @@ def main():
     write_ply(ply_f, names, data)
     print(f"[scale] gen_raw.ply rescaled ({len(data):,} gaussians)")
 
-    import trimesh
-    mesh = trimesh.load(coll_f, force="mesh")
-    mesh.apply_scale(k)
-    mesh.export(coll_f)
-    print(f"[scale] collider rescaled (bounds now "
-          f"{np.round(mesh.bounds, 2).tolist()})")
+    if coll_f.exists():
+        import trimesh
+        mesh = trimesh.load(coll_f, force="mesh")
+        mesh.apply_scale(k)
+        mesh.export(coll_f)
+        print(f"[scale] collider rescaled (bounds now "
+              f"{np.round(mesh.bounds, 2).tolist()})")
+    else:
+        print("[scale] no registered collider — colliderless scene, "
+              "nothing to rescale")
 
     derived = scale_derived_state(sdir, k)
     print(f"[scale] derived state rescaled: {', '.join(derived)}")

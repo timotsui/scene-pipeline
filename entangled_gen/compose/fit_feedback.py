@@ -64,6 +64,16 @@ def main():
         else:
             complaints.append(entry)
 
+    # METRIC FINGERPRINT (R-S2-128b, 2026-08-12, user: "make sure we
+    # don't run stale shit"): these verdicts are judgments UNDER A
+    # SCORING CANON. If the canon moves (the flat-axis rule did,
+    # twice, in one night), the verdicts are opinions about a world
+    # that no longer exists — shopping compares this stamp against its
+    # own constants and ignores mismatches loudly.
+    import shopping as _shop
+    metric_fp = (f"dry{DRY_SCORE}|flat{_shop.FLAT_AXIS_M}"
+                 f"|ftol{_shop.FLAT_TOL_M}|fit{_shop.FIT_TOL}")
+
     out = {"scene": args.scene, "built": str(date.today()),
            "generated_by": "compose/fit_feedback.py",
            "graph_fingerprint": paths.graph_fingerprint(args.scene),
@@ -71,6 +81,7 @@ def main():
                    "rejected swaps revert to their out-items, rejected "
                    "adds drop, detection complaints are advisory. "
                    "shopping.py consumes this on its next run.",
+           "metric_fp": metric_fp,
            "params": {"dry_score": DRY_SCORE},
            "rejected_swaps": rejected_swaps,
            "rejected_adds": rejected_adds,

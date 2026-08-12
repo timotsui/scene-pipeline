@@ -32,7 +32,7 @@
   <div><label><input type="checkbox" id="showSplat"> splat</label>
        <label><input type="checkbox" id="clipCeil" checked> clip ceiling</label>
        <label><input type="checkbox" id="hifi" checked> hi-fi splats</label>
-       <label title="compose/fitted_preview.glb — the shopping module's #1 candidates naively placed in their boxes (compose/fit_preview.py; no fit loop yet). Textured real assets, RAW frame baked in"><input type="checkbox" id="showFit"> fitted preview</label>
+       <label title="compose/fitted_preview.glb — the furnished proposal: assets at NATIVE size (08-03B), style-picked, fit-loop walked and jiggled; items whose best candidate misses the size bar (DRY 0.65, R-S2-124) are honestly absent (see not_placed). Click an asset for its full card. RAW frame baked in"><input type="checkbox" id="showFit"> fitted preview</label>
        <label title="compose/subs_preview.glb — the sub rounds' placed sub-objects, every anchor's best pass merged (cp7 host-aware > cp6 jiggled > cp5 raw; experiments/build_subs_preview.py). RAW frame baked in, same convention as fitted preview"><input type="checkbox" id="showSubs"> subs</label>
        <label title="THE CANONICAL VIEW — the resolved scene graph (graph[resolved], stage-2 handoff: 82 clusters, boxes verbatim) with the compose-stage layers on top when fresh: anchor tint from each object's TOP supported_by option, green support arrows, review modes (supported_by / consistency / snap). Stale compose layers auto-hide (⚠ note in the row). ?audit=1 = pre-edit judged audit. Click a box = its card"><input type="checkbox" id="showJudged"> scene model (resolved · canonical)</label>
        <span id="hifiNote" class="dim"></span></div>
@@ -2620,9 +2620,19 @@ $('showColl').onchange = async e => {
 const fitGroup = new THREE.Group(); worldGroup.add(fitGroup);
 fitGroup.visible = false;
 let fitLoaded = false;
+// id -> placed record (name/uid/mount), for the click readout. Fetched
+// here at TOP LEVEL: the init function's fitL is out of scope for the
+// pointerdown handler, and referencing it there killed the whole click
+// silently (ReferenceError inside the listener).
+let fitInfo = null;
 $('showFit').onchange = async e => {
   fitGroup.visible = e.target.checked;
   if (!e.target.checked || fitLoaded) return;
+  try {
+    const j = await (await fetch('fitted_preview.json?' + sq)).json();
+    fitInfo = {};
+    (j.placed || []).forEach(p => { fitInfo[p.id] = p; });
+  } catch (err) { /* readout will show ids only */ }
   try {
     const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
     const gltf = await new GLTFLoader().loadAsync('fitted_preview.glb?' + sq);
@@ -2795,6 +2805,114 @@ function applySelection() {
 }
 
 function row(k, v) { return '<tr><td>' + k + '</td><td>' + v + '</td></tr>'; }
+
+// ---- CARD ENRICHMENT (user ask 2026-08-11C: "can we have the card show
+// more info please. like what they are") ----------------------------------
+// Per-id provenance pulled once from the compose records: WHAT the thing
+// is (shopping's testimony line, which quotes the judge's description),
+// WHERE it came from (detected / invented add with the proposer's reason /
+// swap with what it replaced and why), and WHICH asset now stands for it.
+// Fetched at TOP LEVEL on purpose — the init function's copies of these
+// files are out of scope here (the fitL lesson, R-S2 log).
+let cardX = null;
+(async () => {
+  const m = {};
+  const grab = async (name) => {
+    try { return await (await fetch(name + '?' + sq)).json(); }
+    catch (e) { return null; }
+  };
+  const shop = await grab('shopping.json');
+  if (shop) for (const key in shop) {
+    const v = shop[key];
+    if (!Array.isArray(v)) continue;
+    for (const it of v) {
+      if (!it || !it.id) continue;
+      const e = m[it.id] = m[it.id] || {};
+      if (it.testimony) e.what = it.testimony;
+      if (it.source) e.source = it.source;
+      if (it.mount) e.mount = it.mount;
+      if (it.replaces) e.replaces = it.replaces.join(', ');
+      if (it.substituted_as)
+        e.escalated = 'standing in as "' + it.substituted_as + '"'
+          + ((it.escalation_trail || []).length > 1
+              ? ' (tried: ' + it.escalation_trail.map(t =>
+                  t.category + ' ' + t.verdict).join(' → ') + ')'
+              : '');
+      // candidate rows by uid, so the placed asset's own catalog info
+      // (category, description, native size, fit score) can ride the
+      // card — "not just the asset id" (user ask 2026-08-12)
+      e._cands = {};
+      for (const cd of it.candidates || []) {
+        if (cd && cd.uid) e._cands[cd.uid] = cd;
+      }
+    }
+  }
+  const ep = await grab('edit_proposals.json');
+  if (ep) {
+    for (const a of ep.adds || []) {
+      const e = m[a.id] = m[a.id] || {};
+      e.source = 'invented (add, conf ' + (a.confidence ?? '?') + ')';
+      e.why = a.reason; e.where = a.where;
+      if (!e.what && a.name) e.what = a.name;
+    }
+    for (const s of ep.swaps || []) {
+      for (const ir of s.in || []) {
+        const e = m[ir.id] = m[ir.id] || {};
+        e.source = 'swap-in (conf ' + (s.confidence ?? '?') + ') replacing '
+          + (s.out_names || s.out || []).join(', ');
+        e.why = s.reason;
+      }
+    }
+  }
+  const fit = await grab('fitted_preview.json');
+  if (fit) for (const p of fit.placed || []) {
+    const e = m[p.id] = m[p.id] || {};
+    const cd = (e._cands || {})[p.uid];
+    e.asset = (p.uid || '').slice(0, 8)
+      + (cd ? ' · ' + (cd.category || '?')
+          + (cd.description ? ' · ' + String(cd.description).slice(0, 90)
+                            : '')
+          + (cd.size_cm ? ' · native '
+              + cd.size_cm.map(v => Math.round(v)).join('×') + ' cm'
+                        : '')
+          + (cd.score != null ? ' · fit ' + Math.round(cd.score * 100)
+              + '% off' : '')
+        : '')
+      + (p.k > 1 ? ' · x' + p.k + ' tiled' : '');
+  }
+  // the TARGET's own description (graph appearance), so the fitted
+  // card says what the asset is trying to BE without a trip back to
+  // the box layer (user ask 2026-08-12: "so i don't have to go back
+  // and forth")
+  let mat = null;
+  try {
+    mat = await (await fetch('boxes.json?' + sq
+                             + '&src=materialized')).json();
+  } catch (e) { /* layer absent — cards just skip the backfill */ }
+  if (mat) for (const o of mat.objects || []) {
+    const e = m[o.id] = m[o.id] || {};
+    if (o.description && !e.what) e.what = o.description;
+  }
+  for (const id in m) delete m[id]._cands;
+  cardX = m;
+})();
+function cardRows(id) {
+  const cEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const trunc = (s, n) => { s = String(s); return s.length > n
+      ? s.slice(0, n - 1) + '…' : s; };
+  const e = cardX && cardX[id];
+  if (!e) return '';
+  let h = '';
+  if (e.what) h += row('what', cEsc(trunc(e.what, 220)));
+  if (e.source) h += row('came from', cEsc(e.source));
+  if (e.where) h += row('intended spot', cEsc(trunc(e.where, 120)));
+  if (e.why) h += row('reasoning', '<span class="dim">'
+    + cEsc(trunc(e.why, 260)) + '</span>');
+  if (e.asset) h += row('asset', cEsc(e.asset));
+  if (e.escalated) h += row('synonym aisles', cEsc(e.escalated));
+  return h;
+}
 // extra card rows for the MATERIALIZED layer (scene_graph.json['carved'],
 // Phase C): the rule trail that produced this box, the identity moves
 // (merge / split / same-product), and — the point of the layer — the
@@ -2838,7 +2956,10 @@ function showManInfo(o, src) {
   // n_detections/flags) and analyzer bridged (center/size + frames evidence)
   const [c, sz] = objCS(o);
   const e = envAt(c[0], c[2]);
-  $('info').innerHTML = '<h3>' + (o.id ?? '') + ' — ' + o.label
+  $('info').innerHTML = '<h3>' + (o.id ?? '') + ' — '
+    + (o.name || o.label)
+    + (o.name && o.mat_tag
+        ? ' <span class="dim">[' + o.mat_tag + ']</span>' : '')
     + (src ? ' <span style="color:' + src.s.color + '">[' + src.s.label + ']</span>' : '')
     + '</h3><table>'
     + row('size', sz.map(fmt).join(' × ') + ' m (W×H×D)')
@@ -2852,7 +2973,24 @@ function showManInfo(o, src) {
               + (o.n_points !== undefined ? ' (' + o.n_points + ' px lifted)' : ''))
         : '')
     + (o.frames ? row('evidence', o.frames.length + ' frames') : '')
+    + (o.description
+        ? row('what', String(o.description).replace(/[&<>"]/g, ch =>
+              ({ '&': '&amp;', '<': '&lt;', '>': '&gt;',
+                 '"': '&quot;' }[ch])))
+        : '')
+    + (o.shown_pic
+        ? row('seen as', '<img src="shown_pic?' + sq + '&f='
+              + encodeURIComponent(o.shown_pic)
+              + '" style="max-width:230px;max-height:160px;'
+              + 'border-radius:4px;display:block">')
+        : '')
+    + ((o.members || []).length
+        ? row('built from', o.members.length + ' detection member(s): '
+              + o.members.slice(0, 6).join(', ')
+              + (o.members.length > 6 ? ', …' : ''))
+        : '')
     + ((o.flags || []).length ? row('flags', cvTerm(o.flags.join(', '))) : '')
+    + cardRows(o.id)
     + matRows(o)
     + (e ? row('env here', (e.floor ? 'floor ✓' : 'NO floor') + ', clear ' +
                fmt(e.clear) + ' m' + (e.dev !== null ? ', floor dev ' +
@@ -3003,6 +3141,49 @@ renderer.domElement.addEventListener('pointerdown', ev => {
   if (hits.length) {
     sel = { kind: 'pl', idx: plPicks.indexOf(hits[0].object) };
     applySelection(); return;
+  }
+  // fitted-preview assets: when that layer is on, clicking an asset
+  // names it (fit_preview names every GLB node "<item id>_t<tile>").
+  // The id is the shared reference: obj_* traces back through the graph
+  // layers and the detection crops, add_* traces to shopping.json's
+  // proposal of the same id. Turn the layer off to click boxes instead.
+  if (fitGroup.visible) {
+    const fh = ray.intersectObjects(fitGroup.children, true);
+    if (fh.length) {
+      let o = fh[0].object, fm = null;
+      for (; o && o !== fitGroup; o = o.parent) {
+        fm = /^(.+)_t\d+$/.exec(o.name || '');
+        if (fm) break;
+      }
+      if (fm) {
+        const fid = fm[1];
+        const fp = fitInfo && fitInfo[fid];
+        const fEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
+            c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;',
+                    '"': '&quot;' }[c]));
+        let boxRow = '';
+        if (fp && fp.fit_box) {
+          const bm = fp.fit_box.aabb_min, bx = fp.fit_box.aabb_max;
+          boxRow = row('target box', [0, 1, 2].map(i =>
+              Math.abs(bx[i] - bm[i]).toFixed(2)).join(' × ') + ' m');
+        }
+        $('info').innerHTML = '<h3>' + fEsc(fid)
+          + (fp ? ' — ' + fEsc(fp.name) : '') + ' (fitted)</h3><table>'
+          + (fp ? row('mount', fEsc(fp.mount || '?'))
+              + boxRow
+              + (fp.declip_move_m ? row('jiggle move',
+                  fp.declip_move_m.map(v => (v * 1000).toFixed(0))
+                    .join(', ') + ' mm') : '')
+              + (fp.declip_yaw_deg ? row('jiggle yaw',
+                  fp.declip_yaw_deg + '°') : '') : '')
+          + cardRows(fid)
+          + '</table><div class="dim">say this id to trace it · Esc '
+          + 'closes</div>';
+        $('info').style.display = 'block';
+        msg('fitted item: ' + fid + (fp ? ' · ' + fp.name : ''));
+        return;
+      }
+    }
   }
   // gather EVERY box under the cursor across all visible sources (nearest-
   // surface-wins made boxes behind/inside bigger boxes unclickable):

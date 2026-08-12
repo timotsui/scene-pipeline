@@ -18,10 +18,16 @@ FIT = NATIVE SIZE ONLY (user rulings 08-03B): no rescale -- a product
 is judged at the size it really is. Configs tried: the two rotations
 about the VERTICAL axis (nothing gets tipped over) x 1..3 side-by-side
 copies along the box's long horizontal axis. Deviation per axis =
-|native/box - 1|, SYMMETRIC (too big is NOT assumed worse); the fit
-metric = the WORST axis. Boxes are known-loose: <= 15% on every axis
-earns the strict "fits" mark, but nothing is ruled out for missing it
--- the whole list ranks most-fit to least-fit.
+|native/box - 1| on normal axes, SYMMETRIC (too big is NOT assumed
+worse); FLAT axes (box under 15 cm) measure ABSOLUTELY with a 15 cm
+allowance (R-S2-125 -- a 2 cm detection slab must not veto a 4 cm
+door). The fit metric = the WORST axis. Boxes are known-loose: <= 15%
+on every axis earns the strict "fits" mark, but nothing is ruled out
+for missing it -- the whole list ranks most-fit to least-fit.
+DOWNSTREAM BAR (R-S2-124): fit_preview places NOTHING whose best
+candidate exceeds DRY 0.65 -- better absent than wrong-sized; the
+R-S2-127 substitute-category walk (meaning-nominated, sequential,
+<= 3 aisles) runs first for hopeless items.
 
 Reuses composition/retrieve2.py for the catalog + tiered category
 match + mount filter + the ONE batched label-mapper call for names
@@ -75,6 +81,19 @@ def mount_of_support(supporter, how):
     return "floor"
 
 
+#: FLAT AXES MEASURE IN METERS, NOT PERCENT (user ruling 2026-08-12,
+#: R-S2-125: "percentage only doesn't seem to be a reasonable metric...
+#: anything less than 15cm is considered flat, and we can be slightly
+#: generous with that number"). A door detected as a 2 cm slab made
+#: every real 4 cm door read "100% wrong" on the axis that matters
+#: least, and the worst-axis rule then vetoed doors, panels, rugs and
+#: ceiling discs wholesale (the fresh04 thin-item massacre). On a flat
+#: axis a miss within FLAT_TOL_M is FREE; beyond it, the excess counts
+#: in units of FLAT_AXIS_M so it stays comparable to the ratio scale.
+FLAT_AXIS_M = 0.15
+FLAT_TOL_M = 0.15
+
+
 def native_fit(box_size, size_cm, rowable=True):
     """NO RESCALE (user ruling 08-03B): the product is judged at its
     natural size. Configs = the two vertical-axis rotations x 1..3
@@ -82,10 +101,12 @@ def native_fit(box_size, size_cm, rowable=True):
     (rowable=False pins k=1: singular categories place ONE copy —
     the unfilled span is an honest fit deviation, not a reason to
     fabricate duplicates).
-    Per-axis deviation = |native/box - 1|, SYMMETRIC -- shopping holds
-    no too-big-is-worse assumption; the fit metric = the WORST axis
-    (lower = better, ties prefer fewer tiles). fits = every axis
-    within FIT_TOL."""
+    Per-axis deviation: |native/box - 1| on normal axes, SYMMETRIC —
+    shopping holds no too-big-is-worse assumption. On FLAT axes (box
+    under FLAT_AXIS_M) the deviation is ABSOLUTE: free within
+    FLAT_TOL_M, then the excess in units of FLAT_AXIS_M (R-S2-125).
+    The fit metric = the WORST axis (lower = better, ties prefer fewer
+    tiles). fits = every axis within FIT_TOL."""
     b0 = np.asarray(box_size, np.float64)
     a0 = np.asarray(size_cm, np.float64) / 100.0
     if b0.shape != (3,) or (b0 <= 0).any() or (a0 <= 0).any():
@@ -97,7 +118,10 @@ def native_fit(box_size, size_cm, rowable=True):
         s[axis] = s[axis] / k
         for perm in YAW_PERMS:
             a = a0[[retrieve2._AX[c] for c in perm]]
-            dev = float(np.max(np.abs(a / s - 1.0)))
+            ratio = np.abs(a / s - 1.0)
+            absd = (np.maximum(np.abs(a - s) - FLAT_TOL_M, 0.0)
+                    / FLAT_AXIS_M)
+            dev = float(np.max(np.where(s < FLAT_AXIS_M, absd, ratio)))
             if best is None or (dev, k) < (best[0], best[1]):
                 best = (dev, k, axis, perm)
     dev, k, axis, perm = best
@@ -168,6 +192,19 @@ def main():
     fb_p = cdir / "fit_feedback.json"
     fb = (json.loads(fb_p.read_text(encoding="utf-8"))
           if fb_p.exists() else {})
+    # STALE-METRIC GUARD (R-S2-128b): a rejection is a judgment under a
+    # scoring canon. If this shopping run's constants differ from the
+    # stamp on the verdicts, they describe a world that no longer
+    # exists — ignored loudly, never obeyed. Unstamped files (pre-guard)
+    # count as stale for the same reason.
+    from fit_feedback import DRY_SCORE as _DRY
+    cur_fp = (f"dry{_DRY}|flat{FLAT_AXIS_M}"
+              f"|ftol{FLAT_TOL_M}|fit{FIT_TOL}")
+    if fb and fb.get("metric_fp") != cur_fp:
+        print(f"[shopping] IGNORING stale-metric fit_feedback "
+              f"(stamp {fb.get('metric_fp')!r} != current {cur_fp!r}) "
+              f"— verdicts from a different scoring canon")
+        fb = {}
     rej_swaps = set(fb.get("rejected_swaps", {}))
     rej_adds = set(fb.get("rejected_adds", {}))
     if rej_swaps or rej_adds:
@@ -265,6 +302,78 @@ def main():
         r["candidates"] = shortlist(r["name"], box_size, r["mount"],
                                     r["categories"])
         r["status"] = "CANDIDATES" if r["candidates"] else "NO_MATCH"
+
+    # ---- SYNONYM ESCALATION, hopeless items only (user ruling
+    # 2026-08-12, R-S2-126: "only escalate the empty item, search
+    # synonyms, if nothing fits then we abandon"). The lexical match
+    # ends the search the moment a word hits an aisle — a small
+    # end-of-bed bench never sees ottoman/footstool/bedside aisles
+    # because "bench" spelled an aisle name. Items whose best candidate
+    # is past the DRY bar (= about to be not_placed, R-S2-124) get ONE
+    # batched mapper call carrying name + the judge's description;
+    # sibling-aisle candidates merge in. Still nothing under the bar ->
+    # abandoned exactly as before, now with "we looked everywhere"
+    # honestly true.
+    # ---- SUBSTITUTE-TERM ESCALATION, USER DESIGN 2026-08-12
+    # (R-S2-127, replacing the withdrawn 126b/c size-nominated version
+    # whose first run offered a BED for a console table and a MIRROR
+    # for a headboard). The user's flow, verbatim: "bench -> other
+    # possible categories by function or by synonym, like stool etc,
+    # ordered by closeness, then we search those category using our
+    # normal routine... if not then we go down to the next term, maybe
+    # up to like 3 terms? then if nothing we kill it."
+    # WHY THIS SHAPE IS SAFE where 126b was not: MEANING nominates the
+    # aisles (no size in the question), the walk is SEQUENTIAL nearest-
+    # first (a far term is only consulted after a near one FAILED), and
+    # each attempt runs the normal one-aisle routine — so the style
+    # judge can never cross-shop a pretty wrong-class thing. Same DRY
+    # bar per aisle; three terms, then honestly absent.
+    from fit_feedback import DRY_SCORE
+    hopeless = [r for r in items
+                if r["categories"]
+                and (not r["candidates"]
+                     or r["candidates"][0]["score"] > DRY_SCORE)]
+    if hopeless and not args.no_llm:
+        enriched = {}
+        for r in hopeless:
+            d = ((nodes.get(r["id"]) or {}).get("appearance") or {}) \
+                .get("description") or ""
+            enriched[r["id"]] = (f"{r['name']} — {d[:100]}" if d
+                                 else r["name"])
+        entries = {enriched[r["id"]]: r["categories"] for r in hopeless}
+        try:
+            got = retrieve2.map_substitute_terms(entries,
+                                                 model=args.model)
+        except Exception as ex:   # honest degrade: the bar stands
+            print(f"[shopping] substitute-term call failed: {ex}")
+            got = {}
+        n_esc = 0
+        for r in hopeless:
+            trail = []
+            for cat in (got.get(enriched[r["id"]]) or [])[:3]:
+                cat = str(cat).lower()
+                if cat in r["categories"]:
+                    continue
+                # ONE aisle per attempt, nearest first — the normal
+                # routine on that aisle, same bar; the style judge
+                # later sees only the aisle that WON.
+                cands = shortlist(r["name"], r["box"]["size"],
+                                  r["mount"], [cat])
+                best = cands[0]["score"] if cands else None
+                if cands and best <= DRY_SCORE:
+                    r["candidates"] = cands[:TOP_N]
+                    r["substituted_as"] = cat
+                    r["status"] = "CANDIDATES"
+                    trail.append({"category": cat, "best": best,
+                                  "verdict": "TAKEN"})
+                    n_esc += 1
+                    break
+                trail.append({"category": cat, "best": best,
+                              "verdict": "over bar" if cands
+                              else "empty aisle"})
+            r["escalation_trail"] = trail
+        print(f"[shopping] substitute categories: {len(hopeless)} "
+              f"hopeless item(s), {n_esc} found a stand-in aisle")
 
     layer = {
         "scene": args.scene, "built": str(date.today()),

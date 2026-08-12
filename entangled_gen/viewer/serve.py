@@ -684,6 +684,24 @@ def _mat_box(g):
                          or [hi[i] - lo[i] for i in range(3)])}
 
 
+def _shown_rel(sc, n):
+    """The node's `shown` picture (inherited into `grouped` since
+    08-11B) as a scene-dir-relative POSIX path the /shown_pic route can
+    serve, or None. User ask 2026-08-12: the latest-layer card must show
+    what the thing IS and the shot it is seen as."""
+    p = ((n.get("shown") or {}).get("picture") or {}).get("path")
+    if not p:
+        return None
+    f = Path(p)
+    if not f.is_absolute():
+        f = paths.scene_dir(sc) / p
+    try:
+        return f.resolve().relative_to(
+            paths.scene_dir(sc).resolve()).as_posix()
+    except (ValueError, OSError):
+        return None
+
+
 def materialized(sc):
     """Compose the MATERIALIZED box layer: the voted block's nodes drawn
     VERBATIM (geometry copied, nothing recomputed here either), each box
@@ -743,6 +761,11 @@ def materialized(sc):
             "conflicts": cf,
             "open_questions": oq,
             "flags": flags,
+            # identity for the click card (user ask 2026-08-12: "i can't
+            # see anything about the box, like what is it, where is it
+            # from, the shot tile")
+            "description": (n.get("appearance") or {}).get("description"),
+            "shown_pic": _shown_rel(sc, n),
             **box})
 
     dropped = []
@@ -1088,6 +1111,26 @@ class H(BaseHTTPRequestHandler):
             # row's edits review mode.
             self._compose_json(sc, "edit_proposals.json",
                                "compose/propose_edits.py")
+        elif p == "/shown_pic":
+            # the picture a node is CURRENTLY seen as (graph['shown'],
+            # inherited into `grouped`) — the click card's shot tile.
+            # `f` is scene-dir-relative from materialized()._shown_rel;
+            # resolve + parents-check confines it to the scene folder,
+            # extension whitelisted. Same traversal guard as /vendor/.
+            rel = (q.get("f") or [""])[0]
+            base = paths.scene_dir(sc).resolve()
+            try:
+                f = (base / rel).resolve()
+            except (ValueError, OSError):
+                f = base
+            ext = f.suffix.lower()
+            if (rel and ext in (".png", ".webp", ".jpg", ".jpeg")
+                    and f.is_file() and base in f.parents):
+                ctype = {".webp": "image/webp", ".jpg": "image/jpeg",
+                         ".jpeg": "image/jpeg"}.get(ext, "image/png")
+                self._send(200, f.read_bytes(), ctype, cache=True)
+            else:
+                self._send(404, b"no such shown picture")
         elif p.startswith("/graph_crops/"):
             # per-node evidence crops (graph/describe_nodes.py output) for the
             # graph layer's click card. Filename sanitized to alnum/_-. and

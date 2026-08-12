@@ -7,9 +7,13 @@ items y-centered, ceiling items top-aligned) -- and write the result
 as a RAW-frame GLB the scene viewer serves as its "fitted preview"
 layer (viewer/serve.py /fitted_preview.glb, checkbox in the HUD).
 
-This is the NAIVE placement -- no judging, no candidate walking; the
-fit loop (next module) will replace the #1-only choice. Re-run after
-every shopping.py run to refresh the layer.
+This is the PLACER the fit loop drives (place -> jiggle -> check ->
+walk, then the closing pass): it re-reads walk choices, snap seats,
+rotation verdicts and its own prior output each round. Since R-S2-124
+it also enforces the SIZE BAR: an item whose best candidate exceeds
+DRY 0.65 on its worst axis is NOT placed and lands in `not_placed`
+with a receipt -- better absent than wrong-sized (user 2026-08-12).
+Re-run after every shopping.py run to refresh the layer.
 
 Placement happens in the RENDER frame (y up, like the asset meshes),
 then the whole scene is rotated into the RAW frame with the manifest's
@@ -177,24 +181,49 @@ def main():
     # output the fit loop walks). The preview places the style #1 when the
     # pick stage has run; shopping's size-fit #1 is only the fallback for
     # items the pick stage didn't cover.
+    cur_uids_early = {it["id"]: {c["uid"]
+                                 for c in (it.get("candidates") or [])}
+                      for it in sl["items"]}
     style_pick = {}
     picks_p = cdir / "picks.json"
     if picks_p.exists():
         pk = json.loads(picks_p.read_text(encoding="utf-8"))
         for it in pk.get("items", []):
             fc = it.get("final_candidates") or []
-            if fc:
+            # same staleness guard as the walk choices below (R-S2-128)
+            if fc and fc[0].get("uid") in cur_uids_early.get(it["id"],
+                                                            set()):
                 style_pick[it["id"]] = fc[0]
+            elif fc:
+                print(f"[fit_preview] VOIDING stale style pick for "
+                      f"{it['id']}: not in the current candidate list")
     # CANDIDATE WALK overrides (compose/fit_walk.py): the fit loop's
-    # verdict beats the style #1 when the pick overshoots its box
+    # verdict beats the style #1 when the pick overshoots its box.
+    # ⚠ VALIDATED AGAINST CURRENT SHOPPING (R-S2-128, 2026-08-12):
+    # walk choices deliberately accumulate across rounds, but a stored
+    # choice whose uid is no longer in the item's CURRENT candidate
+    # list was made against a shopping that no longer exists — that is
+    # how a bed chosen from the withdrawn escalation pool kept standing
+    # in for a console table through two canon changes. Void it, say
+    # so, and let the current pick/candidates decide.
+    cur_uids = {it["id"]: {c["uid"] for c in (it.get("candidates") or [])}
+                for it in sl["items"]}
     walked = set()
     walk_p = cdir / "fit_walk.json"
     if walk_p.exists():
         wj = json.loads(walk_p.read_text(encoding="utf-8"))
         for iid, ch in (wj.get("choices") or {}).items():
-            if ch.get("candidate"):
-                style_pick[iid] = ch["candidate"]
-                walked.add(iid)
+            cand = ch.get("candidate")
+            if not cand:
+                continue
+            if cand.get("uid") not in cur_uids.get(iid, set()):
+                print(f"[fit_preview] VOIDING stale walk choice for "
+                      f"{iid}: {cand.get('uid', '')[:8]} "
+                      f"({cand.get('category')}) is not in the current "
+                      f"candidate list")
+                continue
+            style_pick[iid] = cand
+            walked.add(iid)
     man = {"frame": paths.frame_block(args.scene)}
     graph = json.loads((paths.scene_dir(args.scene) / "scene_graph.json")
                        .read_text(encoding="utf-8"))
@@ -371,12 +400,46 @@ def main():
     to_raw = np.diag([r2r[0], r2r[1], r2r[2], 1.0])
 
     scene = trimesh.Scene()
-    placed, failed = [], []
+    placed, failed, not_placed = [], [], []
     fdir_by = {}   # item id -> decided front (render frame)
+    # THE SIZE BAR = the ruled DRY constant, one knob, no new number.
+    # The user ruled this whole design ONCE ALREADY (2026-08-05C SR4c,
+    # sub tier): "best of the WHOLE shortlist over DRY 0.65 -> adds
+    # drop entirely, detections drop with a recorded complaint" — the
+    # anchor tier simply never inherited it because the sub rounds sat
+    # deferred in experiments/. R-S2-124 brings the anchors under the
+    # same rule at the same bar.
+    from fit_feedback import DRY_SCORE as SIZE_BAR
     for r in sl["items"]:
         c = style_pick.get(r["id"]) or (r["candidates"][0]
                                         if r.get("candidates") else None)
         if not c:
+            continue
+        # NOTHING TRULY FITS -> NOT PLACED, for EVERY item (user rulings
+        # 2026-08-12, R-S2-123 + 124). Assets place at NATIVE SIZE
+        # (08-03B canon, no rescale), so "the point of the boxes is that
+        # they should be around that size. a single bed is sized as a
+        # single bed, a door is sized as a door not a barn. nothing
+        # will be exact due to assets, so slightly generous margins."
+        # An item whose BEST candidate misses its box by more than
+        # SIZE_BAR on the worst axis stands NOWHERE rather than at a
+        # wrong size — counted and named in `not_placed`. This scene's
+        # own data: a door whose best was 219% off and a console at
+        # 1718% off both stood in the preview before this bar.
+        # (fit_feedback's DRY_SCORE 0.65 walk-back records are separate
+        # and unchanged.)
+        bs = min((float(c2.get("score", 9.9))
+                  for c2 in (r.get("candidates") or [])),
+                 default=9.9)
+        if bs > SIZE_BAR:
+            not_placed.append(
+                {"id": r["id"], "name": r["name"],
+                 "source": r.get("source"),
+                 "best_score": round(bs, 3),
+                 "why": (f"no candidate within the size bar "
+                         f"(best worst-axis {bs:.0%} > "
+                         f"{SIZE_BAR:.0%}) — left out by user ruling "
+                         f"2026-08-12: better absent than wrong-sized")})
             continue
         try:
             mesh = load_asset(c["uid"])
@@ -527,13 +590,18 @@ def main():
                 "verdicts flagged (rotcheck_flag)",
         "elapsed_s": round(time.time() - t0, 1),
         "placed": placed, "subs_front": subs_front, "failed": failed,
+        "not_placed": not_placed,
     }, indent=1), encoding="utf-8")
     napp = sum(1 for p in placed if p["rotcheck_applied_deg"])
     nflag = sum(1 for p in placed if p["rotcheck_flag"])
     print(f"[fit_preview] wrote {gpath} "
           f"({gpath.stat().st_size / 1e6:.1f} MB, {len(placed)} items, "
           f"{napp} rotations applied, {nflag} flagged, "
-          f"{len(failed)} failed, {time.time() - t0:.0f}s)")
+          f"{len(failed)} failed, {len(not_placed)} left out (nothing "
+          f"fits), {time.time() - t0:.0f}s)")
+    for np_ in not_placed:
+        print(f"  NOT PLACED {np_['id']:16s} {str(np_['name']):22s} "
+              f"{np_['why']}")
 
 
 if __name__ == "__main__":

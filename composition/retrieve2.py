@@ -59,9 +59,20 @@ def by_category():
 
 def match_categories(label):
     """-> (tier, [category strings]) for a box label; tier 3 = unmatched.
-    Tiers: 0 exact string, 1 token subset either way, 2 any token overlap."""
+    Tiers: 0 exact string, 1 token subset either way, 2 any token overlap.
+
+    HEAD-WORD PREFERENCE (2026-08-11C, R-S2-120): English compounds are
+    head-final — a "tray table" is a TABLE, a "floor lamp" is a LAMP.
+    Without this, the modifier hijacked the aisle: "small tray table"
+    token-matched the `tray` category at tier 1 and a real accent table
+    went shopping among serving trays (one candidate was a tray of
+    bread with turkey in it — fresh04, user-caught). So within each
+    tier, categories containing the label's LAST word win; modifier
+    matches are kept only when nothing matches the head."""
     lab = label.strip().lower()
     lt = _toks(lab)
+    words = re.findall(r"[a-z]+", lab)
+    head = _norm(words[-1]) if words else ""
     tiers = ([], [], [])
     for cat in by_category():
         ct = _toks(cat)
@@ -75,7 +86,8 @@ def match_categories(label):
             tiers[2].append(cat)
     for tier, cats in enumerate(tiers):
         if cats:
-            return tier, cats
+            heady = [c for c in cats if head and head in _toks(c)]
+            return tier, (heady or cats)
     return 3, []
 
 
@@ -190,6 +202,82 @@ Reply with ONLY a JSON object mapping each label to a list of categories."""
         if set(r) != set(labels) or bad:
             raise ValueError(f"must map every label to catalog categories; bad: {bad}")
     return call_agent_json(prompt, validate=_val, model=model, tag="label_map")
+
+
+def map_substitute_terms(entries, model="sonnet"):
+    """USER DESIGN 2026-08-12 (R-S2-127, refined in-session): MEANING
+    nominates, size only disposes. For each object, up to THREE
+    stand-in CATEGORIES straight from the catalog list (the user:
+    "if we are using a LLM call to find synonyms, then we can just
+    give it the categories we got" — no lossy term->aisle hop),
+    ordered by closeness. The question is function-only; no sizes
+    appear anywhere in it, which is what made the withdrawn version
+    offer a BED for a console table. entries = {enriched label:
+    [categories already searched]}."""
+    from bridge import call_agent_json
+    cats = sorted(by_category())
+    prompt = f"""For each object below, list up to THREE catalog categories that could
+STAND IN for it: near-synonyms or things serving the SAME FUNCTION in a
+room (e.g. for a small end-of-bed "bench": ottoman, footstool, stool).
+Order by closeness — nearest substitute first. Judge by MEANING and
+FUNCTION only; never suggest something a person would not accept doing
+that object's job. Do NOT repeat the already-searched categories listed
+with each object. Use ONLY category strings from the catalog; give []
+if nothing genuinely substitutes.
+
+Objects (label — description, with already-searched categories):
+{json.dumps(entries)}
+
+Catalog categories: {json.dumps(cats)}
+
+Reply with ONLY a JSON object mapping each object string to an ordered
+list of at most 3 categories."""
+    def _val(r):
+        if set(r) != set(entries):
+            raise ValueError("must answer every object")
+        for k, v in r.items():
+            if not isinstance(v, list) or len(v) > 3:
+                raise ValueError("each value must be <= 3 categories")
+            bad = [c for c in v if c.lower() not in by_category()]
+            if bad:
+                raise ValueError(f"not catalog categories: {bad}")
+    return call_agent_json(prompt, validate=_val, model=model,
+                           tag="subst_terms")
+
+
+def map_alternatives_agent(entries, model="sonnet"):
+    """Escalation variant (R-S2-126b, 2026-08-12). The plain mapper
+    answers "what category is a bench" — "bench", the aisle that just
+    failed. This one is told the aisle FAILED ON SIZE and asked for
+    OTHER stand-in categories. entries = {enriched label: [aisles
+    already searched]}; the tried aisles are excluded from answers."""
+    from bridge import call_agent_json
+    cats = sorted(by_category())
+    prompt = f"""Each of these objects was detected in an indoor scene. Its own category
+aisle in the asset catalog was ALREADY SEARCHED and no asset there comes
+close to the object's measured size, so the object is about to be left out
+of the scene entirely. For each object, list OTHER catalog categories whose
+assets could plausibly stand in for it — functionally or visually similar
+things at roughly the described size (e.g. a small end-of-bed "bench" might
+be served by an ottoman, footstool or stool). Do NOT repeat the
+already-searched categories. Use ONLY category strings from the catalog;
+give [] only if truly nothing could stand in.
+
+Objects (label — description — measured box, with already-searched aisles):
+{json.dumps(entries)}
+
+Catalog categories: {json.dumps(cats)}
+
+Reply with ONLY a JSON object mapping each object's label (the full key
+string above) to a list of categories."""
+    def _val(r):
+        bad = [c for v in r.values() for c in v
+               if c.lower() not in by_category()]
+        if set(r) != set(entries) or bad:
+            raise ValueError(
+                f"must map every label to catalog categories; bad: {bad}")
+    return call_agent_json(prompt, validate=_val, model=model,
+                           tag="label_alt")
 
 
 def run(sc, use_agent=True, model="sonnet"):

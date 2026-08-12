@@ -672,6 +672,21 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
         anc = a["anchor"]
         sup = a["support"]
 
+        # R-S2-119: THE PROPOSER SOMETIMES CONTRADICTS ITSELF — support
+        # "floor" beside where "ceiling, away from ceiling light" put a
+        # smoke detector ON THE FLOOR (fresh04, user-caught: "the
+        # bullshit smoke detector"). The `where` field opens with the
+        # intended surface; when its FIRST word names an arch surface
+        # and `support` names a DIFFERENT one, the where-surface wins.
+        # Plain word match, arch surfaces only — object supports are
+        # never overridden, and the original is kept on the record.
+        w0 = (re.findall(r"[a-z]+", str(a.get("where") or "").lower())
+              or [""])[0]
+        if (w0 in ("ceiling", "wall", "floor")
+                and sup in ("ceiling", "wall", "floor") and w0 != sup):
+            a["support_as_proposed"] = sup
+            sup = a["support"] = w0
+
         def finish(box, method, clamped=False, group=None, note=None):
             a["box"] = box
             a["placement"] = {"method": method, "referent": ref,
@@ -773,6 +788,27 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
             wall_slab(anc, cy, other, f"wall:{anc}")
         elif sup == "floor":
             scan_floor()
+        elif sup == "ceiling":
+            # flush under the ceiling at a free spot (R-S2-119: the
+            # smoke-detector class — ceiling devices the proposer
+            # invents). Obstacles: whatever already hangs at ceiling
+            # height, so ceiling adds do not stack on the light.
+            cv = shell["arch_ceiling"]
+            obst = ([_footprint(g2) for oid2, g2 in boxes.items()
+                     if oid2 not in swapped_out
+                     and (cv - top_of(g2)) * up < 0.4]
+                    + [_footprint(b) for b in pboxes.values()])
+            tgt = ref_tgt(((room[0] + room[2]) / 2,
+                           (room[1] + room[3]) / 2))
+            spot = _find_spot(room, w, d, obst, tgt)
+            if spot is None:
+                fail("no free spot found", "ceiling")
+            else:
+                x, z, fw, fd, cl = spot
+                # top flush against the ceiling, hanging down
+                finish(_mk_box(x, z, fw, fd,
+                               cv - h if up > 0 else cv, h),
+                       "ceiling", cl, ("ceil", None))
         elif anc in boxes:
             g = boxes[anc]
             if rel in ("mounted_on", "hangs_from"):

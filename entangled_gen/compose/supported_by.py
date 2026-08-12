@@ -350,7 +350,25 @@ def box_gap(a, b):
 def wall_gap(box, plane):
     """Signed gap to a vertical wall plane: >0 interior clearance,
     <0 penetration depth. Returns (gap, face) with face = the box side
-    that meets the wall ('x_min'...)."""
+    that meets the wall ('x_min'...).
+
+    CONNECTOR segments (axis None, kind 'connector' — the angled outline
+    piece a W5 polygon shell uses to cut a corner) are measured along
+    the segment's inward normal instead: signed distance of the box's
+    four plan corners to the oblique wall line (n·p − offset, interior
+    positive — room_shell.py's stated convention), and the gap is the
+    DEEPEST corner's, which keeps this function's sign contract. Face is
+    'nearest-corner', since no axis face meets an oblique wall.
+    ⚠ Third reader caught assuming every wall is an axis plane
+    (edge_carry and judge_coherence were 2026-08-11's two, this one
+    crashed fresh03 on 08-11C — see graph/stages.py's shell-row note)."""
+    if plane.get("kind") == "connector" or plane.get("axis") not in ("x", "z"):
+        n = plane["inward_normal_raw"]
+        c = plane["offset_raw"]
+        sd = [x * n[0] + z * n[2] - c
+              for x in (box.mn[0], box.mx[0])
+              for z in (box.mn[2], box.mx[2])]
+        return min(sd), "nearest-corner"
     ax = {"x": 0, "z": 2}[plane["axis"]]
     v = plane["value_raw"]
     inward = plane["inward_normal_raw"][ax]

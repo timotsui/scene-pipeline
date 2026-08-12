@@ -32,9 +32,9 @@ uniform encode. That covers the 284 colliderless worlds too. The
 per-world collider check was belt-and-braces on top of a corpus-wide
 fact already established.
 
-**The prize:** 29 runnable worlds today; ~313 after (318 downloaded,
-minus the 5 known frame failures — and those 5 can no longer be
-detected, see OPEN QUESTION 1).
+**The prize:** 29 runnable worlds today; **~318 after** — every
+downloaded world, including the 5 that fail the frame contract today.
+See OPEN QUESTION 1 for why those 5 come back.
 
 ---
 
@@ -176,24 +176,31 @@ Report the spread. Do not tune anything to make it smaller.
   re-harvest 2–3 colliderless worlds and see whether a collider URL
   appears now. If it does, the ceiling of 34 was a harvest bug and the
   check survives. **Cheap, and it does not block this plan.**
-- Whether the 284 worlds are *good rooms*. They pass the frame question;
-  nobody has looked at them. `catalog\CORPUS_REVIEW.html` is where that
-  review would go.
+- **The worlds gate needs more work (user, 2026-08-11).** Deciding which
+  worlds are worth running is a separate design question, and this plan
+  deliberately does not touch it. All this work does is stop the frame
+  contract from standing in for that decision, which it was never fit to
+  do. `catalog\CORPUS_REVIEW.html` is where that review would go.
 - Anything in `docs/PARKED.md`.
 
 ---
 
 ## OPEN QUESTIONS — for the user, none blocking
 
-1. **The 5 known frame failures become invisible.** `363c0b4f` is
-   genuinely broken (collider floating 3.83 m above every splat, zero
-   splats within 25 cm of that face). Once colliders are optional, a
-   world like that with no collider ships a complete, confident, wrong
-   scene. Options: keep refusing the 5 that are known bad by ID; or
-   accept it and rely on the header sweep. **Recommendation: keep the
-   check wherever a collider exists** (already in step 1), and blocklist
-   those 5 by ID. It costs nothing and preserves every check currently
-   held.
+1. ~~Blocklist the 5 known frame failures.~~ **SETTLED BY THE USER
+   2026-08-11 — do not do this.** The earlier draft of this plan called
+   `363c0b4f` a "genuinely broken world" because its collider floats
+   3.83 m above every splat in the scene. That was wrong, and the user
+   corrected it: **a collider that disagrees with its splat says the
+   COLLIDER is wrong, not the world.** The splat may be perfectly good.
+   The frame contract was only ever a check that two files agree — it
+   was never a judgement about whether a room is worth running, and
+   nothing in this work should treat it as one.
+
+   Consequence: **the 5 frame-FAIL worlds become runnable too.** The
+   corpus target is ~318, not ~313. Keep the check where a collider
+   exists (it still catches a real disagreement worth logging), but it
+   must not refuse the scene once the collider is optional.
 2. **Should `floor_source: "splat"` be reported in
    `scene_gate.quality_notes`?** It never fails a scene, but it is
    exactly the kind of number that lets 300 runs be sorted afterwards —
@@ -206,3 +213,87 @@ Report the spread. Do not tune anything to make it smaller.
 - **2026-08-11, written, not started.** Audit above is a code read; no
   colliderless scene has been run. The claim holds until `fresh03`
   finishes.
+
+- **2026-08-11, user ruling folded in.** A disagreeing collider condemns
+  the collider, not the world — see OPEN QUESTION 1. The blocklist
+  recommendation is withdrawn, the 5 frame-FAIL worlds are back in, and
+  the target is ~318. The worlds gate is named as separate work. Handed
+  to the next session; nothing has been edited in code.
+
+- **2026-08-11C, STEP 1 RAN AND ITS STOP RULE FIRED. WORK STOPPED, no
+  code edited. AWAITING THE USER'S RULING.** (REVIEW_LOG R-S2-110 is the
+  full record.) All 34 collider worlds measured both ways, replicating
+  exactly the code this plan would ship (fit_shell's clip +
+  `room_shell.measure_floor_ceiling`, imported). The 29 frame-PASS
+  worlds: **median |Δfloor| 3.6 cm, 24 of 29 within 12 cm**, sign
+  uniformly the documented skirt offset. **Five exceed 10 cm** (d2f4cb95
+  0.11, 220c321e 0.27, 36fa9852 0.34, 28d61433 0.56, 6425f0fd 2.24 — the
+  last is the Lisbon OUTDOOR street, not a room), so by this plan's own
+  rule the work stopped before any edit.
+  **The diagnosis inverts the assumption:** slab counts show the
+  COLLIDER floor hanging below a level where the splat has little or no
+  mass on every outlier (36fa9852: 13 points at the mesh floor vs
+  310,632 at the splat peak) — the mesh skirt is the wrong one, the same
+  shape as the ruling above. Two structural facts for the ruling:
+  room_shell already measures the canonical floor with this same
+  function at stage 11 (so downstream boxes on the outliers already use
+  the splat number today), and the collider floor travels only into the
+  pano eye height (on 28d61433 today the camera stands ~2.15 m above the
+  real floor and the world counts as runnable).
+  **Also found:** the audit table above missed a consumer —
+  `run_scene.py` `BUNDLE_NEEDS` (~:363) refuses a colliderless bundle at
+  `--bundle` adoption. Add it to the step list when work resumes.
+  Data: `floor_pairs.jsonl` + scripts in the 08-11C session scratchpad
+  (path in R-S2-110).
+
+- **2026-08-11C, later. USER: interiors only for now.** The two outdoor
+  street worlds (6425f0fd, 8a62c661) are out of the decision. A visual
+  review page was built for the ruling — scene photo + splat X-ray side
+  view with both floor lines per world:
+  `D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week8\marble-harvest\catalog\FLOOR_DEVIATION_REVIEW.html`.
+  Interior picture: 24 of 27 interior frame-PASS worlds agree within
+  12 cm; deviants are d2f4cb95 (11 cm), 220c321e (27), 36fa9852 (34),
+  28d61433 (56) + interior frame-FAILs 6040d57f (24), 4378be67 (121),
+  363c0b4f (457); 77eda2e2's floors agree (2.4 cm — its failure is a
+  side wall). On every deviant the collider floor runs through near-empty
+  space. Still stopped; awaiting the ruling.
+
+- **2026-08-11C, USER RULING: "splat floor wins." STEPS 1–2 BUILT AND
+  VERIFIED (REVIEW_LOG R-S2-111).** One floor source everywhere: every
+  scene measures floor/ceiling from the splat with room_shell's own
+  clip + histogram (imported, one estimator by construction); a present
+  collider still runs the agreement check and is registered only on
+  PASS — a FAIL condemns the collider, prints loudly, and the scene
+  continues colliderless. Five files: frame_bootstrap.py, stages.py
+  (`artifacts_optional`), scene_gate.py, run_scene.py (BUNDLE_NEEDS —
+  the audit-gap consumer), scene_scale.py (collider-conditional
+  rescale). The fresh02 byte-identity test is superseded by the ruling
+  (field-diff verified instead: only floor_y/ceiling_y + the two new
+  record fields differ). Three throwaway-scene path tests + in-process
+  gate checks PASS; final gates of fresh02/autotest_living/
+  autotest_bedroom unchanged.
+  **REMAINING: step 3 (fresh04, a never-run colliderless world, end to
+  end — queued behind the fresh03 collider-world proof run now in
+  flight) and step 4 (rebuild the catalogue).**
+
+- **2026-08-11C, later. Step 4 DONE early** (the code landed, so the
+  catalogue was already wrong): build_catalogue.ps1 reworked — runnable
+  = downloaded and kept (**318**), collider status is now a property
+  (29 agree / 5 condemned / 284 none), "frame FAIL" badge renamed
+  "collider condemned". Summary states the worlds gate stays open.
+  **Step 3 update:** fresh03 (collider world 44205719) ran 33 stages
+  clean then hit the connector-wall defect class in compose
+  (supported_by + snap, third and fourth readers; fixed scene-
+  agnostically, R-S2-112). fresh04 = 0f874584 (colliderless vintage
+  bedroom, box room, never run) is picked and queued; it carries BOTH
+  proofs: the one-command bar and the colliderless path.
+
+- **2026-08-11C, night. ✅ THE PLAN IS COMPLETE (R-S2-114).** fresh04 —
+  colliderless, never run — completed ALL 46 stages from one command
+  with zero intervention, final gate PASS, 65.3 min. Every designed
+  colliderless behavior ran live: splat-measured floor, INFO gate lines
+  for the absent collider files, measure-only scale branch, furnished
+  room, 35/35 nodes pictured, 2/39 slice fallbacks. All four steps of
+  this plan are done: paired test (110), the code (111, plus the
+  connector fixes 112/113 fresh03 forced), the proof (114), the
+  catalogue (Runnable: 318). Batch readiness: `docs/GO_NOGO_100_BATCH.md`.

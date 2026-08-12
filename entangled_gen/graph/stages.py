@@ -157,6 +157,20 @@ class Stage:
     writes     layer that must be present, fresh and stamped AFTER it
     artifacts  files (relative to the scene dir) that must exist and have
                been touched DURING this run
+    artifacts_optional
+               files this stage writes ONLY ON SOME SCENES. If such a
+               file EXISTS it must have been written during this run
+               (same freshness test as `artifacts` — a present-but-stale
+               copy is a lie on disk and FAILS); if it is ABSENT the gate
+               notes it and passes. Added 2026-08-11C for the collider
+               pair: a colliderless bundle cannot write
+               collider_registered.glb, and failing an honest scene for
+               it was the gate misfiring (PLAN_COLLIDER_OPTIONAL step 2).
+               ⚠ THIS IS NOT A SOFTER `artifacts`. A stage's REAL output
+               must stay in `artifacts` — the no-op trap is only caught
+               because at least one unconditional file is mtime-checked
+               every run. Only a file whose very existence legitimately
+               depends on the bundle belongs here.
     graph_keys top-level scene_graph.json blocks that must exist after
                this stage — for a stage that edits the graph without
                adding a layer.
@@ -184,14 +198,15 @@ class Stage:
     """
 
     def __init__(self, key, title, argv, reads=None, writes=None,
-                 artifacts=(), graph_keys=(), inputs=(), llm=False,
-                 gpu=False, note=""):
+                 artifacts=(), artifacts_optional=(), graph_keys=(),
+                 inputs=(), llm=False, gpu=False, note=""):
         self.key = key
         self.title = title
         self._argv = argv
         self.reads = reads
         self.writes = writes
         self.artifacts = tuple(artifacts)
+        self.artifacts_optional = tuple(artifacts_optional)
         self.graph_keys = tuple(graph_keys)
         self.inputs = tuple(inputs)
         self.llm = llm
@@ -239,19 +254,23 @@ class Stage:
 #: twice.
 INTAKE = (
     Stage(
-        "frame", "read the bundle's frame: floor, ceiling, up, and the "
-                 "collider in the pipeline's own coordinates",
+        "frame", "read the bundle's frame: floor, ceiling, up — and "
+                 "register the collider when the bundle has a good one",
         lambda sc: [PY, "frame_bootstrap.py", "--scene", sc],
-        artifacts=("frame_bootstrap.json", "collider_registered.glb",
-                   "collider_registration.json"),
-        note="THE ONE STAGE THAT NEEDS THE COLLIDER, and therefore the "
-             "reason the corpus ceiling is 34 of 323 harvested worlds "
-             "rather than all of them (frame_bootstrap.py:61 refuses "
-             "without one). Nothing later needs it: pano_lift measures "
-             "against the splat. It also converts the .spz to gen_raw.ply "
-             "if that is missing, and REFUSES on a bundle whose collider "
-             "does not sit inside the splat's bounds rather than guessing "
-             "a frame — the trusted-bundle contract of 08-06.",
+        artifacts=("frame_bootstrap.json",),
+        artifacts_optional=("collider_registered.glb",
+                            "collider_registration.json"),
+        note="THE COLLIDER IS OPTIONAL since 2026-08-11C (R-S2-110/111, "
+             "user: 'splat floor wins') — floor/ceiling are measured from "
+             "the splat on EVERY scene, with room_shell's own clip + "
+             "histogram, imported. A collider, when present, still runs "
+             "the trusted-bundle agreement check; a disagreement condemns "
+             "the COLLIDER (not the world), which is then not registered "
+             "and the scene runs colliderless. This lifted the corpus "
+             "ceiling from 34 of 318 harvested worlds to all of them. "
+             "Also converts the .spz to gen_raw.ply if that is missing. "
+             "A bundle with no .spz still refuses — there is no scene "
+             "without the splat.",
     ),
     Stage(
         "stitch", "render the room's own 360° pano from the splat",

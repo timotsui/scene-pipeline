@@ -168,11 +168,22 @@ def graph_fingerprint(sc):
     if not p.exists():
         return None
     g = _json.loads(p.read_text(encoding="utf-8"))
+
+    def _plane_key(pl):
+        # Axis planes hash their value_raw EXACTLY as before (existing
+        # scenes' fingerprints must not move). CONNECTOR segments (W5
+        # polygon shells; axis None, no value_raw — the fifth reader
+        # caught assuming every wall is an axis plane, 2026-08-11C
+        # R-S2-112) hash their oblique plane: offset + inward normal.
+        if "value_raw" in pl:
+            return pl["value_raw"]
+        return [pl.get("offset_raw"), pl.get("inward_normal_raw")]
+
     geo = sorted(
         [(n["id"], n.get("name"),
           n["geometry"]["aabb_min"], n["geometry"]["aabb_max"])
          for n in g.get("resolved", {}).get("nodes", [])]
-        + [(n["id"], "arch", n["geometry"]["plane"]["value_raw"], None)
+        + [(n["id"], "arch", _plane_key(n["geometry"]["plane"]), None)
            for n in g.get("nodes", []) if n["id"].startswith("arch_")])
     tes = sorted(
         (n["id"], (n.get("appearance") or {}).get("description"),

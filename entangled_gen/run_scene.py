@@ -360,9 +360,11 @@ BUNDLE_NEEDS = (
     ("prompt.txt", "the generation prompt — the word list is built from "
                    "it (vocab_build.py)"),
     ("*.spz", "the splat — everything is measured against it"),
-    ("*collider*.glb", "the collider — frame_bootstrap.py refuses without "
-                       "one (this is why only 34 of 323 harvested worlds "
-                       "can currently be run)"),
+    # ⚠ THE COLLIDER IS NOT HERE, since 2026-08-11C (R-S2-110/111, user:
+    # "splat floor wins"). frame_bootstrap measures floor/ceiling from
+    # the splat on every scene; a collider, when the bundle has one, is
+    # checked and registered as corroborating evidence only. Requiring
+    # it capped the corpus at 34 of 318 harvested worlds for no reason.
 )
 
 
@@ -393,9 +395,7 @@ def adopt_bundle(scene, bundle):
         lines = "\n".join(f"    {pat:18s} {why}" for pat, why in missing)
         raise SystemExit(
             f"[run_scene] {b.name} is not a runnable bundle — missing:\n"
-            f"{lines}\n"
-            f"  A harvested world with no collider cannot be run today; "
-            f"see the harvester's collider step.")
+            f"{lines}")
 
     sd = paths.scene_dir(scene)
     sd.mkdir(parents=True, exist_ok=True)
@@ -502,6 +502,8 @@ def graph_dry_run(sc, selected, title="GRAPH CHAIN", max_rounds=None,
             promises.append(f"graph['{k}'] present")
         for f in st.artifacts:
             promises.append(f"{f} written during this stage")
+        for f in getattr(st, "artifacts_optional", ()):
+            promises.append(f"{f} fresh IF present (optional)")
         print(f"    gate.after(scene, {st.key!r}, since=t0)"
               + ("  -> requires " + "; ".join(promises) if promises
                  else "  -> promises nothing checkable"))

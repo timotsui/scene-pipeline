@@ -306,11 +306,28 @@ def snap_pass(boxes, top, planes, names, floor_h, ceil_h, holds=frozenset()):
                 rec["disposition"] = "SNAPPED_CEILING"
             elif sup.startswith("arch_wall"):
                 pl = planes[sup]
-                ax = WALL_AXIS[pl["axis"]]
-                inward = pl["inward_normal_raw"][ax]
-                v = pl["value_raw"]
-                d = (v - b["mn"][ax]) if inward > 0 else (v - b["mx"][ax])
-                shift(ax, d)
+                if (pl.get("kind") == "connector"
+                        or pl.get("axis") not in ("x", "z")):
+                    # CONNECTOR (oblique) wall: flush = slide along the
+                    # segment's inward normal until the deepest plan
+                    # corner sits ON the wall line (n·p − offset = 0,
+                    # interior positive — room_shell's convention).
+                    # Fourth reader caught assuming axis walls; see
+                    # supported_by.wall_gap and stages.py's shell note.
+                    n = pl["inward_normal_raw"]
+                    c = pl["offset_raw"]
+                    sd = min(x * n[0] + z * n[2] - c
+                             for x in (b["mn"][0], b["mx"][0])
+                             for z in (b["mn"][2], b["mx"][2]))
+                    shift(0, -sd * n[0])
+                    shift(2, -sd * n[2])
+                else:
+                    ax = WALL_AXIS[pl["axis"]]
+                    inward = pl["inward_normal_raw"][ax]
+                    v = pl["value_raw"]
+                    d = (v - b["mn"][ax]) if inward > 0 \
+                        else (v - b["mx"][ax])
+                    shift(ax, d)
                 rec["disposition"] = "SNAPPED_WALL_FLUSH"
             else:
                 # object supporter (rests_on / leans_on): supporter is

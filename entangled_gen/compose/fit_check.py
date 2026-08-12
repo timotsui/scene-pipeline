@@ -36,6 +36,19 @@ TOL = 0.005      # m -- bounds: deeper than this = finding
 PITCH = 0.02     # m -- clip lattice cell
 CONTACT_CELLS = 4   # overlap cells at/below this = contact, not clip
 
+#: THE ALLOWED CLIPPING MARGIN (user ruling 2026-08-11C, R-S2-117):
+#: "i dont want to fix the asset library. so lets just have good margins
+#: for clipping. i think visually as long as its not obvious it will be
+#: ok." Overlaps at/below this VOLUME are acceptable touches - reported
+#: under `contacts` (recorded, never hidden), not worked by the declip
+#: solver, and not counted as clips. Above it = a clip.
+#: 0.5 L is the STARTING value; the calibration is the user's EYE, so it
+#: moves on their say-so after looking, not on any measurement here.
+#: (Asset junk slivers - broken mesh pieces the user declined to fix at
+#: the library - are the designed beneficiary.)
+ALLOW_L = 0.5
+ALLOW_CELLS = int(ALLOW_L / (PITCH ** 3 * 1000))   # 62 cells at 2 cm
+
 
 def load_placed(scene):
     """fitted_preview.glb -> {item id: one concatenated render-frame
@@ -101,9 +114,18 @@ def main():
         encoding="utf-8"))
     names = {p["id"]: p["name"] for p in fp["placed"]}
 
+    mounts = {p["id"]: p.get("mount") for p in fp["placed"]}
     items, cells, aabbs = [], {}, {}
     for oid, m in sorted(by_item.items()):
         bf = bounds_findings(m.vertices, wx, wz, fy, cy)
+        # WALL-MOUNTED ITEMS MAY SIT INSIDE THEIR WALL (user ruling
+        # 2026-08-12, R-S2-122: "wall objects should be able to be
+        # behind the walls, like [an] in-wall wardrobe"). Recessed and
+        # built-in furniture legitimately extends past the wall plane,
+        # so wall-plane depth is not a finding for them; floor and
+        # ceiling violations still are.
+        if mounts.get(oid) == "wall":
+            bf = [b for b in bf if not b["plane"].startswith("wall_")]
         items.append({"id": oid, "name": names.get(oid),
                       "bounds": bf})
         aabbs[oid] = m.bounds
@@ -125,7 +147,7 @@ def main():
             inter = np.intersect1d(cells[a], cells[b],
                                    assume_unique=True)
             if len(inter) <= CONTACT_CELLS:
-                continue
+                continue        # a mere touch: not even worth recording
             # AABB-intersection region in the RAW frame (viewer draws
             # raw; render->raw = the same sign flips, then re-sort)
             olo = np.maximum(alo, blo) * r2r
@@ -143,22 +165,32 @@ def main():
                     "mx": [round(float(v), 3) for v in ohi]},
             })
     pairs.sort(key=lambda p: -p["overlap_cells"])
+    # the allowed margin (see ALLOW_L above): small overlaps are
+    # acceptable touches, recorded apart so nothing is hidden
+    clips = [p for p in pairs if p["overlap_cells"] > ALLOW_CELLS]
+    contacts = [p for p in pairs if p["overlap_cells"] <= ALLOW_CELLS]
 
     out = {"scene": args.scene, "built": str(date.today()),
            "generated_by": "compose/fit_check.py",
            "graph_fingerprint": paths.graph_fingerprint(args.scene),
            "note": "v1 report only: bounds (vertex-exact vs shell "
                    "planes, TOL 5 mm) + pairwise clip (2 cm lattice, "
-                   "<=4 shared cells = contact). No fixes applied.",
+                   "<=4 shared cells = contact). Overlaps at/below the "
+                   f"allowed margin ({ALLOW_L} L, user ruling R-S2-117) "
+                   "are `contacts`; only larger ones are `clips`. No "
+                   "fixes applied.",
            "params": {"tol_m": TOL, "pitch_m": PITCH,
-                      "contact_cells": CONTACT_CELLS},
+                      "contact_cells": CONTACT_CELLS,
+                      "allow_l": ALLOW_L, "allow_cells": ALLOW_CELLS},
            "elapsed_s": round(time.time() - t0, 1),
-           "items": items, "clips": pairs}
+           "items": items, "clips": clips, "contacts": contacts}
     out_p = cdir / "fit_check.json"
     out_p.write_text(json.dumps(out, indent=1), encoding="utf-8")
 
+    pairs = clips          # the print loop below reports real clips
     print(f"[fit_check] {len(items)} items: {n_bounds} out of bounds, "
-          f"{len(pairs)} clipping pairs ({time.time() - t0:.0f}s) "
+          f"{len(clips)} clipping pairs + {len(contacts)} allowed "
+          f"touches (margin {ALLOW_L} L) ({time.time() - t0:.0f}s) "
           f"-> {out_p}")
     for it in items:
         if it["bounds"]:

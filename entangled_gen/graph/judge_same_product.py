@@ -228,7 +228,13 @@ def parse_assignments(raw, member_ids):
         else:
             d = re.sub(r"\D", "", s)
             lab = f"set_{int(d)}" if d else "alone"
-        got[rid[0]] = (lab, str(row.get("reason") or "").strip())
+        # coverage (user ruling 2026-08-12, R-S2-122): is this member
+        # reasonably the FULL product, or a PARTIAL piece of one? Absent
+        # (old caches, sloppy replies) defaults to "full" — the
+        # pre-ruling behavior.
+        cov = str(row.get("coverage") or "full").strip().lower()
+        cov = "partial" if cov.startswith("part") else "full"
+        got[rid[0]] = (lab, str(row.get("reason") or "").strip(), cov)
         seen.append(rid[0])
     missing = [m for m in member_ids if m not in got]
     return got, missing
@@ -240,20 +246,35 @@ def sets_from_assignments(got, members, status_by, doubts_by):
     member is NOT a product set — it is recorded as alone, with the
     judge's own reason kept."""
     by_set = {}
-    for mid, (lab, _r) in got.items():
-        if lab != "alone":
-            by_set.setdefault(lab, []).append(mid)
-    sets, alone = [], [m for m, (l, _) in got.items() if l == "alone"]
+    for mid, row in got.items():
+        if row[0] != "alone":
+            by_set.setdefault(row[0], []).append(mid)
+    sets = []
+    alone = [m for m, row in got.items() if row[0] == "alone"]
+    cov = {m: (row[2] if len(row) > 2 else "full")
+           for m, row in got.items()}
     for lab in sorted(by_set):
         mem = sorted(by_set[lab])
         if len(mem) < 2:
             alone.extend(mem)          # a set of one is not a set
             continue
+        # PARTIAL members (user ruling 2026-08-12, R-S2-122: a piece of
+        # a larger unit matches the product's look but is NOT another
+        # whole one) stay in the set for the relationship, but the
+        # exemplar — the box whose size the full members will share —
+        # may only be a FULL member, and partial members are named so
+        # materialize never writes the size into them. A set with no
+        # full member gets no canonical size at all.
+        partial = sorted(m for m in mem if cov.get(m) == "partial")
+        full = [m for m in mem if m not in partial]
         entry = {"set_id": lab, "members": mem,
+                 "partial_members": partial,
                  "reasons": {m: got[m][1] for m in mem}}
-        sized = canonical_from_exemplar(members, mem, status_by, doubts_by)
-        if sized:
-            entry.update(sized)
+        if full:
+            sized = canonical_from_exemplar(members, full, status_by,
+                                            doubts_by)
+            if sized:
+                entry.update(sized)
         sets.append(entry)
     return sets, sorted(set(alone))
 
@@ -1165,13 +1186,24 @@ def main():
             "distinct product here)\n"
             "  \"alone\" — nothing else here is the same product as this "
             "one, or you cannot tell\n"
+            "For every id you put in a set, ALSO answer \"coverage\":\n"
+            "  \"full\" — what you see is reasonably a COMPLETE product. "
+            "Partly hidden in the photo is fine: a chair seen only from "
+            "the top is still reasonably a whole chair.\n"
+            "  \"partial\" — this is a PIECE of a larger unit of the "
+            "product: one door face of a fitted wardrobe wall, a cut-off "
+            "section, a fragment. It matches the product's LOOK but it "
+            "is not a whole one.\n"
+            "This matters because full members share the product's real "
+            "size; a partial member keeps its own measured box.\n"
             f"All {n} ids must appear exactly once. Every one gets its "
             "own short reason — the objects you leave alone matter as "
             "much as the ones you group, because nothing downstream "
             "learns why unless you say it.\n"
             "Answer STRICT JSON only:\n"
             "{\"assignments\": [{\"id\": \"obj_000\", \"set\": \"set_1\" "
-            "or \"alone\", \"reason\": \"one short sentence\"}, ...]}")
+            "or \"alone\", \"coverage\": \"full\" or \"partial\", "
+            "\"reason\": \"one short sentence\"}, ...]}")
 
     def group_key(gi, prompt):
         h = hashlib.sha256()
@@ -1241,6 +1273,9 @@ def main():
             err = err2 if v is None else err
         v = v if isinstance(v, dict) else {}
         v = {"assignments": [{"id": i, "set": got_a[i][0],
+                              "coverage": (got_a[i][2]
+                                           if len(got_a[i]) > 2
+                                           else "full"),
                               "reason": got_a[i][1]}
                              for i in ids if i in got_a],
              "unassigned": missing,
@@ -1283,7 +1318,8 @@ def main():
     pools = []
     for gi, gr in enumerate(groups, 1):
         verdict = dict(got[gi])
-        assign = {r["id"]: (r["set"], r.get("reason") or "")
+        assign = {r["id"]: (r["set"], r.get("reason") or "",
+                            r.get("coverage") or "full")
                   for r in (verdict.get("assignments") or [])}
         sets, alone = sets_from_assignments(assign, gr["members"],
                                             status_by, doubts)
@@ -1326,6 +1362,7 @@ def main():
                             if m["id"] in s["members"]],
                 "same_object": True,
                 "set_members": s["members"],
+                "partial_members": s.get("partial_members") or [],
                 "reason": "; ".join(f"{m}: {r}" for m, r
                                     in (s.get("reasons") or {}).items()),
                 **{k: v for k, v in s.items()
