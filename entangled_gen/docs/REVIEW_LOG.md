@@ -1969,3 +1969,6 @@ grouped  28         82                27      (+5 SAME_PRODUCT from J9)
 - **WHY IT WORKS WITHOUT BLENDER:** everything step 15 needs already exists after step 13/14 - the layout carries orientation, step 11 carries the asset uids, and all 56 asset pickles (33+23) are in our local objathor store. Blender adds only the Cycles image (lighting rig, floor texture), not placement. Colors come from the albedo textures sampled at the UVs; both methods' composed renders go through ONE painter rasterizer at ONE shared scale, so neither side can be prettier by construction.
 - **CAPTION HONESTY:** the figure says it is our re-execution of their recipe, not their Blender render, and lists anything skipped.
 - **REGENERATED:** out/comparison_20260812T222227Z.{json,html} - 7 figures per scene, 7/7 embedded (fresh04 + fresh06).
+
+## R-S2-139 - ONE COMPARISON SHEET, ALWAYS THE LATEST (2026-08-12)
+- **USER RULING:** "keep one comparison sheet, always the latest and greatest, so I don't have to switch back and forth." compare_methods now writes out/comparison.{json,html} at a FIXED path, overwriting; the runid inside the page says which run produced it. The old timestamped reports (193036Z, 214923Z, 221405Z, 221456Z) moved to out/archive/comparisons/ - nothing deleted. The 08-27 handoff's pointer to comparison_20260812T193036Z.html is superseded by out/comparison.html.

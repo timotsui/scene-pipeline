@@ -30,7 +30,10 @@ will read it backwards, so the sentence is printed at the top of the HTML
 and again inside the section.
 
 READ-ONLY. This tool opens scene data and never writes it. The only two
-files it creates are its own report, out/comparison_<runid>.{json,html}.
+files it creates are its own report, out/comparison.{json,html} — ONE
+fixed path, always the latest run (user 2026-08-12: "keep one
+comparison sheet ... that way I don't have to switch back and forth").
+The runid inside the page says which run produced it.
 The HTML embeds screenshot thumbnails (the stitched pano of the real
 room, both layouts drawn top-down at one shared scale, and GLTS's own
 layout plots) as data URIs, so the page stays a single self-contained
@@ -2082,8 +2085,9 @@ def main():
            "glts_root_default": str(GLTS_WIN),
            "glts_root_override": roots or None,
            "scenes": json_scenes}
-    jp = out_dir / f"comparison_{runid}.json"
-    hp = out_dir / f"comparison_{runid}.html"
+    # ONE sheet, always the latest — the runid lives inside the files
+    jp = out_dir / "comparison.json"
+    hp = out_dir / "comparison.html"
     paths.write_atomic(jp, json.dumps(doc, indent=1))
     paths.write_atomic(hp, build_html(records, runid))
 
