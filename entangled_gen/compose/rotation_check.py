@@ -360,17 +360,18 @@ COMPASS_ARROWS = {"N": (0.0, 0.0, 1.0), "E": (1.0, 0.0, 0.0),
 COMPASS_ARM = 0.6   # metres
 
 
-def compass_origin(lo, hi, eye):
+def compass_origin(lo, hi, eye, fy=0.0):
     """A clear floor spot BESIDE the object (user 08-04: next to it, not on
     it): step from the footprint centre toward the camera, past the
-    footprint edge plus the arm length, so no arrow crosses the object."""
+    footprint edge plus the arm length, so no arrow crosses the object.
+    `fy` is the measured render-frame floor the rose is drawn on."""
     cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
     d = np.array([float(eye[0]) - cx, float(eye[2]) - cz])
     n = np.linalg.norm(d)
     d = d / n if n > 1e-6 else np.array([1.0, 0.0])
     half = (abs(d[0]) * (hi[0] - lo[0]) + abs(d[1]) * (hi[2] - lo[2])) / 2
     step = half + COMPASS_ARM + 0.15
-    return (cx + d[0] * step, 0.0, cz + d[1] * step)
+    return (cx + d[0] * step, fy, cz + d[1] * step)
 
 
 def crop_to_object(img, pose, fov, res, lo, hi, origin):
@@ -382,7 +383,7 @@ def crop_to_object(img, pose, fov, res, lo, hi, origin):
     pts = [(x, y, z) for x in (lo[0], hi[0]) for y in (lo[1], hi[1])
            for z in (lo[2], hi[2])]
     for nm, v in COMPASS_ARROWS.items():
-        pts.append((origin[0] + v[0] * COMPASS_ARM, 0.0,
+        pts.append((origin[0] + v[0] * COMPASS_ARM, origin[1],
                     origin[2] + v[2] * COMPASS_ARM))
     uv = project(pose, fov, res, pts)
     if not uv:
@@ -422,7 +423,7 @@ def draw_compass(img, pose, fov, res, origin, col_n=(255, 60, 60),
     font = _compass_font(30)
     for nm, v in COMPASS_ARROWS.items():
         uv = project(pose, fov, res,
-                     [(origin[0] + v[0] * COMPASS_ARM, 0.0,
+                     [(origin[0] + v[0] * COMPASS_ARM, origin[1],
                        origin[2] + v[2] * COMPASS_ARM)])
         if not uv:
             continue
@@ -554,10 +555,18 @@ def load_scene(scene):
     r2r = np.array(man["frame"].get("raw_to_render", [1, 1, 1]), np.float32)
     to_render = np.diag([r2r[0], r2r[1], r2r[2], 1.0])
 
-    xs_raw, zs_raw, _floor_raw, _ceil_raw = wall_axis_planes(graph["nodes"])
+    xs_raw, zs_raw, floor_raw, ceil_raw = wall_axis_planes(graph["nodes"])
     wx = sorted((xs_raw[0] * r2r[0], xs_raw[-1] * r2r[0]))
     wz = sorted((zs_raw[0] * r2r[2], zs_raw[-1] * r2r[2]))
-    room_c = np.array([(wx[0] + wx[1]) / 2, 0.0, (wz[0] + wz[1]) / 2])
+    # THE MEASURED FLOOR, not an assumed y=0 (user-caught 2026-08-12, the
+    # fresh04 bed: the synthetic slab sat at 0 while the scene's real
+    # floor is at -0.98, so the slab hovered at mid-room height and hid
+    # every low object from every camera -- the judge's "yellow box shows
+    # only blank floor" was literally true. Same disease as R-S2-134's
+    # absolute eye height: a frame constant pretending to be 0.)
+    fy, cy = sorted((floor_raw * r2r[1], ceil_raw * r2r[1]))
+    room_c = np.array([(wx[0] + wx[1]) / 2, (fy + cy) / 2,
+                       (wz[0] + wz[1]) / 2])
 
     sc = trimesh.load(cdir / "fitted_preview.glb", force="scene")
     by_item = {}
@@ -568,23 +577,23 @@ def load_scene(scene):
 
     fl = trimesh.creation.box(
         extents=[wx[1] - wx[0] + 0.4, 0.05, wz[1] - wz[0] + 0.4])
-    fl.apply_translation([room_c[0], -0.025, room_c[2]])
+    fl.apply_translation([room_c[0], fy - 0.025, room_c[2]])
     walls = [fl]
-    H, T = 2.6, 0.05
+    H, T = max(2.6, cy - fy), 0.05
     for x in wx:
         w = trimesh.creation.box(extents=[T, H, wz[1] - wz[0] + 0.4])
-        w.apply_translation([x, H / 2, room_c[2]])
+        w.apply_translation([x, fy + H / 2, room_c[2]])
         walls.append(w)
     for z in wz:
         w = trimesh.creation.box(extents=[wx[1] - wx[0] + 0.4, H, T])
-        w.apply_translation([room_c[0], H / 2, z])
+        w.apply_translation([room_c[0], fy + H / 2, z])
         walls.append(w)
     for m in walls:
         m.visual = trimesh.visual.ColorVisuals(
             m, vertex_colors=[210, 208, 202, 255])
 
     nodes = {n["id"]: n for n in graph["nodes"]}
-    return cdir, nodes, by_item, walls, wx, wz, room_c
+    return cdir, nodes, by_item, walls, wx, wz, room_c, fy
 
 
 def yaw_about(center, deg):
@@ -654,8 +663,9 @@ def render_layered(shell, tgt, eye, look, fov, res):
     return img.convert("RGB")
 
 
-def item_cams(ctr, diag, room_c):
-    eyeA = np.array([0.0, 1.6, 0.0])
+def item_cams(ctr, diag, room_c, fy):
+    # eye heights are floor-RELATIVE (the 08-12 blank-floor lesson)
+    eyeA = np.array([0.0, fy + 1.6, 0.0])
     dist = float(np.linalg.norm(ctr - eyeA))
     fovA = float(np.clip(np.degrees(2 * np.arctan2(0.8 * diag, dist)), 30, 75))
     horiz = room_c - np.array([ctr[0], 0, ctr[2]])
@@ -663,16 +673,16 @@ def item_cams(ctr, diag, room_c):
     n = np.linalg.norm(horiz)
     horiz = horiz / n if n > 1e-6 else np.array([1.0, 0, 0])
     eyeB = ctr + horiz * (1.5 * diag) + np.array([0, 0.9 * diag, 0])
-    eyeB[1] = max(eyeB[1], 0.6)
+    eyeB[1] = max(eyeB[1], fy + 0.6)
     return {"A": (eyeA, fovA), "B": (eyeB, 45.0)}
 
 
-def ctx_cam(ctr, wx, wz, room_c):
+def ctx_cam(ctr, wx, wz, room_c, fy):
     best, bestd = None, -1.0
     for x in wx:
         for z in wz:
-            c = np.array([x, 0.0, z])
-            d = np.linalg.norm(c - np.array([ctr[0], 0, ctr[2]]))
+            c = np.array([x, fy, z])
+            d = np.linalg.norm(c - np.array([ctr[0], fy, ctr[2]]))
             if d > bestd:
                 bestd, best = d, c
     inward = room_c - best
@@ -800,7 +810,7 @@ def main():
     cams = [c.strip() for c in args.cams.split(",") if c.strip()]
 
     scene_dir = paths.scene_dir(args.scene)
-    cdir, nodes, by_item, shell, wx, wz, room_c = load_scene(args.scene)
+    cdir, nodes, by_item, shell, wx, wz, room_c, fy = load_scene(args.scene)
     placed = json.loads((cdir / "fitted_preview.json")
                         .read_text(encoding="utf-8"))["placed"]
     names = {p["id"]: p["name"] for p in placed}
@@ -859,7 +869,7 @@ def main():
             eye, look, fov = detection_cam_render_frame(side, eye_raw)
             pose = look_at_pose(np.asarray(eye, float),
                                 np.asarray(look, float), [0, 1, 0])
-            origin = compass_origin(lo, hi, eye)
+            origin = compass_origin(lo, hi, eye, fy)
             # rose on the ref ALWAYS (08-04: a describe prompt promised a
             # rose the ref lacked — the model rightly spent 20 turns not
             # finding it; the stimulus must carry what any prompt claims)
@@ -943,7 +953,7 @@ def main():
         else:
             # strict add: never seen anywhere -- plausibility, camera A only
             mode = "plausible_fallback"
-            ceye, cfov = ctx_cam(ctr, wx, wz, room_c)
+            ceye, cfov = ctx_cam(ctr, wx, wz, room_c, fy)
             cimg = render_frame(shell + others + tgt, ceye, room_c, cfov,
                                 res=CTX_RES)
             cpose = look_at_pose(np.asarray(ceye, float),
@@ -958,7 +968,7 @@ def main():
                 d.rectangle(box, outline=(255, 220, 0), width=4)
                 d.text((box[0], max(0, box[1] - 14)), oid,
                        fill=(255, 220, 0))
-            eyeA, fovA = item_cams(ctr, diag, room_c)["A"]
+            eyeA, fovA = item_cams(ctr, diag, room_c, fy)["A"]
             folder = rdir / f"{oid}_camA"
             folder.mkdir(exist_ok=True)
             render_frame(shell + others + tgt, eyeA, ctr, fovA,
