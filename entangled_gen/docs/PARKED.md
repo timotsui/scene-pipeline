@@ -181,3 +181,29 @@ Delete the item from this file in the same commit that fixes it, and say
 in the REVIEW_LOG that it was un-parked and by whose ruling. An item
 that is fixed but still listed here is worse than one that was never
 listed, because the next reader will trust the list.
+
+## 4. WALL-EMBEDDED OBJECTS - wall things are forced flat (parked 2026-08-12)
+
+**Parked by user instruction 2026-08-12: "stuff on walls are flat, but we
+need to enable embedded-inside-walls objects ... enable very deep objects
+as long as their faces are on the face of the wall. but that is annexed
+for now. just note it."**
+
+### What it is
+Objects mounted on or set into walls (niches, recessed shelves, built-in
+cabinets, deep window reveals, wall-mounted units with real depth) are
+currently represented as thin plates on the wall plane - the wall is a
+hard boundary, so an object's box gets flattened against it rather than
+allowed to extend INTO it.
+
+### The idea, when it is picked up
+Allow arbitrarily deep boxes for wall-attached objects as long as the
+object's FRONT FACE lies on the wall face. The wall plane stops being a
+clamp on depth and becomes the anchor for the visible face; declip and
+the shell treat the behind-the-wall volume as legitimate for these
+objects instead of pushing them out.
+
+### Consequences while parked
+Wall objects (pictures, TVs, ACs, panels) stay flat plates; anything
+genuinely recessed reads as a surface decal. Nothing crashes; depth
+information for such objects is simply not represented.
