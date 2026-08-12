@@ -14,10 +14,23 @@ CONTRACT:
   decides  one number: scale_to_meters, MEASURED via LLM class-size
            priors (vocab_build pattern: judgment call, cached, never a
            curated table) — robust median of observed/typical over
-           confident objects of tight-reliability classes
+           confident objects of tight-reliability classes, PLUS the room
+           itself as one ruler (ceiling height vs the 2.8 m standard-room
+           constant the stitch eye already uses)
   mistake  a wrong scale silently resizes the whole room -> evidence
            table recorded in scene_scale.json; DEGRADES CONSERVATIVELY
            (scale 1.0 + loud warning) if n < MIN_N or spread > MAX_SPREAD
+
+TWO TIERS (user ruling 2026-08-12, after fresh08's furniture camp and
+door camp split 0.3 vs 0.66 and the scene shipped a 1.73 m ceiling
+inside a PASS): when the WHOLE population of rulers cannot agree
+(spread > MAX_SPREAD), the ARCHITECTURE decides — doors and the ceiling
+are the standardized, style-immune rulers in a room, so the fallback
+takes their median alone, gated by the same MAX_SPREAD on their own
+agreement and ARCH_MIN_N of them present. Furniture can be low-profile
+or occlusion-truncated; a door is a door. The arch stats are recorded on
+every run (cross-check even when consensus passes); the tier that
+decided is named in scene_scale.json.
 
 APPLY (skipped with --measure-only): gen_raw.ply (xyz *= k, log-scales
 += ln k), collider_registered.glb (trimesh apply_scale), frame_bootstrap
@@ -42,8 +55,14 @@ from splat_place import read_ply, write_ply
 from vocab_build import call_claude
 
 MIN_N = 5          # confident measurements needed to trust the median
-MAX_SPREAD = 0.15  # relative MAD gate; wider = degrade to 1.0
+MAX_SPREAD = 0.15  # relative MAD gate; wider = the arch tier decides
 MIN_SCORE = 0.30   # manifest score floor for a measurement to count
+
+#: the standard-room constant — the SAME 2.8 m the stitch eye fraction
+#: (EYE_FRAC = 1.6/2.8) is built on. The room votes like any other ruler.
+ROOM_TYPICAL_M = 2.8
+#: architectural rulers needed before the arch tier may decide a scene
+ARCH_MIN_N = 3
 
 PRIOR_PROMPT = """You are sizing object classes for an interior-scene pipeline. For each class below, give the typical real-world size of its MOST STANDARDIZED dimension.
 
@@ -107,6 +126,30 @@ def measure(man, priors):
                      "observed_m": round(obs, 3), "typical_m": t,
                      "ratio": round(obs / t, 3)})
     return rows
+
+
+def room_ruler(boot):
+    """The room itself as one ruler: measured ceiling height against the
+    2.8 m standard room. None when the frame has no ceiling (the
+    no-ceiling fallback frames keep working exactly as before)."""
+    if not boot:
+        return None
+    fy, cy = boot.get("floor_y"), boot.get("ceiling_y")
+    if fy is None or cy is None:
+        return None
+    h = abs(float(cy) - float(fy))
+    if h <= 0:
+        return None
+    return {"id": "room", "label": "room height", "axis": "height",
+            "observed_m": round(h, 3), "typical_m": ROOM_TYPICAL_M,
+            "ratio": round(h / ROOM_TYPICAL_M, 3)}
+
+
+def is_arch(row):
+    """Doors and the room: the standardized, style-immune rulers. Token
+    match so 'closet door' counts and 'doormat' does not."""
+    return (row["id"] == "room"
+            or "door" in row["label"].lower().split())
 
 
 def scale_derived_state(sdir, k):
@@ -180,6 +223,13 @@ def main():
     labels = sorted({o["label"] for o in man["objects"]})
     priors = get_priors(labels, sdir, a.fresh)
     rows = measure(man, priors)
+    rr = room_ruler(boot)
+    if rr:
+        rows.append(rr)
+        print(f"[scale] room ruler: ceiling {rr['observed_m']} raw vs "
+              f"{ROOM_TYPICAL_M} m standard -> ratio {rr['ratio']}")
+    else:
+        print("[scale] no ceiling in the frame — the room cannot vote")
     ratios = np.array([r["ratio"] for r in rows], float)
 
     # TRIMMED CONSENSUS (user go 2026-08-11C, R-S2-120). A "ruler" that
@@ -210,32 +260,65 @@ def main():
     if trimmed_out:
         print(f"[scale] trimmed {len(trimmed_out)} ruler(s) disagreeing "
               f">{TRIM_X}x with the median: {', '.join(trimmed_out)}")
-    ok = len(ratios) >= MIN_N and spread <= MAX_SPREAD
-    if not ok:
-        print(f"[scale] WARNING: evidence too weak (n={len(ratios)}, "
-              f"spread={spread:.2f}) — DEGRADING to scale 1.0, scene "
-              f"left untouched")
-        s_use = 1.0
+    # ---- the two tiers ----
+    # arch stats are computed on EVERY run (a recorded cross-check even
+    # when the consensus passes); they only DECIDE when consensus fails.
+    arch_rows = [r for r in rows if is_arch(r)]
+    ar = np.array([r["ratio"] for r in arch_rows], float)
+    if len(ar):
+        s_arch = float(np.median(ar))
+        spread_arch = float(np.median(np.abs(ar - s_arch)) / s_arch)
     else:
-        s_use = s
+        s_arch, spread_arch = None, None
+    arch_ok = (len(ar) >= ARCH_MIN_N and spread_arch is not None
+               and spread_arch <= MAX_SPREAD)
+
+    consensus_ok = len(ratios) >= MIN_N and spread <= MAX_SPREAD
+    if consensus_ok:
+        tier, s_use, ok = "consensus", s, True
+    elif arch_ok:
+        tier, s_use, ok = "arch_reference", s_arch, True
+        print(f"[scale] consensus failed (n={len(ratios)}, spread "
+              f"{spread:.2f}) -> ARCH REFERENCE decides: doors+ceiling "
+              f"n={len(ar)}, s={s_arch:.3f}, rel-MAD {spread_arch:.3f} "
+              f"({', '.join(r['id'] for r in arch_rows)})")
+    else:
+        tier, s_use, ok = "degraded", 1.0, False
+        print(f"[scale] WARNING: evidence too weak (consensus n="
+              f"{len(ratios)}, spread={spread:.2f}; arch n={len(ar)}, "
+              f"spread={'-' if spread_arch is None else f'{spread_arch:.2f}'}) "
+              f"— DEGRADING to scale 1.0, scene left untouched")
     k = 1.0 / s_use
 
     for r in rows:
         print(f"  {r['id']:8s} {r['label']:14s} {r['axis']:6s} "
               f"obs {r['observed_m']:5.2f}  typ {r['typical_m']:5.2f}  "
               f"ratio {r['ratio']:.2f}")
-    print(f"[scale] scene scale s = {s:.3f} (n={len(ratios)}, rel-MAD "
-          f"{spread:.3f}) -> multiply geometry by k = 1/s = {k:.3f}"
+    print(f"[scale] scene scale s = {s_use if ok else s:.3f} "
+          f"(tier {tier}) -> multiply geometry by k = 1/s = {k:.3f}"
           + ("" if ok else "  [DEGRADED]"))
 
-    record = {"scene": sc, "scale_measured": round(s, 4),
+    record = {"scene": sc, "scale_measured": round(s_use if ok else s, 4),
               "scale_applied": None, "k": round(k, 4),
+              "tier": tier,
+              "consensus": {"s": round(s, 4), "n_used": int(len(ratios)),
+                            "rel_mad": round(spread, 4),
+                            "ok": consensus_ok},
+              "arch": {"s": None if s_arch is None else round(s_arch, 4),
+                       "n": int(len(ar)),
+                       "rel_mad": None if spread_arch is None
+                       else round(spread_arch, 4),
+                       "ok": arch_ok,
+                       "ids": [r["id"] for r in arch_rows]},
               "n": len(rows), "n_used": int(len(ratios)),
               "n_trimmed": n_raw - int(len(ratios)),
               "trimmed_ids": trimmed_out,
               "rel_mad": round(spread, 4),
               "evidence_ok": ok, "rows": rows,
-              "priors_used": {r["label"]: priors[r["label"]]
+              "priors_used": {r["label"]: priors.get(
+                  r["label"], {"axis": "height",
+                               "typical_m": ROOM_TYPICAL_M,
+                               "reliability": "constant (the room)"})
                               for r in rows},
               "note": "two-pass protocol: pass-1 manifests stay at raw "
                       "scale and regenerate on the post-normalization "
@@ -272,14 +355,15 @@ def main():
             from datetime import date as _date
             rec0.setdefault("verifications", []).append(
                 {"date": str(_date.today()),
-                 "s": round(s, 4), "n_used": int(len(ratios)),
+                 "s": round(s_use if ok else s, 4), "tier": tier,
+                 "n_used": int(len(ratios)),
                  "rel_mad": round(spread, 4)})
             main_f.write_text(json.dumps(rec0, indent=1))
             print(f"[scale] scene already normalized "
                   f"(scale_applied={boot['scale_applied']}) — this "
-                  f"re-measure is a VERIFICATION: s={s:.3f} "
-                  f"(1.0 = perfectly metric); appended to "
-                  f"scene_scale.json")
+                  f"re-measure is a VERIFICATION: s="
+                  f"{s_use if ok else s:.3f} (tier {tier}; 1.0 = "
+                  f"perfectly metric); appended to scene_scale.json")
         print(f"[scale] measure-only record -> {outname}")
         return
 
@@ -330,13 +414,13 @@ def main():
     for key in ("extent_p1", "extent_p99"):
         if key in boot:
             boot[key] = [round(v * k, 3) for v in boot[key]]
-    boot["scale_applied"] = round(s, 4)
+    boot["scale_applied"] = round(s_use, 4)
     boot["scale_note"] = ("scene_scale.py normalized this scene to true "
-                          "meters (evidence: scene_scale.json); originals "
-                          "in *_prescale.* files")
+                          "meters (evidence: scene_scale.json, tier "
+                          f"{tier}); originals in *_prescale.* files")
     boot_f.write_text(json.dumps(boot, indent=1))
 
-    record["scale_applied"] = round(s, 4)
+    record["scale_applied"] = round(s_use, 4)
     (sdir / "scene_scale.json").write_text(json.dumps(record, indent=1))
     print(f"[scale] frame block updated: floor {boot['floor_y']} / "
           f"ceiling {boot['ceiling_y']}  -> scene_scale.json written")
