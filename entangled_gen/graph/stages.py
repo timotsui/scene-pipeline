@@ -63,7 +63,7 @@ import paths  # noqa: E402  (after the sys.path preamble above)
 # THE FUNNEL'S PARAMETERS — the flags that used to live only in memory
 # ==========================================================================
 #
-# docs/SESSION_2026-08-25B_HANDOFF.md §5d: "~20 hand-run commands, several
+# docs/handoffs/SESSION_2026-08-25B_HANDOFF.md §5d: "~20 hand-run commands, several
 # with flags that live only in memory". These are those flags. Naming them
 # here does two things: the INTAKE table below builds its command lines
 # from them, and the four modules that HARDCODE the filenames they produce
@@ -98,7 +98,7 @@ LIFT_SUFFIX = "c"
 SEG_DIR = "seg_batched20"
 
 #: seg_batched --box-thr / --topk for the suffix-c run
-#: (docs/PLAN_SELF_PANO_RIG.md:27-28). Module defaults are 0.35 / 30.
+#: (docs/plans/PLAN_SELF_PANO_RIG.md:27-28). Module defaults are 0.35 / 30.
 #: Permissive on purpose: the vote and the judges are what say no.
 DET_BOX_THR = 0.20
 DET_TOPK = 40
@@ -664,7 +664,7 @@ CHAIN = (
     # and EVERY layer from `voted` on carried zero IN_WALL edges — 18
     # missing on living, 24 on bedroom. See edge_carry.py:176.)
     # ---- PHASE B2, THE LOOP-BACK ------------------------------------
-    # USER ARCHITECTURE RULING 08-07 (docs/PLAN_VOTEBOX_DOWNSTREAM.md
+    # USER ARCHITECTURE RULING 08-07 (docs/plans/PLAN_VOTEBOX_DOWNSTREAM.md
     # "PHASE B2"): "after slice vote the scene goes all the way back up
     # to geometric edges and down the judges again — just with two more
     # judges at the end."
@@ -929,7 +929,7 @@ COMPOSE = (
     # BEFORE fit_declip. That is backwards, and three independent sources
     # say so:
     #
-    #   docs/PLAN_FIT_LOOP.md:101 (CANON 08-04 night, rule 8)
+    #   docs/plans/PLAN_FIT_LOOP.md:101 (CANON 08-04 night, rule 8)
     #       "Stage order: fit_preview → fit_declip → fit_check."
     #   compose/fit_declip.py:42-45, the module's own docstring
     #       "the final state is verified by a normal fit_check pass
@@ -1026,7 +1026,7 @@ COMPOSE = (
         artifacts=("compose/fit_feedback.json",),
         inputs=("compose/shopping.json",),
         note="⚠ THIS STAGE PRODUCES ITS FILE AND, TODAY, NOTHING ACTS ON "
-             "IT. Canon rule 12 (docs/PLAN_FIT_LOOP.md:135-144): items "
+             "IT. Canon rule 12 (docs/plans/PLAN_FIT_LOOP.md:135-144): items "
              "whose BEST candidate scores above DRY 0.65 write "
              "rejections shopping.py consumes — swaps revert to their "
              "out-items, adds drop. But shopping.py reads that file "
@@ -1092,7 +1092,7 @@ COMPOSE_KEYS = tuple(s.key for s in COMPOSE)
 
 #: THE FIT BLOCK IS A LOOP, AND IT REPEATS UNTIL IT GOES DRY.
 #:
-#: docs/PLAN_FIT_LOOP.md:118-123 (CANON 08-04 late night, the user
+#: docs/plans/PLAN_FIT_LOOP.md:118-123 (CANON 08-04 late night, the user
 #: verbatim: "oh shit. this is good. save to canon"):
 #:     "Loop = place → jiggle → check → WALK → repeat until dry; ran to
 #:      dry on bedroom_marble tonight (2 passes)"

@@ -1,6 +1,6 @@
 """
 SHOPPING (compose lane, after propose_edits; replaces the dissolved
-screening stage -- see docs/PLAN_SHOPPING.md for the rulings).
+screening stage -- see docs/plans/PLAN_SHOPPING.md for the rulings).
 
 Produces ORDERED ASSET CANDIDATES from the objathor library for each
 ANCHOR-tier object box in the scene state (real detections + accepted

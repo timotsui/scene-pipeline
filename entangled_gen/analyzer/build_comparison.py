@@ -34,7 +34,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent))
 import paths  # noqa: E402
 
-# Source: docs/PLAN_GAUSSIAN_CUT_AND_SPLAT_ANALYZER.md progress log rows 2/5
+# Source: docs/plans/PLAN_GAUSSIAN_CUT_AND_SPLAT_ANALYZER.md progress log rows 2/5
 # + analyzer/ENV.md deviations section.
 DOC_FACTS = {
     "runtime_s": 64,

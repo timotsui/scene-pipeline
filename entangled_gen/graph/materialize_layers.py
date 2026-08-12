@@ -1,7 +1,7 @@
 """Phase C -- MATERIALIZE the vote: ONE proposed node set from the
 resolved layer plus EVERY verdict the vote loop produced.
 
-Contract (docs/PLAN_VOTEBOX_DOWNSTREAM.md, Phase C):
+Contract (docs/plans/PLAN_VOTEBOX_DOWNSTREAM.md, Phase C):
   GETS   graph["resolved"] (identity canon) + the vote's SHIPPING boxes
          (scene_manifest_slicevote_preview.json) + the four verdict
          sidecars (J8 graph/multiplicity.json, J8s graph/split_cuts.json,

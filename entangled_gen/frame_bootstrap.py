@@ -6,7 +6,7 @@ Deterministic, no per-scene anything. Run once per scene:
 (out/<scene>/bundle_path.txt must point at the downloaded bundle folder.)
 
 THE FRAME CONTRACT (settled 2026-08-06 with the user; evidence trail in
-docs/PLAN_SCENE2_LIVING.md):
+docs/plans/PLAN_SCENE2_LIVING.md):
   - The Marble bundle is TRUSTED: every harvested world ships one uniform
     y-down encode (318-world header sweep): floor at +y, physical up = -y.
     This equals the convention the pipeline was tuned on (old bedroom), so

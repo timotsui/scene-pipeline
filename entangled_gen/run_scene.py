@@ -86,7 +86,7 @@ COMMON INVOCATIONS
 
 THE ONE LOOP. Compose is not a straight line. Its fit block —
 fit_preview -> fit_declip -> fit_check -> fit_walk — REPEATS UNTIL IT
-GOES DRY (canon 08-04, docs/PLAN_FIT_LOOP.md:118-123; a real
+GOES DRY (canon 08-04, docs/plans/PLAN_FIT_LOOP.md:118-123; a real
 living_marble run needed four rounds, docs/REVIEW_LOG.md:779). "Dry"
 is not a guess: fit_walk writes `changed_this_run`, the number of new
 candidate swaps it made this pass, and 0 means the scene stopped
@@ -698,7 +698,7 @@ def run_compose(sc, selected, log, failures, stop_on_fail, max_rounds):
     the closing pass.
 
     THE FIT BLOCK IS NOT A LIST OF FOUR STAGES, IT IS A LOOP — canon
-    08-04 (docs/PLAN_FIT_LOOP.md:118-123, the user verbatim: "Loop =
+    08-04 (docs/plans/PLAN_FIT_LOOP.md:118-123, the user verbatim: "Loop =
     place -> jiggle -> check -> WALK -> repeat until dry; ran to dry on
     bedroom_marble tonight (2 passes)"), and docs/REVIEW_LOG.md:779
     records a living_marble run that needed FOUR rounds. Running it once
