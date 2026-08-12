@@ -329,16 +329,22 @@ def run_g3(sc, cams, jd, tj, seg, dets_all, xyz):
 
 
 def print_gap_stats(tag, objects, floor_y):
+    # Either array may legitimately be empty — a sparse scene can lift no
+    # objects at all, or none whose label is floor-ish (fresh05 lifted 5,
+    # all wall-mounted). Same guard as the G3 stats above; this is a
+    # report, and a report must never be what kills the funnel.
     FL = ("bed", "wardrobe", "desk", "chair", "rug", "mat", "shelf", "table",
           "stool", "pot", "basket", "lamp")
     gaps = np.array([floor_y - o["aabb_max"][1] for o in objects])
     flg = np.array([floor_y - o["aabb_max"][1] for o in objects
                     if any(k in o["label"] for k in FL)])
     n_weak = sum(1 for o in objects if o["flags"])
+    all_s = (f"median {np.median(gaps):+.3f} min {gaps.min():+.3f}"
+             if len(gaps) else "(none)")
+    fl_s = (f"median {np.median(flg):+.3f} q75 {np.percentile(flg, 75):+.3f}"
+            if len(flg) else "(none)")
     print(f"[{tag}] {len(objects)} objects, {n_weak} weak-bound; floor gap "
-          f"all: median {np.median(gaps):+.3f} min {gaps.min():+.3f}; "
-          f"floor-ish n={len(flg)}: median {np.median(flg):+.3f} "
-          f"q75 {np.percentile(flg, 75):+.3f}", flush=True)
+          f"all: {all_s}; floor-ish n={len(flg)}: {fl_s}", flush=True)
 
 
 def run_remerge(sc, q):

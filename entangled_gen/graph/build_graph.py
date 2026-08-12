@@ -121,6 +121,20 @@ def load_inputs(scene, a):
     if missing:
         raise SystemExit(f"[record] MISSING inputs: {missing}")
     man = json.loads(p["manifest"].read_text())
+    if not man.get("objects"):
+        # An empty funnel is a fact about the WORLD, not a graph to build.
+        # Downstream has no meaningful work on zero nodes (and an empty
+        # `judged` layer trips the gate's presence test — seen on fresh05,
+        # 2026-08-12, R-S2-131). Refuse with the receipt instead: exit 2
+        # is the established REFUSED verdict and the fleet table names it.
+        n_filt = len(man.get("filtered_out") or [])
+        n_ref = len(man.get("refuted") or [])
+        print(f"[record] REFUSING to build a graph: the manifest has ZERO "
+              f"objects ({n_filt} filtered out below the score bar, "
+              f"{n_ref} refuted by recenter). This world's funnel came up "
+              f"empty — a scene with nothing measured has nothing to "
+              f"graph, judge, or compose. The graph is untouched.")
+        raise SystemExit(2)
     pool = json.loads(p["pool"].read_text())["pool"]
     prompt_text = None
     if p["bundle_path"].exists():

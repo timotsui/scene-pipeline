@@ -64,12 +64,29 @@ def get_priors(labels, sdir, fresh):
         if c.get("key") == key:
             print(f"[scale] priors: cache hit ({len(c['priors'])} classes)")
             return c["priors"]
-    raw = call_claude(PRIOR_PROMPT.format(labels=", ".join(sorted(labels))),
-                      sdir)
-    start, end = raw.find("{"), raw.rfind("}")
-    priors = json.loads(raw[start:end + 1])
-    cache.write_text(json.dumps({"key": key, "priors": priors}, indent=1))
-    return priors
+    # A reply with no parseable JSON (empty stdout, refusal, transient
+    # backend hiccup) must not kill the stage: one retry, then EMPTY
+    # priors — which is zero measurements, which is the module's own
+    # MIN_N degrade-to-1.0 path. Only a parsed reply is cached, so a
+    # degraded run re-asks next time instead of remembering the failure.
+    prompt = PRIOR_PROMPT.format(labels=", ".join(sorted(labels)))
+    for attempt in (1, 2):
+        raw = call_claude(prompt, sdir)
+        start, end = raw.find("{"), raw.rfind("}")
+        if start != -1 and end > start:
+            try:
+                priors = json.loads(raw[start:end + 1])
+                cache.write_text(json.dumps({"key": key, "priors": priors},
+                                            indent=1))
+                return priors
+            except ValueError:
+                pass
+        print(f"[scale] WARNING: priors reply attempt {attempt} had no "
+              f"parseable JSON (head: {raw[:120]!r}) — "
+              + ("retrying once" if attempt == 1 else
+                 "NO PRIORS; the MIN_N gate will degrade this scene to "
+                 "scale 1.0"), flush=True)
+    return {}
 
 
 def measure(man, priors):

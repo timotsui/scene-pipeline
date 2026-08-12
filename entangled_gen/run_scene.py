@@ -991,6 +991,65 @@ def main():
     do_graph = a.phase in ("graph", "all")
     do_compose = a.phase in ("compose", "all")
 
+    # --from / --until MUST NAME A REAL STAGE, checked here and not at
+    # selection time: _range_for() below silently returns None for a key
+    # that is not in a given table, so before this check a typo'd --from
+    # selected EVERY table in full and the run looked like a resume.
+    for _label, _key in (("--from", a.from_key), ("--until", a.until_key)):
+        if _key:
+            stages.get(_key)            # raises with the full stage listing
+
+    # ⚠ THE §4 TRAP, FIXED 2026-08-12 (R-S2-132). `--from X` under
+    # `--phase all` used to scope only the table OWNING X, and every
+    # other phase — INCLUDING EARLIER ONES — re-ran in full: a resume
+    # from build_graph re-ran the entire intake first (money and GPU
+    # spent to arrive where the scene already was), and last night a
+    # resume from fit_preview re-ran the whole funnel. The clearer
+    # semantic, from both real uses: the named range is a POSITION IN
+    # THE WHOLE CHAIN. Phases before the range are prerequisites and are
+    # SKIPPED; phases after --until do not run; phases inside run in
+    # full. `--phase <name>` still scopes to that one table exactly as
+    # before — that path is untouched.
+    if a.phase == "all" and (a.from_key or a.until_key):
+        _tables = (("core", stages.INTAKE_KEYS),
+                   ("record", stages.RECORD_KEYS),
+                   ("graph", stages.KEYS),
+                   ("compose", stages.COMPOSE_KEYS))
+
+        def _owner_i(key):
+            return next(i for i, (_p, keys) in enumerate(_tables)
+                        if key in keys)
+
+        _lo = _owner_i(a.from_key) if a.from_key else 0
+        _hi = _owner_i(a.until_key) if a.until_key else len(_tables) - 1
+        if _lo > _hi:
+            raise SystemExit(f"--from {a.from_key} lives in a later phase "
+                             f"than --until {a.until_key}")
+        _dropped = [p for i, (p, _k) in enumerate(_tables)
+                    if not _lo <= i <= _hi]
+        do_core &= "core" not in _dropped
+        do_record &= "record" not in _dropped
+        do_graph &= "graph" not in _dropped
+        do_compose &= "compose" not in _dropped
+        if _dropped:
+            print(f"[run_scene] --from/--until scope the WHOLE chain under "
+                  f"--phase all: skipping {', '.join(_dropped)} (outside "
+                  f"the named range; each used to re-run IN FULL)")
+    elif a.phase != "all":
+        # An explicit phase with a --from/--until belonging to a DIFFERENT
+        # table used to run the named phase silently in full. Refuse: the
+        # caller asked for two contradictory things.
+        _keys_by_phase = {"core": stages.INTAKE_KEYS,
+                          "record": stages.RECORD_KEYS,
+                          "graph": stages.KEYS,
+                          "compose": stages.COMPOSE_KEYS}[a.phase]
+        for _label, _key in (("--from", a.from_key), ("--until", a.until_key)):
+            if _key and _key not in _keys_by_phase:
+                raise SystemExit(
+                    f"{_label} {_key} is not a stage of --phase {a.phase}. "
+                    f"Either name a stage in that phase or use --phase all "
+                    f"(the range now scopes the whole chain).")
+
     # --no-llm is a skip like any other, but it is worth naming separately
     # so the summary can say which judgements this scene never got.
     # THE FUNNEL SPENDS MODEL CALLS TOO (vocab, bearings, scale), which it
