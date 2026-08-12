@@ -1241,6 +1241,131 @@ def draw_plan(objs, room_bbox, poly, px_per_m, title, color):
     return _jpeg_uri(img), None
 
 
+def render_composed_topdown(scene, room, ppm):
+    """A top-down orthographic render of our COMPOSED scene — the placed
+    retrieved meshes of compose/fitted_preview.glb — with the measured
+    room outline on top. (data_uri, why_not, meta).
+
+    WHY THIS VIEW: it is the literature's evaluation product. Holodeck's
+    human study showed annotators paired top-down view images; GLTS
+    computed its CLIP score and ranked its user study on Blender
+    top-down renders. So the product view this page shows is the one
+    those papers scored (checked against both papers, 2026-08-12).
+
+    DELIBERATELY SOFTWARE-RENDERED: painter's algorithm over the
+    triangles, sorted by height, flat-shaded, no GPU touched — this
+    machine hard-powers-off under GPU bursts, and a report tool must
+    never be the thing that triggers that. 30k triangles take ~a second.
+    Painter-by-height is exact enough for an orthographic top-down; the
+    known failure (interleaved vertical overlaps) cannot change what
+    this figure is for."""
+    if not HAVE_PIL:
+        return None, "Pillow is not installed", None
+    glb = paths.scene_dir(scene) / "compose" / "fitted_preview.glb"
+    meta_p = paths.scene_dir(scene) / "compose" / "fitted_preview.json"
+    if not glb.exists():
+        return None, ("compose has not produced fitted_preview.glb for "
+                      "this scene, so there is no composed product to "
+                      "render"), None
+    try:
+        import numpy as np
+        import trimesh
+    except ImportError as exc:
+        return None, f"renderer needs numpy+trimesh: {exc}", None
+    meta = {}
+    if meta_p.exists():
+        d = json.loads(meta_p.read_text(encoding="utf-8"))
+        meta = {"placed": len(d.get("placed") or []),
+                "failed": len(d.get("failed") or []),
+                "not_placed": len(d.get("not_placed") or []),
+                "note": d.get("note")}
+    try:
+        sc = trimesh.load(str(glb))
+        meshes = sc.dump() if hasattr(sc, "dump") else [sc]
+    except (ValueError, OSError) as exc:
+        return None, f"unreadable glb: {exc}", None
+
+    # the glb is RAW-frame (its own sidecar says so); the same elementwise
+    # sign flip the boxes go through takes it upright, then (x, z, up)
+    # puts it in the plan axes the drawn plans use — one orientation for
+    # every figure on the page.
+    r2r = np.array(ours_frame(scene), dtype=float)
+    tris, cols = [], []
+    for m in meshes:
+        faces = np.asarray(m.faces)
+        # real colors, best first: the texture sampled at the UVs, then
+        # the material's base color, then a neutral gray
+        fc = None
+        try:
+            vc = np.asarray(m.visual.to_color().vertex_colors,
+                            dtype=float)[:, :3]
+            fc = vc[faces].mean(axis=1)
+        except (AttributeError, TypeError, ValueError, IndexError):
+            pass
+        if fc is None or not len(fc):
+            try:
+                base = np.array(m.visual.material.main_color[:3],
+                                dtype=float)
+            except (AttributeError, TypeError):
+                base = np.array([175.0, 175.0, 175.0])
+            fc = np.repeat(base[None, :], len(faces), 0)
+        v = np.asarray(m.vertices, dtype=float) * r2r
+        v = v[:, [0, 2, 1]]                       # -> (plan x, plan y, up)
+        tris.append(v[faces])                     # (n, 3, 3)
+        cols.append(fc)
+    if not tris:
+        return None, "the glb holds no triangles", meta
+    T = np.concatenate(tris)
+    C = np.concatenate(cols)
+
+    bb = room["footprint_bbox_m"] if room.get("available") else None
+    xs = [T[:, :, 0].min(), T[:, :, 0].max()] + ([bb[0], bb[2]] if bb else [])
+    ys = [T[:, :, 1].min(), T[:, :, 1].max()] + ([bb[1], bb[3]] if bb else [])
+    mg = 0.3
+    x0, x1 = min(xs) - mg, max(xs) + mg
+    y0, y1 = min(ys) - mg, max(ys) + mg
+    ss = 2                                        # supersample, then halve
+    W = max(160, int((x1 - x0) * ppm)) * ss
+    H = max(160, int((y1 - y0) * ppm)) * ss
+    img = Image.new("RGB", (W, H), "white")
+    dr = ImageDraw.Draw(img)
+
+    # flat shade: light from high above, a touch from the south-east
+    n = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
+    ln = np.linalg.norm(n, axis=1, keepdims=True)
+    ln[ln == 0] = 1.0
+    n = n / ln
+    L = np.array([0.25, -0.2, 0.94])
+    L = L / np.linalg.norm(L)
+    shade = 0.5 + 0.5 * np.abs(n @ L)
+    rgb = np.clip(C * shade[:, None], 0, 255).astype(int)
+
+    order = np.argsort(T[:, :, 2].mean(axis=1))   # low first, tops last
+    sx = ss * ppm
+    px = (T[:, :, 0] - x0) * sx
+    py = (y1 - T[:, :, 1]) * sx
+    for i in order:
+        dr.polygon([(px[i, 0], py[i, 0]), (px[i, 1], py[i, 1]),
+                    (px[i, 2], py[i, 2])], fill=tuple(rgb[i]))
+
+    if room.get("available"):
+        poly = room.get("polygon_vertices_upright")
+        if poly:
+            pts = [((v[0] - x0) * sx, (y1 - v[1]) * sx) for v in poly]
+            dr.line(pts + [pts[0]], fill="#111", width=3 * ss)
+        else:
+            dr.rectangle([(bb[0] - x0) * sx, (y1 - bb[3]) * sx,
+                          (bb[2] - x0) * sx, (y1 - bb[1]) * sx],
+                         outline="#111", width=3 * ss)
+    img = img.resize((W // ss, H // ss), Image.LANCZOS)
+    dr = ImageDraw.Draw(img)
+    f = _font(11)
+    bx, by = 12, img.height - 10
+    dr.line([(bx, by), (bx + ppm, by)], fill="#111", width=3)
+    dr.text((bx, by - 16), "1 m", fill="#111", font=f)
+    return _jpeg_uri(img), None, meta
+
+
 def build_screens(scene, ours, glts):
     """The figure list for one scene. Every figure carries its source
     path (JSON keeps that) and, when the image could be produced, a data
@@ -1289,6 +1414,29 @@ def build_screens(scene, ours, glts):
         figs.append({"key": "ours_plan", "title": "our layout, drawn top-down",
                      "caption": "", "source": None, "data_uri": None,
                      "why": ours.get("why") or room.get("why", "ours not available")})
+
+    # the literature's product view: a top-down render of the composed
+    # scene (Holodeck's human study and GLTS's CLIP score + user study
+    # were both computed on top-down views of the assembled scene).
+    glb = paths.scene_dir(scene) / "compose" / "fitted_preview.glb"
+    uri, why, rmeta = render_composed_topdown(scene, room, ppm)
+    cap = ("The placed retrieved meshes of compose's fitted_preview, "
+           "rendered top-down at the same scale, the measured room "
+           "outline on top. This is the product view the literature "
+           "evaluates on — Holodeck's human study and GLTS's CLIP score "
+           "and user study all ran on top-down views of the assembled "
+           "scene. GLTS's runs here stopped at layout (steps 0-13), so "
+           "its equivalent render does not exist; its own plots below "
+           "are its product of record.")
+    if rmeta:
+        cap += (f" Placed {rmeta['placed']}; "
+                f"{rmeta['not_placed']} not placed (with receipts); "
+                f"{rmeta['failed']} failed.")
+    figs.append({"key": "ours_composed",
+                 "title": "our composed scene, top-down render",
+                 "caption": cap if uri else "",
+                 "source": str(glb), "data_uri": uri, "why": why,
+                 "meta": rmeta})
 
     if glts.get("available") and gdim:
         d = [float(v) for v in gdim]
