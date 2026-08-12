@@ -990,6 +990,25 @@ def fold_polygon_into_shell(sd, rep):
         print("[shell-poly] no room_shell.json — polygon block NOT "
               "folded (run the default v1 mode first)", flush=True)
         return
+    # ACCEPTANCE (2026-08-12, R-S2-133): a trace that "succeeds"
+    # numerically can still be geometric nonsense — fresh06 produced 3
+    # segments, two of them 70 m, ONE cardinal wall per axis, and folded
+    # it silently; the first reader that counts planes (arch_walls,
+    # >= 2 per axis) crashed 26 stages later in compose. A closed
+    # box-ish room always yields >= 2 axis-bearing walls per axis, so a
+    # polygon that cannot is a FAILED FIT: raising here routes it into
+    # main()'s existing degrade path (v1 4-plane shell + polygon_error
+    # recorded). Structural test only — no length threshold invented.
+    n_x = sum(1 for s in rep["clean_polygon"]["segments"]
+              if s.get("axis") == "x")
+    n_z = sum(1 for s in rep["clean_polygon"]["segments"]
+              if s.get("axis") == "z")
+    if n_x < 2 or n_z < 2:
+        raise ValueError(
+            f"clean polygon carries {n_x} x-wall / {n_z} z-wall "
+            f"segments — a closed room needs >= 2 per axis; refusing "
+            f"to fold a degenerate fit (arch_walls.wall_axis_planes "
+            f"enforces the same bound downstream)")
     from matplotlib.path import Path as MplPath
     r2r = rep["frame"]["raw_to_render"]
     verts_up = rep["clean_polygon"]["vertices_upright"]
