@@ -1,4 +1,41 @@
-"""Support-clip surgery (compose stage, PROTOTYPE 2026-08-06).
+"""RETIRED 2026-08-11. NOT IN ANY CHAIN. Do not wire it into one.
+
+USER RULING: "if we already have a similar mechanism — I remember we are
+doing fitting sub object on host via a loop or something — so it's safe
+to retire if most of the docs say it's retired."
+
+WHY, in one line: it REWRITES A LAYER'S GEOMETRY IN PLACE, and that is
+the pattern this project spent August removing. Every other stage now
+hands on a whole new layer named for what it did (record -> judged ->
+resolved -> voted -> settled -> shown -> grouped), which is what makes
+`scene_state` able to say what the current state of a scene is at all.
+A module that edits `graph['resolved']` underneath everyone breaks that
+guarantee silently.
+
+THE RECORD WAS GENUINELY SPLIT, which is why this sat unresolved for
+months rather than being deleted:
+  FOR    docs/REVIEW_LOG.md:834 (R-S2-22) puts it in the order —
+         "Support semantics must run AFTER geometry repair: parallax
+         carve -> S1 -> support_clip -> compose sizes"
+  AGAINST five consecutive session handoffs carry it as a RETIREMENT
+         CANDIDATE, and REVIEW_LOG.md:1129 says exactly why:
+         "support_clip rewrites graph['resolved'] geometry in place,
+         which is the pattern this week removed"
+
+WHAT COVERS THE NEED NOW. The problem it was built for is real — the
+lift cannot bound an object along the viewing ray when the background
+touches it depth-continuously. What answers that today is the compose
+fit loop (place -> jiggle -> check -> walk, canon 08-04) working against
+the SNAPPED boxes, plus `compose/snap.py` seating each object on what
+holds it up. Those act on placement rather than editing a measured
+layer, which is the right shape.
+
+IF THE NEED COMES BACK, rebuild it as a proper layer edit: read one
+layer, write the next, stamp it. Do not un-retire this file.
+
+--- what it does, kept for reference ---
+
+Support-clip surgery (compose stage, PROTOTYPE 2026-08-06).
 
 The lift cannot bound an object's extent along the viewing ray when the
 background touches it depth-continuously (splat porosity leaks tabletop/

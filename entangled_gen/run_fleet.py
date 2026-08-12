@@ -726,6 +726,26 @@ def build_parser():
 def main():
     a = build_parser().parse_args()
 
+    # VALIDATE THE STAGE FLAGS AT LAUNCH, NOT AT 3 A.M. These are passed
+    # through to run_scene, which validates them — but per scene, at run
+    # time. A fleet started overnight with a typo'd --from would fail
+    # every scene identically and burn the night; and --dry-run never
+    # reaches run_scene at all, so the typo sailed through the rehearsal
+    # too (caught 2026-08-11B by trying exactly that).
+    for label, key in (("--from", a.from_key), ("--until", a.until_key)):
+        if key and key not in stages.BY_KEY:
+            raise SystemExit(
+                f"run_fleet: {label} {key!r} is not a stage.\n"
+                f"  intake : {', '.join(stages.INTAKE_KEYS)}\n"
+                f"  record : {', '.join(stages.RECORD_KEYS)}\n"
+                f"  graph  : {', '.join(stages.KEYS)}\n"
+                f"  compose: {', '.join(stages.COMPOSE_KEYS)}")
+    bad = [t.strip() for t in (a.skip or "").split(",")
+           if t.strip() and t.strip() not in stages.BY_KEY]
+    if bad:
+        raise SystemExit(f"run_fleet: --skip has unknown stage(s): "
+                         f"{', '.join(bad)}")
+
     scenes, dropped, source = build_scene_list(a)
     runid = _runid()
     json_path = paths.OUT / f"fleet_{runid}.json"

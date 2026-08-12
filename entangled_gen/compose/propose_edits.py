@@ -46,7 +46,11 @@ bedroom_marble), which scene-scales the replies' size_m and enables
 the SWAP channel: re-interpret N listed items as M new ones (one big
 blob <-> several fragments) in roughly the same space. Adds are
 PRIORS, never observations -- nothing enters the scene state before
-screening rules on it. Fully automatic: no cache, no human picks.
+screening rules on it. Fully automatic: no human picks. (Calls ARE
+cached per scene since 2026-08-11B — see call_claude — so a re-run of
+an unchanged room replays instead of re-asking; "no cache" here used
+to mean no HUMAN cache of picks, and the old wording read as a design
+choice about model calls, which it was not.)
 
 STEP 3, SIZE + BOX (v4/v5, RELATION ROUTER 08-02): S3 hands
 screening a COMPLETE graph delta. Sizes normally ride in from the
@@ -311,6 +315,41 @@ def claude_env():
 
 
 def call_claude(prompt, cwd, model):
+    """One model call — CACHED per scene, keyed on the full prompt.
+
+    THIS STAGE WAS THE ONLY COMPOSE JUDGE WITHOUT A CACHE (its docstring
+    used to say "no cache" as if that were a feature), and it is the
+    single most expensive stage in the whole pipeline: 469 s of the
+    1377 s compose phase on the first fresh scene, over ~5 calls.
+    consistency and supported_by cache next door; this matched them on
+    2026-08-11B (user: "I agree").
+
+    WHAT THE CACHE BUYS, honestly: re-runs and crash-resumes, not first
+    runs. A fresh scene still pays full price, because every prompt is
+    new. On an unattended fleet the resume case is the one that matters —
+    a scene that failed at fit and re-runs compose should not re-pay
+    8 minutes of proposals for an unchanged room.
+
+    WHY KEYING ON THE WHOLE PROMPT IS SOUND *HERE*: the loop folds each
+    round's proposals into the next round's inventory, so round N's
+    prompt embeds rounds 1..N-1 verbatim. Identical prompt therefore
+    means identical inventory, identical history, and PROMPT_VERSION is
+    salted in. Anything that changed the room changes the prompt and
+    misses the cache. The trade is the same one the vocab cache makes:
+    a cached reply is FROZEN — the model never re-rolls — which is also
+    what makes a re-run reproducible."""
+    key = hashlib.md5((PROMPT_VERSION + "|" + model + "|"
+                       + prompt).encode("utf-8")).hexdigest()
+    cache_path = Path(cwd) / "propose_edits_call_cache.json"
+    cache = {}
+    if cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            cache = {}                 # unreadable cache is a cold cache
+    if key in cache:
+        return cache[key]
+
     exe = shutil.which("claude")
     if not exe:
         raise SystemExit("[propose_edits] claude.exe not on PATH")
@@ -327,6 +366,16 @@ def call_claude(prompt, cwd, model):
     for bad in ("invalid_api_key", "authentication_error", "credit balance"):
         if bad in low:
             raise RuntimeError(f"claude API-billing/auth error: {out[:400]}")
+
+    # ONLY a successful reply is stored: the two raises above mean a
+    # failure is never frozen, and the firm-retry loop at every call site
+    # sends a DIFFERENT prompt, so a malformed answer is retried under a
+    # different key rather than served back.
+    cache[key] = out
+    try:
+        paths.write_atomic(cache_path, json.dumps(cache, indent=1))
+    except OSError:
+        pass                           # a missed cache costs time, not truth
     return out
 
 

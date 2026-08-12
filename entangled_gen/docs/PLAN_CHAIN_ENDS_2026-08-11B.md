@@ -320,6 +320,22 @@ which the design forbids because it would sweep the vote stale.
 **The lesson for the next session, in one line: a passing run on a clone
 is not evidence, and this is the list of what it hides.**
 
+## THE RULINGS OF 2026-08-11B (late) — every open issue settled or parked
+
+| issue | ruling | state |
+|---|---|---|
+| global vocab dictionary | **approved** | live |
+| `grouped` inherits `shown` | **fix — "a core function"** | fixed, 28/28 on fresh02 |
+| `prep_scene` | **make it a stage** | `prep_viewer`, last in COMPOSE |
+| `support_clip` | **retire** | banner on the file, tuple note updated |
+| `propose_edits` cache | **agree** | per-scene call cache, same shape as its neighbours |
+| `fit_feedback` re-shop | **do not build** — asset library quality is out of scope; the pipeline only needs to prove rich + functional | PARKED.md §5 |
+| paper metric | decide **after a batch works** | deferred |
+| slanted walls / pitched roofs | defer | PARKED.md §3, with the fresh02 measurement |
+| sub rounds (PH2r) | defer until a batch runs clean | PARKED.md §4 |
+| ctop, J9 | stay parked; J9 "fine as long as it kind of works" | unchanged |
+| **world selection** | **THE ONE REMAINING JUDGEMENT** — the user reviews `CORPUS_REVIEW.html` (29 runnable · 284 no collider · 52+65 skipped/unsure) | waiting on user |
+
 ## STILL OPEN — for the user, none blocking
 
 - **Should a review-artifact crash fail its stage?** (R-S2-103) Defect 6

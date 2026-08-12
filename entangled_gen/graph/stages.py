@@ -823,28 +823,28 @@ CHAIN = (
 #:     rotation_check  CANON v2 08-04 (4-candidate choice) + the 08-05
 #:                     wall-legality menu
 #:
-#: TWO THINGS ARE DELIBERATELY NOT IN THIS TUPLE. Both are omissions on
-#: purpose, not oversights, and both wait on a USER RULING:
+#: TWO THINGS ARE NOT IN THIS TUPLE, AND BOTH ARE NOW SETTLED (08-11):
 #:
-#:   * `support_clip` (compose/support_clip.py). The record is genuinely
-#:     SPLIT. FOR: docs/REVIEW_LOG.md:834 (R-S2-22) puts it in the order
-#:     — "Support semantics must run AFTER geometry repair: parallax
-#:     carve -> S1 -> support_clip -> compose sizes". AGAINST: five
-#:     consecutive session handoffs carry it as a RETIREMENT CANDIDATE,
-#:     because it rewrites layer geometry in place — REVIEW_LOG.md:1129,
-#:     "support_clip rewrites graph['resolved'] geometry in place, which
-#:     is the pattern this week removed; it is a retirement candidate".
-#:     Wiring it would settle that question by default, so it is left out
-#:     until the user settles it on purpose.
+#:   * `support_clip` — RETIRED by user ruling. "If we already have a
+#:     similar mechanism... it's safe to retire if most of the docs say
+#:     it's retired." It rewrote layer geometry IN PLACE, the pattern
+#:     August removed everywhere else, and what it was built for is
+#:     covered by the fit loop working against snapped boxes. The record
+#:     was genuinely split (R-S2-22 put it in the order; five handoffs
+#:     called it a retirement candidate), which is why it sat unresolved
+#:     for months. The file stays on disk with the reasoning at the top
+#:     of its docstring. DO NOT UN-RETIRE IT — if the need returns,
+#:     rebuild it as a proper layer edit that stamps a new layer.
 #:
-#:   * SUB ROUNDS (PH2r, the support recursion). User-passed on the
-#:     measurements, and pipeline_map.html draws it with the only loop
-#:     arrow in step 3 — but the code lives in experiments/
-#:     (sub_round_cp1..7.py, driven by experiments/sub_round_all.py) and
-#:     the map badges it "SR0–12b · EXP" with "not in fitted_preview
-#:     yet". Promoting an experiments/ script into the chain is a
-#:     decision about what counts as production code, which is the
-#:     user's, so it stays unwired.
+#:   * SUB ROUNDS (PH2r, the support recursion) — DEFERRED by user
+#:     ruling, not rejected. User-passed on the measurements, and
+#:     pipeline_map.html draws it with the only loop arrow in step 3, but
+#:     the code lives in experiments/ (sub_round_cp1..7.py, driven by
+#:     experiments/sub_round_all.py) and the map badges it "not in
+#:     fitted_preview yet". The base pipeline has run end to end on ONE
+#:     scene; promoting experimental code before that is proven across a
+#:     batch adds risk to the thing being validated. Revisit after a
+#:     clean multi-scene run.
 COMPOSE = (
     Stage(
         "supported_by", "decide what holds each object up",

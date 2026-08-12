@@ -117,6 +117,51 @@ fallback; nothing refuses on it.
 
 ---
 
+## 3. SLANTED WALLS AND PITCHED ROOFS — the shell only knows vertical planes
+
+**Parked 2026-08-11B by user ruling:** *"not something I would like to
+get into unless it's easy to adjust our room boundary to support slanted
+walls. but I don't think it's worth rn."* It is not easy — it needs a new
+shell primitive, not a parameter.
+
+### What it is
+
+`room_shell.py` fits vertical wall planes and one flat floor + one flat
+ceiling. A room whose ceiling slopes (an attic, a loft, anything under a
+pitched roof) has no representation: the fit puts the "ceiling" plane
+somewhere in the middle of the slope.
+
+### What it costs, measured
+
+`fresh02` (a rustic attic, the first fresh scene) came out **1.64 m tall
+everywhere**. That propagated: `scene_scale` saw three ceiling
+observations at 0.33/0.41/0.47 of the 2.8 m prior, the evidence spread
+blew past MAX_SPREAD, and the stage correctly degraded to scale 1.0 —
+the scene shipped unnormalised. Machinery fine, geometry wrong.
+
+### What to do meanwhile
+
+Pick BOX-SHAPED rooms for test scenes and batches. The corpus page
+(`marble-harvest/catalog/CORPUS_REVIEW.html`) shows every runnable
+world's prompt; avoid attics, lofts, A-frames, vaulted ceilings.
+
+## 4. SUB ROUNDS (PH2r) — deferred until a batch runs clean
+
+**Deferred 2026-08-11B**, not rejected: user-passed on the measurements,
+drawn on the map, but the code lives in `experiments/` and the base
+pipeline has run end to end on exactly ONE scene. Promoting experimental
+code before the base is proven across a batch adds risk to the thing
+being validated. Revisit after a clean multi-scene run.
+
+## 5. `fit_feedback`'s RE-SHOP — deliberately not built
+
+**User ruling 2026-08-11B:** *"shopping is highly dependent on the asset
+library quality which is out of scope. I just need to prove that our
+pipeline is rich and functional."* The stage RUNS and writes its
+rejections (5 real complaints on fresh02); nothing consumes them
+automatically, and that is now a decision rather than an omission. The
+verdicts sit on disk where a future deliberate re-shop can read them.
+
 ## WHAT IS *NOT* PARKED, AND IS OFTEN CONFUSED WITH THESE
 
 Do not read this file as parking the whole vote or the whole judge
