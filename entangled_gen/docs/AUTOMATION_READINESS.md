@@ -11,6 +11,17 @@ Written 2026-08-11, rewritten the same day after the work in
 Rule #1: **the pipeline runs itself over ~100 scenes with no human in the
 loop.**
 
+> ⚠ **SUPERSEDED FOR SCOPE, 2026-08-11 LATE (session C).** This file
+> describes the GRAPH CHAIN's automation, which was the whole story when
+> it was written. The pipeline is now FOUR phases in `graph/stages.py`
+> (INTAKE 11 · RECORD 10 · CHAIN 12 · COMPOSE 13), `--phase
+> core|record|graph|compose|all`, and a `--bundle` flag that starts a
+> scene from a raw world. A fresh bundle ran ALL 46 stages the same day
+> (scene `fresh02`, final gate PASS — six fix-and-resume cycles, so one
+> uninterrupted run is still unproven). Where this file and
+> `graph/stages.py` disagree, **stages.py is the authority**. Current
+> state: `docs/SESSION_2026-08-25C_HANDOFF.md`, REVIEW_LOG R-S2-91..109.
+
 The first version of this file said the chain was not automatable and
 listed what to fix. That is done. **The eleven hand-typed commands are
 gone, the flags are inverted, and a gate runs between every stage.** If

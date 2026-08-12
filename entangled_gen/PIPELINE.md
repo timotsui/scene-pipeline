@@ -99,11 +99,21 @@ lane's outputs reach it as files) → `OUT/<scene>/cut/integration_demo/
 integration_demo.html` (same composition over original / cut / tinted
 backgrounds, side by side).
 
-## The pano path — week8 object-ID lane (alternative stages 2–4)
+## The pano path — week8 object-ID lane (RETIRED FROM THE RUNNER 2026-08-11)
+
+> ⚠ **STALE AS A PIPELINE CLAIM.** `run_scene.py --phase core` ran this
+> lane until 2026-08-11; by the user's ruling that the map is right and
+> stale things leave the core pipeline, `core` now runs the CANONICAL
+> funnel (`stages.INTAKE`: frame_bootstrap → pano_stitch → crop_pano into
+> rig_sp0/crops → vocab_build → pano_bearings → seg_batched → pano_lift →
+> pano_recenter → manifest_filter → scene_scale → room_shell). Nothing
+> downstream reads this lane's outputs (`pano_crops/`, `seg_pano/`,
+> `scene_manifest_pano.json`). The modules stay on disk; the table below
+> is kept as their reference. **The authority for what runs is
+> `graph/stages.py`** — four tuples, 46 stages, REVIEW_LOG R-S2-93/94.
 
 Same viewpoint as the yaw views, better angular resolution (98 boxes vs 19 on
-bedroom_marble), NOT more coverage. Orchestrated end-to-end by `run_scene.py`
-(reads `bundle_path.txt`); communicates through the same per-scene folder:
+bedroom_marble), NOT more coverage. Communicates through the per-scene folder:
 
 | # | stage | script | reads | writes (THE CONTRACT) |
 |---|-------|--------|-------|----------------------|
