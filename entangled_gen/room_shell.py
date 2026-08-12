@@ -430,7 +430,126 @@ def _trace_boundary(mask):
     return loop
 
 
-def run_poly(scene):
+def _render_steps(sd, scene, st, out_segs, clean_segs):
+    """--steps-sheet: every stage of the W4 trace as its own panel, in
+    the order the code runs them, so a wrong outline can be blamed on
+    the exact step that wronged it (user ask 2026-08-12: 'break these
+    down step by step, give me visual of each step'). REVIEW ARTIFACT
+    ONLY — writes room_shell_steps.png and nothing else."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+    x0, z0, nx, nz = st["grid"]
+    ex = [x0, x0 + nx * CELL, z0, z0 + nz * CELL]
+
+    def density(ax):
+        b = st["band"]
+        H, xe, ze = np.histogram2d(
+            b[:, 0], b[:, 2],
+            bins=[max(2, int((ex[1] - ex[0]) / 0.02)),
+                  max(2, int((ex[3] - ex[2]) / 0.02))],
+            range=[[ex[0], ex[1]], [ex[2], ex[3]]])
+        ax.imshow(np.log1p(H.T), origin="lower", cmap="gray_r",
+                  extent=ex, aspect="equal")
+
+    def mask(ax, m, rgba):
+        img = np.zeros((*m.T.shape, 4))
+        img[m.T] = rgba
+        ax.imshow(img, origin="lower", extent=ex, aspect="equal")
+
+    kind_col = {"cardinal": "#1db954", "connector": "#ff9f1c",
+                "step": "#9b5de5"}
+    fig, axes = plt.subplots(2, 4, figsize=(24, 12))
+
+    ax = axes[0][0]
+    density(ax)
+    ax.set_title("1. all splat material between floor and ceiling,\n"
+                 "seen from above (dark = dense)")
+
+    ax = axes[0][1]
+    density(ax)
+    mask(ax, st["solid"], (0.86, 0.2, 0.27, 0.8))
+    ax.set_title("2. 'solid' squares (red): dense AND reaching 1.4 m up\n"
+                 "— walls, but also shelves and curtains")
+
+    ax = axes[0][2]
+    density(ax)
+    mask(ax, st["floor_ok"], (0.2, 0.6, 0.3, 0.45))
+    bx = st["box"]
+    ax.add_patch(Rectangle((bx[0], bx[1]), bx[2] - bx[0], bx[3] - bx[1],
+                           fill=False, ec="#1f6feb", lw=2, ls=":"))
+    ax.set_title("3. floor evidence (green) + the rough box (blue).\n"
+                 "Open space must be in the box OR stand on floor")
+
+    ax = axes[0][3]
+    mask(ax, st["free"], (0.72, 0.72, 0.72, 0.6))
+    mask(ax, st["interior_precap"], (0.99, 0.75, 0.18, 0.85))
+    ax.set_title("4. open-space regions (gray);\nthe one picked as THE "
+                 "ROOM (orange)")
+
+    ax = axes[1][0]
+    mask(ax, st["interior_precap"], (0.82, 0.82, 0.82, 0.6))
+    mask(ax, st["interior"], (0.95, 0.55, 0.1, 0.9))
+    ax.set_title("5. the leash: only parts within 3 m walking distance\n"
+                 "of the box survive (orange kept, gray cut off)")
+
+    ax = axes[1][1]
+    density(ax)
+    lp = np.asarray(st["loop"] + [st["loop"][0]])
+    ax.plot(lp[:, 0], lp[:, 1], "-", color="#e63946", lw=1.5)
+    ax.set_title("6. the walk: march around the room's edge\n"
+                 "(red = the raw trace)")
+
+    ax = axes[1][2]
+    density(ax)
+    for s in out_segs:
+        (px, pz), (qx, qz) = s["endpoints_upright"]
+        ax.plot([px, qx], [pz, qz], "-",
+                color=kind_col.get(s["kind"], "#333"), lw=2.2)
+    ax.set_title("7. straighten + label the pieces; near-axis pieces\n"
+                 "re-measure onto the nearest dense band\n"
+                 "(green = wall-like, orange = angled, purple = step)")
+
+    ax = axes[1][3]
+    density(ax)
+    for s in out_segs:
+        (px, pz), (qx, qz) = s["endpoints_upright"]
+        ax.plot([px, qx], [pz, qz], "-", color="#b8b8d8", lw=1.0)
+    for s in clean_segs:
+        (px, pz), (qx, qz) = s["endpoints_upright"]
+        ax.plot([px, qx], [pz, qz],
+                "-" if s["status"] == "measured" else "--",
+                color=kind_col[s["kind"]], lw=3.0)
+    v1f = sd / "room_shell.json"
+    if v1f.exists():
+        w4 = {w["id"]: w["plane_upright_m"]
+              for w in json.loads(v1f.read_text())["walls"]}
+        if len(w4) == 4:
+            ax.add_patch(Rectangle(
+                (w4["wall_x_low"], w4["wall_z_low"]),
+                w4["wall_x_high"] - w4["wall_x_low"],
+                w4["wall_z_high"] - w4["wall_z_low"],
+                fill=False, ec="cyan", lw=1.4, ls=":"))
+    ax.set_title("8. cleanup: group + snap + merge + delete-short\n"
+                 "(bold; dashed = inferred) over the raw trace (faint);\n"
+                 "dotted cyan = old v1 box")
+
+    for row in axes:
+        for a2 in row:
+            a2.set_xlim(ex[0], ex[1])
+            a2.set_ylim(ex[2], ex[3])
+    fig.suptitle(f"{scene} — how the wall outline is made, step by step",
+                 fontsize=15)
+    outp = sd / "room_shell_steps.png"
+    fig.tight_layout()
+    fig.savefig(outp, dpi=110)
+    plt.close(fig)
+    print(f"[shell-poly] steps sheet -> {outp} (sheet mode: nothing "
+          f"else written)", flush=True)
+
+
+def run_poly(scene, sheet=False):
     from scipy import ndimage
     sd = paths.scene_dir(scene)
     fr = paths.frame_block(scene)
@@ -471,6 +590,7 @@ def run_poly(scene):
     tall = (band_top >= floor_m + POLY_TALL_M).reshape(nx, nz)
     solid = (band_cnt >= MIN_CELL_PTS) & tall
     ink = ndimage.binary_dilation(solid, iterations=2)
+    st = {"grid": (x0, z0, nx, nz), "solid": solid.copy()} if sheet else None
 
     # interior = the free-space blob around the room centre.
     # FLOOR RULE: interior cells must stand on floor-level splat — the
@@ -493,6 +613,10 @@ def run_poly(scene):
     bx1 = int((ext_hi[0] - POLY_MARGIN - x0) / CELL)
     bz1 = int((ext_hi[2] - POLY_MARGIN - z0) / CELL)
     boxm[bx0:bx1, bz0:bz1] = True
+    if st is not None:
+        st["floor_ok"] = floor_ok.copy()
+        st["box"] = (x0 + bx0 * CELL, z0 + bz0 * CELL,
+                     x0 + bx1 * CELL, z0 + bz1 * CELL)
     free = ~ndimage.binary_dilation(solid, iterations=1) \
         & (boxm | floor_ok)
     lab, _n = ndimage.label(free)
@@ -506,6 +630,9 @@ def run_poly(scene):
                         minlength=_n + 1)
     inbox[0] = 0
     interior = lab == int(np.argmax(inbox))
+    if st is not None:
+        st["free"] = free.copy()
+        st["interior_precap"] = interior.copy()
     # REACH CAP: keep only interior cells geodesically within
     # POLY_REACH_M of the in-box part — a pocket through an opening
     # stays, the wrap-around leak past the wall ends is cut
@@ -531,12 +658,17 @@ def run_poly(scene):
     verts = _dp_loop(loop, POLY_DP_M)
     if np.allclose(verts[0], verts[-1]):
         verts = verts[:-1]
+    if st is not None:
+        st["interior"] = interior.copy()
+        st["loop"] = [list(p) for p in loop]
 
     # classify + MERGE. Each edge of the simplified loop becomes a
     # segment; cardinal snap is a merge special case (position from the
     # density spike); same-axis neighbours within POLY_MERGE_M merge.
     band = pts[(pts[:, 1] >= floor_m + WALL_BAND_LO)
                & (pts[:, 1] <= ceil_m - WALL_BAND_HI)]
+    if st is not None:
+        st["band"] = band
 
     def spike(axis_col, pos, t_lo, t_hi, t_col):
         sel = band[(np.abs(band[:, axis_col] - pos) <= 0.35)
@@ -897,6 +1029,12 @@ def run_poly(scene):
                                                   b[1] - a[1])), 3)})
             verts_clean.append([round(a[0], 3), round(a[1], 3)])
 
+    if sheet:
+        # sheet mode is strictly read-only on scene state: render the
+        # step panels and stop before ANY of the writes below
+        _render_steps(sd, scene, st, out_segs, clean_segs)
+        return
+
     # overlay for review: raw trace faint, clean polygon bold
     fig, ax = plt.subplots(figsize=(9, 9))
     H, xe, ze = np.histogram2d(band[:, 0], band[:, 2],
@@ -1071,7 +1209,13 @@ def main():
     ap.add_argument("--audit", action="store_true")
     ap.add_argument("--poly", action="store_true",
                     help="W4 trace->close->merge review artifacts")
+    ap.add_argument("--steps-sheet", action="store_true",
+                    help="render room_shell_steps.png — every trace "
+                         "stage as its own panel; writes NOTHING else")
     a = ap.parse_args()
+    if a.steps_sheet:
+        run_poly(a.scene, sheet=True)
+        return
     if a.poly:
         run_poly(a.scene)
         return
