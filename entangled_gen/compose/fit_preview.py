@@ -263,11 +263,20 @@ def main():
 
     # PILLOW EVIDENCE (user GT 08-03: the bed lies SIDE-against the
     # wall, so wall-hug's touching-wall=back assumption broke): a
-    # pillow sub marks its host's HEAD end along the host's long
-    # horizontal axis; front = the opposite end. Measured scene data
-    # (the pillow's recorded box), scene-agnostic, fires only when a
-    # pillow sub exists.
-    pillow_head = {}   # host id -> unit front (render frame)
+    # pillow sub marks its host's HEAD end; front = the opposite end.
+    # Measured scene data (the pillow's recorded box), scene-agnostic,
+    # fires only when a pillow sub exists.
+    #
+    # THE AXIS COMES FROM THE PILLOW'S OWN DISPLACEMENT, not the box
+    # shape (user go 2026-08-12, the fresh03 bed): the old rule assumed
+    # the head lies along the box's LONG horizontal axis and only asked
+    # the pillow which END — but fresh03's bed lifted a near-square box
+    # (2.333 x vs 2.294 z) and 4 cm of box noise picked the wrong axis
+    # while the pillow sat 1.40 m up the other one. The pillow's
+    # displacement vector from the host center carries the axis AND the
+    # end; the box shape carries neither. Multiple pillows sum — they
+    # agree at the head and their sideways scatter cancels.
+    pillow_disp = {}   # host id -> summed pillow offset (render x, z)
     for s in sl.get("subs_deferred", []):
         if "pillow" not in s.get("name", "") or not s.get("box"):
             continue
@@ -281,10 +290,16 @@ def main():
         plo = np.asarray(s["box"]["aabb_min"], np.float32) * r2r
         phi = np.asarray(s["box"]["aabb_max"], np.float32) * r2r
         pc, hc = (plo + phi) / 2, (hlo + hhi) / 2
-        ax = 0 if (hhi[0] - hlo[0]) >= (hhi[2] - hlo[2]) else 2
-        sign = 1.0 if pc[ax] > hc[ax] else -1.0
-        pillow_head[hb["id"]] = ((-sign, 0.0) if ax == 0
-                                 else (0.0, -sign))
+        d = pillow_disp.setdefault(hb["id"], [0.0, 0.0])
+        d[0] += float(pc[0] - hc[0])
+        d[1] += float(pc[2] - hc[2])
+    pillow_head = {}   # host id -> unit front (render frame)
+    for hid, d in pillow_disp.items():
+        ax = 0 if abs(d[0]) >= abs(d[1]) else 1
+        if abs(d[ax]) < 1e-6:
+            continue               # pillow dead-center: no evidence
+        sign = 1.0 if d[ax] > 0 else -1.0
+        pillow_head[hid] = ((-sign, 0.0) if ax == 0 else (0.0, -sign))
 
     def face_dir_of(item_id, lo, hi, mount):
         """(unit xz front direction, evidence source) -- layered by
@@ -528,6 +543,13 @@ def main():
                        "face_dot": face_dot,
                        "face_conflict": (face_dot is not None
                                          and face_dot < 0.9),
+                       # dot <= 0: every footprint-legal yaw is
+                       # perpendicular-or-worse to the evidence — the
+                       # shipped facing is a TIE-BREAK, not a decision
+                       # (the fresh03 bed shipped headboard-at-foot on
+                       # exactly this silent coin flip, user 08-12)
+                       "face_unmet": (face_dot is not None
+                                      and face_dot <= 0.0),
                        "front_dir_raw": (
                            [round(float(fdir[0] * float(r2r[0])), 3),
                             round(float(fdir[1] * float(r2r[2])), 3)]
