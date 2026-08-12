@@ -28,7 +28,9 @@ invocation.** That is the bar:
 
 on a world that has NEVER run, all 46 stages, ZERO intervention, final
 gate PASS. If a stage fails: fix at the source, scene-agnostically, log
-it (REVIEW_LOG R-S2-110 onward, contract intro first), resume — and then
+it (REVIEW_LOG at the NEXT FREE R-S2 number — a parallel session's
+docs/PLAN_COLLIDER_OPTIONAL.md has reserved 110+ — contract intro
+first), resume — and then
 the bar becomes one MORE fresh world clean, because a resumed run is not
 the proof. Before the run do the static sweep and gate checks in
 handoff §2; after it, prove the fleet path and write the go/no-go with

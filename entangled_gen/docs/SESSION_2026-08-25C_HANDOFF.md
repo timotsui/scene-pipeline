@@ -182,8 +182,13 @@ survives. Port 8321 historically living_marble; use 8322+ for others.
 - **living_marble** — not modified in any of today's three sessions.
   J9 gate open; user has ruled it low-priority ("fine as long as it
   kind of works").
-- **The 284 missing colliders** — harvesting problem, decides whether
-  "100 scenes" is even possible; user reviewing.
+- **The 284 missing colliders** — BUT SEE `docs/PLAN_COLLIDER_OPTIONAL.md`,
+  which appeared from a PARALLEL session (not this one): it records a
+  user ruling to trust Marble's positioning and make the collider
+  optional, taking the corpus 29 → ~313. NOT started, and it RESERVES
+  review-log numbers R-S2-110+. If that work has begun by the time you
+  read this, coordinate before touching frame_bootstrap; either way LOG
+  YOUR OWN ENTRIES AT THE NEXT FREE R-S2 NUMBER, not blindly at 110.
 - Everything in PARKED.md: ctop, J9 quality, slanted walls, sub rounds,
   fit_feedback re-shop.
 
