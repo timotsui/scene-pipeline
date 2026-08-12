@@ -33,6 +33,17 @@ FACE_RES = 2048
 FACE_FOV = 95.0          # 90 + margin so face borders overlap
 PANO_W, PANO_H = 8192, 4096   # 22.8 px/deg at the equator
 EYE_H = 1.6
+#: The 1.6 m eye expressed scale-invariantly: 1.6 m in the 2.8 m standard
+#: room (the same prior scene_scale measures against). The eye height must
+#: be a FRACTION of the measured room height, never an absolute raw
+#: distance — Marble worlds arrive at arbitrary export scale (the whole
+#: reason scene_scale exists), scale is not known until AFTER this stage,
+#: and a fixed 1.6 raw units put the eye INSIDE the ceiling on fresh05
+#: (room 1.63 raw tall) and ABOVE it on fresh07 (1.46): the pano showed
+#: ceiling backfaces, 9/20 cameras failed verification, and both worlds
+#: were nearly condemned as duds (2026-08-12, R-S2-134).
+STD_ROOM_H = 2.8
+EYE_FRAC = EYE_H / STD_ROOM_H
 
 FACES = [("f_pz", [0, 0, 1]), ("f_px", [1, 0, 0]), ("f_nz", [0, 0, -1]),
          ("f_nx", [-1, 0, 0]), ("f_py", [0, 1, 0]), ("f_ny", [0, -1, 0])]
@@ -72,8 +83,16 @@ def main():
     floor_y = fr["floor_y"]
     up_sign = -1 if fr["up"][1] < 0 else 1
     dx, dz = (float(t) for t in a.eye_offset.split(","))
-    eye = [dx, floor_y + up_sign * EYE_H, dz]
-    print(f"[stitch] eye {eye} (offset {dx},{dz})", flush=True)
+    ceil_y = fr.get("ceiling_y")
+    if ceil_y is not None:
+        eye_h = abs(floor_y - ceil_y) * EYE_FRAC
+    else:
+        eye_h = EYE_H          # no ceiling measured: the old absolute
+    eye = [dx, floor_y + up_sign * eye_h, dz]
+    print(f"[stitch] eye {eye} (offset {dx},{dz}; eye height {eye_h:.3f} "
+          f"= {EYE_FRAC:.3f} x room height"
+          + ("" if ceil_y is not None else " FALLBACK: no ceiling, "
+             "absolute 1.6") + ")", flush=True)
 
     # ---------- render the 6 faces (GPU, WSL, resumable) ----------
     # Face cache is valid ONLY for this exact camera + frame + ply state —
@@ -172,7 +191,8 @@ def main():
     Image.fromarray(np.clip(pano, 0, 255).astype(np.uint8)).save(pf)
     print(f"[stitch] wrote {pf} ({PANO_W}x{PANO_H})", flush=True)
     (outd / "pano_selfrender_meta.json").write_text(json.dumps(
-        {"scene": sc, "eye_raw": eye, "eye_height_m": EYE_H,
+        {"scene": sc, "eye_raw": eye, "eye_height_m": round(eye_h, 4),
+         "eye_frac_of_room": EYE_FRAC,
          "pano_to_raw_signs": signs.tolist(),
          "pano_to_raw": "d_raw = signs * d_p + eye offset — improper "
                         "(det -1) by DESIGN, the readability mirror (user "
