@@ -44,21 +44,24 @@ world (frame_bootstrap → the fresh-scene chain), name them fresh10..
 onward, run the pairs in the user's priority order until morning or
 credit exhaustion.
 
-**Step 4 — COMPOSE INTEGRATION (both halves BUILT AND PROVEN on
-fresh08 this session, R-S2-168; what remains is WIRING):**
-1. **SUB ROUNDS: UN-PARKED and fleet-proven** — 6/7 fresh08 anchors
-   clean in 283 s after one canon-drift fix (cp3 wall ids); the one
-   failure = the unplaced window-seat anchor (heals after the wave).
-   Review page: compose/sub_experiment/index.html. REMAINING: wire
-   into the compose stage table, land sub placements in the main
-   GLB (today they live in sub_experiment/<anchor>/cp5_final/).
-2. **GRAVITY (compose/fit_gravity.py): BUILT AND APPLIED** — 13/22
-   fresh08 items settled (bed/chair grounded off the rug fallback,
-   bay bookshelf down 0.82 m); exposed two WRONG support verdicts
-   (lamp 0.93 m, pot 1.29 m to the floor — they are table/shelf
-   riders; a support-judge quality question, filed). REMAINING:
-   stage-table wiring (after the closing declip pass, before
-   prep_viewer), and settle subs once they land in the GLB.
+**Step 4 — COMPOSE INTEGRATION: BUILT, RUN, AND **USER-APPROVED** on
+fresh08 ("success, i approve"). The full manual chain exists:
+sub_round_all → merge_sub_placements → fit_gravity — 9 subs placed
+(3 pillows ON the bed, lamps on nightstand/bookshelf, plants/pot on
+shelves), merged into the main GLB, gravity-settled onto their
+hosts' REAL mesh surfaces (pillows lifted 13-18 cm out of the bed
+body onto the blanket). The ONLY remaining work is stage-table
+wiring — three rows in the compose table after the closing declip
+pass, before prep_viewer:
+    sub_rounds  -> experiments/sub_round_all.py --scene <sc>
+    merge_subs  -> compose/merge_sub_placements.py --scene <sc>
+    gravity     -> compose/fit_gravity.py --scene <sc>
+(each has re-run guards; merge skips already-merged ids; gravity is
+idempotent within SETTLED_TOL). Known receipts to preserve: the
+fleet's 6/7 (window-seat anchor heals after the wave); gravity's
+exposed WRONG support verdicts (lamp 0.93 m + pot 1.29 m dropped to
+the floor as FLOOR-supported — table/shelf riders really; the
+support-judge quality question, filed).**
 
 ## 2. OVERNIGHT SCENES — USER-PICKED 08-13: **ALL SIX** ("these are
 good. lets run all of these if possible."). Reviewed on the proposal
