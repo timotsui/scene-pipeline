@@ -588,7 +588,17 @@ def run_poly(scene, sheet=False):
     band_top = np.full(nx * nz, -np.inf)
     np.maximum.at(band_top, flat[in_band], pts[in_band, 1])
     tall = (band_top >= floor_m + POLY_TALL_M).reshape(nx, nz)
-    solid = (band_cnt >= MIN_CELL_PTS) & tall
+    # A BARRIER MUST OCCUPY THE WALKING ZONE (user diagnosis 2026-08-12:
+    # "some drop ceiling remain and confused the open space analysis" —
+    # measured: 65% of fresh06's solid cells, 38% of fresh09's, 19% of
+    # fresh05's had their LOWEST band point above head height — ceiling
+    # remnants and soffits hanging in the band, walling off open room).
+    # Walls, wardrobes and floor-length curtains all CROSS the 1.4 m
+    # line; hanging material does not. Same constant, no new threshold.
+    band_bot = np.full(nx * nz, np.inf)
+    np.minimum.at(band_bot, flat[in_band], pts[in_band, 1])
+    reaches_down = (band_bot <= floor_m + POLY_TALL_M).reshape(nx, nz)
+    solid = (band_cnt >= MIN_CELL_PTS) & tall & reaches_down
     ink = ndimage.binary_dilation(solid, iterations=2)
     st = {"grid": (x0, z0, nx, nz), "solid": solid.copy()} if sheet else None
 
