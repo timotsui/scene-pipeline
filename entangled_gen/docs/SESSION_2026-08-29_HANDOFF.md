@@ -44,6 +44,20 @@ world (frame_bootstrap → the fresh-scene chain), name them fresh10..
 onward, run the pairs in the user's priority order until morning or
 credit exhaustion.
 
+**Step 4 — COMPOSE DESIGN ROUND (user direction 08-13, stated at
+wrap-up; design AFTER the batch, with the user):**
+1. **PLACE SUB OBJECTS TOO** ("i want to put on sub objects as well")
+   — the sub tier stops being never-fitted. This is the PARKED §4
+   sub-rounds (PH2r) promotion, which the user's own 08-11 ruling
+   deferred "until a batch runs clean" — the overnight batch is that
+   gate. The experiments/ code is the starting point.
+2. **A FINAL GRAVITY PASS** ("at last we need to put the objects
+   through gravity so everything rests on something") — a new closing
+   compose stage: settle every placed mesh downward until it rests on
+   its supporter (pillows onto the bed mesh, items onto shelves,
+   furniture onto the floor) — no floating objects. New stage design;
+   pre-register the contract before building.
+
 ## 2. OVERNIGHT SCENES — USER-PICKED 08-13: **ALL SIX** ("these are
 good. lets run all of these if possible."). Reviewed on the proposal
 sheet (out/scene_proposals.png — thumbnails + prompt images). Run in
@@ -51,14 +65,20 @@ THIS order (simplest box rooms first, so the earliest completed pairs
 are the cleanest; the complex ones last so a credit death costs the
 hard cases, not the clean ones):
 
+**NAMING (user ruling 08-13: "dont have them like fresh x, name them
+some descriptive name")** — new scenes get DESCRIPTIVE names, each
+tied to the feature visible on the proposal sheet. Existing
+fresh01..09 KEEP their names (paths/state everywhere; renaming
+shipped scenes would break them).
+
 | # | scene name | world id | type | note |
 |---|---|---|---|---|
-| 1 | fresh10 | 6cf716a8 | living room | cleanest box room, natural style |
-| 2 | fresh11 | b6f5f206 | office | box room, multiple desks |
-| 3 | fresh12 | 270dd75d | living room | box room, blue hues |
-| 4 | fresh13 | 748cf5e5 | bedroom | box room, ceiling beams + glass wall |
-| 5 | fresh14 | a1ddded0 | bedroom | ⚠ ARCHED alcove wall — the shell only knows vertical planes; expect an approximated trace there |
-| 6 | fresh15 | 2bf68fde | bedroom | ⚠ TWO rooms + partition — a live test of the interior-wall handling |
+| 1 | natural_living | 6cf716a8 | living room | cleanest box room, natural style |
+| 2 | sunlit_office | b6f5f206 | office | box room, multiple desks, morning sun |
+| 3 | blue_living | 270dd75d | living room | box room, blue hues |
+| 4 | panel_bedroom | 748cf5e5 | bedroom | box room, black wall panels, ceiling beams + glass wall |
+| 5 | arch_bedroom | a1ddded0 | bedroom | ⚠ ARCHED alcove wall — the shell only knows vertical planes; expect an approximated trace there |
+| 6 | plaster_bedroom | 2bf68fde | bedroom | ⚠ old building, TWO rooms + partition — a live test of the interior-wall handling |
 
 (46 candidates passed the filters: downloaded, unrejected, unused,
 interior room type, no attic/loft/vault/cabin per PARKED §3. These
