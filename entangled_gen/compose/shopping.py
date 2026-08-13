@@ -179,6 +179,34 @@ def main():
         if t.get("supporter"):
             top_sup[o["id"]] = (t["supporter"], t.get("how", ""))
 
+    # SEE-THROUGH HOSTS (user ruling 2026-08-12 late, R-S2-162): a FLAT
+    # object lying directly on the floor — a rug, a mat; flat by the
+    # canon's own FLAT_AXIS_M (the user's R-S2-125 "less than 15 cm is
+    # flat") — is floor COVERING, not furniture support. The support
+    # judge's honest answer ("the bed stands on the rug") stays
+    # untouched on disk; only the TIER looks through it, so beds and
+    # chairs on rugs stay anchor-tier and get fitted. Without this,
+    # fresh08's bed and chair silently vanished into the never-fitted
+    # sub tier behind an unplaceable rug.
+    def _floor_covering(sup_id):
+        n = nodes.get(sup_id)
+        if n is None:
+            return False
+        try:
+            h = abs(float(n["geometry"]["size"][1]))
+        except (KeyError, TypeError, IndexError):
+            return False
+        host_sup = top_sup.get(sup_id, ("arch_floor", ""))[0]
+        return host_sup == "arch_floor" and h < FLAT_AXIS_M
+    for _oid in list(top_sup):
+        _s, _how = top_sup[_oid]
+        if not _s.startswith("arch_") and _floor_covering(_s):
+            top_sup[_oid] = ("arch_floor",
+                             f"on_top (through floor covering {_s})")
+            print(f"[shopping] tier looks through floor covering: "
+                  f"{_oid} rests on {_s} (flat, on the floor) -> "
+                  f"floor tier")
+
     def anchor_root(oid, depth=0):
         """The anchor a sub ultimately rests under (or oid if anchor)."""
         sup = top_sup.get(oid)
