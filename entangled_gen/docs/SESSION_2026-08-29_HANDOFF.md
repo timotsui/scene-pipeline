@@ -73,6 +73,16 @@ lands inside the polygon). ~45-60 min/scene, two-lane proven.
   15% (FACE_EVIDENCE_TOL); the pca "fix" REVERTED same night (user
   caught the bed sideways; dot 0.5 was the tell — the omission was a
   design decision wearing a bug's costume)
+- 167/167b: declip stops kidnapping — a mesh ENTIRELY beyond a wall is
+  never dragged inside (user found boxes on +x of arch_wall_00,
+  meshes on -x): near-outside snaps flush to the wall's EXTERIOR
+  face, truly far (> own body length) is left where measured;
+  straddlers keep classic push-back. 167b: the snap quantizes DOWN —
+  a rounded snap crossed the plane by 1 cm, the item straddled, and
+  the classic branch kidnapped it (obj_043, declip_move 1.1 m).
+  VERIFIED in shipped fresh08: bed inside dot 1.0; window seat obj_008
+  left in the bay (x 3.47-4.44); bookshelf obj_043 flush exterior
+  (x 1.75-2.74, one 0.24 m snap).
 
 ## 4. OPEN QUESTIONS FOR THE USER (bring with receipts)
 
