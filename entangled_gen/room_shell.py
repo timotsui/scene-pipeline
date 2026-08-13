@@ -612,6 +612,48 @@ def _render_steps(sd, scene, st, out_segs, clean_segs):
           f"else written)", flush=True)
 
 
+def measure_plan_yaw(xz):
+    """Continuous room yaw vs the axes, by SPIKINESS VOTING (R-S2-158).
+
+    Not hull calipers: the min-area rectangle is fooled by L-shaped
+    rooms (fresh09's hull scored a bogus +15 deg while its walls sit
+    cleanly on the axes). Instead, rotate the wall material by each
+    candidate angle and score how SPIKY its x/z histograms become —
+    axis-aligned walls concentrate into thin bins, so every wall votes
+    and a non-convex outline cannot lie.
+
+    xz: (n, 2) wall-band footprint points, upright frame. Returns the
+    yaw in degrees (rotate points BY this angle to de-tilt), or 0.0
+    when the guards fail (too few points, no 5% win over theta=0, or
+    |yaw| <= 1 deg). Single source of truth — run_poly's trace and
+    scene_yaw.py's state apply both call this."""
+    if len(xz) <= 500:
+        return 0.0
+    if len(xz) > 40000:
+        xz = xz[np.random.default_rng(0).choice(
+            len(xz), 40000, replace=False)]
+
+    def _spike_score(deg):
+        _r = np.radians(deg)
+        _c, _s = np.cos(_r), np.sin(_r)
+        _x = xz[:, 0] * _c - xz[:, 1] * _s
+        _z = xz[:, 0] * _s + xz[:, 1] * _c
+        sc = 0.0
+        for v in (_x, _z):
+            nb = max(8, int((v.max() - v.min()) / 0.02))
+            h, _ = np.histogram(v, bins=nb)
+            sc += float((h.astype(np.float64) ** 2).sum())
+        return sc
+
+    _angles = np.arange(-45.0, 45.0, 0.25)
+    _scores = [_spike_score(a2) for a2 in _angles]
+    _k = int(np.argmax(_scores))
+    if (_scores[_k] > 1.05 * _spike_score(0.0)
+            and abs(float(_angles[_k])) > 1.0):
+        return float(_angles[_k])
+    return 0.0
+
+
 def run_poly(scene, sheet=False):
     from scipy import ndimage
     sd = paths.scene_dir(scene)
@@ -628,56 +670,30 @@ def run_poly(scene, sheet=False):
     # PLAN DE-TILT (user ruling 2026-08-12, closing the 08-05 finding:
     # rooms sit a few degrees yawed vs the axes and the pipeline only
     # ever knew 4 discrete flips — fresh06's plan is visibly tilted, so
-    # every "cardinal" wall fights the grid). Measure the room's yaw
-    # with the min-area rectangle (rotating calipers — the same pattern
-    # compose uses per-mesh) over the wall band's footprint hull, then
-    # de-rotate the POINTS about the vertical axis through the pano
-    # origin. SHEET/TRACE-LEVEL today; applying the same rotation to
-    # the 3D scene state (splat xyz + gaussian orientations, collider,
-    # manifests — the scale-apply pattern) belongs to the re-run stack
-    # and is recorded via plan_yaw_deg.
+    # every "cardinal" wall fights the grid). Measure the room's yaw by
+    # spikiness voting (measure_plan_yaw below). De-rotating the points
+    # is SHEET-ONLY (R-S2-158): a state-writing run must NOT trace in a
+    # frame the rest of the scene state does not share — the polygon it
+    # folds into room_shell.json would sit rotated against the splat,
+    # graph and every consumer. The shipping cure is the state apply
+    # (scene_yaw.py — splat + collider + manifests rotated once, after
+    # which this estimator reads ~0). Both modes record plan_yaw_deg.
     _bsel = pts[(pts[:, 1] >= floor_m + WALL_BAND_LO)
                 & (pts[:, 1] <= ceil_m - WALL_BAND_HI)]
-    plan_yaw = 0.0
-    if len(_bsel) > 500:
-        # spikiness voting, not hull calipers: the min-area rectangle
-        # is fooled by L-shaped rooms (fresh09's hull scored a bogus
-        # +15 deg while its walls sit cleanly on the axes). Instead,
-        # rotate the wall material by each candidate angle and score
-        # how SPIKY its x/z histograms become — axis-aligned walls
-        # concentrate into thin bins, so every wall votes and a
-        # non-convex outline cannot lie.
-        _xz = _bsel[:, [0, 2]]
-        if len(_xz) > 40000:
-            _xz = _xz[np.random.default_rng(0).choice(
-                len(_xz), 40000, replace=False)]
-        def _spike_score(deg):
-            _r = np.radians(deg)
-            _c, _s = np.cos(_r), np.sin(_r)
-            _x = _xz[:, 0] * _c - _xz[:, 1] * _s
-            _z = _xz[:, 0] * _s + _xz[:, 1] * _c
-            sc = 0.0
-            for v in (_x, _z):
-                nb = max(8, int((v.max() - v.min()) / 0.02))
-                h, _ = np.histogram(v, bins=nb)
-                sc += float((h.astype(np.float64) ** 2).sum())
-            return sc
-        _angles = np.arange(-45.0, 45.0, 0.25)
-        _scores = [_spike_score(a2) for a2 in _angles]
-        _k = int(np.argmax(_scores))
-        _base = _spike_score(0.0)
-        if (_scores[_k] > 1.05 * _base
-                and abs(float(_angles[_k])) > 1.0):
-            plan_yaw = float(_angles[_k])
-    if plan_yaw:
+    plan_yaw = measure_plan_yaw(_bsel[:, [0, 2]])
+    if plan_yaw and sheet:
         _r = np.radians(plan_yaw)
         _c, _s = np.cos(_r), np.sin(_r)
         _x = pts[:, 0] * _c - pts[:, 2] * _s
         _z = pts[:, 0] * _s + pts[:, 2] * _c
         pts = np.column_stack([_x, pts[:, 1], _z])
         print(f"[shell-poly] plan de-tilt: room yawed {plan_yaw:+.2f} deg "
-              f"vs the axes — points de-rotated for the trace "
-              f"(state apply pending, plan_yaw_deg recorded)")
+              f"vs the axes — points de-rotated for the REVIEW SHEET only")
+    elif plan_yaw:
+        print(f"[shell-poly] room yawed {plan_yaw:+.2f} deg vs the axes — "
+              f"NOT de-rotating in a state-writing run (the polygon must "
+              f"share the scene's frame; apply the yaw to the state with "
+              f"scene_yaw.py, then re-run). plan_yaw_deg recorded.")
 
     # wall-material ink: plan cells with dense WALL-BAND splat (points
     # between floor and ceiling margins â€” the same material the audit
@@ -1429,6 +1445,7 @@ def run_poly(scene, sheet=False):
            "generated_by": "room_shell.py --poly (W4 â€” TRACE->CLOSE->MERGE,"
                            " review artifact, no consumers)",
            "frame": {"raw_to_render": list(map(float, r2r))},
+           "plan_yaw_deg": round(plan_yaw, 2),
            "floor_upright_m": round(floor_m, 3),
            "ceiling_upright_m": round(ceil_m, 3),
            "params": {"cell_m": CELL, "margin_m": POLY_MARGIN,
@@ -1535,6 +1552,7 @@ def fold_polygon_into_shell(sd, rep):
     shell["polygon"] = {
         "generated_by": "room_shell.py --poly (W4 recipe: trace -> "
                         "close -> merge; folded by W5/D3)",
+        "plan_yaw_deg": rep.get("plan_yaw_deg", 0.0),
         "params": rep["params"],
         "vertices_upright": verts_up,
         "vertices_raw": verts_raw,
