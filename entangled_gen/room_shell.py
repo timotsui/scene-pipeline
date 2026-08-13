@@ -350,6 +350,17 @@ POLY_WALL_MIN_M = 2.0    # m, a cardinal GROUP below this total traced
                          # fragment of a long wall survives. Furniture
                          # longer than this bar still defeats it, same
                          # honesty note as the height rule
+#: THE WALK-THROUGH SLAB (user ruling 2026-08-12 late, R-S2-164b: "the
+#: section of splat we should take should be somewhere between waist
+#: height to a bit above head height, this is to stop drop ceilings
+#: and bay windows"). A solid cell's material must SPAN this whole
+#: slab: below-waist mass (window benches, sofas) and above-head mass
+#: (drop ceilings, window-top valances) can no longer wall a room.
+#: Standard-room meters, applied as fractions of the measured height
+#: like every vertical constant since R-S2-134/150.
+POLY_WAIST_M = 0.9
+POLY_CROWN_M = 1.9
+
 POLY_TALL_M = 1.4   # m above the floor a solid cell's band material
                     # must reach â€” walls/curtains/glass doors do,
                     # sofas/tables/dressers do not (the furniture-dent
@@ -512,8 +523,10 @@ def _render_steps(sd, scene, st, out_segs, clean_segs):
     ax = axs[1]
     density(ax)
     mask(ax, st["solid"], (0.86, 0.2, 0.27, 0.8))
-    ax.set_title("2. 'solid' squares (red): dense AND reaching 1.4 m up\n"
-                 "â€” walls, but also shelves and curtains")
+    mask(ax, st["dense_cut"], (0.25, 0.5, 0.9, 0.55))
+    ax.set_title("2. 'solid' squares (red): WALL-DENSE and crossing the "
+                 "head line\nblue = cut by the density gate (tall but "
+                 "fog-thin — not wall material)")
 
     ax = axs[2]
     density(ax)
@@ -722,26 +735,67 @@ def run_poly(scene, sheet=False):
                & (pts[:, 1] <= ceil_m - WALL_BAND_HI))
     band_cnt = np.bincount(flat[in_band],
                            minlength=nx * nz).reshape(nx, nz)
-    # TALL rule: the cell's band material must reach above furniture
-    # height, else the sofa welds to the wall band and dents the trace
-    # (first band-only run: a 2 m bite around the sofa). Walls,
-    # curtains and glass doors reach; sofas, tables, chairs do not.
+    # THE WALK-THROUGH SLAB (user ruling 2026-08-12 late, R-S2-164b,
+    # superseding the two one-line tests at the SAME head line): a
+    # solid cell's material must SPAN waist..crown — you cannot walk
+    # through it at body height. This kills BOTH residual failure
+    # modes in one rule: below-waist mass alone (window benches,
+    # sofas) is furniture, not wall; above-head mass alone (drop
+    # ceilings, the window-top valances that kept fencing fresh08's
+    # bay AFTER the density gate) is overhead, not wall. Walls,
+    # wardrobes and floor-length curtains span the slab as before.
+    waist_line = floor_m + (POLY_WAIST_M / 2.8) * (ceil_m - floor_m)
+    crown_line = floor_m + (POLY_CROWN_M / 2.8) * (ceil_m - floor_m)
     band_top = np.full(nx * nz, -np.inf)
     np.maximum.at(band_top, flat[in_band], pts[in_band, 1])
-    tall = (band_top >= head_line).reshape(nx, nz)
-    # A BARRIER MUST OCCUPY THE WALKING ZONE (user diagnosis 2026-08-12:
-    # "some drop ceiling remain and confused the open space analysis" â€”
-    # measured: 65% of fresh06's solid cells, 38% of fresh09's, 19% of
-    # fresh05's had their LOWEST band point above head height â€” ceiling
-    # remnants and soffits hanging in the band, walling off open room).
-    # Walls, wardrobes and floor-length curtains all CROSS the head
-    # line; hanging material does not. Same constant, no new threshold.
+    tall = (band_top >= crown_line).reshape(nx, nz)
     band_bot = np.full(nx * nz, np.inf)
     np.minimum.at(band_bot, flat[in_band], pts[in_band, 1])
-    reaches_down = (band_bot <= head_line).reshape(nx, nz)
-    solid = (band_cnt >= MIN_CELL_PTS) & tall & reaches_down
+    reaches_down = (band_bot <= waist_line).reshape(nx, nz)
+    vertical_ok = (band_cnt >= MIN_CELL_PTS) & tall & reaches_down
+    # WALL-LIKE DENSITY GATE (user finding 2026-08-12 late, straight off
+    # the fresh08 sheet: tile 1's density contrast and tile 2's red
+    # DISAGREE — R-S2-164). MIN_CELL_PTS = 5 per 5 cm cell is "any
+    # material at all", so pale FOG VOLUME spanning the head line read
+    # as solid cell after cell (the fat red blob walling off fresh08's
+    # bay bench) while true walls, 10-100x denser, drew thin lines.
+    # Walls are the densest tall structures in a scene, so the bar is
+    # RELATIVE and SELF-CALIBRATED: split the tall population's log10
+    # density at its natural break (Otsu), and apply the cut ONLY when
+    # the two modes are genuinely separate (>= 4x = 0.6 in log10) — a
+    # fogless scene is unimodal and keeps today's behaviour exactly.
+    # No absolute density constant anywhere.
+    dense_cut = np.zeros_like(vertical_ok)
+    if vertical_ok.any():
+        logc = np.log10(band_cnt[vertical_ok].astype(np.float64))
+        hist, edges = np.histogram(logc, bins=64)
+        p = hist.astype(np.float64) / max(1, hist.sum())
+        mids = (edges[:-1] + edges[1:]) / 2
+        w0 = np.cumsum(p)
+        m0 = np.cumsum(p * mids)
+        mT = m0[-1]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            var_b = (mT * w0 - m0) ** 2 / (w0 * (1.0 - w0))
+        var_b[~np.isfinite(var_b)] = 0.0
+        thr = float(mids[int(np.argmax(var_b))])
+        lo_sel, hi_sel = logc <= thr, logc > thr
+        lo_m = float(logc[lo_sel].mean()) if lo_sel.any() else thr
+        hi_m = float(logc[hi_sel].mean()) if hi_sel.any() else thr
+        if hi_m - lo_m >= 0.6:
+            dense_cut = vertical_ok & (band_cnt < 10 ** thr)
+            print(f"[shell-poly] density gate: tall cells split at "
+                  f"{10 ** thr:.0f} pts/cell (modes {10 ** lo_m:.0f} vs "
+                  f"{10 ** hi_m:.0f} pts, "
+                  f"{10 ** (hi_m - lo_m):.0f}x apart) — "
+                  f"{int(dense_cut.sum())} fog-thin cells cut", flush=True)
+        else:
+            print(f"[shell-poly] density gate: tall-cell density "
+                  f"unimodal (modes {10 ** (hi_m - lo_m):.1f}x apart "
+                  f"< 4x) — no cut", flush=True)
+    solid = vertical_ok & ~dense_cut
     ink = ndimage.binary_dilation(solid, iterations=2)
-    st = {"grid": (x0, z0, nx, nz), "solid": solid.copy()} if sheet else None
+    st = ({"grid": (x0, z0, nx, nz), "solid": solid.copy(),
+           "dense_cut": dense_cut.copy()} if sheet else None)
 
     # interior = the free-space blob around the room centre.
     # FLOOR RULE: interior cells must stand on floor-level splat â€” the

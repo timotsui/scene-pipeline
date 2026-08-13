@@ -100,7 +100,17 @@ def footprint_cardinal_angle(m):
     return float(ang) if abs(ang) > 1.0 else 0.0
 
 
-def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
+#: the fit canon's own tolerance (shopping's "every axis within 15%"),
+#: granted to the 90/270 yaws ONLY when measured facing evidence
+#: (pillows) demands the rotation — R-S2-166: a bed with its head at
+#: the foot is a worse lie than a 15% overhang, and 1.05 vs 1.15 is
+#: exactly what shipped fresh08's bed backwards (needed swap over by
+#: 2%, both compliant yaws tied at dot 0, coin flip won).
+FACE_EVIDENCE_TOL = 1.15
+
+
+def place_candidate(mesh, cand, lo, hi, mount, face_dir=None,
+                    face_hard=False):
     """One candidate mesh -> (posed instances filling the render-frame
     box [lo, hi] (k tiles along cand's tile axis), chosen facing yaw).
 
@@ -109,7 +119,10 @@ def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
     front-view sheet). Among the four compass yaws whose footprint
     still fits the (sub-)box, pick the one pointing the front along
     face_dir (unit xz: away from the nearest wall, else toward the
-    room middle)."""
+    room middle). face_hard (R-S2-166): the direction is MEASURED
+    evidence, not a preference — if no strict-fitting yaw can meet it,
+    the 90/270 pair is retried at the fit canon's 15% before the tie
+    is allowed to ship."""
     m = mesh.copy()
     P = perm_rotation(cand.get("perm", "xyz"))
     m.apply_transform(P)
@@ -126,22 +139,41 @@ def place_candidate(mesh, cand, lo, hi, mount, face_dir=None):
         s0 = m.bounds[1] - m.bounds[0]
         sub_w = (hi[0] - lo[0]) / (k if axis == 0 else 1)
         sub_d = (hi[2] - lo[2]) / (k if axis == 2 else 1)
-        best = None
-        for deg in (0, 90, 180, 270):
-            # 0/180 keep the placed footprint EXACTLY -- never gate
-            # them (the old gate vetoed 180 whenever the scaled asset
-            # legitimately overhung its box, so 12/30 items silently
-            # kept arbitrary facing -- the backwards-shelf bug).
-            # 90/270 swap extents: allow only if the swap still fits.
-            if deg % 180 != 0:
-                ex, ez = s0[2], s0[0]
-                if ex > sub_w * 1.05 or ez > sub_d * 1.05:
-                    continue
-            f = yaw_matrix(deg)[:3, :3] @ P[:3, :3] @ np.array(
-                [0.0, 0.0, 1.0])
-            score = f[0] * face_dir[0] + f[2] * face_dir[1]
-            if best is None or score > best[0]:
-                best = (score, deg)
+        # the front must be computed through the SAME pipeline the mesh
+        # went through — perm, then the pca de-rotation, then the yaw
+        # (the pca term was silently omitted before R-S2-166)
+        rot_pca = yaw_matrix(pca_deg)[:3, :3] if pca_deg else np.eye(3)
+
+        def _pick(swap_tol):
+            best = None
+            for deg in (0, 90, 180, 270):
+                # 0/180 keep the placed footprint EXACTLY -- never gate
+                # them (the old gate vetoed 180 whenever the scaled
+                # asset legitimately overhung its box, so 12/30 items
+                # silently kept arbitrary facing -- the backwards-shelf
+                # bug). 90/270 swap extents: allow within swap_tol.
+                if deg % 180 != 0:
+                    ex, ez = s0[2], s0[0]
+                    if ex > sub_w * swap_tol or ez > sub_d * swap_tol:
+                        continue
+                f = (yaw_matrix(deg)[:3, :3] @ rot_pca @ P[:3, :3]
+                     @ np.array([0.0, 0.0, 1.0]))
+                score = f[0] * face_dir[0] + f[2] * face_dir[1]
+                if best is None or score > best[0]:
+                    best = (score, deg)
+            return best
+
+        best = _pick(1.05)
+        if face_hard and (best is None or best[0] <= 0.0):
+            # measured evidence unreachable at the strict gate: grant
+            # the canon 15% to the rotated pair (R-S2-166)
+            relaxed = _pick(FACE_EVIDENCE_TOL)
+            if relaxed is not None and relaxed[0] > (
+                    best[0] if best else -2.0):
+                best = relaxed
+                print(f"[fit] facing evidence honored at the canon "
+                      f"15% swap tolerance (strict 5% blocked the "
+                      f"needed yaw) — dot {best[0]:+.2f}", flush=True)
         if best:
             face_deg, face_dot = best[1], round(float(best[0]), 2)
             if face_deg:
@@ -471,7 +503,8 @@ def main():
         fdir, fsrc = face_dir_of(r["id"], lo, hi, r["mount"])
         fdir_by[r["id"]] = fdir
         insts, face_deg, face_dot, pca_deg = place_candidate(
-            mesh, c, lo, hi, r["mount"], face_dir=fdir)
+            mesh, c, lo, hi, r["mount"], face_dir=fdir,
+            face_hard=(fsrc == "pillow_evidence"))
         rv = rot_verdicts.get(r["id"])
         # basis + delta, only when measured on THIS asset -- a verdict
         # corrects one mesh's canonical-front quirk (the bed lesson)

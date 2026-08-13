@@ -430,6 +430,82 @@ def size_ok(sm):
                     for v in sm))
 
 
+def _room_poly(cdir):
+    """The interior polygon (raw x,z verts) + its planar segments from
+    room_shell.json. (None, None) when the shell is v1-only — the snap
+    then simply never fires (the v1 box has no scenery side)."""
+    f = cdir.parent / "room_shell.json"
+    if not f.exists():
+        return None, None
+    p = json.loads(f.read_text(encoding="utf-8")).get("polygon")
+    if not p:
+        return None, None
+    return (p.get("vertices_raw"),
+            [s for s in p.get("segments", [])
+             if s.get("kind") != "connector"])
+
+
+def _pip_raw(x, z, verts):
+    """Point-in-polygon, raw x,z, ray cast."""
+    inside = False
+    j = len(verts) - 1
+    for i in range(len(verts)):
+        xi, zi = verts[i]
+        xj, zj = verts[j]
+        if ((zi > z) != (zj > z)) and \
+                (x < (xj - xi) * (z - zi) / (zj - zi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _snap_outside_to_wall(box, verts, segs):
+    """USER RULING 2026-08-12 late (R-S2-165): an invented box whose
+    centre lands OUTSIDE the room is garbage-in — do not stand it in
+    the scenery (fresh08's wardrobe stood 1.4 m past the wall, in the
+    view through the window) and do not force-fill the room's middle
+    with it; SNAP it flush against the CLOSEST wall segment, on the
+    interior side, span-clamped. Returns (new_box, wall_id) or None
+    when the box is already inside."""
+    cx = (box["aabb_min"][0] + box["aabb_max"][0]) / 2
+    cz = (box["aabb_min"][2] + box["aabb_max"][2]) / 2
+    if _pip_raw(cx, cz, verts):
+        return None
+    best = None
+    for s in segs:
+        axi = 0 if s["axis"] == "x" else 2
+        tc = 1 if axi == 0 else 0
+        p, q = s["endpoints_raw"]
+        t0s, t1s = sorted((p[tc], q[tc]))
+        v = float(s["plane_raw_m"])
+        c_n = cx if axi == 0 else cz
+        c_t = cz if axi == 0 else cx
+        t_cl = min(max(c_t, t0s), t1s)
+        dist = ((c_n - v) ** 2 + (c_t - t_cl) ** 2) ** 0.5
+        if best is None or dist < best[0]:
+            best = (dist, s, axi, t0s, t1s, v)
+    if best is None:
+        return None
+    _, s, axi, t0s, t1s, v = best
+    side = int(s["interior_side_raw"])   # +1 = interior below the plane
+    mn = list(box["aabb_min"])
+    mx = list(box["aabb_max"])
+    depth = mx[axi] - mn[axi]
+    if side > 0:
+        mn[axi], mx[axi] = v - depth, v
+    else:
+        mn[axi], mx[axi] = v, v + depth
+    tax = 2 if axi == 0 else 0
+    span = mx[tax] - mn[tax]
+    lo_t = min(max(mn[tax], t0s), max(t0s, t1s - span))
+    mn[tax], mx[tax] = lo_t, lo_t + span
+    return ({"aabb_min": [round(x, 3) for x in mn],
+             "aabb_max": [round(x, 3) for x in mx],
+             "center": [round((a + b) / 2, 3) for a, b in zip(mn, mx)],
+             "size": [round(b - a, 3) for a, b in zip(mn, mx)]},
+            s["id"])
+
+
 def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
                    cdir, model):
     """STEP 3: size + box (v4/v5, user design 08-02) -- standalone so
@@ -445,6 +521,8 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
     place; every box carries box_source="estimated_prior"."""
     if not (adds or swaps):
         return
+    # the room's real outline, for the outside-the-room defense
+    poly_verts, poly_segs = _room_poly(cdir)
     # Boxes come from THE CURRENT LAYER, not `resolved`. Placement packs a
     # new object against its neighbours' measured extents, so reading the
     # pre-vote boxes would scan free space in a room whose furniture is the
@@ -612,10 +690,28 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
             x, z, fw, fd, cl = spot
             box = mk_up_box(x, z, fw, fd,
                             mx[1] if up < 0 else mn[1], h)
-            ir["box"] = box
-            ir["box_source"] = "estimated_prior"
             ir["placement"] = {"method": "swap_envelope",
                                "clamped": cl}
+            # OUTSIDE-THE-ROOM DEFENSE (user ruling 2026-08-12 late,
+            # R-S2-165): a swap envelope inherited from a through-the-
+            # glass detection put the wardrobe in the scenery. The box
+            # is not forced inside — it snaps flush to the closest
+            # wall, span-clamped, and the record says so.
+            if poly_verts:
+                snapped = _snap_outside_to_wall(box, poly_verts,
+                                                poly_segs)
+                if snapped is not None:
+                    box, _wid = snapped
+                    ir["placement"]["snapped_to_wall"] = _wid
+                    ir["placement"]["note"] = (
+                        "envelope centre was outside the room; "
+                        "snapped flush to the closest wall "
+                        "(R-S2-165)")
+                    print(f"[propose_edits] swap-in {ir['id']} "
+                          f"({ir['name']}) landed OUTSIDE the room — "
+                          f"snapped flush to {_wid}", flush=True)
+            ir["box"] = box
+            ir["box_source"] = "estimated_prior"
             obst.append(_footprint(box))
             pboxes[ir["id"]] = box
             placed.append({"name": ir["name"], "id": ir["id"]})
@@ -869,6 +965,8 @@ def main():
                     help="skip the loop: reload edit_proposals_raw.json "
                          "(fallback: strip edit_proposals.json) and "
                          "re-run step 3 sizing/placement alone")
+    ap.add_argument("--keep-adds", action="store_true",
+                    help="revive the killed add channel (R-S2-165)")
     ap.add_argument("--max-rounds", type=int, default=3,
                     help="loop cap (arbitrary, user 08-02); the "
                          "natural stop is a dry round")
@@ -1282,6 +1380,19 @@ def main():
             "reopen_petitions": petitions,
         }, indent=1), encoding="utf-8")
         print(f"[propose_edits] wrote {rpath} (loop output frozen)")
+
+    # ADD CHANNEL KILLED (user ruling 2026-08-12 late, R-S2-165: "lets
+    # kill the add function for that module, its giving us more
+    # problems than benefits" — the floor-standing wall mirror anchored
+    # to an out-of-room dresser was the last straw). Deletes and swaps
+    # are untouched. The machinery stays behind --keep-adds for a
+    # deliberate future revival, the R-S2-126c escalation pattern.
+    if adds and not args.keep_adds:
+        print(f"[propose_edits] ADD CHANNEL KILLED (R-S2-165): "
+              f"{len(adds)} proposed add(s) discarded "
+              f"({', '.join(a['name'] for a in adds[:8])}"
+              f"{', ...' if len(adds) > 8 else ''})", flush=True)
+        adds = []
 
     size_and_place(adds, swaps, swapped_out, graph, sbL, names,
                    cdir, args.model)
