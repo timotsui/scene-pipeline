@@ -1074,6 +1074,22 @@ def run_poly(scene, sheet=False):
         while j < len(seq) and seq[j]["kind"] == "connector":
             j += 1
         legs = rectilinearize(seq[i:j])
+        # GREEN PRIORITY (user ruling 2026-08-12: "the majority step
+        # should prioritize green lines"): a staircase leg born from a
+        # messy angled run DEFERS to a real traced wall's plane when
+        # one exists within group range — measured walls outrank
+        # geometry derived from mess. Legs with no wall nearby keep
+        # their own plane.
+        for leg in legs:
+            cands = [pl for (axx, pl), L in group_len.items()
+                     if axx == leg["axis"] and L >= POLY_WALL_MIN_M
+                     and abs(pl - leg["plane"]) <= POLY_GROUP_M]
+            if cands:
+                pl = min(cands, key=lambda v: abs(v - leg["plane"]))
+                i_c = 1 if leg["axis"] == "z" else 0
+                leg["p"][i_c] = pl
+                leg["q"][i_c] = pl
+                leg["plane"] = pl
         seq[i:j] = legs
         i += max(1, len(legs))
     seq = merge_seq(seq)
