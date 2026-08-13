@@ -1169,6 +1169,48 @@ def run_poly(scene, sheet=False):
         v = p + t * d
         return [float(v[0]), float(v[1])]
 
+    # CLOSE-ENOUGH PLANE COALESCING (user ruling 2026-08-12: fresh05's
+    # far wall shipped as two legs at z=4.004 / 4.061 joined by a fake
+    # 6 cm step — legs never join the group stage, so nearby parallel
+    # planes survive as separate walls). Same-axis pieces within
+    # POLY_MERGE_M cluster; a cluster holding a TRACE-BORN wall adopts
+    # that wall's plane (green priority), else the length-weighted
+    # mean. merge_seq then swallows the now-coplanar fake steps.
+    def _flush_cluster(cluster):
+        if len(cluster) < 2:
+            return
+        if st is not None:
+            print(f"[sheet] coalesce {cluster[0]['axis']}: "
+                  f"{[round(e['plane'], 3) for e in cluster]} "
+                  f"(legs {[bool(e.get('leg')) for e in cluster]})")
+        walls = [e for e in cluster if not e.get("leg")]
+        if walls:
+            pl = max(walls, key=lambda e: e["len"])["plane"]
+        else:
+            tot = sum(e["len"] for e in cluster)
+            pl = sum(e["plane"] * e["len"] for e in cluster) / max(tot, 1e-9)
+        for e in cluster:
+            e["plane"] = pl
+
+    for ax_name in ("x", "z"):
+        entries = sorted(
+            (e for e in seq
+             if e["kind"] == "cardinal" and e["axis"] == ax_name),
+            key=lambda e: e["plane"])
+        cluster = []
+        for e in entries:
+            # span-capped, not neighbor-chained: pairwise 0.15 gaps let
+            # a 3.6..4.06 family chain into one wall at 3.718 sitting on
+            # NOBODY's ink (fresh05, status flipped to inferred — the
+            # tell). The whole cluster must fit in one merge tolerance.
+            if cluster and e["plane"] - cluster[0]["plane"] <= POLY_MERGE_M:
+                cluster.append(e)
+            else:
+                _flush_cluster(cluster)
+                cluster = [e]
+        _flush_cluster(cluster)
+    seq = merge_seq(seq)
+
     # GREEN ENDS WIN AGAINST LEGS (user ruling 2026-08-12: "prioritize
     # the green lines' ends too if it's against a cyan"): a measured
     # wall's endpoint is its own traced extent. A staircase leg meeting
@@ -1177,14 +1219,28 @@ def run_poly(scene, sheet=False):
     # (fresh09 east: the measured x=+1.463 wall was dragged from its
     # traced end z=-0.485 down to an inferred fringe leg at z=-1.173).
     # Legs are mess-derived; traced ends are evidence.
+    # ...but ONLY fade legs defer (2026-08-12 second round: the fresh05
+    # north wall — two ink-backed legs coalesced at z=4.03 — was dragged
+    # to 3.718 because its green neighbour's ink happens to stop there.
+    # A leg standing on real ink IS a wall the green should extend to;
+    # deference is for legs standing on nothing).
+    def _leg_ink(leg):
+        i_c = 1 if leg["axis"] == "z" else 0
+        p = [float(leg["p"][0]), float(leg["p"][1])]
+        q = [float(leg["q"][0]), float(leg["q"][1])]
+        p[i_c] = q[i_c] = float(leg["plane"])
+        return ink_frac(p, q)
+
     for i in range(len(seq)):
         e, f = seq[i], seq[(i + 1) % len(seq)]
         if (e["kind"] == f["kind"] == "cardinal"
                 and e["axis"] != f["axis"]):
-            if f.get("leg") and not e.get("leg"):
+            if (f.get("leg") and not e.get("leg")
+                    and _leg_ink(f) < POLY_MEAS_FRAC):
                 tc_e = 1 if e["axis"] == "x" else 0
                 f["plane"] = float(e["q"][tc_e])
-            elif e.get("leg") and not f.get("leg"):
+            elif (e.get("leg") and not f.get("leg")
+                    and _leg_ink(e) < POLY_MEAS_FRAC):
                 tc_f = 1 if f["axis"] == "x" else 0
                 e["plane"] = float(f["p"][tc_f])
 
