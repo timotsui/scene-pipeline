@@ -133,9 +133,11 @@ def rotate_box(lo, hi, M):
     return rc.min(axis=0), rc.max(axis=0)
 
 
-def rotate_derived_state(sdir, M):
+def rotate_derived_state(sdir, M, new_p1, new_p99):
     """The state-transform half (N1 canon): every raw-frame box and
-    point in the derived artifacts, same targets scene_scale touches."""
+    point in the derived artifacts, same targets scene_scale touches.
+    new_p1/new_p99: the recomputed robust extents (frame extents must
+    hug the rotated cloud, never corner-rotate — see main())."""
     touched = []
 
     def _obj(o):
@@ -159,9 +161,8 @@ def rotate_derived_state(sdir, M):
         man = json.loads(f.read_text(encoding="utf-8"))
         fr = man.get("frame")
         if fr and "extent_p1" in fr and "extent_p99" in fr:
-            lo, hi = rotate_box(fr["extent_p1"], fr["extent_p99"], M)
-            fr["extent_p1"] = [round(float(v), 4) for v in lo]
-            fr["extent_p99"] = [round(float(v), 4) for v in hi]
+            fr["extent_p1"] = list(new_p1)
+            fr["extent_p99"] = list(new_p99)
         for sec in ("objects", "refuted", "filtered_out"):
             for o in man.get(sec) or []:
                 _obj(o)
@@ -311,13 +312,21 @@ def main():
     else:
         print("[yaw] no registered collider — colliderless scene")
 
-    touched = rotate_derived_state(sdir, M)
+    # extents: RECOMPUTED from the rotated cloud, frame_bootstrap's
+    # own recipe (opacity>0.3, p1/p99) — NOT corner-rotated. extent_p1/99
+    # is a robust box that must HUG the points; corner-rotating a tilted
+    # box inflates it (~1.2 m on fresh06) and run_poly's box-mask indices
+    # go negative -> empty interior -> trace crash (found live 08-12).
+    alpha = 1 / (1 + np.exp(-data[:, ix["opacity"]]))
+    op_xyz = new_xyz[alpha > 0.3]
+    new_p1 = np.percentile(op_xyz, 1, axis=0).round(3).tolist()
+    new_p99 = np.percentile(op_xyz, 99, axis=0).round(3).tolist()
+
+    touched = rotate_derived_state(sdir, M, new_p1, new_p99)
     print(f"[yaw] derived state rotated: {', '.join(touched)}")
 
-    if "extent_p1" in boot and "extent_p99" in boot:
-        lo, hi = rotate_box(boot["extent_p1"], boot["extent_p99"], M)
-        boot["extent_p1"] = [round(float(v), 3) for v in lo]
-        boot["extent_p99"] = [round(float(v), 3) for v in hi]
+    boot["extent_p1"] = list(new_p1)
+    boot["extent_p99"] = list(new_p99)
     boot["yaw_applied"] = round(yaw, 2)
     boot["yaw_note"] = ("scene_yaw.py de-tilted this scene (evidence: "
                         "scene_yaw.json); originals in *_preyaw.* files; "
