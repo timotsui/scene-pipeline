@@ -60,7 +60,15 @@ lands inside the polygon). ~45-60 min/scene, two-lane proven.
 - 164: density gate + walk-through slab (USER-DESIGNED off the sheet;
   sheet-approved; v1-vs-polygon disagreement WIDENS — §3 item)
 - 165: add channel KILLED (--keep-adds revives); out-of-room swap
-  boxes snap flush to the closest wall (point-in-polygon defense)
+  boxes: DISTANCE-TIERED defense (ruling 3 refined twice live on
+  08-13): near-outside snaps flush to the closest wall's EXTERIOR
+  face ("have it remain outside"); truly far (> one body length
+  beyond the wall) DROPS and the swap goes infeasible. Delete-at-
+  the-proposer was REJECTED — do not re-propose. CONSEQUENCE on
+  fresh08: wardrobe+dresser dropped (2.19 m beyond wall_00), and
+  obj_008 (the through-the-glass "window seat" that seeded them) is
+  back in the placed set standing in the scenery — the delete
+  judge never proposed deleting it; a review question if it offends.
 - 166/166b: pillow facing = hard evidence, 90/270 allowed at the canon
   15% (FACE_EVIDENCE_TOL); the pca "fix" REVERTED same night (user
   caught the bed sideways; dot 0.5 was the tell — the omission was a
