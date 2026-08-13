@@ -491,8 +491,8 @@ def _render_steps(sd, scene, st, out_segs, clean_segs):
     ax = axes[1][0]
     mask(ax, st["interior_precap"], (0.82, 0.82, 0.82, 0.6))
     mask(ax, st["interior"], (0.95, 0.55, 0.1, 0.9))
-    ax.set_title("5. the leash: only parts within 3 m walking distance\n"
-                 "of the box survive (orange kept, gray cut off)")
+    ax.set_title("5. leash + floor union: 3 m leash for floorless space,\n"
+                 "NO cap through seen floor (orange kept, gray cut off)")
 
     ax = axes[1][1]
     density(ax)
@@ -633,15 +633,30 @@ def run_poly(scene, sheet=False):
     if st is not None:
         st["free"] = free.copy()
         st["interior_precap"] = interior.copy()
-    # REACH CAP: keep only interior cells geodesically within
-    # POLY_REACH_M of the in-box part — a pocket through an opening
-    # stays, the wrap-around leak past the wall ends is cut
+    # REACH CAP + FLOOR-EVIDENCE UNION (user ruling 2026-08-12, from the
+    # step-4 review: "a union of the floor evidence and openspace walk
+    # seems to be the best"). Two-phase growth from the in-box core:
+    #   phase 1 — the old leash: anything reachable within POLY_REACH_M
+    #             stays, floor or no floor (furniture shadows the floor
+    #             inside the room, so the box core must not need it);
+    #   phase 2 — MEASURED floor is the room: growth continues without
+    #             a cap, but only through floor-evidenced open cells.
+    # A hallway whose floor was seen joins fully (fresh09's arm died at
+    # the 3 m leash); the view through a window still cannot join — its
+    # cells are not CONNECTED through open space (the wall/glass band is
+    # solid), and a floorless leak past a wall end still hits the leash.
     boxmask = np.zeros_like(interior)
     boxmask[bx0:bx1, bz0:bz1] = True
     grown = interior & boxmask
     for _ in range(int(POLY_REACH_M / CELL)):
         grown = ndimage.binary_dilation(grown) & interior
-    interior = grown
+    ext = grown
+    for _ in range(nx + nz):                 # geodesic, bounded
+        new = ndimage.binary_dilation(ext) & interior & (floor_ok | grown)
+        if bool(np.array_equal(new, ext)):
+            break
+        ext = new
+    interior = ext
 
     # TRACE: the interior's boundary as an ordered loop (Moore trace —
     # one closed loop by construction)
