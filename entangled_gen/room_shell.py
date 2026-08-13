@@ -562,14 +562,17 @@ def _render_steps(sd, scene, st, out_segs, clean_segs):
         else:                                # constant-x wall, runs along z
             zs2 = sorted((pp[1], qq[1]))
             ax.plot([plane, plane], zs2, "-", color="#1db954", lw=2.6)
-    for poly in st.get("chain_polylines", []):
-        for leg in _rectilinearize_verts([np.asarray(v, float)
-                                          for v in poly]):
-            ax.plot([leg["p"][0], leg["q"][0]], [leg["p"][1], leg["q"][1]],
-                    "-", color="#12b5cb", lw=2.2)
+    legs_pre = st.get("legs_pre")
+    if legs_pre is None:
+        legs_pre = [leg for poly in st.get("chain_polylines", [])
+                    for leg in _rectilinearize_verts(
+                        [np.asarray(v, float) for v in poly])]
+    for leg in legs_pre:
+        ax.plot([leg["p"][0], leg["q"][0]], [leg["p"][1], leg["q"][1]],
+                "-", color="#12b5cb", lw=2.2)
     ax.set_title("7b. everything as CARDINALS at their OWN traced planes\n"
-                 "(green = walls at spike positions, teal = staircase legs\n"
-                 "from angled runs) — BEFORE the group snap moves anything")
+                 "(green = walls at spike positions, teal = the LIVE\n"
+                 "staircase legs) — BEFORE group snap / green priority")
 
     ax = axs[8]
     density(ax)
@@ -1099,6 +1102,13 @@ def run_poly(scene, sheet=False):
         while j < len(seq) and seq[j]["kind"] == "connector":
             j += 1
         legs = rectilinearize(seq[i:j])
+        if st is not None:
+            # panel 7b shows THESE legs (the live pipeline's, at their
+            # own planes, pre-green-priority) — an earlier version
+            # recomputed legs from the raw chains and could show a leg
+            # the pipeline never built (user-caught, the wall_14 case)
+            st.setdefault("legs_pre", []).extend(
+                dict(l, p=l["p"].copy(), q=l["q"].copy()) for l in legs)
         # GREEN PRIORITY (user ruling 2026-08-12: "the majority step
         # should prioritize green lines"): a staircase leg born from a
         # messy angled run DEFERS to a real traced wall's plane when
@@ -1216,6 +1226,11 @@ def run_poly(scene, sheet=False):
                   f"members {rec['member_planes']} moved_by {moved} "
                   f"total {rec['total_length_m']} m "
                   f"is_wall {rec['is_wall']}")
+        for s2 in clean_segs:
+            print(f"[sheet] final {s2['id']:9s} {s2['kind']:9s} "
+                  + (f"{s2['axis']}={s2['plane_upright_m']:+7.3f}  "
+                     if s2.get("axis") else " " * 12)
+                  + f"len {s2['length_m']:6.3f} m  {s2['status']}")
         _render_steps(sd, scene, st, out_segs, clean_segs)
         return
 
