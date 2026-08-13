@@ -139,11 +139,14 @@ def place_candidate(mesh, cand, lo, hi, mount, face_dir=None,
         s0 = m.bounds[1] - m.bounds[0]
         sub_w = (hi[0] - lo[0]) / (k if axis == 0 else 1)
         sub_d = (hi[2] - lo[2]) / (k if axis == 2 else 1)
-        # the front must be computed through the SAME pipeline the mesh
-        # went through — perm, then the pca de-rotation, then the yaw
-        # (the pca term was silently omitted before R-S2-166)
-        rot_pca = yaw_matrix(pca_deg)[:3, :3] if pca_deg else np.eye(3)
-
+        # FRONT = yaw @ P @ +z, deliberately WITHOUT the pca term
+        # (R-S2-166b correction, same night): pca de-rotates geometry
+        # that arrived CROOKED IN ITS FILE — and a crooked file's front
+        # is crooked by the same angle, so the de-rotation cancels and
+        # the true front is P @ z again. Including rot_pca (R-S2-166's
+        # "also fixed") double-counted the rotation and shipped the
+        # fresh08 bed's head along x on a poisoned dot of 0.5 — a value
+        # compass yaws against an axis target cannot honestly produce.
         def _pick(swap_tol):
             best = None
             for deg in (0, 90, 180, 270):
@@ -156,8 +159,8 @@ def place_candidate(mesh, cand, lo, hi, mount, face_dir=None,
                     ex, ez = s0[2], s0[0]
                     if ex > sub_w * swap_tol or ez > sub_d * swap_tol:
                         continue
-                f = (yaw_matrix(deg)[:3, :3] @ rot_pca @ P[:3, :3]
-                     @ np.array([0.0, 0.0, 1.0]))
+                f = yaw_matrix(deg)[:3, :3] @ P[:3, :3] @ np.array(
+                    [0.0, 0.0, 1.0])
                 score = f[0] * face_dir[0] + f[2] * face_dir[1]
                 if best is None or score > best[0]:
                     best = (score, deg)
