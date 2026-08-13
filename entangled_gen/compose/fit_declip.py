@@ -398,6 +398,36 @@ def main():
             for axis, low, high in planes:
                 pen_lo = low - lo[axis]
                 pen_hi = hi[axis] - high
+                # FULLY-OUTSIDE ITEMS (user ruling 2026-08-13,
+                # R-S2-167, mirroring R-S2-165's tiers): an item whose
+                # mesh lies ENTIRELY beyond a wall is never dragged
+                # into the room (the fresh08 window seat and bookshelf
+                # were relocated ~1-2 m inward, flush inside the wall,
+                # while their measured boxes stayed in the bay).
+                # Near-outside — gap to the wall within its own BODY
+                # LENGTH — snaps flush to the wall's EXTERIOR face
+                # ("snap to closest wall(s) but still outside");
+                # truly far is LEFT where the evidence put it ("if
+                # too far, just let it be"). Straddling items keep
+                # the classic push-back — that is normal furniture
+                # jiggle at a real wall.
+                if axis != 1 and (lo[axis] >= high or hi[axis] <= low):
+                    body = max(hi[0] - lo[0], hi[2] - lo[2])
+                    gap = (lo[axis] - high if lo[axis] >= high
+                           else low - hi[axis])
+                    if TOL_M < gap <= body:
+                        d = -gap if lo[axis] >= high else gap
+                        any_move += abs(shift(i, axis, d))
+                        print(f"[declip] {place[i]['id']} fully "
+                              f"outside on axis {axis} — snapped "
+                              f"flush to the wall's EXTERIOR face "
+                              f"(gap {gap:.2f} m)", flush=True)
+                    elif gap > body and rnd == 0:
+                        print(f"[declip] {place[i]['id']} is {gap:.2f} "
+                              f"m beyond the wall (> body "
+                              f"{body:.2f} m) — left where measured "
+                              f"(R-S2-167)", flush=True)
+                    continue
                 if pen_lo > TOL_M:
                     any_move += abs(shift(
                         i, axis,
