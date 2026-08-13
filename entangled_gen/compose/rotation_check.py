@@ -752,7 +752,15 @@ def ref_sheet(scene_dir, member, oid, out_path, compass=None):
     compass=(pose, fov, origin): draw the floor rose on the wide panel --
     valid because the corrected photo and the proper camera share pixel
     coords (the refcam box check proved it)."""
-    view_p = scene_dir / "pano_crops" / f"{member['view']}.webp"
+    # same rule as cut_crops/node_evidence: a member may state its own
+    # scene-relative img (rcc retakes do); else the canonical rig crops.
+    # pano_crops/ is the RETIRED week8 dir, kept as a last-resort legacy read.
+    if member.get("img"):
+        view_p = scene_dir / member["img"]
+    else:
+        view_p = scene_dir / "rig_sp0" / "crops" / f"{member['view']}.webp"
+    if not view_p.exists():
+        view_p = scene_dir / "pano_crops" / f"{member['view']}.webp"
     crop_p = scene_dir / "graph" / "crops" / member["crop"]
     if not view_p.exists() or not crop_p.exists():
         return None
@@ -862,7 +870,12 @@ def main():
         if mem:
             # camera first: with --compass the ref sheet needs it to draw
             # the rose on the photo panel
-            side_p = rig / "crops" / f"{mem['view']}.json"
+            # sidecar next to the photo, carrying its name (the
+            # cut_crops/node_evidence rule); pano_crops/ = retired legacy
+            if mem.get("img"):
+                side_p = (scene_dir / mem["img"]).with_suffix(".json")
+            else:
+                side_p = rig / "crops" / f"{mem['view']}.json"
             if not side_p.exists():
                 side_p = scene_dir / "pano_crops" / f"{mem['view']}.json"
             side = json.loads(side_p.read_text(encoding="utf-8"))
