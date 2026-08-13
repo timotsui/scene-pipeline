@@ -84,6 +84,29 @@ interior room type, no attic/loft/vault/cabin per PARKED §3. These
 six are the simplest by prompt; the sheet the user reviewed is
 out/scene_proposals.png. MASTER_catalogue.csv is the source.)
 
+**EXACT LAUNCH COMMANDS (audited 08-13: a virgin --bundle scene
+dry-runs the COMPLETE tonight-pipeline, exit 0 — intake `frame`
+first, compose ends sub_rounds → merge_subs → gravity →
+prep_viewer). Bundle root:
+`D:\T\Documents\GeorgiaTech\Summer2026\CS-8903-OVM\week8\marble-harvest\worlds\`**
+
+```
+python run_scene.py --scene natural_living  --bundle <root>\6cf716a8-d750-4e06-b28b-ebad2eebf538 --phase all
+python run_scene.py --scene sunlit_office   --bundle <root>\b6f5f206-ae53-4d36-a1bc-5d52c4759920 --phase all
+python run_scene.py --scene blue_living     --bundle <root>\270dd75d-794b-4dcf-99fd-e0b59e73f33c --phase all
+python run_scene.py --scene panel_bedroom   --bundle <root>\748cf5e5-f148-48c3-b077-8ddfcd8a50b8 --phase all
+python run_scene.py --scene arch_bedroom    --bundle <root>\a1ddded0-594a-41e9-a1c5-63447aeae4a8 --phase all
+python run_scene.py --scene plaster_bedroom --bundle <root>\2bf68fde-c0f6-49ec-87e7-3e58c1a5cb53 --phase all
+```
+
+**GLTS side of each pair:** the runner is
+`D:\T\Documents\GeorgiaTech\Summer2026\Research\code\working\TreeSearchGen\run_test_claude.sh`
+(MODEL_BACKEND=claude routes through claude.exe — see the
+treesearchgen-claude-bridge notes; layout-only steps 0-13, NO
+mid-run resume; watch the stale User-level ANTHROPIC_API_KEY
+gotcha). File results with compare_methods.py into
+out/comparison.html.
+
 ## 3. THE FIX STACK (headers; read the entry before touching)
 
 - 159: de-tilt truly sheet-only + plan_yaw_deg recorded
