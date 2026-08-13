@@ -946,6 +946,67 @@ def run_poly(scene, sheet=False):
         return out
 
     seq = merge_seq(seq)
+
+    # RECTILINEARIZE THE CHAINS (user ruling 2026-08-12, superseding the
+    # 08-09 delete-or-flatten pair: "make each full orange line one poly
+    # line and then approximate it with cardinal lines"). An angled run
+    # is neither dropped nor collapsed to a diagonal: its FULL polyline
+    # becomes a staircase of axis-aligned legs — each maximal run of
+    # same-dominant-axis edges is one cardinal at the length-weighted
+    # mean plane. The corner/step joint machinery below already knows
+    # how to join alternating cardinals; micro-legs die at the existing
+    # POLY_MIN_SEG_M bar right after. POLY_CONN_KEEP_M and the 2 m chain
+    # bar are retired by this ruling (no connectors survive to need
+    # them); connector handling in consumers stays for old shells.
+    def rectilinearize(chain):
+        verts = [np.asarray(chain[0]["p"], float)]
+        for e in chain:
+            verts.append(np.asarray(e["q"], float))
+        runs = []
+        for a, b in zip(verts[:-1], verts[1:]):
+            d = b - a
+            L = float(np.hypot(*d))
+            if L < 1e-9:
+                continue
+            ax = "z" if abs(d[0]) >= abs(d[1]) else "x"  # along x = z-wall
+            if runs and runs[-1][0] == ax:
+                runs[-1][1].append((a, b, L))
+            else:
+                runs.append((ax, [(a, b, L)]))
+        out = []
+        for ax, edges in runs:
+            Ls = [w for _, _, w in edges]
+            if ax == "z":
+                pos = float(np.average(
+                    [(a[1] + b[1]) / 2 for a, b, _ in edges], weights=Ls))
+                p = np.array([edges[0][0][0], pos])
+                q = np.array([edges[-1][1][0], pos])
+                ln = abs(q[0] - p[0])
+            else:
+                pos = float(np.average(
+                    [(a[0] + b[0]) / 2 for a, b, _ in edges], weights=Ls))
+                p = np.array([pos, edges[0][0][1]])
+                q = np.array([pos, edges[-1][1][1]])
+                ln = abs(q[1] - p[1])
+            out.append({"kind": "cardinal", "axis": ax, "plane": pos,
+                        "p": p, "q": q, "len": float(ln)})
+        return out
+
+    while seq and seq[0]["kind"] == "connector":     # chains must not
+        seq.append(seq.pop(0))                       # wrap the list end
+    i = 0
+    while i < len(seq):
+        if seq[i]["kind"] != "connector":
+            i += 1
+            continue
+        j = i
+        while j < len(seq) and seq[j]["kind"] == "connector":
+            j += 1
+        legs = rectilinearize(seq[i:j])
+        seq[i:j] = legs
+        i += max(1, len(legs))
+    seq = merge_seq(seq)
+
     changed = True
     while changed and len(seq) > 3:
         changed = False
@@ -957,52 +1018,6 @@ def run_poly(scene, sheet=False):
                 seq = merge_seq(seq)
                 changed = True
                 break
-    # CONNECTOR CHAINS (user ruling 2026-08-09, the corner chamfer: the
-    # 1 m diagonal at the shelf was still furniture): a run of
-    # consecutive connectors is an architectural feature only if it
-    # totals POLY_WALL_MIN_M — the same bar the walls must clear. A
-    # shorter run is dropped and the neighbouring walls meet square.
-    # The pocket's ramp (3.1 m chained) clears the bar; a corner cut
-    # cannot.
-    while seq and seq[0]["kind"] == "connector":     # chains must not
-        seq.append(seq.pop(0))                       # wrap the list end
-    changed = True
-    while changed and len(seq) > 3:
-        changed = False
-        i = 0
-        while i < len(seq):
-            if seq[i]["kind"] != "connector":
-                i += 1
-                continue
-            j = i
-            tot = 0.0
-            while j < len(seq) and seq[j]["kind"] == "connector":
-                tot += seq[j]["len"]
-                j += 1
-            if tot < POLY_WALL_MIN_M:
-                del seq[i:j]
-                seq = merge_seq(seq)
-                changed = True
-                break
-            i = j
-    # ONE SEGMENT PER CHAIN (user ruling 2026-08-09, same review): a
-    # surviving chain collapses to a single straight connector from the
-    # chain's start to its end — the wiggle is trace noise, the chain's
-    # span is the architecture.
-    i = 0
-    while i < len(seq):
-        if seq[i]["kind"] != "connector":
-            i += 1
-            continue
-        j = i
-        while j < len(seq) and seq[j]["kind"] == "connector":
-            j += 1
-        if j - i > 1:
-            p, q = seq[i]["p"], seq[j - 1]["q"]
-            seq[i:j] = [{"kind": "connector", "p": p, "q": q,
-                         "len": float(np.hypot(q[0] - p[0],
-                                               q[1] - p[1]))}]
-        i += 1
 
     def isect(p, q, axis, pos):
         p = np.asarray(p, float); d = np.asarray(q, float) - p
