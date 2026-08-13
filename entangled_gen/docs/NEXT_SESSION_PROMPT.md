@@ -1,28 +1,25 @@
-﻿Continue the scene-pipeline work. Repo: D:\T\Documents\GeorgiaTech\Summer2026\scene-pipeline\entangled_gen
+Continue the scene-pipeline work. Repo: D:\T\Documents\GeorgiaTech\Summer2026\scene-pipeline\entangled_gen
 READ FIRST, in order:
-  1. docs/SESSION_2026-08-28_HANDOFF.md â€” all of it. Â§1 is your work
-     order, Â§5 the traps.
-  2. docs/PARKED.md â€” do not work on these (item 4 = wall-embed, new).
-  3. REVIEW_LOG R-S2-136..158 â€” skim headers; read any entry you touch.
+  1. docs/SESSION_2026-08-29_HANDOFF.md — all of it. §2 is the standing
+     decision, §5 the traps.
+  2. docs/PARKED.md — do not work on these.
+  3. REVIEW_LOG R-S2-159..166b — skim headers; read any entry you touch.
 
-THE SESSION IS THE RE-RUNS (user: "the next agent will be rerunning the
-scenes we need to rerun"):
-  1. fresh05 + fresh08: scale apply (scene_scale.py, no --measure-only)
-     then the two-pass chain re-run from stitch. Detached launches,
-     clock-lock verified, sequential. Read the morning-report style
-     receipts as the user would.
-  2. Build the yaw state-apply (R-S2-158 Â§: splat xyz + gaussian quats,
-     collider, manifests, boot guard; frame contract STAYS sign-flips).
-     Pre-register in REVIEW_LOG before running.
-  3. Wall-fix re-run on fresh05/06/09: new room_shell stack into shipped
-     state, graph wall rebuild, downstream chain. Regenerate the steps
-     sheets + wall_review.html so the user can compare shipped vs sheet.
-  4. Do NOT design: v1-merge, interior-wall architecture, compose wall
-     consumers, bed census â€” those need user rulings, bring them as
-     questions with receipts.
+THE SESSION OPENS ON ONE QUESTION (asked 08-13 ~03:00, unanswered):
+  the `--from shell` WAVE over fresh05/06/08/09 — ships the
+  user-approved wall outline (density gate + walk-through slab),
+  fixes 05/06/09's crushed wall items, likely rescues fresh08's
+  window seat, and can clean the canon-eligibility stamps. If the
+  user says go: WMI-detached, two-lane max, monitored, receipts read
+  as the user would. fresh05's −2.25° yaw apply (scene_yaw.py) can
+  ride the same wave if ruled worth it.
+
+DO NOT DESIGN WITHOUT RULINGS: v1-vs-polygon consumer round (§4.5),
+vote pipelining build (R-S2-163 pre-registered), two-lane run_fleet
+wiring, bed census, v1-merge, interior-wall architecture.
 
 HOUSE RULES: no observation-triggered tuning; fixes at source,
-scene-agnostically; every fix gets a REVIEW_LOG entry with the contract
-intro; the user judges ALL visuals; trust the primary record over
-summaries; plain English; long processes DETACHED; ONE watch_gpu.
-
+scene-agnostically; every fix gets a REVIEW_LOG entry with the
+contract intro; the user judges ALL visuals; trust the primary record
+over summaries; plain English; long processes DETACHED; ONE watch_gpu;
+clock lock verified under load.
