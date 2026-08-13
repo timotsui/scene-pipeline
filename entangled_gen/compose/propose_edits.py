@@ -460,13 +460,17 @@ def _pip_raw(x, z, verts):
 
 
 def _snap_outside_to_wall(box, verts, segs):
-    """USER RULING 2026-08-12 late (R-S2-165): an invented box whose
-    centre lands OUTSIDE the room is garbage-in — do not stand it in
-    the scenery (fresh08's wardrobe stood 1.4 m past the wall, in the
-    view through the window) and do not force-fill the room's middle
-    with it; SNAP it flush against the CLOSEST wall segment, on the
-    interior side, span-clamped. Returns (new_box, wall_id) or None
-    when the box is already inside."""
+    """USER RULING 2026-08-12/13 (R-S2-165 ruling 3, final form): an
+    invented box whose centre lands OUTSIDE the room is garbage-in.
+    Near-outside ("otherwise snap it remaining outside"): SNAP flush
+    against the CLOSEST wall segment ON THE EXTERIOR side,
+    span-clamped — quarantined at the wall, visible, never claiming
+    interior space. Truly far ("if its truely far away then dont
+    snap" — take it out): if the centre sits more than ONE BODY
+    LENGTH (the box's own largest horizontal extent — no absolute
+    constant) beyond the closest wall, the item is DROPPED. Returns
+    None (inside, leave), ("snap", new_box, wall_id), or
+    ("drop", wall_id, dist_m)."""
     cx = (box["aabb_min"][0] + box["aabb_max"][0]) / 2
     cz = (box["aabb_min"][2] + box["aabb_max"][2]) / 2
     if _pip_raw(cx, cz, verts):
@@ -486,20 +490,24 @@ def _snap_outside_to_wall(box, verts, segs):
             best = (dist, s, axi, t0s, t1s, v)
     if best is None:
         return None
-    _, s, axi, t0s, t1s, v = best
-    side = int(s["interior_side_raw"])   # +1 = interior below the plane
+    dist, s, axi, t0s, t1s, v = best
     mn = list(box["aabb_min"])
     mx = list(box["aabb_max"])
+    body = max(mx[0] - mn[0], mx[2] - mn[2])
+    if dist > body:
+        return ("drop", s["id"], round(float(dist), 2))
+    side = int(s["interior_side_raw"])   # +1 = interior below the plane
     depth = mx[axi] - mn[axi]
-    if side > 0:
-        mn[axi], mx[axi] = v - depth, v
-    else:
+    if side > 0:                         # interior below -> outside above
         mn[axi], mx[axi] = v, v + depth
+    else:                                # interior above -> outside below
+        mn[axi], mx[axi] = v - depth, v
     tax = 2 if axi == 0 else 0
     span = mx[tax] - mn[tax]
     lo_t = min(max(mn[tax], t0s), max(t0s, t1s - span))
     mn[tax], mx[tax] = lo_t, lo_t + span
-    return ({"aabb_min": [round(x, 3) for x in mn],
+    return ("snap",
+            {"aabb_min": [round(x, 3) for x in mn],
              "aabb_max": [round(x, 3) for x in mx],
              "center": [round((a + b) / 2, 3) for a, b in zip(mn, mx)],
              "size": [round(b - a, 3) for a, b in zip(mn, mx)]},
@@ -692,24 +700,38 @@ def size_and_place(adds, swaps, swapped_out, graph, sbL, names,
                             mx[1] if up < 0 else mn[1], h)
             ir["placement"] = {"method": "swap_envelope",
                                "clamped": cl}
-            # OUTSIDE-THE-ROOM DEFENSE (user ruling 2026-08-12 late,
-            # R-S2-165): a swap envelope inherited from a through-the-
-            # glass detection put the wardrobe in the scenery. The box
-            # is not forced inside — it snaps flush to the closest
-            # wall, span-clamped, and the record says so.
+            # OUTSIDE-THE-ROOM DEFENSE (user rulings 2026-08-12/13,
+            # R-S2-165 ruling 3 final): near-outside snaps flush to
+            # the closest wall's EXTERIOR face ("have it remain
+            # outside"); truly far — more than one body length beyond
+            # the wall — is dropped ("if its truely far away then
+            # dont snap").
             if poly_verts:
-                snapped = _snap_outside_to_wall(box, poly_verts,
+                verdict = _snap_outside_to_wall(box, poly_verts,
                                                 poly_segs)
-                if snapped is not None:
-                    box, _wid = snapped
+                if verdict is not None and verdict[0] == "drop":
+                    _, _wid, _dist = verdict
+                    ir["placement"] = {
+                        "dropped": "truly far outside the room",
+                        "closest_wall": _wid,
+                        "dist_beyond_wall_m": _dist}
+                    print(f"[propose_edits] swap-in {ir['id']} "
+                          f"({ir['name']}) is {_dist} m beyond "
+                          f"{_wid} — TRULY FAR, dropped (R-S2-165)",
+                          flush=True)
+                    ok = False
+                    continue
+                if verdict is not None:
+                    _, box, _wid = verdict
                     ir["placement"]["snapped_to_wall"] = _wid
                     ir["placement"]["note"] = (
                         "envelope centre was outside the room; "
-                        "snapped flush to the closest wall "
-                        "(R-S2-165)")
+                        "snapped flush to the closest wall's "
+                        "EXTERIOR face (R-S2-165 ruling 3)")
                     print(f"[propose_edits] swap-in {ir['id']} "
                           f"({ir['name']}) landed OUTSIDE the room — "
-                          f"snapped flush to {_wid}", flush=True)
+                          f"snapped to the exterior face of {_wid}",
+                          flush=True)
             ir["box"] = box
             ir["box_source"] = "estimated_prior"
             obst.append(_footprint(box))
