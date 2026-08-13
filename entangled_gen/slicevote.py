@@ -712,6 +712,25 @@ if POLY is not None:
     POLY_V = np.asarray(POLY["vertices_raw"], float)     # (N,2) x,z raw
     POLY_SEGS = POLY["segments"]
     SEG_BY_ID = {s["id"]: s for s in POLY_SEGS}
+    # SAME-PLANE FAMILY SPAN per planar segment (R-S2-161): a wall the
+    # trace split into pieces at one plane (window gaps, door cuts)
+    # still reads as ONE wall for the resting-on-it test — a curtain
+    # legitimately spans the gap between two pieces of its wall.
+    for _s in POLY_SEGS:
+        if _s["kind"] == "connector":
+            continue
+        _tc = 1 if _s["axis"] == "x" else 0
+        _p, _q = _s["endpoints_raw"]
+        _lo_t, _hi_t = sorted((_p[_tc], _q[_tc]))
+        for _o in POLY_SEGS:
+            if (_o is _s or _o["kind"] == "connector"
+                    or _o["axis"] != _s["axis"]):
+                continue
+            if abs(_o["plane_raw_m"] - _s["plane_raw_m"]) <= WALL_TOUCH:
+                _p2, _q2 = _o["endpoints_raw"]
+                _a, _b = sorted((_p2[_tc], _q2[_tc]))
+                _lo_t, _hi_t = min(_lo_t, _a), max(_hi_t, _b)
+        _s["family_span_raw"] = (float(_lo_t), float(_hi_t))
     # the bbox globals stay defined (docstrings, sanity fallbacks) but
     # now bound the POLYGON, not the v1 4-wall shell
     XLO, XHI = float(POLY_V[:, 0].min()), float(POLY_V[:, 0].max())
@@ -868,14 +887,27 @@ def wall_protrusion(lo, hi):
             tc = 1 if axi == 0 else 0
             p, q = s["endpoints_raw"]
             t0, t1 = sorted((p[tc], q[tc]))
-            if hi[tax] < t0 - WALL_TOUCH or lo[tax] > t1 + WALL_TOUCH:
-                continue                   # box not in front of this wall
-            if side > 0:
-                touches = hi[axi] > v - WALL_TOUCH
-                protr = v - lo[axi]
-            else:
-                touches = lo[axi] < v + WALL_TOUCH
-                protr = hi[axi] - v
+            # RESTING-ON-IT (user metric 2026-08-12, R-S2-161): a wall
+            # piece may claim only a box that actually RESTS ON it —
+            # two structural rules, no new tuned knobs:
+            #   REACH — the box's interval on the normal axis must come
+            #   within WALL_TOUCH of the plane (a window's mass sits AT
+            #   its wall; the fresh06 desk stranded 1.3 m past a notch
+            #   lip is not a "window" in it);
+            #   REST — the MAJORITY of the box's along-wall extent must
+            #   lie within the wall's span (same-plane family: curtains
+            #   span window gaps and bay overhangs). The fresh06 bed
+            #   corner-brushing a 0.5 m lip rests 31% on it -> no claim;
+            #   the fresh08 curtain rests 81% on its wall -> claimed.
+            touches = (hi[axi] > v - WALL_TOUCH
+                       and lo[axi] < v + WALL_TOUCH)     # REACH
+            f0, f1 = s.get("family_span_raw", (t0, t1))
+            span = float(hi[tax] - lo[tax])
+            ov = max(0.0, min(float(hi[tax]), f1)
+                     - max(float(lo[tax]), f0))
+            if span > 1e-6 and ov / span < 0.5:          # REST
+                continue
+            protr = (v - lo[axi]) if side > 0 else (hi[axi] - v)
             protr = max(float(protr), 0.0)
         else:
             if not _conn_overlap(s, lo, hi):
@@ -911,6 +943,40 @@ def _axis_clip(nlo, nhi, axi, blo, bhi):
     nlo[axi], nhi[axi] = cl, ch
 
 
+def _poly_rect_aabb(x0, x1, z0, z1):
+    """AABB of (interior polygon ∩ axis-aligned rectangle) in raw x,z,
+    or None when empty. Sutherland-Hodgman with the rectangle as the
+    convex clipper — the polygon may be non-convex (L-rooms,
+    staircases) and may include angled connector edges; both clip
+    exactly. If the footprint straddles a notch and touches interior
+    on both sides, the AABB spans the union — conservative, never a
+    wrong-side crush (R-S2-161)."""
+    pts = [(float(p[0]), float(p[1])) for p in POLY_V]
+    for val, comp, keep_ge in ((x0, 0, True), (x1, 0, False),
+                               (z0, 1, True), (z1, 1, False)):
+        if not pts:
+            return None
+        out = []
+        for i, cur in enumerate(pts):
+            prev = pts[i - 1]
+            cin = (cur[comp] >= val) if keep_ge else (cur[comp] <= val)
+            pin = (prev[comp] >= val) if keep_ge else (prev[comp] <= val)
+            if cin != pin:
+                t = (val - prev[comp]) / (cur[comp] - prev[comp])
+                out.append((prev[0] + t * (cur[0] - prev[0]),
+                            prev[1] + t * (cur[1] - prev[1])))
+            if cin:
+                out.append(cur)
+        pts = out
+    if not pts:
+        return None
+    xs = [p[0] for p in pts]
+    zs = [p[1] for p in pts]
+    if max(xs) - min(xs) < 1e-9 and max(zs) - min(zs) < 1e-9:
+        return None
+    return min(xs), max(xs), min(zs), max(zs)
+
+
 def shell_clip(lo, hi):
     """SHELL CLIP (user ruling 2026-08-07 late: "boolean out all the
     strictly external volume"). Intersect a SHIPPING box with the shell
@@ -932,58 +998,28 @@ def shell_clip(lo, hi):
             _axis_clip(nlo, nhi, axi, blo, bhi)
     else:
         _axis_clip(nlo, nhi, 1, CEIL, FLOOR)
-        for s in POLY_SEGS:
-            if s["kind"] != "connector":
-                axi = 0 if s["axis"] == "x" else 2
-                tax = 2 if axi == 0 else 0
-                tc = 1 if axi == 0 else 0
-                p, q = s["endpoints_raw"]
-                t0, t1 = sorted((p[tc], q[tc]))
-                # local: only clip where the footprint faces this wall
-                if nhi[tax] < t0 - WALL_TOUCH or nlo[tax] > t1 + WALL_TOUCH:
-                    continue
-                v, side = s["plane_raw_m"], s["interior_side_raw"]
-                if side > 0:               # interior below the plane
-                    _axis_clip(nlo, nhi, axi, -np.inf, v)
-                else:
-                    _axis_clip(nlo, nhi, axi, v, np.inf)
-            else:
-                if not _conn_overlap(s, nlo, nhi):
-                    continue
-                n2 = np.asarray(s["inward_normal_raw"], float)
-                c = float(s["plane_offset_raw"])
-                corners2 = np.array([[x, z] for x in (nlo[0], nhi[0])
-                                     for z in (nlo[2], nhi[2])], float)
-                if float((corners2 @ n2 - c).min()) >= 0.0:
-                    continue               # already fully inside
-                # largest axis-aligned box inside the half-plane: cut
-                # along x OR z to satisfy the worst remaining corner,
-                # keep whichever cut preserves more footprint area
-                cands = []
-                for axi, comp in ((0, 0), (2, 1)):
-                    oax = 2 - axi
-                    ocomp = 1 - comp
-                    na = float(n2[comp])
-                    if abs(na) < 1e-9:
-                        continue
-                    om = min(float(nlo[oax]) * float(n2[ocomp]),
-                             float(nhi[oax]) * float(n2[ocomp]))
-                    bound = (c - om) / na
-                    clo, chi = float(nlo[axi]), float(nhi[axi])
-                    if na > 0:
-                        clo = max(clo, bound)
-                    else:
-                        chi = min(chi, bound)
-                    if chi - clo < MIN_SLAB:
-                        continue
-                    area = (chi - clo) * (float(nhi[oax]) - float(nlo[oax]))
-                    cands.append((area, axi, clo, chi))
-                if cands:
-                    _, axi, clo, chi = max(cands)
-                    nlo[axi], nhi[axi] = clo, chi
-                # no candidate = the box cannot fit inside at MIN_SLAB;
-                # leave it — D1: partial outside is not dragged, and
-                # fully-outside was dropped before shipping
+        # NON-CONVEX-SAFE CLIP (R-S2-161). The old loop applied each
+        # segment's half-plane TO INFINITY whenever the footprint
+        # touched the segment's span. Exact for a convex 4-plane room;
+        # in an L-room the notch's two lips carry OPPOSING half-planes,
+        # and a box brushing both spans was batted between them and
+        # crushed to a MIN_SLAB sliver (the fresh06 bed, the fresh08
+        # curtain, 26 of fresh09's 27 wall exempts). The clip is now
+        # the geometric truth: AABB of (footprint ∩ interior polygon)
+        # — Sutherland-Hodgman with the box rectangle as the convex
+        # clipper handles any simple polygon, connectors included.
+        inter = _poly_rect_aabb(float(nlo[0]), float(nhi[0]),
+                                float(nlo[2]), float(nhi[2]))
+        if inter is None:
+            # footprint fully outside the outline: a wall item at or
+            # past its plane. NOT dragged anywhere (D1: partial outside
+            # is not dragged; depth into the wall is legitimate — the
+            # R-S2-122 in-wall ruling).
+            pass
+        else:
+            ix0, ix1, iz0, iz1 = inter
+            _axis_clip(nlo, nhi, 0, ix0, ix1)
+            _axis_clip(nlo, nhi, 2, iz0, iz1)
     d_lo, d_hi = nlo - olo, nhi - ohi
     if not (np.abs(d_lo) > 1e-6).any() and not (np.abs(d_hi) > 1e-6).any():
         return nlo, nhi, None
