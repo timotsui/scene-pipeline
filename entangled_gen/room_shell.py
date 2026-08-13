@@ -577,6 +577,14 @@ def run_poly(scene, sheet=False):
     ci = ((x - x0) / CELL).astype(np.int32).clip(0, nx - 1)
     cz = ((z - z0) / CELL).astype(np.int32).clip(0, nz - 1)
     flat = ci * nz + cz
+    # THE HEAD LINE IS A FRACTION OF THE MEASURED ROOM, not an absolute
+    # (2026-08-12, the fresh05 lesson): POLY_TALL_M = 1.4 assumes a
+    # metric scene, but the shell must also behave on a not-yet-
+    # normalized one (fresh05 at raw 0.64x: "1.4 m" landed 0.23 below
+    # its ceiling and every vertical test warped). Same cure as the
+    # stitch eye (R-S2-134): 1.4-in-a-2.8-standard-room, re-expressed
+    # against THIS room's measured height. Identical on metric scenes.
+    head_line = floor_m + (POLY_TALL_M / 2.8) * (ceil_m - floor_m)
     in_band = ((pts[:, 1] >= floor_m + WALL_BAND_LO)
                & (pts[:, 1] <= ceil_m - WALL_BAND_HI))
     band_cnt = np.bincount(flat[in_band],
@@ -587,17 +595,17 @@ def run_poly(scene, sheet=False):
     # curtains and glass doors reach; sofas, tables, chairs do not.
     band_top = np.full(nx * nz, -np.inf)
     np.maximum.at(band_top, flat[in_band], pts[in_band, 1])
-    tall = (band_top >= floor_m + POLY_TALL_M).reshape(nx, nz)
+    tall = (band_top >= head_line).reshape(nx, nz)
     # A BARRIER MUST OCCUPY THE WALKING ZONE (user diagnosis 2026-08-12:
     # "some drop ceiling remain and confused the open space analysis" —
     # measured: 65% of fresh06's solid cells, 38% of fresh09's, 19% of
     # fresh05's had their LOWEST band point above head height — ceiling
     # remnants and soffits hanging in the band, walling off open room).
-    # Walls, wardrobes and floor-length curtains all CROSS the 1.4 m
+    # Walls, wardrobes and floor-length curtains all CROSS the head
     # line; hanging material does not. Same constant, no new threshold.
     band_bot = np.full(nx * nz, np.inf)
     np.minimum.at(band_bot, flat[in_band], pts[in_band, 1])
-    reaches_down = (band_bot <= floor_m + POLY_TALL_M).reshape(nx, nz)
+    reaches_down = (band_bot <= head_line).reshape(nx, nz)
     solid = (band_cnt >= MIN_CELL_PTS) & tall & reaches_down
     ink = ndimage.binary_dilation(solid, iterations=2)
     st = {"grid": (x0, z0, nx, nz), "solid": solid.copy()} if sheet else None
@@ -623,8 +631,13 @@ def run_poly(scene, sheet=False):
     # from the floor test (same >= 3 pts, same 4-cell dilation).
     # Measured: fresh09 38.5 -> 29.4 m2 (exterior gone), fresh05
     # 20.3 -> 15.1 (its traced footprint is 14.9), fresh06 unaffected.
+    # "roofed" = ANYTHING overhead above the head line (2026-08-12,
+    # second round: the near-main-ceiling form cut the space UNDER a
+    # false ceiling — the true ceiling is hidden above it, so the test
+    # failed exactly where the user pointed. A drop ceiling IS a roof;
+    # the outdoors has nothing overhead at all.)
     ceil_ok = ndimage.binary_dilation(
-        np.bincount(flat[pts[:, 1] > ceil_m - 0.4],
+        np.bincount(flat[pts[:, 1] > head_line],
                     minlength=nx * nz).reshape(nx, nz) >= 3, iterations=4)
     # the floor requirement applies OUTSIDE the frame's robust box only:
     # inside it, furniture shadows the floor and would dig fake dents;
@@ -852,6 +865,8 @@ def run_poly(scene, sheet=False):
             rec["evidence"] = s.get("spike")
         elif s["kind"] == "connector":
             rec["angle_deg"] = s["angle_deg"]
+        if rec["length_m"] < 1e-3:
+            continue    # a rounded-to-zero sliver is not wall evidence
         out_segs.append(rec)
 
     # MERGE ACROSS THE LOOP (user ruling 2026-08-09b): group same-axis
@@ -873,6 +888,8 @@ def run_poly(scene, sheet=False):
     for s in out_segs:
         if s["kind"] != "cardinal":
             continue
+        if s["length_m"] < 1e-3:
+            continue    # a rounded-to-zero sliver is not wall evidence
         g = next((g for g in groups[s["axis"]]
                   if abs(g["pos"] - s["plane_upright_m"]) <= POLY_GROUP_M),
                  None)
@@ -880,9 +897,10 @@ def run_poly(scene, sheet=False):
             g = {"pos": s["plane_upright_m"], "members": []}
             groups[s["axis"]].append(g)
         g["members"].append(s)
-        g["pos"] = (sum(m["plane_upright_m"] * m["length_m"]
-                        for m in g["members"])
-                    / sum(m["length_m"] for m in g["members"]))
+        tot = sum(m["length_m"] for m in g["members"])
+        if tot > 1e-9:      # zero-length members must not poison the mean
+            g["pos"] = (sum(m["plane_upright_m"] * m["length_m"]
+                            for m in g["members"]) / tot)
     group_recs = []
     for ax_name in ("x", "z"):
         for g in groups[ax_name]:
@@ -988,6 +1006,8 @@ def run_poly(scene, sheet=False):
                 p = np.array([pos, edges[0][0][1]])
                 q = np.array([pos, edges[-1][1][1]])
                 ln = abs(q[1] - p[1])
+            if ln < 1e-6:
+                continue      # a switchback run with no net movement
             out.append({"kind": "cardinal", "axis": ax, "plane": pos,
                         "p": p, "q": q, "len": float(ln)})
         return out
