@@ -613,6 +613,19 @@ def run_poly(scene, sheet=False):
         flat[np.abs(pts[:, 1] - floor_m) < 0.15],
         minlength=nx * nz).reshape(nx, nz)
     floor_ok = ndimage.binary_dilation(floor_cnt >= 3, iterations=4)
+    # A ROOM IS COVERED SPACE (2026-08-12, the fresh09 leak review):
+    # after the walking-zone rule dissolved hanging wall remnants, the
+    # rough box's floor-free permission let exterior pockets flood in
+    # through the breaches (6.6 of 7.5 added m2 were in-box exterior),
+    # and exterior GROUND reads as "floor" so floor evidence cannot
+    # tell a garden from a room. A ceiling can: every open cell must be
+    # UNDER A ROOF — material near ceiling height above it, mirrored
+    # from the floor test (same >= 3 pts, same 4-cell dilation).
+    # Measured: fresh09 38.5 -> 29.4 m2 (exterior gone), fresh05
+    # 20.3 -> 15.1 (its traced footprint is 14.9), fresh06 unaffected.
+    ceil_ok = ndimage.binary_dilation(
+        np.bincount(flat[pts[:, 1] > ceil_m - 0.4],
+                    minlength=nx * nz).reshape(nx, nz) >= 3, iterations=4)
     # the floor requirement applies OUTSIDE the frame's robust box only:
     # inside it, furniture shadows the floor and would dig fake dents;
     # outside it, floor evidence is exactly what separates a walk-in
@@ -636,7 +649,8 @@ def run_poly(scene, sheet=False):
     # spot; only a cell that is ITSELF solid (a wall) may override it.
     # fresh09 15.9 -> 31.0 m2, fresh05 14.0 -> 20.2, fresh06 8.7 -> 9.2.
     near_solid = ndimage.binary_dilation(solid, iterations=1)
-    free = (~near_solid & (boxm | floor_ok)) | (floor_ok & ~solid)
+    free = ((~near_solid & (boxm | floor_ok))
+            | (floor_ok & ~solid)) & ceil_ok
     lab, _n = ndimage.label(free)
     # the room = the free component with the most area inside the
     # frame's robust box (a centre seed lands under furniture)
