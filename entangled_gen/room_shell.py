@@ -617,8 +617,16 @@ def run_poly(scene, sheet=False):
         st["floor_ok"] = floor_ok.copy()
         st["box"] = (x0 + bx0 * CELL, z0 + bz0 * CELL,
                      x0 + bx1 * CELL, z0 + bz1 * CELL)
-    free = ~ndimage.binary_dilation(solid, iterations=1) \
-        & (boxm | floor_ok)
+    # FLOOR DEFEATS THE RING (the decisive half of the user's 08-12
+    # union ruling — measured first: relaxing only the leash changed
+    # NOTHING (15.9/14.0/8.7 m2 identical), because the lost area dies
+    # HERE: the dilated ring around solid cells — fog blobs and tall
+    # furniture standing on visibly-open floor — was excluding room the
+    # capture plainly saw. Seen floor at a spot means open room at that
+    # spot; only a cell that is ITSELF solid (a wall) may override it.
+    # fresh09 15.9 -> 31.0 m2, fresh05 14.0 -> 20.2, fresh06 8.7 -> 9.2.
+    near_solid = ndimage.binary_dilation(solid, iterations=1)
+    free = (~near_solid & (boxm | floor_ok)) | (floor_ok & ~solid)
     lab, _n = ndimage.label(free)
     # the room = the free component with the most area inside the
     # frame's robust box (a centre seed lands under furniture)
