@@ -1,14 +1,14 @@
-"""
-Room shell — measured world architecture (walls · ceiling · floor).
+﻿"""
+Room shell â€” measured world architecture (walls Â· ceiling Â· floor).
 
-W1 (default mode) — MEASURED SHELL -> out/<scene>/room_shell.json.
+W1 (default mode) â€” MEASURED SHELL -> out/<scene>/room_shell.json.
 Assumptions (user 2026-07-26, "clean and workable"):
   - VERTICAL-PRISM WALLS: a plan cell is a wall candidate only if its
     splat reaches within TOP_TOL of the measured ceiling (kills beds and
     low furniture; verified on bedroom_marble: the x_low "wall" at -2.05
     was furniture, the true wall at -2.427 = the collider's plane).
   - v1 fits ONE outer segment per axis side (4 sides) but the schema is a
-    LIST of wall segments — non-box rooms (N segments, boundary tracing)
+    LIST of wall segments â€” non-box rooms (N segments, boundary tracing)
     are a schema-compatible v2, not a rewrite.
   - Per side, ALL parallel candidate planes are recorded (curtain planes,
     wardrobe fronts, visible wall surfaces) with evidence; the STRUCTURAL
@@ -25,17 +25,17 @@ p1/p99 extent). This audit answers, with numbers, "where are the REAL
 walls?" three independent ways before anything is fitted:
 
   1. splat density: 1 cm histograms of wall-band points (0.3 m above
-     floor .. 0.1 m below ceiling) perpendicular to each current bound —
+     floor .. 0.1 m below ceiling) perpendicular to each current bound â€”
      a real wall is a sharp density peak; report peak position vs the
      p1/p99 placeholder, sharpness (peak/interior median) and width;
   2. y histogram (2 cm): measured floor and ceiling peaks vs the frame's
      floor_y / ceiling_y;
   3. collider cross-check (Marble bundles only, absent elsewhere):
-     collider_registered.glb planar patches via face-normal clustering —
+     collider_registered.glb planar patches via face-normal clustering â€”
      every patch >= 0.5 m^2 with its plane offset, so the mesh the user
      already trusts votes on the same question.
 
-Plus a top-down occupancy image of the wall band — non-box room shapes
+Plus a top-down occupancy image of the wall band â€” non-box room shapes
 (alcoves, L-rooms) show up here; the W1 fitter must handle N wall
 segments, not assume 4 (user rule 07-26).
 
@@ -107,7 +107,7 @@ def peak_report(pts_axis, bound, side):
 def collider_patches(scene, r2r):
     """Per-axis, area-weighted offset histogram of near-axis-aligned faces
     (peaks = the mesh's dominant planes), plus how much face area is
-    OBLIQUE (>= 25 deg off every axis) — the non-box-room signal. All
+    OBLIQUE (>= 25 deg off every axis) â€” the non-box-room signal. All
     positions reported UPRIGHT. Exact per-normal clustering fragmented
     the walls (triangulated meshes wobble normals), hence histograms."""
     f = paths.scene_dir(scene) / "collider_registered.glb"
@@ -202,7 +202,7 @@ def fit_shell(scene, fr, pts, r2r):
     # Clip to the frame's robust extents (+SEARCH margin) before ANY
     # histogramming. Generated splats leak floater gaussians through
     # openings (living_marble 08-06: sky/ground points 10+ m outside the
-    # room dragged the floor/ceiling midpoint split to -9.5 — the fitter
+    # room dragged the floor/ceiling midpoint split to -9.5 â€” the fitter
     # called the real floor "ceiling" and a floater cluster "floor").
     # The audit path already clips this way; the extents come from the
     # frame block, no new estimation. Closed rooms (bedroom) are a no-op.
@@ -268,7 +268,7 @@ def fit_shell(scene, fr, pts, r2r):
         structural = cands[0]
         # parallel surfaces: only within 0.6 m of the structural plane
         # (curtain planes, visible wall faces, wardrobe fronts) and the
-        # strongest 5 — the far-interior tall-furniture peaks are not
+        # strongest 5 â€” the far-interior tall-furniture peaks are not
         # "surfaces of this wall"
         parallels = [c for c in cands[1:]
                      if abs(c["position"] - structural["position"]) <= 0.6]
@@ -296,7 +296,7 @@ def fit_shell(scene, fr, pts, r2r):
         })
     # span each wall to the PERPENDICULAR structural planes (the room
     # rectangle): the observed extent covers only where splat sits ON the
-    # plane (27-45% on bedroom_marble — the rest hides behind curtains /
+    # plane (27-45% on bedroom_marble â€” the rest hides behind curtains /
     # furniture / openings); observed stays as evidence + coverage metric
     for w in walls:
         perp = sorted(v["plane_upright_m"] for v in walls
@@ -316,18 +316,18 @@ def fit_shell(scene, fr, pts, r2r):
 
 
 # ---- W4 polygonal shell v2: TRACE -> CLOSE -> MERGE (--poly) ----------
-# User design 2026-08-09 (PLAN_ROOM_SHELL.md §3-W4). REVIEW ARTIFACTS
+# User design 2026-08-09 (PLAN_ROOM_SHELL.md Â§3-W4). REVIEW ARTIFACTS
 # ONLY: writes room_shell_poly.json + room_shell_poly.png next to the v1
 # shell; nothing downstream reads them until the W4 gate passes.
 # 1. TRACE the interior boundary of the wall-material map wherever it is
 #    dense enough (never invent where you could measure);
-# 2. CLOSE the polygon — every un-traceable stretch becomes a segment
+# 2. CLOSE the polygon â€” every un-traceable stretch becomes a segment
 #    MARKED inferred, never passed off as measured;
-# 3. MERGE similar planes — cardinal snap is a special case of the
+# 3. MERGE similar planes â€” cardinal snap is a special case of the
 #    merge, position re-measured from the density spike; what cannot
 #    snap survives as a connector at its traced angle, and connector /
 #    closure pieces absorb the error so walls never move.
-POLY_MARGIN = 1.5   # m beyond p1/p99 kept for the trace — the v1 clip
+POLY_MARGIN = 1.5   # m beyond p1/p99 kept for the trace â€” the v1 clip
                     # (SEARCH 0.45) amputates the pocket beyond an
                     # opening (obj_001); floater columns past this are
                     # killed by the floor-to-ceiling rule, not the clip
@@ -344,14 +344,14 @@ POLY_CONN_KEEP_M = 0.50  # m, connectors at least this long keep their
 POLY_WALL_MIN_M = 2.0    # m, a cardinal GROUP below this total traced
                          # length is not architecture (user ruling
                          # 2026-08-09: wall_04 was a shelf at the
-                         # corner) — its pieces are dropped and the
+                         # corner) â€” its pieces are dropped and the
                          # neighbouring planes close straight across.
                          # Judged per group, not per segment, so a short
                          # fragment of a long wall survives. Furniture
                          # longer than this bar still defeats it, same
                          # honesty note as the height rule
 POLY_TALL_M = 1.4   # m above the floor a solid cell's band material
-                    # must reach — walls/curtains/glass doors do,
+                    # must reach â€” walls/curtains/glass doors do,
                     # sofas/tables/dressers do not (the furniture-dent
                     # guard; replaces v1's reaches-the-ceiling rule,
                     # which a dense Marble ceiling defeats)
@@ -360,7 +360,7 @@ POLY_REACH_M = 3.0  # m, a traced pocket may extend at most this far
                     # robust box. Without the cap the flood escapes an
                     # unbounded opening and wraps around the OUTSIDE of
                     # the walls (living_marble: the east wall traced
-                    # twice, once per face). First value, uncalibrated —
+                    # twice, once per face). First value, uncalibrated â€”
                     # it bounds pocket DEPTH, not which scenes work
 
 
@@ -403,7 +403,7 @@ _MOORE = [(-1, 0), (-1, 1), (0, 1), (1, 1),
 def _trace_boundary(mask):
     """Moore-neighbour trace of the OUTER boundary of the largest True
     region: one ordered CLOSED loop of cell indices. (plt.contour
-    fragments a jagged mask into open pieces — this never does.)"""
+    fragments a jagged mask into open pieces â€” this never does.)"""
     xs, zs = np.nonzero(mask)
     k = int(np.argmin(xs * mask.shape[1] + zs))   # scan order first
     start = (int(xs[k]), int(zs[k]))
@@ -430,12 +430,53 @@ def _trace_boundary(mask):
     return loop
 
 
+def _rectilinearize_verts(verts):
+    """A polyline -> a staircase of axis-aligned legs (R-S2-149): each
+    maximal run of same-dominant-axis edges becomes one cardinal at the
+    length-weighted mean plane. Shared by the live chain conversion in
+    run_poly and the pre-snap review panel, so the panel can never
+    drift from the pipeline."""
+    runs = []
+    for a, b in zip(verts[:-1], verts[1:]):
+        a = np.asarray(a, float)
+        b = np.asarray(b, float)
+        d = b - a
+        L = float(np.hypot(*d))
+        if L < 1e-9:
+            continue
+        ax = "z" if abs(d[0]) >= abs(d[1]) else "x"  # along x = z-wall
+        if runs and runs[-1][0] == ax:
+            runs[-1][1].append((a, b, L))
+        else:
+            runs.append((ax, [(a, b, L)]))
+    out = []
+    for ax, edges in runs:
+        Ls = [w for _, _, w in edges]
+        if ax == "z":
+            pos = float(np.average(
+                [(a[1] + b[1]) / 2 for a, b, _ in edges], weights=Ls))
+            p = np.array([edges[0][0][0], pos])
+            q = np.array([edges[-1][1][0], pos])
+            ln = abs(q[0] - p[0])
+        else:
+            pos = float(np.average(
+                [(a[0] + b[0]) / 2 for a, b, _ in edges], weights=Ls))
+            p = np.array([pos, edges[0][0][1]])
+            q = np.array([pos, edges[-1][1][1]])
+            ln = abs(q[1] - p[1])
+        if ln < 1e-6:
+            continue          # a switchback run with no net movement
+        out.append({"kind": "cardinal", "axis": ax, "plane": pos,
+                    "p": p, "q": q, "len": float(ln)})
+    return out
+
+
 def _render_steps(sd, scene, st, out_segs, clean_segs):
     """--steps-sheet: every stage of the W4 trace as its own panel, in
     the order the code runs them, so a wrong outline can be blamed on
     the exact step that wronged it (user ask 2026-08-12: 'break these
     down step by step, give me visual of each step'). REVIEW ARTIFACT
-    ONLY — writes room_shell_steps.png and nothing else."""
+    ONLY â€” writes room_shell_steps.png and nothing else."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -460,20 +501,21 @@ def _render_steps(sd, scene, st, out_segs, clean_segs):
 
     kind_col = {"cardinal": "#1db954", "connector": "#ff9f1c",
                 "step": "#9b5de5"}
-    fig, axes = plt.subplots(2, 4, figsize=(24, 12))
+    fig, axes = plt.subplots(3, 3, figsize=(24, 17))
+    axs = list(axes.ravel())
 
-    ax = axes[0][0]
+    ax = axs[0]
     density(ax)
     ax.set_title("1. all splat material between floor and ceiling,\n"
                  "seen from above (dark = dense)")
 
-    ax = axes[0][1]
+    ax = axs[1]
     density(ax)
     mask(ax, st["solid"], (0.86, 0.2, 0.27, 0.8))
     ax.set_title("2. 'solid' squares (red): dense AND reaching 1.4 m up\n"
-                 "— walls, but also shelves and curtains")
+                 "â€” walls, but also shelves and curtains")
 
-    ax = axes[0][2]
+    ax = axs[2]
     density(ax)
     mask(ax, st["floor_ok"], (0.2, 0.6, 0.3, 0.45))
     bx = st["box"]
@@ -482,26 +524,26 @@ def _render_steps(sd, scene, st, out_segs, clean_segs):
     ax.set_title("3. floor evidence (green) + the rough box (blue).\n"
                  "Open space must be in the box OR stand on floor")
 
-    ax = axes[0][3]
+    ax = axs[3]
     mask(ax, st["free"], (0.72, 0.72, 0.72, 0.6))
     mask(ax, st["interior_precap"], (0.99, 0.75, 0.18, 0.85))
     ax.set_title("4. open-space regions (gray);\nthe one picked as THE "
                  "ROOM (orange)")
 
-    ax = axes[1][0]
+    ax = axs[4]
     mask(ax, st["interior_precap"], (0.82, 0.82, 0.82, 0.6))
     mask(ax, st["interior"], (0.95, 0.55, 0.1, 0.9))
     ax.set_title("5. leash + floor union: 3 m leash for floorless space,\n"
                  "NO cap through seen floor (orange kept, gray cut off)")
 
-    ax = axes[1][1]
+    ax = axs[5]
     density(ax)
     lp = np.asarray(st["loop"] + [st["loop"][0]])
     ax.plot(lp[:, 0], lp[:, 1], "-", color="#e63946", lw=1.5)
     ax.set_title("6. the walk: march around the room's edge\n"
                  "(red = the raw trace)")
 
-    ax = axes[1][2]
+    ax = axs[6]
     density(ax)
     for s in out_segs:
         (px, pz), (qx, qz) = s["endpoints_upright"]
@@ -511,7 +553,25 @@ def _render_steps(sd, scene, st, out_segs, clean_segs):
                  "re-measure onto the nearest dense band\n"
                  "(green = wall-like, orange = angled, purple = step)")
 
-    ax = axes[1][3]
+    ax = axs[7]
+    density(ax)
+    for ax_w, plane, (pp, qq) in st.get("cards_pre", []):
+        if ax_w == "z":                      # constant-z wall, runs along x
+            xs2 = sorted((pp[0], qq[0]))
+            ax.plot(xs2, [plane, plane], "-", color="#1db954", lw=2.6)
+        else:                                # constant-x wall, runs along z
+            zs2 = sorted((pp[1], qq[1]))
+            ax.plot([plane, plane], zs2, "-", color="#1db954", lw=2.6)
+    for poly in st.get("chain_polylines", []):
+        for leg in _rectilinearize_verts([np.asarray(v, float)
+                                          for v in poly]):
+            ax.plot([leg["p"][0], leg["q"][0]], [leg["p"][1], leg["q"][1]],
+                    "-", color="#12b5cb", lw=2.2)
+    ax.set_title("7b. everything as CARDINALS at their OWN traced planes\n"
+                 "(green = walls at spike positions, teal = staircase legs\n"
+                 "from angled runs) — BEFORE the group snap moves anything")
+
+    ax = axs[8]
     density(ax)
     for s in out_segs:
         (px, pz), (qx, qz) = s["endpoints_upright"]
@@ -539,7 +599,7 @@ def _render_steps(sd, scene, st, out_segs, clean_segs):
         for a2 in row:
             a2.set_xlim(ex[0], ex[1])
             a2.set_ylim(ex[2], ex[3])
-    fig.suptitle(f"{scene} — how the wall outline is made, step by step",
+    fig.suptitle(f"{scene} â€” how the wall outline is made, step by step",
                  fontsize=15)
     outp = sd / "room_shell_steps.png"
     fig.tight_layout()
@@ -563,11 +623,11 @@ def run_poly(scene, sheet=False):
     floor_m, ceil_m = measure_floor_ceiling(pts)
 
     # wall-material ink: plan cells with dense WALL-BAND splat (points
-    # between floor and ceiling margins — the same material the audit
+    # between floor and ceiling margins â€” the same material the audit
     # image draws). NOT the v1 reaches-the-ceiling rule: living_marble's
     # ceiling splat is dense, which made every open-floor cell "reach
     # the ceiling" and the whole room read as solid. Furniture also
-    # inks, but it forms holes INSIDE the interior — the outer boundary
+    # inks, but it forms holes INSIDE the interior â€” the outer boundary
     # walk never sees it, and the majority-plane merge absorbs a bulge
     # where furniture touches a wall.
     x, z = pts[:, 0], pts[:, 2]
@@ -597,9 +657,9 @@ def run_poly(scene, sheet=False):
     np.maximum.at(band_top, flat[in_band], pts[in_band, 1])
     tall = (band_top >= head_line).reshape(nx, nz)
     # A BARRIER MUST OCCUPY THE WALKING ZONE (user diagnosis 2026-08-12:
-    # "some drop ceiling remain and confused the open space analysis" —
+    # "some drop ceiling remain and confused the open space analysis" â€”
     # measured: 65% of fresh06's solid cells, 38% of fresh09's, 19% of
-    # fresh05's had their LOWEST band point above head height — ceiling
+    # fresh05's had their LOWEST band point above head height â€” ceiling
     # remnants and soffits hanging in the band, walling off open room).
     # Walls, wardrobes and floor-length curtains all CROSS the head
     # line; hanging material does not. Same constant, no new threshold.
@@ -611,7 +671,7 @@ def run_poly(scene, sheet=False):
     st = {"grid": (x0, z0, nx, nz), "solid": solid.copy()} if sheet else None
 
     # interior = the free-space blob around the room centre.
-    # FLOOR RULE: interior cells must stand on floor-level splat — the
+    # FLOOR RULE: interior cells must stand on floor-level splat â€” the
     # room (and any walk-in pocket) has floor at floor_m; the area seen
     # THROUGH a window does not, so it can never join the interior even
     # where the wall has no floor-to-ceiling material (living_marble:
@@ -627,13 +687,13 @@ def run_poly(scene, sheet=False):
     # through the breaches (6.6 of 7.5 added m2 were in-box exterior),
     # and exterior GROUND reads as "floor" so floor evidence cannot
     # tell a garden from a room. A ceiling can: every open cell must be
-    # UNDER A ROOF — material near ceiling height above it, mirrored
+    # UNDER A ROOF â€” material near ceiling height above it, mirrored
     # from the floor test (same >= 3 pts, same 4-cell dilation).
     # Measured: fresh09 38.5 -> 29.4 m2 (exterior gone), fresh05
     # 20.3 -> 15.1 (its traced footprint is 14.9), fresh06 unaffected.
     # "roofed" = ANYTHING overhead above the head line (2026-08-12,
     # second round: the near-main-ceiling form cut the space UNDER a
-    # false ceiling — the true ceiling is hidden above it, so the test
+    # false ceiling â€” the true ceiling is hidden above it, so the test
     # failed exactly where the user pointed. A drop ceiling IS a roof;
     # the outdoors has nothing overhead at all.)
     ceil_ok = ndimage.binary_dilation(
@@ -654,10 +714,10 @@ def run_poly(scene, sheet=False):
         st["box"] = (x0 + bx0 * CELL, z0 + bz0 * CELL,
                      x0 + bx1 * CELL, z0 + bz1 * CELL)
     # FLOOR DEFEATS THE RING (the decisive half of the user's 08-12
-    # union ruling — measured first: relaxing only the leash changed
+    # union ruling â€” measured first: relaxing only the leash changed
     # NOTHING (15.9/14.0/8.7 m2 identical), because the lost area dies
-    # HERE: the dilated ring around solid cells — fog blobs and tall
-    # furniture standing on visibly-open floor — was excluding room the
+    # HERE: the dilated ring around solid cells â€” fog blobs and tall
+    # furniture standing on visibly-open floor â€” was excluding room the
     # capture plainly saw. Seen floor at a spot means open room at that
     # spot; only a cell that is ITSELF solid (a wall) may override it.
     # fresh09 15.9 -> 31.0 m2, fresh05 14.0 -> 20.2, fresh06 8.7 -> 9.2.
@@ -681,13 +741,13 @@ def run_poly(scene, sheet=False):
     # REACH CAP + FLOOR-EVIDENCE UNION (user ruling 2026-08-12, from the
     # step-4 review: "a union of the floor evidence and openspace walk
     # seems to be the best"). Two-phase growth from the in-box core:
-    #   phase 1 — the old leash: anything reachable within POLY_REACH_M
+    #   phase 1 â€” the old leash: anything reachable within POLY_REACH_M
     #             stays, floor or no floor (furniture shadows the floor
     #             inside the room, so the box core must not need it);
-    #   phase 2 — MEASURED floor is the room: growth continues without
+    #   phase 2 â€” MEASURED floor is the room: growth continues without
     #             a cap, but only through floor-evidenced open cells.
     # A hallway whose floor was seen joins fully (fresh09's arm died at
-    # the 3 m leash); the view through a window still cannot join — its
+    # the 3 m leash); the view through a window still cannot join â€” its
     # cells are not CONNECTED through open space (the wall/glass band is
     # solid), and a floorless leak past a wall end still hits the leash.
     boxmask = np.zeros_like(interior)
@@ -703,7 +763,7 @@ def run_poly(scene, sheet=False):
         ext = new
     interior = ext
 
-    # TRACE: the interior's boundary as an ordered loop (Moore trace —
+    # TRACE: the interior's boundary as an ordered loop (Moore trace â€”
     # one closed loop by construction)
     import matplotlib
     matplotlib.use("Agg")
@@ -795,7 +855,7 @@ def run_poly(scene, sheet=False):
 
     # CLOSE: consecutive lines meet at a vertex. Different orientations
     # intersect; same-orientation neighbours get an explicit closure
-    # connector. Cardinal walls never move — joints absorb the error.
+    # connector. Cardinal walls never move â€” joints absorb the error.
     def line_of(s):
         if s["kind"] == "cardinal" and s["axis"] == "x":
             return ("x", s["position"])
@@ -868,6 +928,27 @@ def run_poly(scene, sheet=False):
         if rec["length_m"] < 1e-3:
             continue    # a rounded-to-zero sliver is not wall evidence
         out_segs.append(rec)
+
+    if st is not None:
+        # panel 7b: every line as a cardinal at its OWN traced plane,
+        # BEFORE the group snap moves anything
+        st["cards_pre"] = [
+            (s["axis"], s["plane_upright_m"], s["endpoints_upright"])
+            for s in out_segs if s["kind"] == "cardinal"]
+        chains, cur = [], []
+        for s in out_segs:
+            if s["kind"] == "connector":
+                cur.append(s)
+            else:
+                if cur:
+                    chains.append(cur)
+                cur = []
+        if cur:
+            chains.append(cur)
+        st["chain_polylines"] = [
+            [c[0]["endpoints_upright"][0]]
+            + [x["endpoints_upright"][1] for x in c]
+            for c in chains]
 
     # MERGE ACROSS THE LOOP (user ruling 2026-08-09b): group same-axis
     # planes, snap each group to its MAJORITY plane (weighted by traced
@@ -969,7 +1050,7 @@ def run_poly(scene, sheet=False):
     # 08-09 delete-or-flatten pair: "make each full orange line one poly
     # line and then approximate it with cardinal lines"). An angled run
     # is neither dropped nor collapsed to a diagonal: its FULL polyline
-    # becomes a staircase of axis-aligned legs — each maximal run of
+    # becomes a staircase of axis-aligned legs â€” each maximal run of
     # same-dominant-axis edges is one cardinal at the length-weighted
     # mean plane. The corner/step joint machinery below already knows
     # how to join alternating cardinals; micro-legs die at the existing
@@ -980,37 +1061,7 @@ def run_poly(scene, sheet=False):
         verts = [np.asarray(chain[0]["p"], float)]
         for e in chain:
             verts.append(np.asarray(e["q"], float))
-        runs = []
-        for a, b in zip(verts[:-1], verts[1:]):
-            d = b - a
-            L = float(np.hypot(*d))
-            if L < 1e-9:
-                continue
-            ax = "z" if abs(d[0]) >= abs(d[1]) else "x"  # along x = z-wall
-            if runs and runs[-1][0] == ax:
-                runs[-1][1].append((a, b, L))
-            else:
-                runs.append((ax, [(a, b, L)]))
-        out = []
-        for ax, edges in runs:
-            Ls = [w for _, _, w in edges]
-            if ax == "z":
-                pos = float(np.average(
-                    [(a[1] + b[1]) / 2 for a, b, _ in edges], weights=Ls))
-                p = np.array([edges[0][0][0], pos])
-                q = np.array([edges[-1][1][0], pos])
-                ln = abs(q[0] - p[0])
-            else:
-                pos = float(np.average(
-                    [(a[0] + b[0]) / 2 for a, b, _ in edges], weights=Ls))
-                p = np.array([pos, edges[0][0][1]])
-                q = np.array([pos, edges[-1][1][1]])
-                ln = abs(q[1] - p[1])
-            if ln < 1e-6:
-                continue      # a switchback run with no net movement
-            out.append({"kind": "cardinal", "axis": ax, "plane": pos,
-                        "p": p, "q": q, "len": float(ln)})
-        return out
+        return _rectilinearize_verts(verts)
 
     while seq and seq[0]["kind"] == "connector":     # chains must not
         seq.append(seq.pop(0))                       # wrap the list end
@@ -1155,13 +1206,13 @@ def run_poly(scene, sheet=False):
                     ((px + qx) / 2, (pz + qz) / 2), color="#333",
                     fontsize=8, ha="center")
     ax.legend(loc="upper right", fontsize=8)
-    ax.set_title(f"{scene} — W4 clean polygon over the raw trace "
+    ax.set_title(f"{scene} â€” W4 clean polygon over the raw trace "
                  f"(review artifact; nothing consumes this)")
     png = sd / "room_shell_poly.png"
     fig.tight_layout(); fig.savefig(png, dpi=130); plt.close(fig)
 
     rep = {"scene": scene,
-           "generated_by": "room_shell.py --poly (W4 — TRACE->CLOSE->MERGE,"
+           "generated_by": "room_shell.py --poly (W4 â€” TRACE->CLOSE->MERGE,"
                            " review artifact, no consumers)",
            "frame": {"raw_to_render": list(map(float, r2r))},
            "floor_upright_m": round(floor_m, 3),
@@ -1198,7 +1249,7 @@ def run_poly(scene, sheet=False):
 
 def fold_polygon_into_shell(sd, rep):
     """W5 (D3 ruling 2026-08-09): ONE shell contract file. The clean
-    polygon is folded into room_shell.json as a "polygon" block —
+    polygon is folded into room_shell.json as a "polygon" block â€”
     consumers read the contract, never the review artifact. Everything
     is precomputed here in BOTH frames (upright and raw) so consumers
     that live in the raw frame (slicevote) do no geometry derivation of
@@ -1207,18 +1258,18 @@ def fold_polygon_into_shell(sd, rep):
     room_shell.json on disk -> nothing to fold (v1 must run first)."""
     shell_f = sd / "room_shell.json"
     if not shell_f.exists():
-        print("[shell-poly] no room_shell.json — polygon block NOT "
+        print("[shell-poly] no room_shell.json â€” polygon block NOT "
               "folded (run the default v1 mode first)", flush=True)
         return
     # ACCEPTANCE (2026-08-12, R-S2-133): a trace that "succeeds"
-    # numerically can still be geometric nonsense — fresh06 produced 3
+    # numerically can still be geometric nonsense â€” fresh06 produced 3
     # segments, two of them 70 m, ONE cardinal wall per axis, and folded
     # it silently; the first reader that counts planes (arch_walls,
     # >= 2 per axis) crashed 26 stages later in compose. A closed
     # box-ish room always yields >= 2 axis-bearing walls per axis, so a
     # polygon that cannot is a FAILED FIT: raising here routes it into
     # main()'s existing degrade path (v1 4-plane shell + polygon_error
-    # recorded). Structural test only — no length threshold invented.
+    # recorded). Structural test only â€” no length threshold invented.
     n_x = sum(1 for s in rep["clean_polygon"]["segments"]
               if s.get("axis") == "x")
     n_z = sum(1 for s in rep["clean_polygon"]["segments"]
@@ -1226,7 +1277,7 @@ def fold_polygon_into_shell(sd, rep):
     if n_x < 2 or n_z < 2:
         raise ValueError(
             f"clean polygon carries {n_x} x-wall / {n_z} z-wall "
-            f"segments — a closed room needs >= 2 per axis; refusing "
+            f"segments â€” a closed room needs >= 2 per axis; refusing "
             f"to fold a degenerate fit (arch_walls.wall_axis_planes "
             f"enforces the same bound downstream)")
     from matplotlib.path import Path as MplPath
@@ -1292,7 +1343,7 @@ def main():
     ap.add_argument("--poly", action="store_true",
                     help="W4 trace->close->merge review artifacts")
     ap.add_argument("--steps-sheet", action="store_true",
-                    help="render room_shell_steps.png — every trace "
+                    help="render room_shell_steps.png â€” every trace "
                          "stage as its own panel; writes NOTHING else")
     a = ap.parse_args()
     if a.steps_sheet:
@@ -1309,7 +1360,7 @@ def main():
         sy = r2r[1]
         out = {
             "scene": a.scene,
-            "generated_by": "room_shell.py (W1 — PLAN_ROOM_SHELL.md)",
+            "generated_by": "room_shell.py (W1 â€” PLAN_ROOM_SHELL.md)",
             "assumptions": ["vertical_prism_walls_floor_to_ceiling",
                             "v1_one_outer_segment_per_axis_side",
                             "all_parallel_candidates_recorded"],
@@ -1331,19 +1382,19 @@ def main():
             cb = w["evidence"]["collider"]
             print(f"  {w['id']:11s} plane {w['plane_upright_m']:+7.3f}  "
                   f"pts {w['evidence']['point_count']:>6}  collider "
-                  f"{'agree d=' + str(cb['delta_m']) if cb else '—'}  "
+                  f"{'agree d=' + str(cb['delta_m']) if cb else 'â€”'}  "
                   f"parallels {len(w['parallel_surfaces'])}")
         # W5 AUTOMATION RULE (2026-08-09): the default mode produces the
-        # COMPLETE contract in one command — the polygon fit runs here,
+        # COMPLETE contract in one command â€” the polygon fit runs here,
         # unconditionally, so an unattended per-scene run can never end
         # up with a v1-only shell by ordering accident. If the fit fails
         # on a scene, the shell DEGRADES to the 4-plane v1 behaviour
         # (consumers take the POLY-is-None path) and the failure is
-        # recorded in the contract file itself — never a silent skip.
+        # recorded in the contract file itself â€” never a silent skip.
         try:
             run_poly(a.scene)
         except Exception as e:                               # noqa: BLE001
-            print(f"[shell] polygon fit FAILED ({e}) — shell stays v1 "
+            print(f"[shell] polygon fit FAILED ({e}) â€” shell stays v1 "
                   "4-plane (degraded; recorded in room_shell.json)",
                   flush=True)
             cur = json.loads(f.read_text())
@@ -1406,7 +1457,7 @@ def main():
     axes[0].add_patch(Rectangle((lo_u[0], lo_u[2]), hi_u[0] - lo_u[0],
                                 hi_u[2] - lo_u[2], fill=False, ec="cyan",
                                 lw=1.2, ls="--"))
-    axes[0].set_title("wall-band occupancy (log) · cyan = p1/p99 placeholder")
+    axes[0].set_title("wall-band occupancy (log) Â· cyan = p1/p99 placeholder")
     for ax_i, (axname, col) in enumerate([("x", 0), ("z", 2)]):
         ax = axes[1 + ax_i]
         v = band[:, col]
@@ -1418,7 +1469,7 @@ def main():
             pk = walls[key].get("peak")
             if pk is not None:
                 ax.axvline(pk, color="red", lw=1)
-        ax.set_title(f"density along {axname} · cyan placeholder / red peak")
+        ax.set_title(f"density along {axname} Â· cyan placeholder / red peak")
     fig.tight_layout()
     png = sd / "room_shell_audit.png"
     fig.savefig(png, dpi=110)
@@ -1457,3 +1508,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
