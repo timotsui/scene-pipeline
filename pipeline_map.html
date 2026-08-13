@@ -333,7 +333,7 @@
     <div class="phase-h"><span class="phase-n">DATAFLOW</span>
       <span class="phase-t">1 WORLD → 2 ANALYSIS (observe · detect · lift · place) → 3 COMPOSE+LOOP · one canonical lane + side references</span></div>
     <div class="phase-body">
-    <svg class="pipe" viewBox="0 0 800 2904" role="img"
+    <svg class="pipe" viewBox="0 0 800 2980" role="img"
          aria-label="scene-pipeline dataflow graph">
       <defs>
         <marker id="ah-eg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5"
@@ -900,7 +900,7 @@
       <g class="node" data-k="subr" transform="translate(276,2760)">
         <rect class="nbox" width="232" height="64" rx="8"/>
         <rect class="b-comp" width="4" height="64" rx="2"/>
-        <text class="ntitle" x="14" y="17">PH2r · SUPPORT RECURSION<tspan class="nactive"> · SR0–12b · EXP</tspan></text>
+        <text class="ntitle" x="14" y="17">PH2r · SUPPORT RECURSION<tspan class="nactive"> · SR0–12b · STAGE 08-13</tspan></text>
         <text class="nscript" x="14" y="31">experiments/sub_round_cp1..7.py — seeds → boards →</text>
         <text class="nsub" x="14" y="45">assign → aligned shop → place · jiggle + capacity SR8–9</text>
         <text class="nsub" x="14" y="58">host physics SR10–12 · walk-downs · loops until no subs</text></g>
@@ -909,8 +909,18 @@
       <text class="elab" x="24" y="2796">fitted surfaces = the next shell ·</text>
       <text class="elab" x="24" y="2808">subs = items · hosts before riders</text>
       <path class="edge e-comp" d="M392,2824 V2846" marker-end="url(#ah-comp)"/>
-      <text class="elab" x="398" y="2834">sub_experiment/&lt;anchor&gt;/cp7 — subs placed vs host physics</text>
-      <text class="elab" x="398" y="2846">(fleet 15: 8 active · 7 idle · viewer "subs" layer; not in fitted_preview yet)</text>
+      <text class="elab" x="398" y="2834">sub_experiment/&lt;anchor&gt;/cp5_final — subs placed vs host physics</text>
+      <text class="elab" x="398" y="2846">(GRADUATED to a stage 08-13, R-S2-168b — runs AFTER the closing pass)</text>
+      <g class="node" data-k="grav" transform="translate(276,2856)">
+        <rect class="nbox" width="232" height="64" rx="8"/>
+        <rect class="b-comp" width="4" height="64" rx="2"/>
+        <text class="ntitle" x="14" y="17">PH2g · MERGE + GRAVITY<tspan class="nactive"> · R-S2-168 08-13</tspan></text>
+        <text class="nscript" x="14" y="31">merge_sub_placements.py → fit_gravity.py</text>
+        <text class="nsub" x="14" y="45">subs land in the main GLB · every floor-tier mesh</text>
+        <text class="nsub" x="14" y="58">settles onto its supporter (down if floats, up if embedded)</text></g>
+      <path class="edge e-comp" d="M392,2920 V2942" marker-end="url(#ah-comp)"/>
+      <text class="elab" x="398" y="2930">THE FINISHED SCENE: fitted_preview.glb — furniture + riders,</text>
+      <text class="elab" x="398" y="2942">everything resting on something · prep_viewer snapshots LAST</text>
 
       <!-- PH3 COLLIDE GATE + PH4 BOX SURGERY + JUDGE: RETIRED 08-04
            (user). PH3 absorbed by PH2·3 fit_check — the same voxel
@@ -1479,7 +1489,13 @@ rotch: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2a — ROTATION CHECK · CANON v2 
   writes:["compose/rotation_check.json — per object: pick, mapping, degrees, confidence, verbatim reason, mode, measured cost","compose/rotation_check/ — per-call clean folders (ref, candidates, prompt, reply) + sheets/ + refcam/ (the box self-check pairs)"],
   note:"Bed benchmark HIT. QUEUED (user 08-05, approved not wired): FRONT/BACK constraint — pure-wall-attachment items (['wall'], vs doors' wall+floor) get the back side banned; ladder owns their facing, judge opinion = library-front audit flag only; will revert obj_035's 180. QUEUED library work: ratify per-category front semantics ('bed front = foot end'), store as a tag, flip this bed asset 180° via the fixup channel. Review page: review_shots/index.html (choice edition: menus, pick outlined, top views)."},
 
-subr: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2r — SUPPORT RECURSION · CANON SR0–SR12b 08-07 · EXPERIMENTS/ · fleet-run, all 15 anchors", name:"Sub rounds — the fit loop re-entered one support level down",
+grav: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2g — MERGE + GRAVITY · R-S2-168/168b 08-13 · USER-APPROVED on fresh08 ('success, i approve')", name:"Merge subs into the main scene, then settle everything onto what supports it",
+  script:"compose/merge_sub_placements.py (transport: sub meshes → fitted_preview.glb + minimal placed records; RAW both sides, verified; re-run guard skips merged ids; always writes compose/merge_subs.json) → compose/fit_gravity.py (2 cm height-map contact from surface samples → compose/fit_gravity.json)",
+  how:["POSITION IS THE CONTRACT: both run AFTER the FIT_CLOSING pass — the closing place→jiggle REBUILDS the GLB, so subs merged before it would be silently WIPED (run_scene.run_compose splits the post rows at rotation_check; prep_viewer snapshots LAST)",
+       "GRAVITY (user: 'put the objects through gravity so everything rests on something ... just a simple make sure everything is snapped and supported'): per floor-tier item, dy = min over overlapping footprint columns of (item bottom − supporter top); settles DOWN when floating, LIFTS when embedded; support-depth order so riders land on settled hosts; wall/ceiling mounts EXEMPT; supporter without a placed mesh → floor, flagged; idempotent within 5 mm",
+       "fresh08 receipts: 9 subs merged (3 pillows + 2 lamps + 2 plants + pot + tiled plant), pillows LIFTED 13–18 cm out of the bed body onto the blanket; anchors: bed/chair grounded off the unplaced-rug fallback, bay bookshelf down 0.82 m",
+       "HONEST SIDE EFFECT, by design: a WRONG floor-support verdict becomes a visible object on the floor instead of a hidden floater — the lamp (0.93 m) and pot (1.29 m) finding; the support-judge quality question is FILED, not patched here"]},
+subr: {mod:"comp", eyebrow:"3.2 PHYSICAL / PH2r — SUPPORT RECURSION · CANON SR0–SR12b 08-07 · GRADUATED TO A STAGE 08-13 (R-S2-168/168b, user un-park; sub_rounds row runs AFTER the closing pass; bedroom_marble fleet 15 + fresh08 6/7 — the one failure = the unplaced window-seat anchor) · code still lives in experiments/, driven by sub_round_all.py", name:"Sub rounds — the fit loop re-entered one support level down",
   script:"experiments/sub_round_cp1.py … cp7.py (+ sub_round_all.py fleet driver · build_subs_preview.py viewer merge) → out/<scene>/compose/sub_experiment/ (cp1..cp7 — one review page per checkpoint + the fleet overview)",
   how:["SR0 THE RECURSION (user: 'this seems like a loop... technically we can keep looping for sub sub objects'): NOT a new stage — PH2 re-enters with re-bound parameters: level-N fitted meshes' support surfaces = level-N+1's shell, deferred subs = the items; hosts before riders (a sub whose host is unfitted defers a level — plant obj_003 rides basket obj_012 rides shelf obj_022); recurse until no level has deferred items",
        "SR1 SEED IN THE FITTED FRAME (user ruling, session start): the search STARTS at the observed anchor→sub offset re-expressed on the fitted pose (declip + floor-snap folded in — verified against the GLB; applied spins rotate offsets about the anchor center); large margin belongs to the search, not the seed. FRAME LAW measured on the way: fitted_preview fit_box = RAW frame, declip_move_m = RENDER frame, the GLB is the placed truth (first run's silent 3.4 m error)",
