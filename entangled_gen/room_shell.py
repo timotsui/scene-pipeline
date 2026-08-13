@@ -467,7 +467,7 @@ def _rectilinearize_verts(verts):
         if ln < 1e-6:
             continue          # a switchback run with no net movement
         out.append({"kind": "cardinal", "axis": ax, "plane": pos,
-                    "p": p, "q": q, "len": float(ln)})
+                    "p": p, "q": q, "len": float(ln), "leg": True})
     return out
 
 
@@ -1168,6 +1168,25 @@ def run_poly(scene, sheet=False):
         t = (pos - p[i]) / d[i]
         v = p + t * d
         return [float(v[0]), float(v[1])]
+
+    # GREEN ENDS WIN AGAINST LEGS (user ruling 2026-08-12: "prioritize
+    # the green lines' ends too if it's against a cyan"): a measured
+    # wall's endpoint is its own traced extent. A staircase leg meeting
+    # it perpendicular moves ITS plane to that extent, instead of the
+    # wall being stretched out to wherever the leg happens to sit
+    # (fresh09 east: the measured x=+1.463 wall was dragged from its
+    # traced end z=-0.485 down to an inferred fringe leg at z=-1.173).
+    # Legs are mess-derived; traced ends are evidence.
+    for i in range(len(seq)):
+        e, f = seq[i], seq[(i + 1) % len(seq)]
+        if (e["kind"] == f["kind"] == "cardinal"
+                and e["axis"] != f["axis"]):
+            if f.get("leg") and not e.get("leg"):
+                tc_e = 1 if e["axis"] == "x" else 0
+                f["plane"] = float(e["q"][tc_e])
+            elif e.get("leg") and not f.get("leg"):
+                tc_f = 1 if f["axis"] == "x" else 0
+                e["plane"] = float(f["p"][tc_f])
 
     m = len(seq)
     joints = []                 # joints[i]: 1 or 2 points between i, i+1
