@@ -44,24 +44,18 @@ world (frame_bootstrap → the fresh-scene chain), name them fresh10..
 onward, run the pairs in the user's priority order until morning or
 credit exhaustion.
 
-**Step 4 — COMPOSE INTEGRATION: BUILT, RUN, AND **USER-APPROVED** on
-fresh08 ("success, i approve"). The full manual chain exists:
-sub_round_all → merge_sub_placements → fit_gravity — 9 subs placed
+**Step 4 — COMPOSE INTEGRATION: DONE, IN THE CHAIN (R-S2-168/168b),
+USER-APPROVED on fresh08 ("success, i approve").** 9 subs placed
 (3 pillows ON the bed, lamps on nightstand/bookshelf, plants/pot on
 shelves), merged into the main GLB, gravity-settled onto their
 hosts' REAL mesh surfaces (pillows lifted 13-18 cm out of the bed
-body onto the blanket). The ONLY remaining work is stage-table
-wiring — three rows in the compose table after the closing declip
-pass, before prep_viewer:
-    sub_rounds  -> experiments/sub_round_all.py --scene <sc>
-    merge_subs  -> compose/merge_sub_placements.py --scene <sc>
-    gravity     -> compose/fit_gravity.py --scene <sc>
-(each has re-run guards; merge skips already-merged ids; gravity is
-idempotent within SETTLED_TOL). Known receipts to preserve: the
-fleet's 6/7 (window-seat anchor heals after the wave); gravity's
-exposed WRONG support verdicts (lamp 0.93 m + pot 1.29 m dropped to
-the floor as FLOOR-supported — table/shelf riders really; the
-support-judge quality question, filed).**
+body onto the blanket) — and the three stages are WIRED into the
+compose table after the closing pass, dry-run-verified. Known
+receipts to preserve: the fleet's 6/7 (the window-seat anchor heals
+after the wave); gravity's exposed WRONG support verdicts (lamp
+0.93 m + pot 1.29 m dropped to the floor as FLOOR-supported —
+table/shelf riders really; the support-judge quality question,
+filed).
 
 ## 2. OVERNIGHT SCENES — USER-PICKED 08-13: **ALL SIX** ("these are
 good. lets run all of these if possible."). Reviewed on the proposal
@@ -144,7 +138,62 @@ out/scene_proposals.png. MASTER_catalogue.csv is the source.)
 - Adds return ONLY with --keep-adds.
 - The viewer server on :8321 runs detached (WMI-launched 08-12).
 
-## 6. WHERE EVERYTHING IS
+## 6. THE PROMPT FOR THE NEXT AGENT (verbatim — THIS HANDOFF IS THE
+ONLY FILE; NEXT_SESSION_PROMPT.md just points here)
+
+```
+Continue the scene-pipeline work.
+Repo: D:\T\Documents\GeorgiaTech\Summer2026\scene-pipeline\entangled_gen
+READ docs/SESSION_2026-08-29_HANDOFF.md IN FULL — it is the one file;
+everything below is expanded there (§1 work order, §2 scenes, §5
+traps). Skim REVIEW_LOG R-S2-159..168 headers; read entries you touch.
+docs/PARKED.md items stay parked.
+
+SUB + GRAVITY ARE ALREADY IN THE CHAIN (R-S2-168b, wired and
+dry-run-verified this session): every compose run now ends
+... rotation_check -> closing pass -> sub_rounds -> merge_subs ->
+gravity -> prep_viewer. Nothing to wire. The rows deliberately sit
+AFTER the closing pass (it rebuilds the GLB — subs merged earlier
+would be wiped; run_compose splits `post` at rotation_check). Their
+first fully-automatic outing is the wave — read those receipts
+closely (sub fleet tallies, gravity settles) as the user would.
+
+STEP 1 — THE WAVE: `--phase all --from shell` on fresh05, fresh06,
+fresh08, fresh09. Ships the approved wall outline, un-crushes
+05/06/09, opens fresh08's bay. Two-lane max, WMI-detached, monitored.
+
+STEP 2 — THE OVERNIGHT: the six scenes in §2 (names + world ids are
+FINAL, user-picked). EVERY scene runs as a PAIR: Ours (run_scene
+full chain) + GLTS (layout-only, treesearchgen claude bridge), filed
+into out/comparison.html.
+
+⚠ UNDERSTAND THE TWO CONSTRAINTS, THEN DESIGN YOUR OWN RUN STRATEGY:
+  1. THE CREDIT LIMIT IS UNKNOWN. Ours and GLTS share ONE claude
+     subscription; it may die mid-night without warning. Ours
+     RESUMES mid-stage (R-S2-132 --from semantics); GLTS has NO
+     mid-run resume — a dead GLTS run is repaid in full.
+  2. PAIRS ARE THE UNIT OF VALUE. A scene with only one side done
+     is worth almost nothing to the comparison; a complete pair
+     survives anything.
+  MAXIMIZE PARALLELISM SUBJECT TO THOSE TWO FACTS. Evidence you
+  have: R-S2-135 (3 concurrent lanes, zero crossfire, wall-clock
+  stretches ~1.5-3x under contention; GLTS solo ~55-65 min/scene,
+  tripled under 3-way contention; Ours full chain 66-81 min).
+  WRITE YOUR STRATEGY + its credit-death analysis into the run's
+  plan doc BEFORE launching (production-session rule), e.g. how many
+  lanes, what overlaps with what, and what state a credit death at
+  any moment leaves behind. Simplest-first scene order (§2) so early
+  completed pairs are the cleanest.
+
+HOUSE RULES: no observation-triggered tuning; fixes at source,
+scene-agnostically; every fix gets a REVIEW_LOG entry with the
+contract intro; the user judges ALL visuals; trust the primary
+record over summaries; plain English; long processes DETACHED (WMI);
+ONE watch_gpu; clock lock verified under load in gpu_watch.csv;
+descriptive scene names (never freshN).
+```
+
+## 7. WHERE EVERYTHING IS
 
 - Commits: 284c2c0 → 4bc96eb+ (this handoff last). All pushed.
 - PIPELINE.md: contract-changes block 2026-08-12/13 = the night's API.

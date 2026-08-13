@@ -109,6 +109,13 @@ def main():
                              "n_added": n_added,
                              "by": "compose/merge_sub_placements.py"}
         jpath.write_text(json.dumps(fp, indent=1), encoding="utf-8")
+    # the stage's PROMISE (gate no-op trap): written on EVERY run,
+    # including the all-skipped re-run — the receipt says what happened
+    (cdir / "merge_subs.json").write_text(json.dumps({
+        "scene": a.scene, "built": str(date.today()),
+        "generated_by": "compose/merge_sub_placements.py",
+        "n_added": n_added, "n_skipped": n_skipped}, indent=1),
+        encoding="utf-8")
     print(f"[merge-subs] {n_added} sub mesh(es) merged, "
           f"{n_skipped} skipped -> {gpath.name}. "
           f"Run fit_gravity next so riders rest on their hosts.",

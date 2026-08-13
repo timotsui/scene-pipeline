@@ -809,8 +809,21 @@ def run_compose(sc, selected, log, failures, stop_on_fail, max_rounds):
         print(f"\n[run_scene] fit loop DRY after {rounds_run} round(s).",
               flush=True)
 
+    # SPLIT THE POST ROWS AT rotation_check (R-S2-168b): the closing
+    # place→jiggle pass REBUILDS fitted_preview.glb, so anything that
+    # lands content in the GLB (sub_rounds → merge_subs → gravity) or
+    # snapshots the final state (prep_viewer) must run AFTER it —
+    # subs merged before the closing pass would be silently WIPED.
     if post:
-        per_stage += run_graph(sc, post, log, failures, stop_on_fail,
+        keys = [s.key for s in post]
+        cut = (keys.index("rotation_check") + 1
+               if "rotation_check" in keys else len(keys))
+        post_pre, post_final = post[:cut], post[cut:]
+    else:
+        post_pre, post_final = [], []
+
+    if post_pre:
+        per_stage += run_graph(sc, post_pre, log, failures, stop_on_fail,
                                phase="compose")
         if failures and stop_on_fail:
             return per_stage
@@ -835,6 +848,10 @@ def run_compose(sc, selected, log, failures, stop_on_fail, max_rounds):
         print("\n[run_scene] closing pass SKIPPED: rotation_check did not "
               "run or did not pass in this run, so there are no fresh "
               "yaw deltas to apply.", flush=True)
+
+    if post_final:
+        per_stage += run_graph(sc, post_final, log, failures,
+                               stop_on_fail, phase="compose")
     return per_stage
 
 

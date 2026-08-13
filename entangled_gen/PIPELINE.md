@@ -35,6 +35,14 @@ format.** Nothing downstream knows or cares which implementation produced them.
 - `compose/fit_declip.py`: meshes ENTIRELY beyond a wall are never dragged
   inside — near-outside snaps flush to the wall's EXTERIOR face (quantized
   DOWN, never across the plane), truly far left where measured.
+- THREE NEW COMPOSE STAGES after the closing pass (R-S2-168/168b; the
+  closing place→jiggle rebuilds the GLB, so they must follow it):
+  `sub_rounds` (experiments/sub_round_all.py — SR0–SR9 canon, places each
+  anchor's deferred subs) → `merge_subs` (compose/merge_sub_placements.py
+  — sub meshes land in fitted_preview.glb + .json, writes
+  compose/merge_subs.json always) → `gravity` (compose/fit_gravity.py —
+  every floor-tier mesh settles onto its supporter's real surface, writes
+  compose/fit_gravity.json). prep_viewer now runs LAST, after all three.
 
 **CONTRACT CHANGES 2026-08-10 (R-S2-66..71, details in docs/REVIEW_LOG.md):**
 - `pano_recenter.py` SP4 children now carry `members_inline` evidence

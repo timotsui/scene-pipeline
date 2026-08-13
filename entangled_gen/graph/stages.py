@@ -1068,6 +1068,58 @@ COMPOSE = (
              "this row, because nothing in the chain ever wrote the file.",
     ),
     Stage(
+        "sub_rounds", "place each anchor's deferred sub objects on its "
+                      "real surfaces",
+        lambda sc: [PY, "experiments/sub_round_all.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/sub_experiment/index.html",),
+        inputs=("compose/shopping.json", "compose/fitted_preview.json",
+                "compose/supported_by.json"),
+        llm=True, gpu=True,
+        note="UN-PARKED 2026-08-13 (R-S2-168, user ruling at the "
+             "convexity-night wrap-up; canon SR0-SR9 in "
+             "PLAN_SUB_ROUNDS.md, user-passed on bedroom_marble and "
+             "fleet-proven 6/7 on fresh08). Runs cp1..cp7 per anchor "
+             "with deferred subs; a failing anchor is recorded and "
+             "skipped, never a stage-killer (an UNPLACED anchor cannot "
+             "seed its subs — fresh08's window seat). ⚠ POSITION: this "
+             "row and the two after it run AFTER the FIT_CLOSING pass "
+             "(run_scene.run_compose splits `post` at rotation_check) — "
+             "the closing place→jiggle REBUILDS the GLB, so subs merged "
+             "before it would be WIPED. No per-anchor caching yet: every "
+             "compose re-run redoes the fleet (~1 min/anchor).",
+    ),
+    Stage(
+        "merge_subs", "land the placed subs in the main fitted preview",
+        lambda sc: [PY, "compose/merge_sub_placements.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/merge_subs.json",),
+        inputs=("compose/fitted_preview.json",),
+        note="TRANSPORT ONLY (R-S2-168 wiring): copies each PLACED "
+             "sub's mesh nodes into fitted_preview.glb (RAW both "
+             "sides, verified) and appends minimal placed records so "
+             "gravity sees them. Re-run guard: already-merged ids are "
+             "skipped loudly. The GLB is backed up once to "
+             "fitted_preview_presubs.glb.",
+    ),
+    Stage(
+        "gravity", "settle every placed mesh onto what supports it",
+        lambda sc: [PY, "compose/fit_gravity.py", "--scene", sc],
+        reads="grouped", writes=None,
+        artifacts=("compose/fit_gravity.json",),
+        inputs=("compose/fitted_preview.json",
+                "compose/supported_by.json"),
+        note="R-S2-168 (user: 'everything rests on something'). 2 cm "
+             "height-map contact, support-depth order so riders land "
+             "on settled hosts; wall/ceiling mounts exempt; down when "
+             "floating, up when embedded (fresh08: pillows lifted "
+             "13-18 cm out of the bed body onto the blanket). "
+             "Idempotent within SETTLED_TOL 5 mm. Honest side effect: "
+             "a WRONG floor-support verdict becomes a visible object "
+             "on the floor instead of a hidden floater (the lamp/pot "
+             "finding) — that is the point, not a defect.",
+    ),
+    Stage(
         "prep_viewer", "build the payload that lets a human look at this "
                        "scene",
         lambda sc: [PY, "viewer/prep_scene.py", "--scene", sc],
