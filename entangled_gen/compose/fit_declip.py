@@ -416,12 +416,21 @@ def main():
                     gap = (lo[axis] - high if lo[axis] >= high
                            else low - hi[axis])
                     if TOL_M < gap <= body:
-                        d = -gap if lo[axis] >= high else gap
-                        any_move += abs(shift(i, axis, d))
-                        print(f"[declip] {place[i]['id']} fully "
-                              f"outside on axis {axis} — snapped "
-                              f"flush to the wall's EXTERIOR face "
-                              f"(gap {gap:.2f} m)", flush=True)
+                        # quantize DOWN (floor to the lattice): a
+                        # rounded snap can overshoot 1 cm past the
+                        # plane, the item then STRADDLES, and the
+                        # classic branch kidnaps it fully inside on
+                        # the next round (obj_043, declip_move 1.1 m
+                        # — found minutes after R-S2-167 shipped)
+                        step = int(gap / PITCH) * PITCH
+                        if step > 0:
+                            d = -step if lo[axis] >= high else step
+                            any_move += abs(shift(i, axis, d))
+                            print(f"[declip] {place[i]['id']} fully "
+                                  f"outside on axis {axis} — snapped "
+                                  f"flush to the wall's EXTERIOR "
+                                  f"face (gap {gap:.2f} m)",
+                                  flush=True)
                     elif gap > body and rnd == 0:
                         print(f"[declip] {place[i]['id']} is {gap:.2f} "
                               f"m beyond the wall (> body "
