@@ -1015,12 +1015,37 @@ def run_poly(scene, sheet=False):
         rec["total_length_m"] = round(tot, 2)
         rec["is_wall"] = tot >= POLY_WALL_MIN_M
 
+    # ROOF-CONTACT SURVIVAL (user-caught 2026-08-12, the circled fresh05
+    # south wall: a REAL 1.44 m traced wall — 3251 splat points reaching
+    # the roof band — deleted by the 2 m length bar, and a staircase leg
+    # 0.25 m lower stood in for it). Length is a furniture proxy; roof
+    # contact is the real discriminator: walls reach the ceiling,
+    # furniture does not (fresh09's deleted x=-3.26 fragment grazes the
+    # roof with 2 points — correctly still deletable). The bar now only
+    # kills SHORT pieces that also fail roof contact. TOP_TOL is the v1
+    # shell's own ceiling tolerance, re-expressed as a fraction of the
+    # measured room so it behaves on not-yet-normalized scenes.
+    roof_line = ceil_m - (TOP_TOL / 2.8) * (ceil_m - floor_m)
+    bt_grid = band_top.reshape(nx, nz)
+
+    def roof_contact(p, q):
+        p = np.asarray(p, float)
+        q = np.asarray(q, float)
+        L = float(np.hypot(*(q - p)))
+        n = max(2, int(L / CELL))
+        ts = np.linspace(0, 1, n)[:, None]
+        sm = p[None, :] * (1 - ts) + q[None, :] * ts
+        si = ((sm[:, 0] - x0) / CELL).astype(int).clip(0, nx - 1)
+        sz = ((sm[:, 1] - z0) / CELL).astype(int).clip(0, nz - 1)
+        return float((bt_grid[si, sz] >= roof_line).mean())
+
     seq = []
     for s in out_segs:
         if (s["kind"] == "cardinal"
                 and group_len[(s["axis"], s["group_plane"])]
-                < POLY_WALL_MIN_M):
-            continue                    # furniture face, not a wall
+                < POLY_WALL_MIN_M
+                and roof_contact(*s["endpoints_upright"]) < 0.5):
+            continue        # short AND roofless: furniture face, not a wall
         e = {"kind": "cardinal" if s["kind"] == "cardinal" else "connector",
              "len": s["length_m"],
              "p": s["endpoints_upright"][0], "q": s["endpoints_upright"][1]}
@@ -1180,7 +1205,17 @@ def run_poly(scene, sheet=False):
 
     if sheet:
         # sheet mode is strictly read-only on scene state: render the
-        # step panels and stop before ANY of the writes below
+        # step panels and stop before ANY of the writes below. The group
+        # table prints so every 7b->8 plane move is traceable to its
+        # group arithmetic (user review 2026-08-12).
+        for rec in group_recs:
+            moved = [round(rec["majority_plane_upright_m"] - p, 3)
+                     for p in rec["member_planes"]]
+            print(f"[sheet] group {rec['axis']}="
+                  f"{rec['majority_plane_upright_m']:+.3f} "
+                  f"members {rec['member_planes']} moved_by {moved} "
+                  f"total {rec['total_length_m']} m "
+                  f"is_wall {rec['is_wall']}")
         _render_steps(sd, scene, st, out_segs, clean_segs)
         return
 
