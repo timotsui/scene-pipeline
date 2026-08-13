@@ -244,7 +244,8 @@ def main():
            "anchor_name": brec.get("anchor_name"),
            "inset_m": INSET, "n_subs": len(rows),
            "n_flagged": sum(1 for r in rows if r["flags"]),
-           "boards_used": sorted({r["board"] for r in rows}),
+           "boards_used": sorted(b for b in {r["board"] for r in rows}
+                                 if b is not None),
            "subs": rows}
     (odir / "assignment.json").write_text(json.dumps(rec, indent=1),
                                           encoding="utf-8")
