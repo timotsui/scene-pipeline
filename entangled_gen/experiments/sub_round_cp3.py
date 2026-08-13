@@ -146,12 +146,14 @@ def main():
     # Route recorded, board placement skipped. Wall channel = unwired.
     graph = json.loads((paths.scene_dir(a.scene) / "scene_graph.json")
                        .read_text("utf-8"))
-    sp = {n["id"]: n["geometry"]["plane"]["value_raw"]
-          for n in graph["nodes"] if n["id"].startswith("arch_wall")}
-    wx = sorted((sp["arch_wall_x_low"] * r2r[0],
-                 sp["arch_wall_x_high"] * r2r[0]))
-    wz = sorted((sp["arch_wall_z_low"] * r2r[2],
-                 sp["arch_wall_z_high"] * r2r[2]))
+    # canon-drift fix 2026-08-13 (probe on fresh08): the v1 wall ids
+    # (arch_wall_x_low..) died with the W5 polygon shell — read the
+    # outer planes the way every compose module does (arch_walls).
+    sys.path.insert(0, str(EG / "compose"))
+    from arch_walls import wall_axis_planes
+    xs_raw, zs_raw, _fl, _ce = wall_axis_planes(graph["nodes"])
+    wx = sorted((xs_raw[0] * r2r[0], xs_raw[-1] * r2r[0]))
+    wz = sorted((zs_raw[0] * r2r[2], zs_raw[-1] * r2r[2]))
 
     def in_wall(slo, shi):
         c, sz = (slo + shi) / 2, shi - slo
