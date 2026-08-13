@@ -44,19 +44,21 @@ world (frame_bootstrap → the fresh-scene chain), name them fresh10..
 onward, run the pairs in the user's priority order until morning or
 credit exhaustion.
 
-**Step 4 — COMPOSE DESIGN ROUND (user direction 08-13, stated at
-wrap-up; design AFTER the batch, with the user):**
-1. **PLACE SUB OBJECTS TOO** ("i want to put on sub objects as well")
-   — the sub tier stops being never-fitted. This is the PARKED §4
-   sub-rounds (PH2r) promotion, which the user's own 08-11 ruling
-   deferred "until a batch runs clean" — the overnight batch is that
-   gate. The experiments/ code is the starting point.
-2. **A FINAL GRAVITY PASS** ("at last we need to put the objects
-   through gravity so everything rests on something") — a new closing
-   compose stage: settle every placed mesh downward until it rests on
-   its supporter (pillows onto the bed mesh, items onto shelves,
-   furniture onto the floor) — no floating objects. New stage design;
-   pre-register the contract before building.
+**Step 4 — COMPOSE INTEGRATION (both halves BUILT AND PROVEN on
+fresh08 this session, R-S2-168; what remains is WIRING):**
+1. **SUB ROUNDS: UN-PARKED and fleet-proven** — 6/7 fresh08 anchors
+   clean in 283 s after one canon-drift fix (cp3 wall ids); the one
+   failure = the unplaced window-seat anchor (heals after the wave).
+   Review page: compose/sub_experiment/index.html. REMAINING: wire
+   into the compose stage table, land sub placements in the main
+   GLB (today they live in sub_experiment/<anchor>/cp5_final/).
+2. **GRAVITY (compose/fit_gravity.py): BUILT AND APPLIED** — 13/22
+   fresh08 items settled (bed/chair grounded off the rug fallback,
+   bay bookshelf down 0.82 m); exposed two WRONG support verdicts
+   (lamp 0.93 m, pot 1.29 m to the floor — they are table/shelf
+   riders; a support-judge quality question, filed). REMAINING:
+   stage-table wiring (after the closing declip pass, before
+   prep_viewer), and settle subs once they land in the GLB.
 
 ## 2. OVERNIGHT SCENES — USER-PICKED 08-13: **ALL SIX** ("these are
 good. lets run all of these if possible."). Reviewed on the proposal

@@ -145,13 +145,15 @@ Pick BOX-SHAPED rooms for test scenes and batches. The corpus page
 (`marble-harvest/catalog/CORPUS_REVIEW.html`) shows every runnable
 world's prompt; avoid attics, lofts, A-frames, vaulted ceilings.
 
-## 4. SUB ROUNDS (PH2r) — deferred until a batch runs clean
+## 4. SUB ROUNDS (PH2r) — UN-PARKED 2026-08-13 (user ruling, R-S2-168)
 
-**Deferred 2026-08-11B**, not rejected: user-passed on the measurements,
-drawn on the map, but the code lives in `experiments/` and the base
-pipeline has run end to end on exactly ONE scene. Promoting experimental
-code before the base is proven across a batch adds risk to the thing
-being validated. Revisit after a clean multi-scene run.
+**Un-parked by the user at the convexity-night wrap-up** ("lets fix the
+putting on subobject ... this session"; the original gate — a clean
+multi-scene batch — was met by the 08-12 six-scene run). The machinery
+ran UNCHANGED on fresh08 after one canon-drift fix (cp3 wall ids):
+6/7 anchors clean, the one failure being the unplaced window-seat
+anchor. STILL PENDING (next session, not parked): stage-table wiring,
+sub placements landing in the main GLB, gravity settling subs.
 
 ## 5. `fit_feedback`'s RE-SHOP — deliberately not built
 
