@@ -44,22 +44,26 @@ world (frame_bootstrap → the fresh-scene chain), name them fresh10..
 onward, run the pairs in the user's priority order until morning or
 credit exhaustion.
 
-## 2. OVERNIGHT SCENE CANDIDATES (simple interiors, box rooms, unused
-worlds; user picks — PICKS PENDING, patch this list when they answer)
+## 2. OVERNIGHT SCENES — USER-PICKED 08-13: **ALL SIX** ("these are
+good. lets run all of these if possible."). Reviewed on the proposal
+sheet (out/scene_proposals.png — thumbnails + prompt images). Run in
+THIS order (simplest box rooms first, so the earliest completed pairs
+are the cleanest; the complex ones last so a credit death costs the
+hard cases, not the clean ones):
 
-| world id | type | why |
-|---|---|---|
-| a1ddded0 | bedroom | "minimalist bedroom, photorealistic, clean lines, uncluttered" — the simplest prompt in the corpus |
-| 6cf716a8 | living room | "natural-style living room, clean and peaceful, warm natural light" |
-| 2bf68fde | bedroom | "minimalist bedroom in an old building, bed on a low platform" |
-| b6f5f206 | office | "cozy modern office, soft morning sunlight" — shortest prompt of the set |
-| 748cf5e5 | bedroom | "minimalist contemporary bedroom, calm" |
-| 270dd75d | living room | "contemporary living room, blue hues, calm" |
+| # | scene name | world id | type | note |
+|---|---|---|---|---|
+| 1 | fresh10 | 6cf716a8 | living room | cleanest box room, natural style |
+| 2 | fresh11 | b6f5f206 | office | box room, multiple desks |
+| 3 | fresh12 | 270dd75d | living room | box room, blue hues |
+| 4 | fresh13 | 748cf5e5 | bedroom | box room, ceiling beams + glass wall |
+| 5 | fresh14 | a1ddded0 | bedroom | ⚠ ARCHED alcove wall — the shell only knows vertical planes; expect an approximated trace there |
+| 6 | fresh15 | 2bf68fde | bedroom | ⚠ TWO rooms + partition — a live test of the interior-wall handling |
 
 (46 candidates passed the filters: downloaded, unrejected, unused,
-interior room type, no attic/loft/vault/cabin per PARKED §3. The six
-above are the simplest by prompt. Full list re-derivable via the
-filter script — MASTER_catalogue.csv is the source.)
+interior room type, no attic/loft/vault/cabin per PARKED §3. These
+six are the simplest by prompt; the sheet the user reviewed is
+out/scene_proposals.png. MASTER_catalogue.csv is the source.)
 
 ## 3. THE FIX STACK (headers; read the entry before touching)
 
