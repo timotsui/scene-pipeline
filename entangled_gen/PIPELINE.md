@@ -6,6 +6,36 @@ see `paths.py`). No stage imports another stage's internals. Therefore:
 **swapping a method for any stage = writing the same output files in the same
 format.** Nothing downstream knows or cares which implementation produced them.
 
+**CONTRACT CHANGES 2026-08-12/13 (R-S2-159..167b, details in docs/REVIEW_LOG.md):**
+- NEW TOOL `scene_yaw.py` (pre-runner, like `scene_scale.py`): measures the
+  room's continuous yaw (room_shell.measure_plan_yaw, spikiness voting) and
+  de-tilts the WHOLE scene state once (splat xyz + gaussian quats, collider,
+  manifests, boot extents RECOMPUTED from the rotated cloud). Guard:
+  `frame_bootstrap.yaw_applied`; re-runs verify (~0). Backups `*_preyaw.*`.
+  Two-pass protocol: apply → chain re-run from stitch.
+- `room_shell.py` solid rule: DENSITY GATE (Otsu split of tall-cell log
+  density, applied only when modes ≥4x apart) + WALK-THROUGH SLAB (material
+  must span waist 0.9 → crown 1.9, standard-room fractions). Trace de-rotation
+  is SHEET-ONLY; state-writing runs record `plan_yaw_deg` in the polygon
+  block instead. ⚠ shells produced before 08-13 predate these rules.
+- `slicevote.py` wall handling is non-convex-safe: capture needs REACH (box
+  interval within WALL_TOUCH of the plane) + majority-REST on the segment's
+  same-plane family span; `shell_clip` = AABB of (footprint ∩ interior
+  polygon), Sutherland-Hodgman; fully-outside boxes are left alone.
+- `compose/shopping.py`: flat floor-coverings (FLAT_AXIS_M) are see-through
+  for the anchor/sub tier — beds on rugs stay anchors.
+- `compose/propose_edits.py`: ADD CHANNEL DEAD by user ruling (`--keep-adds`
+  revives); swap-ins landing outside the polygon: near → snap flush to the
+  closest wall's EXTERIOR face, truly far (> own body length) → dropped,
+  swap infeasible.
+- `compose/fit_preview.py`: pillow-evidence facing is a REQUIREMENT — the
+  90/270 yaws get the fit canon's 15% (FACE_EVIDENCE_TOL) when the strict 5%
+  gate blocks them. Front = yaw @ perm @ +z (NO pca term — crooked-file
+  fronts cancel; R-S2-166b).
+- `compose/fit_declip.py`: meshes ENTIRELY beyond a wall are never dragged
+  inside — near-outside snaps flush to the wall's EXTERIOR face (quantized
+  DOWN, never across the plane), truly far left where measured.
+
 **CONTRACT CHANGES 2026-08-10 (R-S2-66..71, details in docs/REVIEW_LOG.md):**
 - `pano_recenter.py` SP4 children now carry `members_inline` evidence
   (view + 2D rect + scene-relative image path); `build_graph.py` cuts their
