@@ -1,5 +1,7 @@
 # scene-pipeline
 
+![The scene graph read off a generated world: labeled measured boxes over the splat](banner.png)
+
 Text → generated 3D scene (Gaussian splat) → extracted scene manifest →
 asset-based recreation → VLM refinement loop. Research pipeline (CS 8903,
 Summer 2026), modularized by stage; each module is a subfolder.
