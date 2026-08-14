@@ -2,8 +2,9 @@
 
 (Real date 2026-08-14, user present. Follows SESSION_2026-09-01_HANDOFF.md.
 Short session: figure fixes requested by the user before the holistic PDF
-review. Overleaf commits 5a299a0 + 02d3ddd, BOTH PUSHED (HEAD 02d3ddd).
-scene-pipeline: 3 local commits ahead — the user pushes.)
+review. Overleaf commits 5a299a0, 02d3ddd (pushed) + 30f173a (fig:banner,
+⚠ UNPUSHED at handoff time — user pushes via `! git -C <repo> push`).
+scene-pipeline: local commits ahead — the user pushes.)
 
 ## 1. WHAT CHANGED
 
@@ -35,6 +36,11 @@ scene-pipeline: 3 local commits ahead — the user pushes.)
 - **scene-pipeline README banner** (644b050): user-supplied banner.png
   (eye-level debug view, labelled boxes + relation arrows over the splat)
   now sits under the README title.
+- **fig:banner in the paper** (30f173a, user placement: "second full-width
+  figure near the teaser"): the same banner.png, copied to
+  figs/graph_over_world.png, as a \figure* after \maketitle — the graph's
+  boxes/identities/relations drawn over the raw splat at eye level;
+  referenced from the intro's "measures where each one sits" sentence.
 - notes_questions.tex Q7 updated to describe the five-panel teaser.
 
 ## 2. STATE FLAGS
