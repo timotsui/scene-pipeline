@@ -128,6 +128,39 @@ of measured placed, 64 subs deferred with no sub machinery yet) shows
 what the funnel looked like BEFORE the sub rounds landed — a nice
 built-in ablation of the sub machinery.
 
+FUNNEL ADDENDA (user, same session): (a) the SWAP-IN CHANNEL is a key
+advantage of ours — when a measured item's own retrieval is infeasible
+the proposer swaps in a different product, which is how rooms stay
+furnished despite the library gap (0–8 swap-ins per scene, split in
+realization_funnel.json); (b) "in GLB" exceeding "shopped" is three
+additive populations (anchors + swap-ins + merged subs) plus
+stage-snapshot drift (shopping.json is its stage's snapshot; the fit
+loop re-runs and fitted_preview.json is the final truth).
+
+## 5b. Size match — the library gap, quantified (eval_size_match.py)
+
+| scene | chosen fits (15% canon) | NO fitting option | native dev | out-of-box med/max mm |
+|---|---|---|---|---|
+| natural_living | 11% | 64% | 42% | 124 / 938 |
+| sunlit_office | 18% | 67% | 32% | 143 / 845 |
+| blue_living | 7% | 67% | 35% | 280 / 2208 |
+| panel_bedroom | 27% | 73% | 33% | 93 / 963 |
+| arch_bedroom | 7% | 71% | 75% | 157 / 1039 |
+| plaster_bedroom | 13% | 80% | 52% | 383 / 4470 |
+| bedroom_marble† | 23% | 61% | 24% | 71 / 587 |
+| fresh04 | 18% | 68% | 108% | — |
+| fresh06 | 28% | 56% | 64% | 402 / 2246 |
+
+For 56–80% of placements NOT ONE candidate in the retrieval shortlist
+natively fit the measured box within the fit canon's own 15% — the
+best wrong-size asset was placed. THE ARGUMENT THIS ARMS: the pipeline
+knows what size everything should be (the boxes are measured); the
+residual size error lives in what the library offers; every column
+improves by swapping the asset library, zero pipeline changes.
+(size_match.json; "native dev" = |native size − box| / box, sorted
+dims, orientation-free; out_of_box_mm is the fit's own protrusion
+record — absent from fresh04's older-era records.)
+
 ## 6. NOT gathered (rulings)
 
 - Physics counts — DEPRIORITIZED (user: we employ a physics solver
