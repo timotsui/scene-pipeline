@@ -6,6 +6,15 @@ see `paths.py`). No stage imports another stage's internals. Therefore:
 **swapping a method for any stage = writing the same output files in the same
 format.** Nothing downstream knows or cares which implementation produced them.
 
+**CONTRACT CHANGES 2026-08-13 night (R-S2-169..170, details in docs/REVIEW_LOG.md):**
+- `experiments/sub_round_cp3.py`: `boards_used` excludes None (wall-rider /
+  NO_BOARD subs) — a reporting field can no longer kill an anchor's sub round.
+- `compose/rotation_check.py`: reference photo AND camera sidecar resolve by
+  the house rule (member `img` first → rig_sp0/crops canonical → pano_crops
+  retired-legacy last). Ref sheets ATTACH again — ⚠ rotation receipts from
+  before this fix (all scenes before sunlit_office 08-13) are
+  plausibility-mode: the judge never saw the real object.
+
 **CONTRACT CHANGES 2026-08-12/13 (R-S2-159..167b, details in docs/REVIEW_LOG.md):**
 - NEW TOOL `scene_yaw.py` (pre-runner, like `scene_scale.py`): measures the
   room's continuous yaw (room_shell.measure_plan_yaw, spikiness voting) and
