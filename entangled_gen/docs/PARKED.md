@@ -209,3 +209,31 @@ objects instead of pushing them out.
 Wall objects (pictures, TVs, ACs, panels) stay flat plates; anything
 genuinely recessed reads as a surface decal. Nothing crashes; depth
 information for such objects is simply not represented.
+
+## 6. AUTOMATIC YAW — the chain detects tilt but never corrects it (parked 2026-08-13)
+
+**Parked by user instruction 2026-08-13, mid-review: "dont fix it now. we
+are focused on evluation. but document this as later improvment and a
+major bug." Full record: REVIEW_LOG R-S2-171.**
+
+### What it is
+`scene_yaw.py` (R-S2-160) straightens a tilted room correctly — but it is
+a MANUAL pre-runner and `run_scene.py` never calls it. `room_shell`
+measures the tilt on every run and records `plan_yaw_deg`; nothing acts
+on it. Every automatic run ships a tilted room tilted: the comparison
+night produced plaster_bedroom at +39° and blue_living at +13°.
+
+### The fix, when it is picked up
+A yaw stage in the INTAKE table between `frame` and `stitch` — measure,
+apply if nonzero, `frame_bootstrap.yaw_applied` guard (re-runs verify
+~0). Before `stitch` no pano exists, so the apply is free: no two-pass
+re-run, every scene corrected automatically. Touches the stage table and
+pipeline_map.html — the map change needs the user's blessing.
+
+### Consequences while parked
+New scenes with off-axis rooms ship tilted until someone runs
+`scene_yaw.py` by hand (then the two-pass re-run from stitch). Check
+`scene_yaw.json` / the shell's `plan_yaw_deg` when a scene looks rotated
+against the grid. ⚠ blue_living and plaster_bedroom currently sit
+HALF-APPLIED (state rotated, stitch-onward artifacts and viewer payloads
+pre-rotation) — see R-S2-171 before judging or re-running them.
