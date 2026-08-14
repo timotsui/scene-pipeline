@@ -8,7 +8,12 @@ library offered (EVAL_RESULTS_2026-08-13 §5b: 56–80% of placements had no
 correctly-sized candidate).
 
 Compute-only: reads the graph, the shell and the already-rendered PNG.
-Nothing is re-run. Output: out/eval_renders/<scene>_ours_persp_boxes.png.
+Nothing is re-run. Output: out/eval_renders/<scene>_<base>_persp_boxes.png.
+
+--base ours (default) overlays the product shot; --base splat overlays the
+rough point render (same camera, eval_killer_panels) — the teaser's
+semantic-structure panel: the graph's boxes drawn over the world they were
+read from.
 
 Run:  python eval_box_overlay.py --scenes natural_living,sunlit_office
 """
@@ -52,9 +57,10 @@ def object_boxes(scene):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenes", required=True)
+    ap.add_argument("--base", default="ours", choices=("ours", "splat"))
     a = ap.parse_args()
     for scene in [s.strip() for s in a.scenes.split(",") if s.strip()]:
-        base = er.OUT_DIR / f"{scene}_ours_persp.png"
+        base = er.OUT_DIR / f"{scene}_{a.base}_persp.png"
         if not base.exists():
             print(f"[box_overlay] {scene}: no product shot at {base}; skipped")
             continue
@@ -91,7 +97,7 @@ def main():
                 dr.line([px[i], px[j]], fill=BOX_RGBA, width=LINE_W)
             n_drawn += 1
         out = Image.alpha_composite(img, lay).convert("RGB")
-        f = er.OUT_DIR / f"{scene}_ours_persp_boxes.png"
+        f = er.OUT_DIR / f"{scene}_{a.base}_persp_boxes.png"
         out.save(f)
         print(f"[box_overlay] {f.name}: {n_drawn} boxes drawn")
 
