@@ -132,6 +132,13 @@ time: VLM pairwise preference, image-to-image fidelity vs the splat.
   floor triangulation.
 - Two out/ roots trap stands: DATA in CS-8903-OVM\week7\entangled_gen\
   out\, repo out\ holds night logs. paths.py decides.
+- Viewer: `python viewer\serve.py --scene natural_living --port 8321`,
+  DETACHED via WMI Win32_Process.Create with the FULL python.exe path
+  (plain `python` fails under WMI, rc=9) → http://localhost:8321/.
+  Check for squatters first: two stale servers were found holding the
+  port this session. Every eval artifact opens as a plain file:
+  out\eval_renders\index.html (shots), out\comparison.html (pairs),
+  out\wall_review.html (shells) — no server needed for those.
 
 ## 5. THE PROMPT FOR THE NEXT AGENT
 
