@@ -95,13 +95,46 @@ D_grounding.object_count_error). Retention: GLTS loses part of its own
 retrieval per scene (e.g. fresh06: 13 retrieved → 11 placed, 2 lost);
 per-scene lists in each comparison.html row.
 
-## 5. NOT gathered yet (deliberately — each needs real work)
+## 5. Realization funnel (eval_funnel.py -> realization_funnel.json)
 
-- Physics counts: awaiting the settled-MESH repoint of
-  compare_methods' rows (R-S2-172 ruling); the current box-based rows
-  are NOT quoted.
-- Realization funnel (measured → realized → reason breakdown).
-- Optional: VLM pairwise preference; image-to-image fidelity.
+measured graph objects -> anchor-tier shopped (+ subs deferred) ->
+assets standing in the final GLB (anchors + swap-ins + merged subs),
+with every unrealized item's recorded reason:
+
+| scene | measured | shopped (+subs) | in GLB | unrealized (reason) |
+|---|---|---|---|---|
+| natural_living | 53 | 34 (+19) | 56 | 4 — no asset match |
+| sunlit_office | 60 | 45 (+15) | 67 | 0 |
+| blue_living | 25 | 18 (+7) | 29 | 1 — no asset match |
+| panel_bedroom | 15 | 11 (+4) | 19 | 0 |
+| arch_bedroom | 26 | 17 (+9) | 28 | 3 — no asset match |
+| plaster_bedroom | 18 | 16 (+2) | 18 | 0 |
+| bedroom_marble† | 82 | 31 (+64) | 31 | 0 (era: no sub machinery) |
+| living_marble | — no current-era compose receipts (never fitted) | | | |
+| fresh04 | 56 | 43 (+26) | 38 | 5 — no asset match |
+| fresh06 | 33 | 20 (+13) | 38 | 2 — no asset match |
+
+"in GLB" can exceed "measured" because swap-ins (retrieval
+replacements) and merged subs add items beyond the graph count — the
+columns are populations, not a strict subset chain; the honest rate is
+per-tier (anchors placed / anchors shopped, near-total on every night
+scene). READING — sharper than the going-in assumption: on the current
+pipeline the funnel's hard losses are SMALL (0–5 per scene) and have
+ONE cause, "no acceptable asset match" — the asset-library ceiling is
+real but narrow; the sparse look of some rooms is about asset QUALITY
+and the deferred-sub tail, not mass unrealization. The limitation
+paragraph should say that precisely. † bedroom_marble (old era, 38%
+of measured placed, 64 subs deferred with no sub machinery yet) shows
+what the funnel looked like BEFORE the sub rounds landed — a nice
+built-in ablation of the sub machinery.
+
+## 6. NOT gathered (rulings)
+
+- Physics counts — DEPRIORITIZED (user: we employ a physics solver
+  precisely to make this number near-zero; it differentiates nothing).
+  If ever mentioned: settled-mesh only, one line, never the box rows.
+- Optional, parked for spare time: VLM pairwise preference;
+  image-to-image fidelity vs the captured splat.
 
 ## STANDING CAVEATS (quote with the numbers)
 
