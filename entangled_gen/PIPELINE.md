@@ -22,6 +22,12 @@ format.** Nothing downstream knows or cares which implementation produced them.
   manifests, boot extents RECOMPUTED from the rotated cloud). Guard:
   `frame_bootstrap.yaw_applied`; re-runs verify (~0). Backups `*_preyaw.*`.
   Two-pass protocol: apply → chain re-run from stitch.
+  ⚠ MAJOR BUG, DOCUMENTED NOT FIXED (R-S2-171, PARKED #6, 2026-08-13):
+  run_scene NEVER calls this tool — it is manual-only, so every automatic
+  run ships a tilted room tilted (plaster_bedroom went out at +39°,
+  blue_living +13°; those two now sit HALF-APPLIED, see R-S2-171 before
+  re-running them). The pre-registered fix (a yaw stage in INTAKE between
+  frame and stitch) is parked by user order: evaluation first.
 - `room_shell.py` solid rule: DENSITY GATE (Otsu split of tall-cell log
   density, applied only when modes ≥4x apart) + WALK-THROUGH SLAB (material
   must span waist 0.9 → crown 1.9, standard-room fractions). Trace de-rotation
