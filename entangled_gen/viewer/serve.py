@@ -883,11 +883,19 @@ class H(BaseHTTPRequestHandler):
             scenes = sorted(f.stem for f in (HERE / "data").glob("*.bin"))
             actf = HERE / "data" / "_active.json"
             try:
-                active = json.loads(actf.read_text()).get("active", [])
+                act = json.loads(actf.read_text())
             except Exception:
-                active = []
-            active = [s for s in active if s in scenes] or [args.scene]
+                act = {}
+            active = [s for s in act.get("active", []) if s in scenes] \
+                or [args.scene]
+            # named groups (ordered); scenes with no payload are dropped,
+            # scenes in no group land in the viewer's archive bucket
+            groups = [{"label": g.get("label", "?"),
+                       "scenes": [s for s in g.get("scenes", [])
+                                  if s in scenes]}
+                      for g in act.get("groups", [])]
             self._send(200, json.dumps({"scenes": scenes, "active": active,
+                                        "groups": groups,
                                         "default": args.scene}).encode(),
                        "application/json")
         elif p == "/scene.bin":

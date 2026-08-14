@@ -190,10 +190,20 @@ const SC = new URLSearchParams(location.search).get('scene') || scList.default;
 const MAN = new URLSearchParams(location.search).get('man') || '';
 const sq = 'scene=' + encodeURIComponent(SC) + (MAN ? '&man=' + encodeURIComponent(MAN) : '');
 const sel_ = $('scSel');
-// group the dropdown: 'active' (viewer/data/_active.json) vs archived scenes
-const activeSet = new Set(scList.active || []);
-const groups = [['active', scList.scenes.filter(s => activeSet.has(s))],
-                ['archive (stale)', scList.scenes.filter(s => !activeSet.has(s))]];
+// group the dropdown from viewer/data/_active.json: named ordered groups
+// when given, else the legacy active/archive split; ungrouped scenes
+// always fall through to 'archive (stale)'
+let groups;
+if ((scList.groups || []).length) {
+  const grouped = new Set(scList.groups.flatMap(g => g.scenes));
+  groups = scList.groups.map(g => [g.label, g.scenes]);
+  groups.push(['archive (stale)',
+               scList.scenes.filter(s => !grouped.has(s))]);
+} else {
+  const activeSet = new Set(scList.active || []);
+  groups = [['active', scList.scenes.filter(s => activeSet.has(s))],
+            ['archive (stale)', scList.scenes.filter(s => !activeSet.has(s))]];
+}
 for (const [gname, list] of groups) {
   if (!list.length) continue;
   const og = document.createElement('optgroup');
