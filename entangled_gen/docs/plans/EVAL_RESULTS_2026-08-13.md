@@ -7,6 +7,12 @@ from records that already existed (no re-runs — R-S2-172). Sources:
 `clip_score.py`, `eval_llm_calls.py`, `eval_renders.py`,
 `compare_methods.py`.
 
+Baseline identity correction (2026-08-14): the saved GLTS runs use the 2026
+progress-reward-guided MCTS solver, not the 2025 DFS solver. They run through
+step 15, including style-aware asset retrieval, and intentionally stop before
+the optional Paint3D texture-generation stage. The paper cites and describes
+that exact configuration.
+
 ## 1. CLIP score (the baselines' own metric)
 
 OpenCLIP ViT-L/14 (LAION-2B), cosine × 100 vs "a top-down view of a
@@ -97,45 +103,38 @@ per-scene lists in each comparison.html row.
 
 ## 5. Realization funnel (eval_funnel.py -> realization_funnel.json)
 
-measured graph objects -> anchor-tier shopped (+ subs deferred) ->
-assets standing in the final GLB (anchors + swap-ins + merged subs),
-with every unrealized item's recorded reason:
+The denominator is the newest complete, non-stale scene-graph layer, after
+duplicate resolution and overlap cleanup. Raw detections are never counted.
+Every graph ID has exactly one outcome: placed under its own ID, covered by a
+validated replacement, or not placed. Those outcomes sum to the graph count;
+unmeasured additions are separate.
 
-| scene | measured | shopped (+subs) | in GLB | unrealized (reason) |
-|---|---|---|---|---|
-| natural_living | 53 | 34 (+19) | 56 | 4 — no asset match |
-| sunlit_office | 60 | 45 (+15) | 67 | 0 |
-| blue_living | 25 | 18 (+7) | 29 | 1 — no asset match |
-| panel_bedroom | 15 | 11 (+4) | 19 | 0 |
-| arch_bedroom | 26 | 17 (+9) | 28 | 3 — no asset match |
-| plaster_bedroom | 18 | 16 (+2) | 18 | 0 |
-| bedroom_marble† | 82 | 31 (+64) | 31 | 0 (era: no sub machinery) |
-| living_marble | — no current-era compose receipts (never fitted) | | | |
-| fresh04 | 56 | 43 (+26) | 38 | 5 — no asset match |
-| fresh06 | 33 | 20 (+13) | 38 | 2 — no asset match |
+| scene | graph | as requested | replaced | missing | filled | extra |
+|---|---:|---:|---:|---:|---:|---:|
+| natural_living | 53 | 35 | 7 | 11 | 42 (79%) | 0 |
+| sunlit_office | 60 | 48 | 8 | 4 | 56 (93%) | 0 |
+| blue_living | 25 | 22 | 0 | 3 | 22 (88%) | 0 |
+| panel_bedroom | 15 | 14 | 1 | 0 | 15 (100%) | 0 |
+| arch_bedroom | 26 | 19 | 2 | 5 | 21 (81%) | 0 |
+| plaster_bedroom | 18 | 13 | 4 | 1 | 17 (94%) | 0 |
+| bedroom_marble† | 82 | 30 | 0 | 52 | 30 (37%) | 1 |
+| living_marble | — no compatible final compose receipts | | | | | |
+| fresh04 | 56 | 33 | 5 | 18 | 38 (68%) | 0 |
+| fresh06 | 33 | 26 | 2 | 5 | 28 (85%) | 0 |
 
-"in GLB" can exceed "measured" because swap-ins (retrieval
-replacements) and merged subs add items beyond the graph count — the
-columns are populations, not a strict subset chain; the honest rate is
-per-tier (anchors placed / anchors shopped, near-total on every night
-scene). READING — sharper than the going-in assumption: on the current
-pipeline the funnel's hard losses are SMALL (0–5 per scene) and have
-ONE cause, "no acceptable asset match" — the asset-library ceiling is
-real but narrow; the sparse look of some rooms is about asset QUALITY
-and the deferred-sub tail, not mass unrealization. The limitation
-paragraph should say that precisely. † bedroom_marble (old era, 38%
-of measured placed, 64 subs deferred with no sub machinery yet) shows
-what the funnel looked like BEFORE the sub rounds landed — a nice
-built-in ablation of the sub machinery.
+The old script was not a true funnel. It compared different stage populations
+and then added `merge_subs.json.n_added` to `fitted_preview.json.placed` even
+though merged subs were already present in `placed`. The new audit fixes that
+double count and preserves graph identity through the final record.
 
-FUNNEL ADDENDA (user, same session): (a) the SWAP-IN CHANNEL is a key
-advantage of ours — when a measured item's own retrieval is infeasible
-the proposer swaps in a different product, which is how rooms stay
-furnished despite the library gap (0–8 swap-ins per scene, split in
-realization_funnel.json); (b) "in GLB" exceeding "shopped" is three
-additive populations (anchors + swap-ins + merged subs) plus
-stage-snapshot drift (shopping.json is its stage's snapshot; the fit
-loop re-runs and fitted_preview.json is the final truth).
+READING: grouped-graph runs place 59–93% of objects as requested and fill
+68–100% of measured slots after validated replacements. Swap-ins cover 0–8
+slots per scene. Missing slots do not have one cause: the detailed
+JSON distinguishes unavailable asset matches, small objects that were placed
+in a sub-pass but never merged into the final scene, support-surface failures,
+replacement handoff failures, and missing final receipts. † bedroom_marble is
+an older run whose newest complete graph layer is `resolved`, before the
+current grouped-graph and sub-merge path.
 
 ## 5b. Size match — the library gap, quantified (eval_size_match.py)
 
@@ -153,10 +152,11 @@ loop re-runs and fitted_preview.json is the final truth).
 
 For 56–80% of placements NOT ONE candidate in the retrieval shortlist
 natively fit the measured box within the fit canon's own 15% — the
-best wrong-size asset was placed. THE ARGUMENT THIS ARMS: the pipeline
-knows what size everything should be (the boxes are measured); the
-residual size error lives in what the library offers; every column
-improves by swapping the asset library, zero pipeline changes.
+best wrong-size asset was placed. This establishes a library limit under the
+pipeline's own fit rule. The boxes are measured but coarse, so it does not prove
+that every size mismatch is external to the pipeline. A better library can
+improve no-fit cases without changing the graph; the handoff losses above need
+pipeline changes.
 (size_match.json; "native dev" = |native size − box| / box, sorted
 dims, orientation-free; out_of_box_mm is the fit's own protrusion
 record — absent from fresh04's older-era records.)
