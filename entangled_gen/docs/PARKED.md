@@ -234,6 +234,16 @@ pipeline_map.html — the map change needs the user's blessing.
 New scenes with off-axis rooms ship tilted until someone runs
 `scene_yaw.py` by hand (then the two-pass re-run from stitch). Check
 `scene_yaw.json` / the shell's `plan_yaw_deg` when a scene looks rotated
-against the grid. ⚠ blue_living and plaster_bedroom currently sit
-HALF-APPLIED (state rotated, stitch-onward artifacts and viewer payloads
-pre-rotation) — see R-S2-171 before judging or re-running them.
+against the grid.
+
+**Evaluation provenance correction, 2026-08-15:** the `blue_living` and
+`plaster_bedroom` renders used in the paper were never manually straightened.
+They are raw automatic-pipeline outputs retaining approximately +13° and +39°
+of plan yaw, respectively. `plaster_bedroom` remains included unchanged in
+every reported mean, win count, and pooled comparison. The +39° rotation is
+substantial, and the paper records axis-aligned box inflation and non-canonical
+framing as suspected contributors to that scene's loss, not confirmed
+causation. If later state files and stitch-onward artifacts disagree, treat that
+as a workspace re-run hazard; it does not describe the evaluated output's
+provenance. Connecting the existing correction is straightforward, but
+regenerating downstream artifacts is deferred.

@@ -60,8 +60,8 @@ fully-furnished inventions. † = older-pair fallback renders
 | fresh06 | 3389 | 1070† | 11549 | 279 |
 
 - Ours is 2–7× FASTER wall-clock while making ~3–4× MORE model calls:
-  small cheap calls at concurrency 8 vs GLTS's serial GPT-4o tree
-  search. Time is context, not a race — the two systems do different
+  small calls at concurrency 8 vs GLTS's serial tree search through the
+  same Claude Sonnet backend used by our judges. Time is context, not a race — the two systems do different
   work (we reconstruct + verify; they invent).
 - ours s = the latest run_scene record; COVERAGE VARIES (some records
   are partial re-runs; `A_cost.ours.seconds_covers` in comparison.json
@@ -193,3 +193,34 @@ record — absent from fresh04's older-era records.)
 - Ours call count is a lower bound; older scenes' spans multiple eras.
 - living_marble ours side = pre-normalization archive (never fitted in
   the current era — user accepted 08-13).
+
+## 7. August 15 paper-audit update
+
+The first-number interpretation above has now been reviewed against the final paper artifacts. The raw scores remain unchanged; the following statements are the locked reading.
+
+### CLIP prompt sensitivity
+
+The fixed primary metric remains room type only: ours minus GLTS is `+0.15` orthographic (`+0.5%`) and `+1.85` perspective (`+6.0%`). The later shared-prompt experiments are exploratory diagnostics, not replacement metrics:
+
+| shared prompt family | ortho delta | perspective delta |
+|---|---:|---:|
+| 3D rendering + room type | +2.46 (+7.9%) | +1.89 (+5.6%) |
+| + one source style | +3.02 (+10.2%) | +1.40 (+4.3%) |
+| + one source mood | +2.12 (+7.2%) | +1.20 (+3.7%) |
+
+The exact prompt protocol and experiment history are preserved in `CS-8903-OVM/week7/entangled_gen/out/eval_renders/CLIP_PROMPT_EXPLORATION_2026-08-15.md`. Every prompt is applied identically to both methods. The result shows prompt sensitivity and a positive margin under these three selected shared conditions; it does not establish full-prompt fidelity.
+
+### Qualitative loss diagnoses
+
+- `plaster_bedroom` entered the automatic pipeline with approximately +39 degrees of uncorrected plan yaw. The evaluated render is raw pipeline output and remains included unchanged in every mean, win count, and pooled comparison. Axis-aligned box inflation and non-canonical framing are suspected contributors to the loss, not confirmed causation. Connecting the existing yaw correction is a small future implementation fix; rerunning downstream artifacts was outside the evaluation budget.
+- `arch_bedroom` contains several visibly incorrect lifted boxes, especially around the arched alcove. Lifting quality is a suspected contributor to its loss. This supports the modular limitation story: improved lifting can replace the current stage and improve retrieval, scale, and placement without changing the graph or composer.
+- No failed or weak scene was excluded, hand-corrected, or score-adjusted for the paper.
+
+### Scope and interpretation
+
+- Both methods are shown using the same camera and rendering setup for comparison.
+- Neither evaluated method uses Paint3D; both are scored with selected assets as delivered.
+- Exact preservation of the selected asset is a capability distinct from visual fidelity to the observed splat object. The former can preserve a sourceable SKU, collision data, rig, metadata, and behavior; the latter remains bounded by lifting and catalogue quality.
+- The current room shell selects for a flat floor/ceiling and vertical walls. It still preserves non-cardinal walls, cut corners, L-shapes, and connected spaces, which is more expressive in plan than GLTS's rectangular emoji grid. Sloped vertical architecture is future work.
+- The 2–7x wall-clock result remains a supporting efficiency win scoped to the six pairs with complete timing records.
+- No human study was run; do not translate CLIP into a claim of superior human preference, realism, or style.
