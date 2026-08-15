@@ -59,7 +59,9 @@ fully-furnished inventions. † = older-pair fallback renders
 | fresh04 | 740 | 1227† | 11157 | 280 |
 | fresh06 | 3389 | 1070† | 11549 | 279 |
 
-- Ours is 2–7× FASTER wall-clock while making ~3–4× MORE model calls:
+- Ours is approximately 2–7× faster wall-clock on the six complete timing
+  pairs (1.84–6.82× from the displayed rounded minutes), while making 3.2× as
+  many recorded model calls in aggregate:
   small calls at concurrency 8 vs GLTS's serial tree search through the
   same Claude Sonnet backend used by our judges. Time is context, not a race — the two systems do different
   work (we reconstruct + verify; they invent).
@@ -220,7 +222,11 @@ The exact prompt protocol and experiment history are preserved in `CS-8903-OVM/w
 
 - Both methods are shown using the same camera and rendering setup for comparison.
 - Neither evaluated method uses Paint3D; both are scored with selected assets as delivered.
-- Exact preservation of the selected asset is a capability distinct from visual fidelity to the observed splat object. The former can preserve a sourceable SKU, collision data, rig, metadata, and behavior; the latter remains bounded by lifting and catalogue quality.
+- Fidelity to the selected asset is distinct from visual fidelity to the
+  observed splat object. The evaluated Objathor path retains catalogue identity,
+  native scale, mesh, and appearance; richer asset/output adapters can also carry
+  sourceable SKUs, collision metadata, rigs, and behavior. Match to the observed
+  object remains bounded by lifting and catalogue quality.
 - The current room shell selects for a flat floor/ceiling and vertical walls. It still preserves non-cardinal walls, cut corners, L-shapes, and connected spaces, which is more expressive in plan than GLTS's rectangular emoji grid. Sloped vertical architecture is future work.
 - The 2–7x wall-clock result remains a supporting efficiency win scoped to the six pairs with complete timing records.
 - No human study was run; do not translate CLIP into a claim of superior human preference, realism, or style.
