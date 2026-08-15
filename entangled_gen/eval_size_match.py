@@ -16,9 +16,10 @@ All from existing receipts, per scene:
   out_of_box_mm      per-placement protrusion beyond the measured box
                      recorded by the fit (median / max per scene)
 
-READING for the paper: the boxes are measured; the residual size error
-lives in what the library OFFERS. Every axis of this table improves by
-swapping the asset library — no pipeline change involved.
+READING for the paper: this measures native-size fidelity among direct
+placements with comparable main-pass pick receipts.  It establishes how often
+the shortlist offers a size match; it does not score color, material, style,
+or the accuracy of the measured box itself.
 
 Run:  python eval_size_match.py
 """
@@ -42,6 +43,7 @@ def _load(p):
 
 def main():
     table = {}
+    raw_counts = {}
     for sc in SCENES:
         cdir = paths.scene_dir(sc) / "compose"
         fp = _load(cdir / "fitted_preview.json")
@@ -78,7 +80,9 @@ def main():
         rec = {
             "available": True,
             "n_scored": n,
+            "chosen_fit_count": sum(chosen_fit),
             "chosen_fit_pct": round(100.0 * sum(chosen_fit) / n) if n else None,
+            "no_fit_option_count": sum(no_option),
             "no_fit_option_pct": round(100.0 * sum(no_option) / n) if n else None,
             "size_dev_pct_mean": round(100.0 * float(np.mean(devs)), 1)
             if devs else None,
@@ -87,13 +91,29 @@ def main():
             "out_of_box_mm_max": round(float(np.max(oob)), 1) if oob else None,
         }
         table[sc] = rec
+        raw_counts[sc] = (n, sum(chosen_fit), sum(no_option))
         print(f"[size] {sc:18s} n={n:3d}  chosen-fit {rec['chosen_fit_pct']}%"
               f"  no-option {rec['no_fit_option_pct']}%  "
               f"dev {rec['size_dev_pct_mean']}%  oob med/max "
               f"{rec['out_of_box_mm_median']}/{rec['out_of_box_mm_max']} mm")
 
+    current_six = SCENES[:6]
+    n_scored = sum(raw_counts[sc][0] for sc in current_six)
+    n_fit = sum(raw_counts[sc][1] for sc in current_six)
+    n_no_option = sum(raw_counts[sc][2] for sc in current_six)
+    summary = {
+        "scenes": current_six,
+        "n_scored_direct_placements": n_scored,
+        "chosen_fit_count": n_fit,
+        "chosen_fit_pct": round(100.0 * n_fit / n_scored, 1),
+        "no_fit_option_count": n_no_option,
+        "no_fit_option_pct": round(100.0 * n_no_option / n_scored, 1),
+        "note": ("Direct placements with comparable main-pass pick receipts; "
+                 "does not include replacements or unscored sub-round items."),
+    }
     out = paths.OUT / "eval_renders" / "size_match.json"
-    out.write_text(json.dumps({"scenes": table}, indent=1), encoding="utf-8")
+    out.write_text(json.dumps({"summary_current_six": summary,
+                               "scenes": table}, indent=1), encoding="utf-8")
     print(f"[size] -> {out}")
 
 

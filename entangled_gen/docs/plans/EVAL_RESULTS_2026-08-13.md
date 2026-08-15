@@ -136,6 +136,16 @@ replacement handoff failures, and missing final receipts. † bedroom_marble is
 an older run whose newest complete graph layer is `resolved`, before the
 current grouped-graph and sub-merge path.
 
+Across the six current runs, 151/197 slots (77%) are direct placements,
+22/197 (11%) are fallback replacements, and 24/197 (12%) are missing; total
+coverage is 173/197 (88%). Of the 24 missing slots, 13 are library/size-bar
+failures, eight were successfully placed in the small-object pass but skipped
+because the merger only scanned `obj_*` hosts rather than replacement `swap_*`
+hosts, and three are other support/receipt/replacement-handoff failures. The
+merger is fixed for future runs; the evaluated outputs remain frozen as built.
+Replacement improves coverage, but is not counted as faithful realization of
+the requested object.
+
 ## 5b. Size match — the library gap, quantified (eval_size_match.py)
 
 | scene | chosen fits (15% canon) | NO fitting option | native dev | out-of-box med/max mm |
@@ -157,6 +167,12 @@ pipeline's own fit rule. The boxes are measured but coarse, so it does not prove
 that every size mismatch is external to the pipeline. A better library can
 improve no-fit cases without changing the graph; the handoff losses above need
 pipeline changes.
+(Across the six current runs, 128 direct placements have comparable main-pass
+pick receipts: 18/128, or 14%, use a candidate within the 15% size tolerance;
+88/128, or 69%, had no fitting candidate in the shortlist.) Direct placement
+means that the measured graph ID survived; it does not establish an appearance
+match. Color, material, shape, and style fidelity are not scored here and
+remain dependent on what the asset catalogue and selector provide.
 (size_match.json; "native dev" = |native size − box| / box, sorted
 dims, orientation-free; out_of_box_mm is the fit's own protrusion
 record — absent from fresh04's older-era records.)

@@ -10,8 +10,9 @@ CONTRACT:
            verified obj_029 2026-08-13), and a minimal record joins
            fitted_preview.json `placed` (source "sub_round") so the
            gravity pass sees and settles them like everything else
-  mistake  double-merging on a re-run (guarded: a sub id already in
-           the GLB is skipped, loudly)
+  mistake  double-merging on a re-run, or skipping subs whose host is a
+           replacement asset rather than a measured obj_* anchor.  Existing
+           mesh nodes are skipped, but a missing JSON record is repaired.
 
 The main GLB is backed up ONCE to fitted_preview_presubs.glb.
 Run gravity AFTER this (compose/fit_gravity.py) so riders rest on
@@ -54,35 +55,39 @@ def main():
     placed = fp.setdefault("placed", [])
     placed_ids = {p["id"] for p in placed}
 
-    n_added, n_skipped = 0, 0
+    n_added, n_skipped, n_records_added = 0, 0, 0
+    expected_placed_ids = set()
+    seen_mesh_ids = set()
     for pj in sorted((cdir / "sub_experiment").glob(
-            "obj_*/cp5_final/placements.json")):
+            "*/cp5_final/placements.json")):
         rec = json.loads(pj.read_text("utf-8"))
+        subs_ok = {s["id"]: s for s in rec["subs"]
+                   if s.get("status") == "PLACED"}
+        expected_placed_ids.update(subs_ok)
         sglb = pj.parent / "subs_preview.glb"
         if not sglb.exists():
             # an anchor whose subs all died (NO_BOARD etc.) writes no GLB
             continue
         sub_scene = trimesh.load(sglb)
-        subs_ok = {s["id"]: s for s in rec["subs"]
-                   if s.get("status") == "PLACED"}
         for nn in sub_scene.graph.nodes_geometry:
             sid = str(nn).rsplit("_t", 1)[0]
             base = sid.split("_c")[0]      # tile copies obj_032_c00
             srec = subs_ok.get(sid) or subs_ok.get(base)
             if srec is None:
                 continue
+            seen_mesh_ids.add(srec["id"])
             if sid in have:
                 n_skipped += 1
                 print(f"[merge-subs] {sid} already in the GLB — "
                       f"skipped (re-run guard)", flush=True)
-                continue
-            T, gname = sub_scene.graph[nn]
-            geom = sub_scene.geometry[gname]
-            scene.add_geometry(geom, node_name=str(nn),
-                               geom_name=f"sub_{gname}",
-                               transform=np.asarray(T))
-            have.add(sid)
-            n_added += 1
+            else:
+                T, gname = sub_scene.graph[nn]
+                geom = sub_scene.geometry[gname]
+                scene.add_geometry(geom, node_name=str(nn),
+                                   geom_name=f"sub_{gname}",
+                                   transform=np.asarray(T))
+                have.add(sid)
+                n_added += 1
             if srec["id"] not in placed_ids:
                 br = srec.get("bounds_render") or {}
                 lo_r = np.asarray(br.get("lo", [0, 0, 0]), float)
@@ -100,13 +105,24 @@ def main():
                                 "aabb_max": [round(float(v), 3)
                                              for v in hi_raw]}})
                 placed_ids.add(srec["id"])
+                n_records_added += 1
             print(f"[merge-subs] + {sid} ({srec['name']}) on "
                   f"{rec['anchor']} ({rec['anchor_name']})", flush=True)
 
+    missing_mesh = sorted(expected_placed_ids - seen_mesh_ids)
+    missing_record = sorted(expected_placed_ids - placed_ids)
+    if missing_mesh or missing_record:
+        raise RuntimeError(
+            "sub merge incomplete: "
+            f"PLACED ids without mesh nodes={missing_mesh}; "
+            f"PLACED ids absent from fitted_preview.json={missing_record}")
+
     if n_added:
         gpath.write_bytes(scene.export(file_type="glb"))
+    if n_added or n_records_added:
         fp["subs_merged"] = {"date": str(date.today()),
                              "n_added": n_added,
+                             "n_records_added": n_records_added,
                              "by": "compose/merge_sub_placements.py"}
         jpath.write_text(json.dumps(fp, indent=1), encoding="utf-8")
     # the stage's PROMISE (gate no-op trap): written on EVERY run,
@@ -114,10 +130,13 @@ def main():
     (cdir / "merge_subs.json").write_text(json.dumps({
         "scene": a.scene, "built": str(date.today()),
         "generated_by": "compose/merge_sub_placements.py",
-        "n_added": n_added, "n_skipped": n_skipped}, indent=1),
+        "n_expected_placed": len(expected_placed_ids),
+        "n_added": n_added, "n_records_added": n_records_added,
+        "n_skipped": n_skipped}, indent=1),
         encoding="utf-8")
     print(f"[merge-subs] {n_added} sub mesh(es) merged, "
-          f"{n_skipped} skipped -> {gpath.name}. "
+          f"{n_records_added} record(s) added, {n_skipped} skipped -> "
+          f"{gpath.name}. "
           f"Run fit_gravity next so riders rest on their hosts.",
           flush=True)
 
