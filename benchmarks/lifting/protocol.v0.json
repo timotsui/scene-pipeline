@@ -1,0 +1,40 @@
+{
+  "schema_version": "lifting-benchmark-v0",
+  "status": "smoke-only-not-frozen",
+  "coordinate_frame": "scene-pipeline raw splat frame",
+  "units": "meters",
+  "box_type": "axis-aligned, full extents",
+  "record_format": "JSONL, one object per line",
+  "required_fields": [
+    "scene_id",
+    "object_id",
+    "label",
+    "aabb_min",
+    "aabb_max"
+  ],
+  "prediction_fields": ["score", "native_id", "native_metadata"],
+  "matching": {
+    "semantic_policy": "exact canonical label after frozen synonym mapping",
+    "paired_errors": "Hungarian assignment maximizing 3D IoU per scene and label",
+    "detection_ap": "per-class confidence-ranked greedy matching with all-points interpolation",
+    "iou_thresholds": [0.25, 0.5]
+  },
+  "primary_metrics": [
+    "mAP25",
+    "mAP50",
+    "recall25",
+    "recall50",
+    "median_matched_iou",
+    "median_center_error_m",
+    "median_normalized_center_error",
+    "median_axis_extent_relative_error",
+    "false_discoveries25",
+    "duplicate_predictions25"
+  ],
+  "paper_protocols": ["native", "matched_budget"],
+  "notes": [
+    "Freeze the synonym map before held-out evaluation.",
+    "Report bootstrap confidence intervals over scenes, not objects.",
+    "This v0 file validates plumbing only and must be promoted to v1 before paper runs."
+  ]
+}
