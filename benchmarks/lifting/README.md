@@ -6,6 +6,37 @@ belong under the machine-local `out/` root and are never committed.
 
 Status on 2026-08-15: **smoke-test scaffold, not a frozen paper benchmark**.
 
+## Hypersim development pilot (2026-08-17)
+
+The first public-scene smoke is complete on Hypersim `ai_051_002`, `cam_00`.
+It uses 50 evenly spaced source frames, 20 visible target boxes, a metric gsplat
+trained from 45 frames, five reserved render checks (23.50 dB mean PSNR), and a
+seven-class Splat Analyzer run. On the same 34 development proposals, the native
+rectangular lift scores mAP25 0.329 / mAP50 0, while the global SAM mask-pixel
+lift scores mAP25 0.224 / mAP50 0.071. This is a one-scene, development-tuned
+plumbing result; it does not test active plan/tunnel re-observation.
+
+The reusable stages are:
+
+1. `select_hypersim_scenes.py`: rank official scenes and reject non-pinhole
+   cameras.
+2. `download_hypersim_subset.py`: use Hypersim's official range downloader for
+   an aligned, evenly spaced modality subset.
+3. `prepare_hypersim_scene.py`: write exact metric cameras, visible ground
+   truth, initialized points, COLMAP files, a Boxer sequence, and box overlays.
+4. `train_hypersim_splat.py`: run gsplat v1.5.3's official trainer headlessly
+   while preserving the metric scene frame.
+5. `verify_hypersim_splat.py`: render reserved cameras with Splat Analyzer's
+   PLY loader/renderer and write PSNR plus visual comparisons.
+6. `adapt_splat_analyzer.py` and `evaluate.py`: convert and score the native
+   rectangular lift.
+7. `refine_splat_analyzer_masks.py`: hold detections and clusters fixed while
+   replacing only their geometry with SAM mask-pixel depth lifting.
+
+Every generated manifest and receipt is marked
+`development-smoke-not-paper-frozen`. Heavy source data, splats, model outputs,
+and metrics remain under the ignored machine-local `out/` root.
+
 ## Recommended execution order
 
 1. Generate two development scenes from known assets and export exact AABBs.
