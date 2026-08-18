@@ -1,0 +1,11 @@
+diff --git a/Zoo3D_0/semantics/open_voc.py b/Zoo3D_0/semantics/open_voc.py
+--- a/Zoo3D_0/semantics/open_voc.py
++++ b/Zoo3D_0/semantics/open_voc.py
+@@ -7,7 +7,6 @@ import cv2
+ import open_clip
+ import argparse
+ from concurrent.futures import ThreadPoolExecutor
+-from mmdet3d.structures import rotation_3d_in_axis
+ import threading
+ import time
+ from utils.config import get_dataset, get_args

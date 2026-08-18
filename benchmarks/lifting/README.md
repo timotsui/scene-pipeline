@@ -4,8 +4,8 @@ This directory contains the versioned, model-independent plumbing for the
 lifting-paper benchmark. Heavy renders, splats, predictions, and checkpoints
 belong under the machine-local `out/` root and are never committed.
 
-Status on 2026-08-17: **five-scene development benchmark complete; method
-configuration frozen before held-out evaluation**.
+Status on 2026-08-18: **five-scene development benchmark and Boxer/Zoo3D
+reference complete; method configuration frozen before held-out evaluation**.
 
 ## Hypersim development benchmark (2026-08-17)
 
@@ -24,6 +24,17 @@ to 0.255. Its paired mAP25 gain over the stronger rectangular baseline is 0.056
 with a scene-bootstrap 95% interval of [0.008, 0.133]. It improves four scenes
 and ties the no-proposal scene against that baseline. These are development
 results, not held-out estimates.
+
+An external cross-system reference uses the same five scenes, 87 visible ground
+truth objects, seven-category normalization, and common evaluator, but lets each
+system keep its own proposal and aggregation pipeline. Zoo3D reaches scene-macro
+mAP25 0.194, recall25 0.249, and mAP50 0.151 from 50 target-category predictions.
+Active lifting reaches 0.180, **0.255**, and 0.062 from its fixed 123 proposals;
+it has the highest recall25 but does not beat Zoo3D on AP. Boxer reaches 0.019,
+0.057, and 0.000 from 49 predictions under the matched one-support fusion
+described below. Active lifting is 9.45x Boxer's AP25 and 4.46x its recall25.
+These remain development-set reference numbers, not a controlled causal or
+held-out system ranking.
 
 The reusable stages are:
 
@@ -47,22 +58,27 @@ The reusable stages are:
 9. `summarize_lifting_results.py`: recompute scene-macro and pooled metrics,
    input hashes, and paired scene-bootstrap intervals from saved predictions.
 
+External systems are evaluated as a separate cross-system reference because
+they generate and aggregate their own proposals. `export_scannet_sequence.py`
+and `adapt_boxer.py` preserve Boxer's native posed-RGB-D contract.
+`prepare_zoo3d_scene.py` writes Zoo3D's 640x480 posed-image layout while
+preserving the benchmark metric world frame, and `adapt_zoo3d.py` converts its
+point masks to benchmark AABBs. The main fixed-proposal table remains the
+controlled test of active re-observation.
+
 Heavy source data, splats, model outputs, and metrics remain under the ignored
 machine-local `out/` root. The committed split records which settings are frozen
 and which held-out work remains.
 
-## Recommended execution order
+## Protocol rules
 
-1. Generate two development scenes from known assets and export exact AABBs.
-2. Validate frame, units, and box projection visually.
-3. Convert every method's native output to `schema.v0.json` JSONL records.
-4. Run `evaluate.py` on synthetic fixtures, then on the two development scenes.
-5. Only after adapters agree, freeze the full dev/test manifests and protocol.
+Keep the controlled and external protocols distinct:
 
-Keep two method protocols:
-
-- `native`: each method uses its intended view policy; record resource use.
-- `matched_budget`: common initial views and a common render/detector-call cap.
+- `fixed_proposal`: every lift receives the same proposal identity, label, score,
+  and initial global observations; only the box-measurement rule changes.
+- `native_external`: each released system keeps its intended proposal and
+  aggregation path; inputs and resource use are reported rather than treated as
+  matched.
 
 Do not tune on held-out scenes. Existing generated scenes have no object-level
 metric ground truth and may be used only for plumbing, timing, and qualitative
@@ -151,13 +167,45 @@ python benchmarks/lifting/adapt_boxer.py `
 The adapter restores the camera-translation offset applied by Boxer's loader
 and encloses each quaternion-oriented native box with a world-frame AABB.
 Keep the native OBB CSV: the AABB conversion is for the common evaluator only.
+Boxer's released offline fusion (`iou=0.3`, `min_detections=4`, `conf=0.55`)
+emitted no boxes on these 50-frame Hypersim trajectories. The reported external
+row changes only `min_detections` to one while preserving the released IoU and
+confidence thresholds. This avoids comparing against a trivial empty output and
+matches the one-observation support available to the other lifting paths.
 
-## Baseline order
+Export a prepared scene for Zoo3D's posed-image release path:
 
-1. Splat Analyzer: already runnable in WSL; use it to validate the adapter.
-2. Boxer: official checkpoint and headless smoke inference.
-3. Zoo3D_0: prepare after Boxer; its CropFormer, Detectron2, SAM2, OpenCLIP,
-   point-cloud, and ScanNet-style contracts make it the highest-risk adapter.
+```powershell
+python benchmarks/lifting/prepare_zoo3d_scene.py `
+  --scannet-dir <prepared-scene>/scannet `
+  --initial-points <prepared-scene>/initial_points.npz `
+  --zoo-data-root <zoo-output>/data/scannet --scene-id <scene>
+```
 
-The full experiment design remains in
+The exporter resizes RGB-D frames from 512x384 to Zoo3D's 640x480 input and
+writes the equivalent 1280x960 calibration expected by its internal half-scale.
+It supplies the prepared 200,000-point metric reconstruction as the released
+posed-image pipeline's reconstructed point-cloud input. Camera poses and points
+remain in the benchmark world frame.
+
+After Zoo3D semantic inference, convert its point-mask NPZ:
+
+```powershell
+python benchmarks/lifting/adapt_zoo3d.py `
+  --input <prediction.npz> --points <scene.bin> `
+  --constants <Zoo3D_0>/evaluation/constants.py `
+  --scene-id <scene> --output <predictions.jsonl>
+```
+
+The adapter evaluates only the seven benchmark categories and applies a frozen
+semantic normalization for direct ScanNet200 synonyms such as `couch` to
+`sofa`, `tv` to `television`, and table/chair/cabinet subtypes to their parent
+categories. Non-target Zoo3D classes are discarded before common evaluation.
+The `patches/zoo3d_*.patch` files record four release-environment fixes: the
+modern PyTorch scalar-type API, Python 3.12 HoRNet evaluation scope, removal
+of an unused `mmdet3d` import, and memory-only batching of independent SAM2
+frames. None changes model weights, thresholds, geometry,
+or predictions.
+
+The original experiment design remains in
 `CS-8903-OVM/paper/overleaf/LIFTING_RESULTS_PLAN.md`.

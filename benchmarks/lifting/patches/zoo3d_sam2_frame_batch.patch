@@ -1,0 +1,28 @@
+diff --git a/Zoo3D_0/semantics/open_voc.py b/Zoo3D_0/semantics/open_voc.py
+--- a/Zoo3D_0/semantics/open_voc.py
++++ b/Zoo3D_0/semantics/open_voc.py
+@@ -25,5 +25,6 @@
+ H, W = 480, 640
+ MASK_BS = 10
++SAM_IMAGE_BS = 4
+ SAM_DELTA = 5
+ CLIP_EMB_DIM = 1024
+ 
+@@ -263,8 +264,15 @@ class FastCLIPFeatures:
+ 
+         if self.sam_model is not None:
+             bbox_prompt = [bbox_coord.cpu().numpy() for bbox_coord in bbox_coords.transpose(0, 1)]
+-            self.sam_model.set_image_batch(images)
+-            masks, _, _ = self.sam_model.predict_batch(box_batch=bbox_prompt, multimask_output=False)
++            masks = []
++            for start in range(0, len(images), SAM_IMAGE_BS):
++                end = start + SAM_IMAGE_BS
++                self.sam_model.set_image_batch(images[start:end])
++                masks_chunk, _, _ = self.sam_model.predict_batch(
++                    box_batch=bbox_prompt[start:end],
++                    multimask_output=False,
++                )
++                masks.extend(masks_chunk)
+             mask_2d = torch.from_numpy(np.stack(masks).reshape((len(images), -1, H, W)).astype(np.bool_)).to(device=bbox_coords.device).transpose(0, 1) # num_frames x num_masks x H x W
+             mask_2d[bbox_coords.sum(-1) == 0, :, :] = False
+             bbox_coords = get_bboxes_fully_vectorized(mask_2d)

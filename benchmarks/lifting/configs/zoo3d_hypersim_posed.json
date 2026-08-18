@@ -1,0 +1,19 @@
+{
+  "mask_visible_threshold": 0.3,
+  "undersegment_filter_threshold": 0.3,
+  "view_consensus_threshold": 0.9,
+  "contained_threshold": 0.8,
+  "point_filter_threshold": 0.5,
+  "dataset": "scannet",
+  "task": "posed_images",
+  "num_classes": 200,
+  "frame_ids": [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+    40, 41, 42, 43, 44, 45, 46, 47, 48, 49
+  ],
+  "cropformer_path": "weights/Mask2Former_hornet_3x_576d0b.pth",
+  "pkl_path": "unused_by_common_evaluator.pkl"
+}

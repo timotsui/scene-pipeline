@@ -1,0 +1,12 @@
+diff --git a/Zoo3D_0/third_party/detectron2/projects/CropFormer/mask2former/modeling/backbone/hornet.py b/Zoo3D_0/third_party/detectron2/projects/CropFormer/mask2former/modeling/backbone/hornet.py
+--- a/Zoo3D_0/third_party/detectron2/projects/CropFormer/mask2former/modeling/backbone/hornet.py
++++ b/Zoo3D_0/third_party/detectron2/projects/CropFormer/mask2former/modeling/backbone/hornet.py
+@@ -208,7 +208,7 @@ class HorNet(nn.Module):
+ 
+         if isinstance(gnconv[0], str):
+             print('[GConvNet]: convert str gconv to func')
+-            gnconv = [eval(g) for g in gnconv]
++            gnconv = [eval(g, globals()) for g in gnconv]
+ 
+         if isinstance(block, str):
+             block = eval(block)
