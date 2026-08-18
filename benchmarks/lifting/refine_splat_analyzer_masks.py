@@ -118,6 +118,11 @@ def main() -> None:
     parser.add_argument("--job", required=True, type=Path)
     parser.add_argument("--scene-id", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--mask-cache",
+        type=Path,
+        help="optional directory for the ordered founding masks and metadata",
+    )
     parser.add_argument("--model", default="facebook/sam-vit-base")
     args = parser.parse_args()
 
@@ -144,6 +149,9 @@ def main() -> None:
     processor = SamProcessor.from_pretrained(args.model)
     model = SamModel.from_pretrained(args.model).to(device).eval()
     members = {index: [] for index in range(len(interactions["objects"]))}
+    cached_frames = []
+    if args.mask_cache:
+        args.mask_cache.mkdir(parents=True, exist_ok=True)
     started = time.time()
     for progress, frame_index in enumerate(sorted(by_frame), start=1):
         frame = frames[frame_index]
@@ -158,21 +166,44 @@ def main() -> None:
             inputs["original_sizes"].cpu(),
             inputs["reshaped_input_sizes"].cpu(),
         )[0].squeeze(1).numpy().astype(bool)
+        if masks.ndim == 2:
+            masks = masks[None, ...]
+        cache_rows = []
+        if args.mask_cache:
+            np.save(args.mask_cache / f"frame_{frame_index:04d}_masks.npy", masks)
         depth = np.load(args.job / "frames" / f"depth_{frame_index:04d}.npy")
         c2w = np.asarray(frame["transform_matrix"], dtype=np.float32)
         for (object_index, evidence), mask in zip(entries, masks):
+            cache_row = {
+                "object_index": object_index,
+                "label": interactions["objects"][object_index]["label"],
+                "box": [float(value) for value in evidence["box"]],
+                "score": float(evidence["score"]),
+            }
             lifted = _unproject(mask, depth, c2w, K)
             if lifted is None:
+                cache_rows.append(cache_row)
                 continue
             lower, upper = lifted
-            members[object_index].append(
+            member = {
+                "lo": lower.tolist(),
+                "hi": upper.tolist(),
+                "trust": _edge_trust(evidence["box"], c2w, width, height),
+                "frame_idx": frame_index,
+                "score": float(evidence["score"]),
+                "mask_pixels": int(mask.sum()),
+            }
+            members[object_index].append(member)
+            cache_row.update(member)
+            cache_rows.append(cache_row)
+        if args.mask_cache:
+            cached_frames.append(
                 {
-                    "lo": lower.tolist(),
-                    "hi": upper.tolist(),
-                    "trust": _edge_trust(evidence["box"], c2w, width, height),
                     "frame_idx": frame_index,
-                    "score": float(evidence["score"]),
-                    "mask_pixels": int(mask.sum()),
+                    "view": f"frame_{frame_index:04d}",
+                    "file_path": frame["file_path"],
+                    "mask_file": f"frame_{frame_index:04d}_masks.npy",
+                    "entries": cache_rows,
                 }
             )
         print(f"mask-lifted frame {progress}/{len(by_frame)}", flush=True)
@@ -226,6 +257,18 @@ def main() -> None:
     (args.output.parent / "mask_lift_receipt.json").write_text(
         json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
     )
+    if args.mask_cache:
+        cache_index = {
+            "format": "splat-analyzer-sam-founding-masks-v1",
+            "scene_id": args.scene_id,
+            "source_job": str(args.job.resolve()),
+            "width": width,
+            "height": height,
+            "frames": cached_frames,
+        }
+        (args.mask_cache / "index.json").write_text(
+            json.dumps(cache_index, indent=2) + "\n", encoding="utf-8"
+        )
     print(
         f"wrote {len(records)} objects ({fallbacks} fallbacks) in "
         f"{receipt['elapsed_seconds']:.1f} s"

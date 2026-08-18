@@ -1,0 +1,90 @@
+{
+  "format": "lifting-hypersim-split-v1",
+  "status": "development-complete-method-frozen-before-heldout",
+  "frozen_at": "2026-08-17",
+  "dataset": {
+    "name": "Hypersim",
+    "metadata_commit": "c85b2879c8da8ded2f4c24d2630c1ab4451999b2",
+    "selection_code_commit": "0491c89cf794655d308bb9aed8b94dbf05221bd5",
+    "train_candidate_sha256": "7991a66e8d4ba1cf1c9727e83b40f004492139b031e0b8119e49d2bec75a572a",
+    "test_candidate_sha256": "c96755265bd6eae15027a2faf83e153dc98eff3317e4b48627db3943affd2c5a"
+  },
+  "selection": {
+    "labels": [
+      "chair",
+      "table",
+      "sofa",
+      "bookshelf",
+      "cabinet",
+      "lamp",
+      "television"
+    ],
+    "projection_error_max": 1e-05,
+    "development_rule": "Five reconstruction-valid train scenes, greedily retaining the highest-ranked scene for each of five room types: living room, kitchen, bedroom, dining room, and office. Dataset-authored bad-initialization scenes are excluded. A candidate that fails the predeclared reconstruction gate is recorded and replaced by the next ranked scene of the same type.",
+    "heldout_rule": "The 20 highest-ranked valid official test scenes after excluding dataset-authored bad-initialization scenes.",
+    "ranking": "10 * target-category diversity + sum(min(instance_count, 4)) + min(public_camera_frames, 100) / 100",
+    "ground_truth_was_not_read_for_method_tuning": true
+  },
+  "development": [
+    {"scene_id": "ai_051_002", "camera": "cam_00", "scene_type": "Living room", "selection_rank": 2},
+    {"scene_id": "ai_002_006", "camera": "cam_00", "scene_type": "Kitchen", "selection_rank": 44},
+    {"scene_id": "ai_006_008", "camera": "cam_00", "scene_type": "Bedroom", "selection_rank": 5},
+    {"scene_id": "ai_037_007", "camera": "cam_00", "scene_type": "Dining room", "selection_rank": 6},
+    {"scene_id": "ai_003_009", "camera": "cam_00", "scene_type": "Office", "selection_rank": 15}
+  ],
+  "development_reconstruction_exclusions": [
+    {"scene_id": "ai_050_005", "camera": "cam_01", "selection_rank": 4, "mean_psnr_db": 17.85244614614401, "minimum_psnr_db": 13.639646804145704, "failed": ["mean_psnr", "single_view_psnr"]},
+    {"scene_id": "ai_048_005", "camera": "cam_00", "selection_rank": 13, "mean_psnr_db": 20.994751225414184, "minimum_psnr_db": 14.42399184947062, "failed": ["single_view_psnr"]},
+    {"scene_id": "ai_043_007", "camera": "cam_00", "selection_rank": 26, "mean_psnr_db": 20.08973459992873, "minimum_psnr_db": 14.284417262574326, "failed": ["single_view_psnr"]},
+    {"scene_id": "ai_001_005", "camera": "cam_00", "selection_rank": 43, "mean_psnr_db": 19.53675779672104, "minimum_psnr_db": 14.189986756502504, "failed": ["single_view_psnr"]}
+  ],
+  "heldout": [
+    {"scene_id": "ai_037_009", "camera": "cam_00", "scene_type": "Living room", "selection_rank": 1},
+    {"scene_id": "ai_054_007", "camera": "cam_00", "scene_type": "Living room", "selection_rank": 2},
+    {"scene_id": "ai_034_002", "camera": "cam_01", "scene_type": "Living room", "selection_rank": 3},
+    {"scene_id": "ai_048_010", "camera": "cam_00", "scene_type": "Living room", "selection_rank": 5},
+    {"scene_id": "ai_033_002", "camera": "cam_01", "scene_type": "Office", "selection_rank": 6},
+    {"scene_id": "ai_005_010", "camera": "cam_00", "scene_type": "Dining room", "selection_rank": 7},
+    {"scene_id": "ai_014_006", "camera": "cam_00", "scene_type": "Bedroom", "selection_rank": 8},
+    {"scene_id": "ai_008_005", "camera": "cam_00", "scene_type": "Restaurant", "selection_rank": 9},
+    {"scene_id": "ai_010_003", "camera": "cam_00", "scene_type": "Restaurant", "selection_rank": 10},
+    {"scene_id": "ai_023_005", "camera": "cam_00", "scene_type": "Restaurant", "selection_rank": 11},
+    {"scene_id": "ai_008_007", "camera": "cam_00", "scene_type": "Office", "selection_rank": 12},
+    {"scene_id": "ai_022_001", "camera": "cam_00", "scene_type": "Classroom", "selection_rank": 13},
+    {"scene_id": "ai_001_010", "camera": "cam_00", "scene_type": "Kitchen", "selection_rank": 14},
+    {"scene_id": "ai_011_007", "camera": "cam_01", "scene_type": "Living room", "selection_rank": 15},
+    {"scene_id": "ai_035_001", "camera": "cam_00", "scene_type": "Bedroom", "selection_rank": 16},
+    {"scene_id": "ai_022_006", "camera": "cam_00", "scene_type": "Restaurant", "selection_rank": 17},
+    {"scene_id": "ai_022_003", "camera": "cam_00", "scene_type": "Bathroom", "selection_rank": 18},
+    {"scene_id": "ai_041_004", "camera": "cam_00", "scene_type": "Retail space", "selection_rank": 19},
+    {"scene_id": "ai_041_006", "camera": "cam_00", "scene_type": "Art gallery", "selection_rank": 20},
+    {"scene_id": "ai_005_001", "camera": "cam_00", "scene_type": "Church", "selection_rank": 21}
+  ],
+  "reconstruction": {
+    "source_frames": 50,
+    "source_sampling": "evenly spaced over the selected public camera trajectory",
+    "validation_indices": "every tenth prepared frame, five total",
+    "trainer": "gsplat 1.5.3 simple_trainer",
+    "steps": 5000,
+    "initial_points": 100000,
+    "validity_gate": {
+      "all_inputs_decode": true,
+      "exact_camera_and_metric_projection_audit": true,
+      "minimum_final_gaussians": 100000,
+      "minimum_mean_validation_psnr_db": 18.0,
+      "minimum_single_view_validation_psnr_db": 15.0
+    },
+    "failure_reporting": "All frozen held-out scenes remain in the end-to-end summary. Reconstruction-invalid scenes receive empty predictions and are also reported separately from the lifting-conditional summary."
+  },
+  "development_method_config": {
+    "status": "frozen_after_five_development_scenes_before_heldout",
+    "splat_analyzer_commit": "a3cd884274b93c6584e30fd30c52db89d9272de2",
+    "quality": "medium",
+    "rendered_views": 90,
+    "score_threshold": 0.12,
+    "min_votes": 1,
+    "min_peak_score": 0.12,
+    "active_render_resolution": 768,
+    "vote_gate": 3
+  }
+}

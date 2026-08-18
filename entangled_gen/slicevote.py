@@ -276,6 +276,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import paths  # noqa: E402
 from pano_lift import crop_cam_raw  # noqa: E402
+from analyzer.cams_from_transforms import build_cam  # noqa: E402
 # camera math lives in ONE place (vote_cams.py) so the J8 sheet builder
 # can annotate these renders with the very cameras that made them
 from vote_cams import (FOV_GOOD, OFF_AXIS, RES, WALL_PAD,  # noqa: E402
@@ -1097,7 +1098,14 @@ def view_cam0(view):
     if view not in _vc:
         side = json.loads((sd / "rig_sp0" / "crops" / f"{view}.json")
                           .read_text())
-        _vc[view] = crop_cam_raw(side, list(eye0))
+        # Analyzer/benchmark observations can originate from independent
+        # cameras rather than crops around one panorama eye.  When the
+        # sidecar carries an exact OpenCV camera-to-world matrix, preserve it
+        # directly; legacy panorama sidecars keep their original path.
+        if "transform_matrix" in side:
+            _vc[view] = build_cam(side, side, "c2w_opencv")
+        else:
+            _vc[view] = crop_cam_raw(side, list(eye0))
     return _vc[view]
 
 

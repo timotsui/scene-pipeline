@@ -4,17 +4,26 @@ This directory contains the versioned, model-independent plumbing for the
 lifting-paper benchmark. Heavy renders, splats, predictions, and checkpoints
 belong under the machine-local `out/` root and are never committed.
 
-Status on 2026-08-15: **smoke-test scaffold, not a frozen paper benchmark**.
+Status on 2026-08-17: **five-scene development benchmark complete; method
+configuration frozen before held-out evaluation**.
 
-## Hypersim development pilot (2026-08-17)
+## Hypersim development benchmark (2026-08-17)
 
-The first public-scene smoke is complete on Hypersim `ai_051_002`, `cam_00`.
-It uses 50 evenly spaced source frames, 20 visible target boxes, a metric gsplat
-trained from 45 frames, five reserved render checks (23.50 dB mean PSNR), and a
-seven-class Splat Analyzer run. On the same 34 development proposals, the native
-rectangular lift scores mAP25 0.329 / mAP50 0, while the global SAM mask-pixel
-lift scores mAP25 0.224 / mAP50 0.071. This is a one-scene, development-tuned
-plumbing result; it does not test active plan/tunnel re-observation.
+The public-data development study uses five Hypersim train scenes spanning a
+living room, kitchen, bedroom, dining room, and office. Each scene uses 50
+evenly spaced source frames, exact metric cameras, five reserved reconstruction
+checks, and seven canonical object categories. The frozen selection and method
+settings are in `hypersim_split.v1.json`; four rejected kitchen candidates and
+their predeclared reconstruction-gate failures remain in that file.
+
+Across 87 visible ground-truth objects and the same 123 fixed proposals,
+scene-macro mAP25 is 0.124 for Splat Analyzer's rectangular lift, 0.054 for the
+global SAM mask-pixel lift, and **0.180 for active slice-vote lifting**. Active
+lifting also raises mean recall25 from 0.131 (rectangular) and 0.066 (global SAM)
+to 0.255. Its paired mAP25 gain over the stronger rectangular baseline is 0.056
+with a scene-bootstrap 95% interval of [0.008, 0.133]. It improves four scenes
+and ties the no-proposal scene against that baseline. These are development
+results, not held-out estimates.
 
 The reusable stages are:
 
@@ -32,10 +41,15 @@ The reusable stages are:
    rectangular lift.
 7. `refine_splat_analyzer_masks.py`: hold detections and clusters fixed while
    replacing only their geometry with SAM mask-pixel depth lifting.
+8. `prepare_slicevote_scene.py`, `slicevote.py`, and `adapt_slicevote.py`: hold
+   proposal identities, labels, and scores fixed while applying active plan and
+   tunnel re-observation, then restore the common benchmark schema.
+9. `summarize_lifting_results.py`: recompute scene-macro and pooled metrics,
+   input hashes, and paired scene-bootstrap intervals from saved predictions.
 
-Every generated manifest and receipt is marked
-`development-smoke-not-paper-frozen`. Heavy source data, splats, model outputs,
-and metrics remain under the ignored machine-local `out/` root.
+Heavy source data, splats, model outputs, and metrics remain under the ignored
+machine-local `out/` root. The committed split records which settings are frozen
+and which held-out work remains.
 
 ## Recommended execution order
 
