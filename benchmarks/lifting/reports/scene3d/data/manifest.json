@@ -1,6 +1,18 @@
 {
   "scenes": [
     {
+      "id": "ai_051_002",
+      "title": "Living room",
+      "data": "data/ai_051_002.json",
+      "counts": {
+        "ground_truth": 20,
+        "raw_proposals": 34,
+        "active": 34,
+        "zoo3d": 22,
+        "boxer": 34
+      }
+    },
+    {
       "id": "ai_002_006",
       "title": "Kitchen",
       "data": "data/ai_002_006.json",
@@ -8,7 +20,20 @@
         "ground_truth": 21,
         "raw_proposals": 32,
         "active": 32,
-        "zoo3d": 8
+        "zoo3d": 8,
+        "boxer": 4
+      }
+    },
+    {
+      "id": "ai_006_008",
+      "title": "Bedroom",
+      "data": "data/ai_006_008.json",
+      "counts": {
+        "ground_truth": 26,
+        "raw_proposals": 34,
+        "active": 34,
+        "zoo3d": 4,
+        "boxer": 3
       }
     },
     {
@@ -19,7 +44,20 @@
         "ground_truth": 15,
         "raw_proposals": 0,
         "active": 0,
-        "zoo3d": 15
+        "zoo3d": 15,
+        "boxer": 8
+      }
+    },
+    {
+      "id": "ai_003_009",
+      "title": "Office",
+      "data": "data/ai_003_009.json",
+      "counts": {
+        "ground_truth": 5,
+        "raw_proposals": 23,
+        "active": 23,
+        "zoo3d": 1,
+        "boxer": 0
       }
     }
   ]

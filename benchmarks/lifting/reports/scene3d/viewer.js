@@ -24,13 +24,15 @@ const COLORS = {
   raw_proposals: 0xffd166,
   active: 0x41d9ff,
   zoo3d: 0xff7a59,
-  cameras: 0xd889ff,
+  boxer: 0xff5ca8,
+  cameras: 0xa48bff,
 };
 const LAYER_NAMES = {
   ground_truth: 'Ground truth',
   raw_proposals: 'Raw proposal',
   active: 'Our final box',
   zoo3d: 'Zoo3D box',
+  boxer: 'Boxer box',
 };
 const groups = {};
 let pointCloud = null;
@@ -42,9 +44,11 @@ let clickTargets = [];
 let selectedLine = null;
 let fitBounds = null;
 
-// Hypersim benchmark coordinates are z-up. Three.js is y-up.
-const world = a => new THREE.Vector3(a[0], a[2], -a[1]);
-const worldSize = a => new THREE.Vector3(a[0], a[2], a[1]);
+// Benchmark data stay in their recorded raw frame. Like the World Labs data
+// used by the pipeline viewer, physical up is raw -Y. A 180-degree display
+// rotation about Z makes the scene upright without changing coordinates.
+const world = a => new THREE.Vector3(a[0], a[1], a[2]);
+const worldSize = a => new THREE.Vector3(a[0], a[1], a[2]);
 const fmt = (value, digits = 3) => Number(value).toFixed(digits);
 const esc = text => String(text).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -145,8 +149,8 @@ async function buildPoints(record) {
   const colors = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
     positions[i * 3] = rawPositions[i * 3];
-    positions[i * 3 + 1] = rawPositions[i * 3 + 2];
-    positions[i * 3 + 2] = -rawPositions[i * 3 + 1];
+    positions[i * 3 + 1] = rawPositions[i * 3 + 1];
+    positions[i * 3 + 2] = rawPositions[i * 3 + 2];
     colors[i * 3] = rawColors[i * 3] / 255;
     colors[i * 3 + 1] = rawColors[i * 3 + 1] / 255;
     colors[i * 3 + 2] = rawColors[i * 3 + 2] / 255;
@@ -176,8 +180,6 @@ async function buildSplat(record) {
     splatAlphaRemovalThreshold: 5,
     format: GaussianSplats3D.SceneFormat.Ply,
   });
-  // The benchmark PLY is z-up; the rest of this viewer is Three.js y-up.
-  splatLayer.rotation.x = -Math.PI / 2;
   reconstructionGroup.add(splatLayer);
   pointCloud.visible = false;
 }
@@ -185,15 +187,13 @@ async function buildSplat(record) {
 function addGrid(record) {
   const lo = world(record.bounds.p01);
   const hi = world(record.bounds.p99);
-  fitBounds = new THREE.Box3(
-    new THREE.Vector3(Math.min(lo.x, hi.x), Math.min(lo.y, hi.y), Math.min(lo.z, hi.z)),
-    new THREE.Vector3(Math.max(lo.x, hi.x), Math.max(lo.y, hi.y), Math.max(lo.z, hi.z)));
-  const size = Math.max(fitBounds.getSize(new THREE.Vector3()).x,
-                        fitBounds.getSize(new THREE.Vector3()).z) * 1.2;
+  fitBounds = new THREE.Box3(lo.clone().min(hi), lo.clone().max(hi));
+  const rawSize = fitBounds.getSize(new THREE.Vector3());
+  const rawCenter = fitBounds.getCenter(new THREE.Vector3());
+  const size = Math.max(rawSize.x, rawSize.z) * 1.2;
   const grid = new THREE.GridHelper(size, Math.max(8, Math.round(size)), 0x344056, 0x202a3a);
-  grid.position.set(fitBounds.getCenter(new THREE.Vector3()).x,
-                    fitBounds.min.y - .015,
-                    fitBounds.getCenter(new THREE.Vector3()).z);
+  // physical floor is the high-Y side in this raw, physical-up=-Y frame
+  grid.position.set(rawCenter.x, fitBounds.max.y + .015, rawCenter.z);
   grid.material.transparent = true;
   grid.material.opacity = .42;
   content.add(grid);
@@ -201,8 +201,13 @@ function addGrid(record) {
 
 function fitScene(top = false) {
   if (!fitBounds) return;
-  const center = fitBounds.getCenter(new THREE.Vector3());
-  const size = fitBounds.getSize(new THREE.Vector3());
+  const displayBounds = new THREE.Box3();
+  for (const x of [fitBounds.min.x, fitBounds.max.x])
+    for (const y of [fitBounds.min.y, fitBounds.max.y])
+      for (const z of [fitBounds.min.z, fitBounds.max.z])
+        displayBounds.expandByPoint(new THREE.Vector3(x, y, z).applyEuler(content.rotation));
+  const center = displayBounds.getCenter(new THREE.Vector3());
+  const size = displayBounds.getSize(new THREE.Vector3());
   const radius = Math.max(size.x, size.y, size.z);
   controls.target.copy(center);
   camera.position.copy(top
@@ -225,6 +230,7 @@ function updateSummary(record) {
   document.querySelector('#counts').innerHTML = [
     ['GT', counts.ground_truth.length], ['raw', counts.raw_proposals.length],
     ['ours', counts.active.length], ['Zoo3D', counts.zoo3d.length],
+    ['Boxer', counts.boxer.length],
   ].map(([label, value]) => `<div class="count"><strong>${value}</strong><span>${label}</span></div>`).join('');
 
   const finding = document.querySelector('#finding');
@@ -266,6 +272,12 @@ async function loadScene(sceneId) {
   const response = await fetch(`data/${sceneId}.json`);
   if (!response.ok) throw new Error(`Could not load scene ${sceneId}`);
   sceneRecord = await response.json();
+  if (!requestedRotation && sceneRecord.display_rotation_deg) {
+    sceneRecord.display_rotation_deg.forEach((value, index) => {
+      if (rotationInputs[index]) rotationInputs[index].value = value;
+    });
+    applyDisplayRotation(false);
+  }
   await buildPoints(sceneRecord);
   buildBoxes(sceneRecord);
   buildCameras(sceneRecord);
@@ -304,6 +316,18 @@ selector.value = manifest.scenes.some(item => item.id === requested) ? requested
 selector.addEventListener('change', () => {
   location.search = `?scene=${encodeURIComponent(selector.value)}`;
 });
+const rotationInputs = ['rx', 'ry', 'rz'].map(id => document.querySelector(`#${id}`));
+const requestedRotation = new URLSearchParams(location.search).get('rot');
+if (requestedRotation) requestedRotation.split(',').forEach((value, index) => {
+  if (rotationInputs[index]) rotationInputs[index].value = value;
+});
+function applyDisplayRotation(refit = true) {
+  const radians = rotationInputs.map(input => Number(input.value || 0) * Math.PI / 180);
+  content.rotation.set(...radians);
+  if (refit && fitBounds) fitScene(false);
+}
+rotationInputs.forEach(input => input.addEventListener('input', () => applyDisplayRotation(true)));
+applyDisplayRotation(false);
 document.querySelectorAll('[data-layer]').forEach(input => input.addEventListener('change', applyLayerVisibility));
 document.querySelector('#fit').addEventListener('click', () => fitScene(false));
 document.querySelector('#top').addEventListener('click', () => fitScene(true));
@@ -327,7 +351,39 @@ addEventListener('resize', () => {
   camera.updateProjectionMatrix();
 });
 
+// Same fly controls as the pipeline paper viewer. Camera and orbit target move
+// together, so mouse orbiting continues naturally from the new position.
+const keys = new Set();
+addEventListener('keydown', event => {
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName)) return;
+  keys.add(event.key.toLowerCase());
+});
+addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
+addEventListener('blur', () => keys.clear());
+const clock = new THREE.Clock();
+function flyStep() {
+  const dt = Math.min(clock.getDelta(), .1);
+  if (!keys.size) return;
+  const speed = (keys.has('shift') ? 4.5 : 1.5) * dt;
+  const forward = new THREE.Vector3().subVectors(controls.target, camera.position);
+  forward.projectOnPlane(camera.up).normalize();
+  if (forward.lengthSq() < 1e-9) return;
+  const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+  const movement = new THREE.Vector3();
+  if (keys.has('w')) movement.add(forward);
+  if (keys.has('s')) movement.sub(forward);
+  if (keys.has('d')) movement.add(right);
+  if (keys.has('a')) movement.sub(right);
+  if (keys.has('e') || keys.has('r')) movement.add(camera.up);
+  if (keys.has('q') || keys.has('f')) movement.sub(camera.up);
+  if (!movement.lengthSq()) return;
+  movement.normalize().multiplyScalar(speed);
+  camera.position.add(movement);
+  controls.target.add(movement);
+}
+
 function animate() {
+  flyStep();
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);

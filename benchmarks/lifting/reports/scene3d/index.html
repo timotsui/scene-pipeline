@@ -33,7 +33,8 @@
       <label><input type="checkbox" data-layer="raw_proposals" checked><i style="--c:#ffd166"></i> Raw proposals</label>
       <label><input type="checkbox" data-layer="active" checked><i style="--c:#41d9ff"></i> Our final boxes</label>
       <label><input type="checkbox" data-layer="zoo3d"><i style="--c:#ff7a59"></i> Zoo3D boxes</label>
-      <label><input type="checkbox" data-layer="cameras" checked><i style="--c:#d889ff"></i> 90 proposal views</label>
+      <label><input type="checkbox" data-layer="boxer"><i style="--c:#ff5ca8"></i> Boxer boxes</label>
+      <label><input type="checkbox" data-layer="cameras" checked><i style="--c:#a48bff"></i> 90 proposal views</label>
     </div>
 
     <div class="buttons">
@@ -41,8 +42,15 @@
       <button id="top">Top view</button>
     </div>
 
+    <div class="rotation">
+      <span>Display rotation</span>
+      <label>X <input id="rx" type="number" value="0" step="90"></label>
+      <label>Y <input id="ry" type="number" value="0" step="90"></label>
+      <label>Z <input id="rz" type="number" value="180" step="90"></label>
+    </div>
+
     <div id="finding" class="finding"></div>
-    <p class="help">Drag to orbit · wheel to zoom · right-drag to pan · click a box to inspect it.</p>
+    <p class="help">Drag to orbit · wheel to zoom · right-drag to pan · WASD move · E/Q or R/F up/down · Shift moves faster · click a box to inspect it.</p>
   </aside>
 
   <aside class="panel inspector">

@@ -17,8 +17,11 @@ import numpy as np
 
 
 SCENES = {
+    "ai_051_002": "Living room",
     "ai_002_006": "Kitchen",
+    "ai_006_008": "Bedroom",
     "ai_037_007": "Dining room",
+    "ai_003_009": "Office",
 }
 
 
@@ -80,6 +83,8 @@ def build_scene(root: Path, out_dir: Path, scene_id: str, title: str,
                         scene_id / "predictions.jsonl")
     zoo = read_jsonl(root / "external" / "comparison" / "zoo3d" /
                      scene_id / "predictions.jsonl")
+    boxer = read_jsonl(root / "external" / "comparison" / "boxer" /
+                       scene_id / "predictions.jsonl")
     transforms = json.loads((analyzer / "transforms.json").read_text(encoding="utf-8"))
     splat = (root / "training" / f"{scene_id}_gsplat5000" / "ply" /
              "point_cloud_4999.ply")
@@ -107,6 +112,8 @@ def build_scene(root: Path, out_dir: Path, scene_id: str, title: str,
     record = {
         "scene_id": scene_id,
         "title": title,
+        "coordinate_frame": "Hypersim metric; physical up is raw -Y",
+        "display_rotation_deg": [0, 0, 180],
         "point_count": len(points),
         "point_file": payload.name,
         "splat_file": f"{scene_id}.ply",
@@ -129,6 +136,7 @@ def build_scene(root: Path, out_dir: Path, scene_id: str, title: str,
             "raw_proposals": annotate_matches(proposals, gt),
             "active": annotate_matches(active, gt),
             "zoo3d": annotate_matches(zoo, gt),
+            "boxer": annotate_matches(boxer, gt),
         },
     }
     (out_dir / f"{scene_id}.json").write_text(
