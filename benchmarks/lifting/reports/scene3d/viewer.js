@@ -3,7 +3,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const canvas = document.querySelector('#view');
 const renderer = new THREE.WebGLRenderer({canvas, antialias: true});
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Match the pipeline viewer's 1:1 render resolution. Splat fill cost grows
+// with pixel count; using devicePixelRatio=2 silently made this page shade
+// four times as many pixels on a HiDPI display.
+renderer.setPixelRatio(1);
 renderer.setSize(innerWidth, innerHeight, false);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -12,8 +15,6 @@ scene.background = new THREE.Color(0x070a10);
 scene.fog = new THREE.FogExp2(0x070a10, 0.018);
 const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, .02, 250);
 const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = .08;
 
 scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x20283a, 1.8));
 const content = new THREE.Group();
@@ -43,6 +44,9 @@ let sceneRecord = null;
 let clickTargets = [];
 let selectedLine = null;
 let fitBounds = null;
+let statusBase = '';
+let frameCount = 0;
+let frameWindowStart = performance.now();
 
 // Benchmark data stay in their recorded raw frame. Like the World Labs data
 // used by the pipeline viewer, physical up is raw -Y. A 180-degree display
@@ -52,6 +56,20 @@ const worldSize = a => new THREE.Vector3(a[0], a[1], a[2]);
 const fmt = (value, digits = 3) => Number(value).toFixed(digits);
 const esc = text => String(text).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+// Pipeline-viewer pivot: keep the orbit target 0.4 m in front of the eye,
+// rather than at the distant room center. Turning then feels like looking
+// around from the current position instead of swinging around the room.
+function setPose(eye, look, fov = camera.fov) {
+  camera.position.copy(eye);
+  const direction = new THREE.Vector3().subVectors(look, eye);
+  if (direction.lengthSq() > 1e-9) direction.normalize().multiplyScalar(.4);
+  else direction.set(0, 0, .4);
+  controls.target.copy(eye).add(direction);
+  camera.fov = fov;
+  camera.updateProjectionMatrix();
+  controls.update();
+}
 
 function clearContent() {
   content.traverse(obj => {
@@ -209,14 +227,12 @@ function fitScene(top = false) {
   const center = displayBounds.getCenter(new THREE.Vector3());
   const size = displayBounds.getSize(new THREE.Vector3());
   const radius = Math.max(size.x, size.y, size.z);
-  controls.target.copy(center);
-  camera.position.copy(top
+  const eye = top
     ? center.clone().add(new THREE.Vector3(.001, radius * 1.35, .001))
-    : center.clone().add(new THREE.Vector3(radius * .78, radius * .56, radius * .92)));
+    : center.clone().add(new THREE.Vector3(radius * .78, radius * .56, radius * .92));
   camera.near = Math.max(.01, radius / 500);
   camera.far = radius * 20;
-  camera.updateProjectionMatrix();
-  controls.update();
+  setPose(eye, center);
 }
 
 function applyLayerVisibility() {
@@ -297,7 +313,8 @@ async function loadScene(sceneId) {
       '<br><strong>Full splat unavailable.</strong> The point preview is shown instead.');
   }
   applyLayerVisibility();
-  document.querySelector('#status').textContent = `${sceneRecord.title} · ${quality} · metric coordinates`;
+  statusBase = `${sceneRecord.title} · ${quality} · metric coordinates`;
+  document.querySelector('#status').textContent = statusBase;
   document.querySelector('#loading').hidden = true;
   selector.disabled = false;
   history.replaceState(null, '', `?scene=${encodeURIComponent(sceneId)}`);
@@ -382,13 +399,19 @@ function flyStep() {
   controls.target.add(movement);
 }
 
-function animate() {
+renderer.setAnimationLoop(() => {
   flyStep();
   controls.update();
   renderer.render(scene, camera);
-  requestAnimationFrame(animate);
-}
-animate();
+  frameCount += 1;
+  const now = performance.now();
+  if (statusBase && now - frameWindowStart >= 1000) {
+    const fps = Math.round(frameCount * 1000 / (now - frameWindowStart));
+    document.querySelector('#status').textContent = `${statusBase} · ${fps} fps`;
+    frameCount = 0;
+    frameWindowStart = now;
+  }
+});
 loadScene(selector.value).catch(error => {
   document.querySelector('#loading').textContent = error.message;
   console.error(error);
