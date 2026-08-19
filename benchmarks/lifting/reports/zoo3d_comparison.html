@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Visual comparison of active splat lifting and Zoo3D on five Hypersim development scenes.">
+  <title>Active Lifting vs Zoo3D — Five-scene comparison</title>
+  <style>
+    :root {
+      --paper: #f4f0e8;
+      --paper-2: #fffdf8;
+      --ink: #14252d;
+      --muted: #647279;
+      --line: #d8d2c7;
+      --ours: #087d72;
+      --ours-soft: #d9eee9;
+      --zoo: #c95f2c;
+      --zoo-soft: #f7e2d6;
+      --tie: #7d878b;
+      --shadow: 0 18px 48px rgba(20, 37, 45, 0.10);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 10%, rgba(8, 125, 114, 0.08), transparent 24rem),
+        radial-gradient(circle at 92% 35%, rgba(201, 95, 44, 0.07), transparent 22rem),
+        var(--paper);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a { color: inherit; }
+
+    .wrap {
+      width: min(1160px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      color: #f7f7f2;
+      background:
+        linear-gradient(115deg, rgba(8, 125, 114, 0.22), transparent 42%),
+        linear-gradient(165deg, #10252e 0%, #173744 100%);
+      padding: 28px 0 70px;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.18;
+      background-image:
+        linear-gradient(rgba(255,255,255,.10) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.10) 1px, transparent 1px);
+      background-size: 54px 54px;
+      mask-image: linear-gradient(to bottom, black, transparent 78%);
+      pointer-events: none;
+    }
+
+    .nav,
+    .hero-grid { position: relative; z-index: 1; }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      color: rgba(255,255,255,.78);
+      font-size: .82rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .nav strong { color: #fff; }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(300px, .75fr);
+      align-items: end;
+      gap: 56px;
+      padding-top: 70px;
+    }
+
+    .hero-grid > * { min-width: 0; }
+
+    .eyebrow {
+      margin: 0 0 16px;
+      color: #83ddd0;
+      font-size: .76rem;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      max-width: 760px;
+      margin-bottom: 22px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(3rem, 7vw, 6.4rem);
+      font-weight: 500;
+      letter-spacing: -.045em;
+      line-height: .95;
+      overflow-wrap: break-word;
+    }
+
+    .hero-lead {
+      max-width: 750px;
+      margin: 0;
+      color: rgba(255,255,255,.80);
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+    }
+
+    .hero-lead strong { color: #fff; }
+
+    .scoreboard {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 20px;
+      background: rgba(255,255,255,.07);
+      box-shadow: 0 20px 50px rgba(0,0,0,.18);
+      backdrop-filter: blur(10px);
+    }
+
+    .score {
+      min-width: 0;
+      padding: 22px 16px;
+      text-align: center;
+    }
+
+    .score + .score { border-left: 1px solid rgba(255,255,255,.14); }
+
+    .score b {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 2.5rem;
+      font-weight: 500;
+      line-height: 1;
+    }
+
+    .score span {
+      display: block;
+      margin-top: 8px;
+      color: rgba(255,255,255,.62);
+      font-size: .67rem;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .score.ours b { color: #7fe2d4; }
+    .score.zoo b { color: #ffad83; }
+
+    main { padding: 64px 0 90px; }
+
+    section { margin-top: 86px; }
+    section:first-child { margin-top: 0; }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, .8fr) minmax(320px, 1.2fr);
+      gap: 56px;
+      align-items: end;
+      margin-bottom: 30px;
+    }
+
+    .section-head h2 {
+      margin-bottom: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      font-weight: 500;
+      letter-spacing: -.035em;
+      line-height: 1;
+    }
+
+    .section-head p {
+      margin-bottom: 0;
+      color: var(--muted);
+    }
+
+    .fairness {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: start;
+      margin-top: -30px;
+      padding: 18px 22px;
+      border: 1px solid #c9d7d5;
+      border-radius: 16px;
+      background: rgba(255,255,255,.52);
+      color: #40545b;
+      font-size: .9rem;
+    }
+
+    .fairness b {
+      color: var(--ours);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    .metric-card,
+    .scene-card,
+    .matrix-card,
+    .geometry-card,
+    .claim-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,253,248,.88);
+      box-shadow: var(--shadow);
+    }
+
+    .metric-card { padding: 24px; }
+
+    .metric-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+
+    .metric-top h3 {
+      margin: 0;
+      font-size: 1rem;
+      letter-spacing: .03em;
+    }
+
+    .winner {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: .7rem;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .winner.ours { color: #065e57; background: var(--ours-soft); }
+    .winner.zoo { color: #8f3b16; background: var(--zoo-soft); }
+
+    .bar-pair { display: grid; gap: 13px; }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 58px 1fr 50px;
+      gap: 10px;
+      align-items: center;
+      font-size: .78rem;
+      font-weight: 750;
+    }
+
+    .track {
+      height: 11px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e9e4da;
+    }
+
+    .fill { display: block; height: 100%; border-radius: inherit; }
+    .bar-row.ours .fill { background: var(--ours); }
+    .bar-row.zoo .fill { background: var(--zoo); }
+
+    .delta {
+      margin: 20px 0 0;
+      padding-top: 17px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: .84rem;
+    }
+
+    .delta strong.ours { color: var(--ours); }
+    .delta strong.zoo { color: var(--zoo); }
+
+    .matrix-card { overflow: hidden; }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: 130px repeat(5, minmax(110px, 1fr));
+      min-width: 760px;
+    }
+
+    .matrix-wrap { overflow-x: auto; }
+
+    .cell {
+      min-height: 72px;
+      display: grid;
+      place-items: center;
+      padding: 12px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      text-align: center;
+      font-size: .78rem;
+    }
+
+    .cell:nth-child(6n) { border-right: 0; }
+    .cell.header {
+      min-height: 62px;
+      color: var(--muted);
+      background: #ece8df;
+      font-weight: 800;
+    }
+    .cell.metric {
+      justify-items: start;
+      color: var(--ink);
+      background: #f8f5ee;
+      font-weight: 850;
+    }
+    .cell.result { font-weight: 850; letter-spacing: .02em; }
+    .cell.result.ours { color: #075f57; background: var(--ours-soft); }
+    .cell.result.zoo { color: #8f3b16; background: var(--zoo-soft); }
+
+    .matrix-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 22px;
+      padding: 17px 20px;
+      color: var(--muted);
+      font-size: .82rem;
+    }
+
+    .matrix-summary strong { color: var(--ink); }
+
+    .scene-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 22px;
+    }
+
+    .scene-card { overflow: hidden; }
+
+    .scene-card:last-child {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .scene-card figure {
+      position: relative;
+      margin: 0;
+      min-height: 250px;
+      background: #d9d7d0;
+    }
+
+    .scene-card figure img {
+      width: 100%;
+      height: 100%;
+      min-height: 250px;
+      display: block;
+      object-fit: cover;
+    }
+
+    .scene-label {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      padding: 7px 11px;
+      border: 1px solid rgba(255,255,255,.35);
+      border-radius: 999px;
+      color: #fff;
+      background: rgba(13,29,35,.72);
+      backdrop-filter: blur(8px);
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .scene-body { padding: 22px; }
+
+    .scene-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .scene-title h3 { margin: 0; font-size: 1.25rem; }
+
+    .mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .82rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mini-table th,
+    .mini-table td {
+      padding: 9px 7px;
+      border-top: 1px solid var(--line);
+      text-align: right;
+    }
+
+    .mini-table th:first-child,
+    .mini-table td:first-child { padding-left: 0; text-align: left; }
+    .mini-table th { color: var(--muted); font-size: .7rem; text-transform: uppercase; }
+    .mini-table .best-ours { color: var(--ours); font-weight: 900; }
+    .mini-table .best-zoo { color: var(--zoo); font-weight: 900; }
+
+    .geometry-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 22px;
+    }
+
+    .geometry-card { padding: 28px; }
+
+    .geometry-card h3 { margin-bottom: 6px; }
+    .geometry-card > p { color: var(--muted); font-size: .86rem; }
+
+    .number-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .number {
+      padding: 18px;
+      border-radius: 15px;
+      background: #ece8df;
+    }
+
+    .number b {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 2rem;
+      font-weight: 500;
+      line-height: 1;
+    }
+
+    .number span { color: var(--muted); font-size: .72rem; font-weight: 800; }
+    .number.ours b { color: var(--ours); }
+    .number.zoo { background: var(--zoo-soft); }
+    .number.zoo b { color: var(--zoo); }
+
+    .claim-card {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      overflow: hidden;
+    }
+
+    .claim {
+      min-height: 240px;
+      padding: 28px;
+    }
+
+    .claim + .claim { border-left: 1px solid var(--line); }
+
+    .claim .count {
+      display: block;
+      margin-bottom: 25px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 3.4rem;
+      line-height: 1;
+    }
+
+    .claim h3 { margin-bottom: 10px; }
+    .claim p { margin-bottom: 0; color: var(--muted); font-size: .9rem; }
+    .claim.ours .count { color: var(--ours); }
+    .claim.zoo .count { color: var(--zoo); }
+    .claim.neutral .count { color: var(--tie); }
+
+    .note {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: .78rem;
+    }
+
+    .glossary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 30px;
+    }
+
+    .term {
+      padding-top: 17px;
+      border-top: 2px solid var(--ink);
+      color: var(--muted);
+      font-size: .82rem;
+    }
+
+    .term b { display: block; margin-bottom: 5px; color: var(--ink); }
+
+    footer {
+      padding: 34px 0 46px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: .78rem;
+    }
+
+    footer .wrap {
+      display: flex;
+      justify-content: space-between;
+      gap: 28px;
+    }
+
+    @media (max-width: 860px) {
+      .hero-grid,
+      .section-head,
+      .scene-card:last-child { grid-template-columns: 1fr; }
+      .hero-grid { align-items: start; gap: 36px; }
+      .metric-grid,
+      .geometry-grid,
+      .claim-card,
+      .glossary { grid-template-columns: 1fr; }
+      .scene-grid { grid-template-columns: 1fr; }
+      .scene-card:last-child { grid-column: auto; display: block; }
+      .claim + .claim { border-left: 0; border-top: 1px solid var(--line); }
+      .fairness { margin-top: 0; }
+    }
+
+    @media (max-width: 520px) {
+      .wrap { width: min(calc(100% - 24px), 1160px); }
+      .nav { align-items: flex-start; flex-direction: column; gap: 5px; }
+      .nav > * { max-width: 100%; overflow-wrap: anywhere; }
+      .hero { padding-top: 20px; }
+      .hero-grid { padding-top: 52px; }
+      h1 { font-size: clamp(2.6rem, 13vw, 4rem); }
+      .scoreboard { grid-template-columns: 1fr; }
+      .score + .score { border-left: 0; border-top: 1px solid rgba(255,255,255,.14); }
+      .number-pair { grid-template-columns: 1fr; }
+      footer .wrap { flex-direction: column; }
+    }
+
+    @media print {
+      body { background: white; }
+      .hero { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .metric-card, .scene-card, .matrix-card, .geometry-card, .claim-card { box-shadow: none; }
+      section { break-inside: avoid; }
+      .matrix { min-width: 0; grid-template-columns: 105px repeat(5, minmax(0, 1fr)); }
+      .cell { padding: 8px 4px; font-size: .66rem; }
+      .glossary { break-inside: avoid; page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="nav">
+        <strong>Lift-only paper · external reference</strong>
+        <span>5 Hypersim development scenes · 87 visible objects</span>
+      </div>
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">A split decision, not a sweep</p>
+          <h1>Active lifting vs Zoo3D</h1>
+          <p class="hero-lead"><strong>We win recall and two scenes.</strong> Zoo3D wins both AP metrics and three scenes. The comparison exposes exactly where active re-observation succeeds—and what still needs work.</p>
+        </div>
+        <div>
+          <p class="eyebrow">Aggregate metric record · ours</p>
+          <div class="scoreboard" aria-label="Our aggregate metric record: one win, zero ties, two losses">
+            <div class="score ours"><b>1</b><span>win</span></div>
+            <div class="score"><b>0</b><span>ties</span></div>
+            <div class="score zoo"><b>2</b><span>losses</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <aside class="fairness">
+      <b>Fairness note</b>
+      <span>Both systems use the same scenes, visible ground truth, seven-category normalization, and evaluator. They do <em>not</em> use identical inputs or proposals: Zoo3D keeps its released RGB-D/point-cloud pipeline, while our system keeps its splat proposals and targeted renders. This is an external system reference, not the paper's fixed-proposal causal comparison.</span>
+    </aside>
+
+    <section aria-labelledby="aggregate-title">
+      <div class="section-head">
+        <h2 id="aggregate-title">The overall result</h2>
+        <p>Higher is better for all three metrics. Active lifting has the best recall25 by 0.006. Zoo3D leads AP25 by 0.014 and AP50 by 0.089.</p>
+      </div>
+
+      <div class="metric-grid">
+        <article class="metric-card">
+          <div class="metric-top">
+            <h3>mAP25</h3>
+            <span class="winner zoo">Zoo3D wins</span>
+          </div>
+          <div class="bar-pair">
+            <div class="bar-row ours"><span>Ours</span><div class="track"><i class="fill" style="width:92.8%"></i></div><b>0.180</b></div>
+            <div class="bar-row zoo"><span>Zoo3D</span><div class="track"><i class="fill" style="width:100%"></i></div><b>0.194</b></div>
+          </div>
+          <p class="delta"><strong class="zoo">Zoo3D +0.014</strong> · 7.6% higher than ours</p>
+        </article>
+
+        <article class="metric-card">
+          <div class="metric-top">
+            <h3>mRecall25</h3>
+            <span class="winner ours">We win</span>
+          </div>
+          <div class="bar-pair">
+            <div class="bar-row ours"><span>Ours</span><div class="track"><i class="fill" style="width:100%"></i></div><b>0.255</b></div>
+            <div class="bar-row zoo"><span>Zoo3D</span><div class="track"><i class="fill" style="width:97.6%"></i></div><b>0.249</b></div>
+          </div>
+          <p class="delta"><strong class="ours">Ours +0.006</strong> · 2.4% higher than Zoo3D</p>
+        </article>
+
+        <article class="metric-card">
+          <div class="metric-top">
+            <h3>mAP50</h3>
+            <span class="winner zoo">Zoo3D wins</span>
+          </div>
+          <div class="bar-pair">
+            <div class="bar-row ours"><span>Ours</span><div class="track"><i class="fill" style="width:41.1%"></i></div><b>0.062</b></div>
+            <div class="bar-row zoo"><span>Zoo3D</span><div class="track"><i class="fill" style="width:100%"></i></div><b>0.151</b></div>
+          </div>
+          <p class="delta"><strong class="zoo">Zoo3D +0.089</strong> · 2.44× our value</p>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="matrix-title">
+      <div class="section-head">
+        <h2 id="matrix-title">Where each system wins</h2>
+        <p>The scene-level outcome is consistent across AP25, recall25, and AP50: we win the living room and office; Zoo3D wins the kitchen, bedroom, and dining room.</p>
+      </div>
+
+      <div class="matrix-card">
+        <div class="matrix-wrap">
+          <div class="matrix" role="table" aria-label="Scene by metric winners">
+            <div class="cell header" role="columnheader">Metric</div>
+            <div class="cell header" role="columnheader">Living room</div>
+            <div class="cell header" role="columnheader">Kitchen</div>
+            <div class="cell header" role="columnheader">Bedroom</div>
+            <div class="cell header" role="columnheader">Dining room</div>
+            <div class="cell header" role="columnheader">Office</div>
+
+            <div class="cell metric" role="rowheader">AP25</div>
+            <div class="cell result ours">Ours</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result ours">Ours</div>
+
+            <div class="cell metric" role="rowheader">Recall25</div>
+            <div class="cell result ours">Ours</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result ours">Ours</div>
+
+            <div class="cell metric" role="rowheader">AP50</div>
+            <div class="cell result ours">Ours</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result zoo">Zoo3D</div>
+            <div class="cell result ours">Ours</div>
+          </div>
+        </div>
+        <div class="matrix-summary">
+          <span><strong>Per metric:</strong> ours 2 / ties 0 / Zoo3D 3</span>
+          <span><strong>All 15 cells:</strong> ours 6 / ties 0 / Zoo3D 9</span>
+          <span><strong>Aggregate metrics:</strong> ours 1 / ties 0 / Zoo3D 2</span>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="scenes-title">
+      <div class="section-head">
+        <h2 id="scenes-title">Five scenes, exact scores</h2>
+        <p>Each card uses an input frame from the evaluated scene. Bold color marks the higher system value in that scene.</p>
+      </div>
+
+      <div class="scene-grid">
+        <article class="scene-card">
+          <figure>
+            <img src="assets/zoo3d-comparison/living-room.png" alt="Hypersim living room used in the benchmark">
+            <span class="scene-label">ai_051_002</span>
+          </figure>
+          <div class="scene-body">
+            <div class="scene-title"><h3>Living room</h3><span class="winner ours">We win 3/3</span></div>
+            <table class="mini-table">
+              <thead><tr><th>Metric</th><th>Ours</th><th>Zoo3D</th></tr></thead>
+              <tbody>
+                <tr><td>AP25</td><td class="best-ours">0.536</td><td>0.280</td></tr>
+                <tr><td>Recall25</td><td class="best-ours">0.679</td><td>0.446</td></tr>
+                <tr><td>AP50</td><td class="best-ours">0.232</td><td>0.208</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="scene-card">
+          <figure>
+            <img src="assets/zoo3d-comparison/kitchen.png" alt="Hypersim kitchen used in the benchmark" loading="lazy">
+            <span class="scene-label">ai_002_006</span>
+          </figure>
+          <div class="scene-body">
+            <div class="scene-title"><h3>Kitchen</h3><span class="winner zoo">Zoo3D wins 3/3</span></div>
+            <table class="mini-table">
+              <thead><tr><th>Metric</th><th>Ours</th><th>Zoo3D</th></tr></thead>
+              <tbody>
+                <tr><td>AP25</td><td>0.008</td><td class="best-zoo">0.028</td></tr>
+                <tr><td>Recall25</td><td>0.042</td><td class="best-zoo">0.083</td></tr>
+                <tr><td>AP50</td><td>0.000</td><td class="best-zoo">0.028</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="scene-card">
+          <figure>
+            <img src="assets/zoo3d-comparison/bedroom.png" alt="Hypersim bedroom used in the benchmark" loading="lazy">
+            <span class="scene-label">ai_006_008</span>
+          </figure>
+          <div class="scene-body">
+            <div class="scene-title"><h3>Bedroom</h3><span class="winner zoo">Zoo3D wins 3/3</span></div>
+            <table class="mini-table">
+              <thead><tr><th>Metric</th><th>Ours</th><th>Zoo3D</th></tr></thead>
+              <tbody>
+                <tr><td>AP25</td><td>0.064</td><td class="best-zoo">0.357</td></tr>
+                <tr><td>Recall25</td><td>0.179</td><td class="best-zoo">0.357</td></tr>
+                <tr><td>AP50</td><td>0.036</td><td class="best-zoo">0.214</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="scene-card">
+          <figure>
+            <img src="assets/zoo3d-comparison/dining-room.png" alt="Hypersim dining room used in the benchmark" loading="lazy">
+            <span class="scene-label">ai_037_007</span>
+          </figure>
+          <div class="scene-body">
+            <div class="scene-title"><h3>Dining room</h3><span class="winner zoo">Zoo3D wins 3/3</span></div>
+            <table class="mini-table">
+              <thead><tr><th>Metric</th><th>Ours</th><th>Zoo3D</th></tr></thead>
+              <tbody>
+                <tr><td>AP25</td><td>0.000</td><td class="best-zoo">0.304</td></tr>
+                <tr><td>Recall25</td><td>0.000</td><td class="best-zoo">0.357</td></tr>
+                <tr><td>AP50</td><td>0.000</td><td class="best-zoo">0.304</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="scene-card">
+          <figure>
+            <img src="assets/zoo3d-comparison/office.png" alt="Hypersim office used in the benchmark" loading="lazy">
+            <span class="scene-label">ai_003_009</span>
+          </figure>
+          <div class="scene-body">
+            <div class="scene-title"><h3>Office</h3><span class="winner ours">We win 3/3</span></div>
+            <table class="mini-table">
+              <thead><tr><th>Metric</th><th>Ours</th><th>Zoo3D</th></tr></thead>
+              <tbody>
+                <tr><td>AP25</td><td class="best-ours">0.292</td><td>0.000</td></tr>
+                <tr><td>Recall25</td><td class="best-ours">0.375</td><td>0.000</td></tr>
+                <tr><td>AP50</td><td class="best-ours">0.042</td><td>0.000</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="geometry-title">
+      <div class="section-head">
+        <h2 id="geometry-title">Why Zoo3D wins AP50</h2>
+        <p>Zoo3D's matched boxes are much tighter. Lower is better for both diagnostics. This is the clearest technical gap exposed by the external comparison.</p>
+      </div>
+      <div class="geometry-grid">
+        <article class="geometry-card">
+          <h3>Median center error</h3>
+          <p>Mean of the scene-level medians, in metres.</p>
+          <div class="number-pair">
+            <div class="number ours"><b>1.555 m</b><span>Ours</span></div>
+            <div class="number zoo"><b>0.509 m</b><span>Zoo3D · lower</span></div>
+          </div>
+        </article>
+        <article class="geometry-card">
+          <h3>Axis-extent relative error</h3>
+          <p>Mean of the scene-level median normalized errors.</p>
+          <div class="number-pair">
+            <div class="number ours"><b>0.465</b><span>Ours</span></div>
+            <div class="number zoo"><b>0.121</b><span>Zoo3D · lower</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="claim-title">
+      <div class="section-head">
+        <h2 id="claim-title">What we can claim</h2>
+        <p>The comparison strengthens the paper when it is stated precisely. Our controlled lifting result remains the main win; Zoo3D identifies the next system-level target.</p>
+      </div>
+      <div class="claim-card">
+        <article class="claim ours">
+          <span class="count">+0.006</span>
+          <h3>We have the best recall25</h3>
+          <p>Active lifting retrieves a slightly larger share of the visible objects overall and wins every reported metric in the living room and office.</p>
+        </article>
+        <article class="claim zoo">
+          <span class="count">2.44×</span>
+          <h3>Zoo3D has stronger AP50</h3>
+          <p>Its detected instances are substantially tighter, and it recovers the dining-room objects missed by our global proposal sweep.</p>
+        </article>
+        <article class="claim neutral">
+          <span class="count">5</span>
+          <h3>Scenes are not a population</h3>
+          <p>The paired active–Zoo3D intervals include zero. These are development-set reference results, not proof of a universal system ranking.</p>
+        </article>
+      </div>
+
+      <div class="glossary">
+        <div class="term"><b>AP25</b>Average precision when a correctly labelled 3D box overlaps ground truth by at least 25% intersection-over-union.</div>
+        <div class="term"><b>Recall25</b>The share of ground-truth objects recovered at the same 25% overlap threshold.</div>
+        <div class="term"><b>AP50</b>The stricter precision score requiring at least 50% 3D overlap; it strongly rewards tight boxes.</div>
+      </div>
+
+      <p class="note">Values are equal-scene macro averages from the frozen five-scene Hypersim development reference. Full-precision numbers, system commits, checkpoint hashes, category mapping, and compatibility patches are recorded in <code>hypersim_external_systems_v1.json</code>.</p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Active Re-observation Improves 3D Box Lifting from Generated Gaussian-Splat Worlds</span>
+      <span>External reference · generated 2026-08-18</span>
+    </div>
+  </footer>
+</body>
+</html>

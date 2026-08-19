@@ -36,6 +36,10 @@ described below. Active lifting is 9.45x Boxer's AP25 and 4.46x its recall25.
 These remain development-set reference numbers, not a controlled causal or
 held-out system ranking.
 
+The offline visual summary, including the aggregate and per-scene
+ours-versus-Zoo3D win/tie/loss tables, is in
+[`reports/zoo3d_comparison.html`](reports/zoo3d_comparison.html).
+
 The reusable stages are:
 
 1. `select_hypersim_scenes.py`: rank official scenes and reject non-pinhole
