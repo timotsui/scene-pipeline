@@ -35,6 +35,8 @@ const LAYER_NAMES = {
 const groups = {};
 let pointCloud = null;
 let pointMaterial = null;
+let splatLayer = null;
+let reconstructionGroup = null;
 let sceneRecord = null;
 let clickTargets = [];
 let selectedLine = null;
@@ -59,6 +61,8 @@ function clearContent() {
   Object.keys(groups).forEach(key => delete groups[key]);
   clickTargets = [];
   selectedLine = null;
+  splatLayer = null;
+  reconstructionGroup = null;
 }
 
 function addBox(entry, layer) {
@@ -69,9 +73,11 @@ function addBox(entry, layer) {
   const geometry = new THREE.BoxGeometry(...worldSize(sizeRaw).toArray());
   const edges = new THREE.EdgesGeometry(geometry);
   const lineMaterial = new THREE.LineBasicMaterial({
-    color: COLORS[layer], transparent: true, opacity: layer === 'ground_truth' ? .95 : .86,
+    color: COLORS[layer], transparent: true,
+    opacity: layer === 'ground_truth' ? .95 : .86, depthTest: false,
   });
   const line = new THREE.LineSegments(edges, lineMaterial);
+  line.renderOrder = 20;
   line.position.copy(world(centerRaw));
   line.userData.baseColor = COLORS[layer];
   groups[layer].add(line);
@@ -115,7 +121,7 @@ function buildCameras(record) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   group.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
-    color: COLORS.cameras, transparent: true, opacity: .48,
+    color: COLORS.cameras, transparent: true, opacity: .48, depthTest: false,
   })));
 
   for (const [index, position] of record.base_camera_positions.entries()) {
@@ -150,8 +156,30 @@ async function buildPoints(record) {
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   pointMaterial = new THREE.PointsMaterial({size: .025, vertexColors: true});
   pointCloud = new THREE.Points(geometry, pointMaterial);
-  groups.points = pointCloud;
-  content.add(pointCloud);
+  reconstructionGroup = new THREE.Group();
+  reconstructionGroup.name = 'reconstruction';
+  reconstructionGroup.add(pointCloud);
+  groups.reconstruction = reconstructionGroup;
+  content.add(reconstructionGroup);
+}
+
+async function buildSplat(record) {
+  const GaussianSplats3D = await import('gaussian-splats-3d');
+  splatLayer = new GaussianSplats3D.DropInViewer({
+    sharedMemoryForWorkers: false,
+    gpuAcceleratedSort: false,
+    freeIntermediateSplatData: true,
+  });
+  await splatLayer.addSplatScene(`splat/${record.splat_file}`, {
+    showLoadingUI: false,
+    progressiveLoad: true,
+    splatAlphaRemovalThreshold: 5,
+    format: GaussianSplats3D.SceneFormat.Ply,
+  });
+  // The benchmark PLY is z-up; the rest of this viewer is Three.js y-up.
+  splatLayer.rotation.x = -Math.PI / 2;
+  reconstructionGroup.add(splatLayer);
+  pointCloud.visible = false;
 }
 
 function addGrid(record) {
@@ -232,6 +260,7 @@ function inspect(target) {
 
 async function loadScene(sceneId) {
   document.querySelector('#loading').hidden = false;
+  selector.disabled = true;
   document.querySelector('#inspection').textContent = 'Click a colored box.';
   clearContent();
   const response = await fetch(`data/${sceneId}.json`);
@@ -244,8 +273,21 @@ async function loadScene(sceneId) {
   updateSummary(sceneRecord);
   applyLayerVisibility();
   fitScene(false);
-  document.querySelector('#status').textContent = `${sceneRecord.title} · ${sceneRecord.point_count.toLocaleString()} points · metric coordinates`;
+  const megabytes = sceneRecord.splat_bytes / (1024 * 1024);
+  document.querySelector('#loading').textContent = `Streaming full Gaussian splat (${megabytes.toFixed(1)} MB)…`;
+  let quality = 'full Gaussian splat';
+  try {
+    await buildSplat(sceneRecord);
+  } catch (error) {
+    console.error('Gaussian splat load failed; retaining point fallback', error);
+    quality = 'point fallback — start with serve_scene3d.py for the full splat';
+    document.querySelector('#finding').insertAdjacentHTML('beforeend',
+      '<br><strong>Full splat unavailable.</strong> The point preview is shown instead.');
+  }
+  applyLayerVisibility();
+  document.querySelector('#status').textContent = `${sceneRecord.title} · ${quality} · metric coordinates`;
   document.querySelector('#loading').hidden = true;
+  selector.disabled = false;
   history.replaceState(null, '', `?scene=${encodeURIComponent(sceneId)}`);
 }
 
@@ -259,13 +301,12 @@ for (const item of manifest.scenes) {
 }
 const requested = new URLSearchParams(location.search).get('scene');
 selector.value = manifest.scenes.some(item => item.id === requested) ? requested : manifest.scenes[0].id;
-selector.addEventListener('change', () => loadScene(selector.value));
+selector.addEventListener('change', () => {
+  location.search = `?scene=${encodeURIComponent(selector.value)}`;
+});
 document.querySelectorAll('[data-layer]').forEach(input => input.addEventListener('change', applyLayerVisibility));
 document.querySelector('#fit').addEventListener('click', () => fitScene(false));
 document.querySelector('#top').addEventListener('click', () => fitScene(true));
-document.querySelector('#point-size').addEventListener('input', event => {
-  if (pointMaterial) pointMaterial.size = Number(event.target.value) * .0125;
-});
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();

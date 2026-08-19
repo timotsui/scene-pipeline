@@ -3,6 +3,8 @@
   "title": "Kitchen",
   "point_count": 120000,
   "point_file": "ai_002_006.bin",
+  "splat_file": "ai_002_006.ply",
+  "splat_bytes": 118869249,
   "bounds": {
     "min": [
       -2.638424873352051,

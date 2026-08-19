@@ -81,6 +81,10 @@ def build_scene(root: Path, out_dir: Path, scene_id: str, title: str,
     zoo = read_jsonl(root / "external" / "comparison" / "zoo3d" /
                      scene_id / "predictions.jsonl")
     transforms = json.loads((analyzer / "transforms.json").read_text(encoding="utf-8"))
+    splat = (root / "training" / f"{scene_id}_gsplat5000" / "ply" /
+             "point_cloud_4999.ply")
+    if not splat.exists():
+        raise FileNotFoundError(f"trained Gaussian splat not found: {splat}")
 
     points_file = prepared / "initial_points.npz"
     with np.load(points_file) as data:
@@ -105,6 +109,8 @@ def build_scene(root: Path, out_dir: Path, scene_id: str, title: str,
         "title": title,
         "point_count": len(points),
         "point_file": payload.name,
+        "splat_file": f"{scene_id}.ply",
+        "splat_bytes": splat.stat().st_size,
         "bounds": {
             "min": points.min(axis=0).tolist(),
             "max": points.max(axis=0).tolist(),

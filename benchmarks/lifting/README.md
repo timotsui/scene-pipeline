@@ -40,7 +40,7 @@ The offline visual summary, including the aggregate and per-scene
 ours-versus-Zoo3D win/tie/loss tables, is in
 [`reports/zoo3d_comparison.html`](reports/zoo3d_comparison.html).
 
-The interactive Kitchen/Dining diagnostic, with the metric reconstruction,
+The interactive Kitchen/Dining diagnostic, with the full Gaussian splat,
 boxes, and all 90 proposal-camera directions, is in
 [`reports/scene3d/`](reports/scene3d/README.md).
 

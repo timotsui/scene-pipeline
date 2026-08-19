@@ -3,6 +3,8 @@
   "title": "Dining room",
   "point_count": 120000,
   "point_file": "ai_037_007.bin",
+  "splat_file": "ai_037_007.ply",
+  "splat_bytes": 121416869,
   "bounds": {
     "min": [
       -6.739999771118164,
