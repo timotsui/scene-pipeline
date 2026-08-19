@@ -1,0 +1,26 @@
+{
+  "scenes": [
+    {
+      "id": "ai_002_006",
+      "title": "Kitchen",
+      "data": "data/ai_002_006.json",
+      "counts": {
+        "ground_truth": 21,
+        "raw_proposals": 32,
+        "active": 32,
+        "zoo3d": 8
+      }
+    },
+    {
+      "id": "ai_037_007",
+      "title": "Dining room",
+      "data": "data/ai_037_007.json",
+      "counts": {
+        "ground_truth": 15,
+        "raw_proposals": 0,
+        "active": 0,
+        "zoo3d": 15
+      }
+    }
+  ]
+}

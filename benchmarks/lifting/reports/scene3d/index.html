@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lift-only 3D diagnostic</title>
+  <link rel="stylesheet" href="viewer.css">
+  <script type="importmap">
+  {"imports": {
+    "three": "../../../../entangled_gen/viewer/vendor/three.module.js",
+    "three/addons/": "../../../../entangled_gen/viewer/vendor/jsm/"
+  }}
+  </script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+
+  <aside class="panel controls">
+    <div class="eyebrow">LIFT-ONLY BENCHMARK</div>
+    <h1>See the 3D, boxes, and proposal cameras</h1>
+    <p class="lede">Orbit the reconstruction and turn each benchmark layer on or off.</p>
+
+    <label class="field" for="scene-select">Scene</label>
+    <select id="scene-select"></select>
+
+    <div id="counts" class="counts"></div>
+
+    <div class="section-label">Layers</div>
+    <div id="layers" class="layer-list">
+      <label><input type="checkbox" data-layer="points" checked><i style="--c:#b7c4d4"></i> Reconstruction</label>
+      <label><input type="checkbox" data-layer="ground_truth" checked><i style="--c:#63e6a4"></i> Ground truth</label>
+      <label><input type="checkbox" data-layer="raw_proposals" checked><i style="--c:#ffd166"></i> Raw proposals</label>
+      <label><input type="checkbox" data-layer="active" checked><i style="--c:#41d9ff"></i> Our final boxes</label>
+      <label><input type="checkbox" data-layer="zoo3d"><i style="--c:#ff7a59"></i> Zoo3D boxes</label>
+      <label><input type="checkbox" data-layer="cameras" checked><i style="--c:#d889ff"></i> 90 proposal views</label>
+    </div>
+
+    <div class="buttons">
+      <button id="fit">Fit scene</button>
+      <button id="top">Top view</button>
+    </div>
+
+    <label class="range">Point size <input id="point-size" type="range" min="1" max="6" value="2"></label>
+
+    <div id="finding" class="finding"></div>
+    <p class="help">Drag to orbit · wheel to zoom · right-drag to pan · click a box to inspect it.</p>
+  </aside>
+
+  <aside class="panel inspector">
+    <div class="eyebrow">SELECTION</div>
+    <div id="inspection" class="inspection">Click a colored box.</div>
+  </aside>
+
+  <div id="loading" class="loading">Loading metric reconstruction…</div>
+  <div id="status" class="status"></div>
+
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>

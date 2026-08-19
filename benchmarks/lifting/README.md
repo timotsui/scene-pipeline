@@ -40,6 +40,10 @@ The offline visual summary, including the aggregate and per-scene
 ours-versus-Zoo3D win/tie/loss tables, is in
 [`reports/zoo3d_comparison.html`](reports/zoo3d_comparison.html).
 
+The interactive Kitchen/Dining diagnostic, with the metric reconstruction,
+boxes, and all 90 proposal-camera directions, is in
+[`reports/scene3d/`](reports/scene3d/README.md).
+
 The reusable stages are:
 
 1. `select_hypersim_scenes.py`: rank official scenes and reject non-pinhole
