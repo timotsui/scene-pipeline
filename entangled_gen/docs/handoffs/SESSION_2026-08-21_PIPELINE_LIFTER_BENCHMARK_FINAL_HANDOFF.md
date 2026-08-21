@@ -3,8 +3,9 @@
 ## Final state
 
 The corrected five-scene Pipeline Lifter run completed successfully. All native
-predictions were frozen before Hypersim ground truth was opened, and the shared
-evaluator was then run once over Pipeline Lifter, Zoo3D, and Boxer.
+predictions were sealed before scoring, Hypersim ground-truth boxes were not
+pipeline inputs, and the shared evaluator was then run over Pipeline Lifter,
+Zoo3D, and Boxer.
 
 This supersedes the pre-bake-off execution state in
 `SESSION_2026-08-20_PIPELINE_LIFTER_RESPLAT_SAFETY_HANDOFF.md`. That file remains
