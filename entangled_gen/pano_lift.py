@@ -18,7 +18,7 @@ import numpy as np
 
 import paths
 from lift_sweep import lift_frame, merge_per_axis, print_gap_stats
-from analyzer.cams_from_transforms import MatCam
+from analyzer.cams_from_transforms import MatCam, build_cam
 from sweep_recenter import corr_check
 
 r3 = paths.load_r3()
@@ -79,12 +79,21 @@ def main():
     # mini-G1 every crop camera, then lift
     pool = []
     n_ok = 0
+    camera_validation = []
     for view in sorted(dets_all):
         side = json.loads((rig / "crops" / f"{view}.json").read_text())
-        cam_s = crop_cam_raw(side, eye, scale=192 / 960)
+        if "transform_matrix" in side:
+            cam0 = build_cam(side, side, "c2w_opencv")
+            scale = 192 / side["w"]
+            cam_s = MatCam(cam0.R, cam0.pos, cam0.f * scale,
+                           cam0.cx * scale, cam0.cy * scale, 192, 192)
+        else:
+            cam_s = crop_cam_raw(side, eye, scale=192 / 960)
         corr = corr_check(xyz, rgb, cam_s, rig / "crops" / f"{view}.webp")
         ok = corr >= CORR_MIN
         n_ok += ok
+        camera_validation.append({"view": view, "correlation": round(float(corr), 6),
+                                  "accepted": bool(ok)})
         print(f"[sp3] {view}: cam corr {corr:+.3f} {'ok' if ok else 'FAIL'}",
               flush=True)
         if not ok:
@@ -92,13 +101,18 @@ def main():
         maskf = seg / f"{view}_masks.npy"
         if not maskf.exists() or not dets_all[view]:
             continue
-        cam = crop_cam_raw(side, eye)
+        cam = (build_cam(side, side, "c2w_opencv")
+               if "transform_matrix" in side else crop_cam_raw(side, eye))
         pool.extend(lift_frame(xyz, cam, dets_all[view], np.load(maskf),
                                view=view, vocab=vocab, keep_pts=False,
                                min_score=a.min_score))
     n_tr = sum(1 for L in pool if L["trunc"])
     print(f"[sp3] cams verified {n_ok}/{len(dets_all)}; lifted {len(pool)} "
           f"detections ({n_tr} edge-truncated)", flush=True)
+    (rig / f"lift_camera_validation{a.suffix}.json").write_text(
+        json.dumps({"threshold": CORR_MIN, "accepted": n_ok,
+                    "total": len(dets_all), "views": camera_validation},
+                   indent=2) + "\n", encoding="utf-8")
 
     floor_y = float(np.percentile(xyz[:, 1], 99))    # raw up = -y
     pj = [{k: (v.tolist() if isinstance(v, np.ndarray) else v)
@@ -107,12 +121,15 @@ def main():
         {"scene": sc, "floor_y": round(floor_y, 3), "pool": pj}))
 
     objects = merge_per_axis(pool, q=MERGE_Q)
+    n_bases = len(meta.get("base_views", [])) or 1
     frame = {"space": "raw", "up": [0.0, -1.0, 0.0],
              "floor_y": round(floor_y, 3),
-             "note": "self-pano rig lane (SP3): 20 crops from the "
-                     "self-rendered pano, exact defined cameras, z-buffer "
-                     "mask lift, per-axis robust merge q=0.05"}
-    man = {"scene": sc, "source": "pano_lift.py SP3 (self-pano rig)",
+             "note": f"pipeline-lifter rig lane: {len(dets_all)} views "
+                     f"from {n_bases} approved base position(s), exact "
+                     "defined cameras, z-buffer mask lift, per-axis robust "
+                     "merge q=0.05"}
+    man = {"scene": sc,
+           "source": "pano_lift.py SP3 (pipeline-lifter approved multibase rig)",
            "frame": frame, "n_objects": len(objects), "objects": objects}
     outf = sd / f"scene_manifest_pano2{a.suffix}.json"
     outf.write_text(json.dumps(man, indent=2))

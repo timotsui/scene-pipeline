@@ -1806,6 +1806,26 @@
       ]
     }
   ],
+  "source_review_camera": {
+    "source_frame": "images/frame_0000.png",
+    "camera_convention": "c2w_opengl",
+    "position": [
+      -4.206974393271481,
+      -1.1999999731779099,
+      -4.3050639906883825
+    ],
+    "forward": [
+      0.7651648521423341,
+      -0.0,
+      0.6438344717025756
+    ],
+    "up": [
+      0.0,
+      -1.0,
+      0.0
+    ],
+    "fov_y_deg": 46.935504322362625
+  },
   "layers": {
     "ground_truth": [
       {

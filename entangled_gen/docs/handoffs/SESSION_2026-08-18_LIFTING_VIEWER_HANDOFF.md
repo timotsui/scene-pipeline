@@ -1,5 +1,9 @@
 # SESSION 2026-08-18 HANDOFF — lift-only paper results and 3D comparison viewer
 
+> Superseded for next-session work by
+> `SESSION_2026-08-19_LIFTING_PAPER_HANDOFF.md`. The Dining Room zero is now a
+> disputed test result and must be debugged before advancing paper claims.
+
 User closing instruction: wrap up now; next session will debug what happened
 with the comparison viewer's camera feel and full-splat performance.
 

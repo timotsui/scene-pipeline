@@ -1,4 +1,8 @@
-"""Convert a slice-vote preview manifest to benchmark prediction JSONL."""
+"""Convert the legacy Splat-Analyzer-fixed-proposal SliceVote ablation.
+
+This adapter is not valid for the native pipeline lifter; use
+``adapt_pipeline_lifter.py`` for that method.
+"""
 
 from __future__ import annotations
 

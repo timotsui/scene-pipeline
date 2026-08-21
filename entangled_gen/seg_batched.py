@@ -55,6 +55,8 @@ def main():
                          "--bearing-window deg of one; unlocated terms stay "
                          "global (directional prior, side-branch 2026-08-06)")
     ap.add_argument("--bearing-window", type=float, default=90.0)
+    ap.add_argument("--resume", action="store_true",
+                    help="reuse views with a complete detection/mask receipt")
     a = ap.parse_args()
 
     vj = json.loads((paths.scene_dir(a.scene) / "vocab.json")
@@ -98,6 +100,29 @@ def main():
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    det_file = out / "detections.json"
+    all_dets = {}
+    if a.resume and det_file.exists():
+        all_dets = json.loads(det_file.read_text(encoding="utf-8"))
+
+    def complete(vp):
+        name = vp.stem
+        dets = all_dets.get(name)
+        if dets is None or not (out / f"{name}_boxes.png").exists():
+            return False
+        if dets and not ((out / f"{name}_masks.npy").exists()
+                         and (out / f"{name}_masks.png").exists()):
+            return False
+        return True
+
+    pending = [vp for vp in views if not complete(vp)]
+    if a.resume:
+        print(f"[segb] resume: {len(views) - len(pending)}/{len(views)} "
+              "views already complete", flush=True)
+    if not pending:
+        print(f"[segb] all {len(views)} views complete in {out}", flush=True)
+        return
+
     import torch
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     from transformers import (AutoProcessor, GroundingDinoForObjectDetection,
@@ -110,8 +135,7 @@ def main():
     sam_proc = SamProcessor.from_pretrained("facebook/sam-vit-base")
 
     unmapped = set()
-    all_dets = {}
-    for vp in views:
+    for vp in pending:
         name = vp.stem
         img = Image.open(vp).convert("RGB")
         vterms = terms_for(view_yaw(vp)) if bearings else terms
@@ -135,7 +159,7 @@ def main():
             for score, label, box in zip(res["scores"], labels, res["boxes"]):
                 x0, y0, x1, y1 = [float(v) for v in box]
                 lab = canonicalize(str(label), canon, syn) or ""
-                if not lab:
+                if lab not in canon:
                     unmapped.add(str(label))
                     continue
                 raw.append({"label": lab, "label_raw": str(label),
@@ -172,7 +196,8 @@ def main():
             np.save(out / f"{name}_masks.npy", masks)
         # persist after every view — a hard power cut loses at most the
         # in-flight view, never the completed ones (08-06 crash lesson)
-        (out / "detections.json").write_text(json.dumps(all_dets, indent=2))
+        paths.write_atomic(out / "detections.json",
+                           json.dumps(all_dets, indent=2))
         time.sleep(a.pace)
 
     print(f"[segb] wrote {out / 'detections.json'}", flush=True)

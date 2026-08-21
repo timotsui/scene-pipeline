@@ -13,7 +13,9 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070a10);
 scene.fog = new THREE.FogExp2(0x070a10, 0.018);
-const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, .02, 250);
+// Match the pipeline viewer's wider projection. Besides making an interior
+// pose easier to navigate, this reduces the projected area of every splat.
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, .02, 250);
 const controls = new OrbitControls(camera, canvas);
 
 scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x20283a, 1.8));
@@ -60,8 +62,10 @@ const esc = text => String(text).replace(/[&<>"']/g, ch =>
 // Pipeline-viewer pivot: keep the orbit target 0.4 m in front of the eye,
 // rather than at the distant room center. Turning then feels like looking
 // around from the current position instead of swinging around the room.
-function setPose(eye, look, fov = camera.fov) {
+function setPose(eye, look, fov = camera.fov, up = null) {
   camera.position.copy(eye);
+  if (up) camera.up.copy(up).normalize();
+  else camera.up.set(0, 1, 0);
   const direction = new THREE.Vector3().subVectors(look, eye);
   if (direction.lengthSq() > 1e-9) direction.normalize().multiplyScalar(.4);
   else direction.set(0, 0, .4);
@@ -190,6 +194,10 @@ async function buildSplat(record) {
   splatLayer = new GaussianSplats3D.DropInViewer({
     sharedMemoryForWorkers: false,
     gpuAcceleratedSort: false,
+    // Hypersim's trained Gaussians are much larger than the pipeline splats.
+    // Cap only pathological near-camera projections; keep the source data,
+    // alpha cutoff, and sort path unchanged for this controlled A/B.
+    maxScreenSpaceSplatSize: 256,
     freeIntermediateSplatData: true,
   });
   await splatLayer.addSplatScene(`splat/${record.splat_file}`, {
@@ -217,15 +225,20 @@ function addGrid(record) {
   content.add(grid);
 }
 
-function fitScene(top = false) {
-  if (!fitBounds) return;
-  const displayBounds = new THREE.Box3();
+function displayBounds() {
+  const bounds = new THREE.Box3();
   for (const x of [fitBounds.min.x, fitBounds.max.x])
     for (const y of [fitBounds.min.y, fitBounds.max.y])
       for (const z of [fitBounds.min.z, fitBounds.max.z])
-        displayBounds.expandByPoint(new THREE.Vector3(x, y, z).applyEuler(content.rotation));
-  const center = displayBounds.getCenter(new THREE.Vector3());
-  const size = displayBounds.getSize(new THREE.Vector3());
+        bounds.expandByPoint(new THREE.Vector3(x, y, z).applyEuler(content.rotation));
+  return bounds;
+}
+
+function fitScene(top = false) {
+  if (!fitBounds) return;
+  const bounds = displayBounds();
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
   const radius = Math.max(size.x, size.y, size.z);
   const eye = top
     ? center.clone().add(new THREE.Vector3(.001, radius * 1.35, .001))
@@ -233,6 +246,36 @@ function fitScene(top = false) {
   camera.near = Math.max(.01, radius / 500);
   camera.far = radius * 20;
   setPose(eye, center);
+}
+
+function startInsideScene() {
+  if (!fitBounds) return;
+  const bounds = displayBounds();
+  const center = bounds.getCenter(new THREE.Vector3());
+  const radius = Math.max(...bounds.getSize(new THREE.Vector3()).toArray());
+  const forward = new THREE.Vector3(-.65, 0, -.75).normalize();
+  camera.near = Math.max(.01, radius / 500);
+  camera.far = radius * 20;
+  setPose(center, center.clone().add(forward));
+}
+
+function startAtSourceCamera() {
+  const source = sceneRecord?.source_review_camera;
+  if (!source || !fitBounds) {
+    startInsideScene();
+    return;
+  }
+  // The splat and all saved camera poses remain in raw benchmark coordinates.
+  // Apply the same display rotation to the source eye and basis vectors so the
+  // Three.js camera occupies the exact Zoo3D/Hypersim viewpoint onscreen.
+  const eye = world(source.position).applyEuler(content.rotation);
+  const forward = world(source.forward).applyEuler(content.rotation).normalize();
+  const up = world(source.up).applyEuler(content.rotation).normalize();
+  const bounds = displayBounds();
+  const radius = Math.max(...bounds.getSize(new THREE.Vector3()).toArray());
+  camera.near = Math.max(.01, radius / 500);
+  camera.far = radius * 20;
+  setPose(eye, eye.clone().add(forward), source.fov_y_deg, up);
 }
 
 function applyLayerVisibility() {
@@ -300,7 +343,9 @@ async function loadScene(sceneId) {
   addGrid(sceneRecord);
   updateSummary(sceneRecord);
   applyLayerVisibility();
-  fitScene(false);
+  // Begin at the first original Hypersim camera. Zoo3D consumes this same
+  // prepared trajectory, so the default is a known-valid interior viewpoint.
+  startAtSourceCamera();
   const megabytes = sceneRecord.splat_bytes / (1024 * 1024);
   document.querySelector('#loading').textContent = `Streaming full Gaussian splat (${megabytes.toFixed(1)} MB)…`;
   let quality = 'full Gaussian splat';
@@ -348,6 +393,7 @@ applyDisplayRotation(false);
 document.querySelectorAll('[data-layer]').forEach(input => input.addEventListener('change', applyLayerVisibility));
 document.querySelector('#fit').addEventListener('click', () => fitScene(false));
 document.querySelector('#top').addEventListener('click', () => fitScene(true));
+document.querySelector('#source').addEventListener('click', startAtSourceCamera);
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();

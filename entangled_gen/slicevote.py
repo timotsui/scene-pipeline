@@ -300,6 +300,16 @@ ap.add_argument("--res", type=int, default=RES)
 ap.add_argument("--run-id", dest="run_id", default="",
                 help="short id stamped on every entry this run produces "
                      "(default: derived from the run start time)")
+ap.add_argument("--graph", default="scene_graph.json",
+                help="resolved graph filename inside the scene directory")
+ap.add_argument("--manifest", default="scene_manifest_pano2c_rc_f30.json",
+                help="founding manifest filename inside the scene directory")
+ap.add_argument("--pool", default="rig_sp0/lift_poolc.json",
+                help="founding lift-pool path inside the scene directory")
+ap.add_argument("--seg-dir", default="rig_sp0/seg_batched20",
+                help="founding detection/mask directory inside the scene")
+ap.add_argument("--crops-dir", default="rig_sp0/crops",
+                help="founding crop/sidecar directory inside the scene")
 a = ap.parse_args()
 
 SCENE = a.scene
@@ -667,7 +677,7 @@ def render_gate(view, cull_rule, cull_margin, keep):
     return not fresh
 
 
-g = json.loads((sd / "scene_graph.json").read_text(encoding="utf-8"))
+g = json.loads((sd / a.graph).read_text(encoding="utf-8"))
 nodes = g["resolved"]["nodes"]
 # RESOLVED-NODE ORDER — the canonical emit order for every merged
 # document and for the rebuilt cone_map.html (keeps files diff-stable).
@@ -1072,18 +1082,20 @@ gd.eval()
 sam = SamModel.from_pretrained("facebook/sam-vit-base").to(dev)
 sam_proc = SamProcessor.from_pretrained("facebook/sam-vit-base")
 
-man = json.loads((sd / "scene_manifest_pano2c_rc_f30.json").read_text())
+man = json.loads((sd / a.manifest).read_text())
 f30_by_id = {o["id"]: o for o in man["objects"]}
-pool_j = json.loads((sd / "rig_sp0" / "lift_poolc.json").read_text())["pool"]
-dets_all = json.loads((sd / "rig_sp0" / "seg_batched20" /
-                       "detections.json").read_text())
+pool_path = sd / a.pool
+seg_path = sd / a.seg_dir
+crops_path = sd / a.crops_dir
+pool_j = json.loads(pool_path.read_text())["pool"]
+dets_all = json.loads((seg_path / "detections.json").read_text())
 _vc, _vm = {}, {}
 
 
 def pano_mask(m):
     view = m["view"]
     if view not in _vm:
-        f = sd / "rig_sp0" / "seg_batched20" / f"{view}_masks.npy"
+        f = seg_path / f"{view}_masks.npy"
         _vm[view] = np.load(f) if f.exists() else None
     masks = _vm[view]
     if masks is None:
@@ -1096,8 +1108,7 @@ def pano_mask(m):
 
 def view_cam0(view):
     if view not in _vc:
-        side = json.loads((sd / "rig_sp0" / "crops" / f"{view}.json")
-                          .read_text())
+        side = json.loads((crops_path / f"{view}.json").read_text())
         # Analyzer/benchmark observations can originate from independent
         # cameras rather than crops around one panorama eye.  When the
         # sidecar carries an exact OpenCV camera-to-world matrix, preserve it
@@ -1359,7 +1370,10 @@ PARAMS = {"SHELL_EPS": SHELL_EPS, "WALL_TOUCH": WALL_TOUCH,
           "OUTSIDE_DROP_M": OUTSIDE_DROP_M,
           "DET_PRIOR_MIN": DET_PRIOR_MIN,
           "DET_EDGE_PENALTY": DET_EDGE_PENALTY,
-          "DET_EDGE_PX": DET_EDGE_PX}
+          "DET_EDGE_PX": DET_EDGE_PX,
+          "graph_input": a.graph, "manifest_input": a.manifest,
+          "pool_input": a.pool, "seg_input": a.seg_dir,
+          "crops_input": a.crops_dir}
 PARAMS_HASH = hashlib.sha256(
     json.dumps(PARAMS, sort_keys=True).encode()).hexdigest()[:12]
 PROV = {"run_id": RUN_ID, "run_at": RUN_AT,

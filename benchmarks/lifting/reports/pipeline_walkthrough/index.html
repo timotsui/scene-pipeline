@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lift run — visual pipeline trace</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Reset walkthrough">
+      <span class="brand-mark">L</span>
+      <span><strong>Lift run</strong><small>visual pipeline trace</small></span>
+    </a>
+    <nav id="scene-tabs" class="scene-tabs" aria-label="Scene"></nav>
+    <div class="top-actions">
+      <a id="viewer-link" class="action-link" target="_blank" rel="noreferrer">3D viewer ↗</a>
+      <a class="action-link muted" href="/pipeline_map.html" target="_blank" rel="noreferrer">full map ↗</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="rail">
+      <div class="rail-heading">
+        <span>Executed path</span>
+        <span class="scope-pill">DEV / 5 scenes</span>
+      </div>
+      <nav id="stage-list" class="stage-list" aria-label="Executed pipeline stages"></nav>
+      <div class="rail-note">
+        <span class="note-dot"></span>
+        Only modules with saved run evidence appear here. Generation and composition did not run in this benchmark.
+      </div>
+    </aside>
+
+    <main id="main" class="main" tabindex="-1">
+      <section class="stage-header">
+        <div>
+          <div id="stage-kicker" class="kicker"></div>
+          <h1 id="stage-title">Loading evidence…</h1>
+          <p id="stage-copy" class="stage-copy"></p>
+        </div>
+        <div id="map-badges" class="map-badges"></div>
+      </section>
+
+      <section id="diagnostic" class="diagnostic" hidden></section>
+      <section id="dataflow" class="dataflow"></section>
+      <section id="visual" class="visual" aria-live="polite"></section>
+      <section id="facts" class="facts"></section>
+      <section id="evidence" class="evidence"></section>
+
+      <footer class="stage-footer">
+        <button id="prev-stage" class="nav-button" type="button">← Previous</button>
+        <span id="stage-position"></span>
+        <button id="next-stage" class="nav-button primary" type="button">Next →</button>
+      </footer>
+    </main>
+  </div>
+
+  <div id="loading" class="loading"><span></span>Reading saved run artifacts…</div>
+  <div id="error" class="error" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

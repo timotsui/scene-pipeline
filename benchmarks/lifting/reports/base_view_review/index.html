@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pipeline lifter base-view review</title>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; }
+    body { margin: 0; background: #101216; color: #eef1f5; }
+    header { padding: 22px 28px; border-bottom: 1px solid #313640; }
+    h1 { margin: 0 0 7px; font-size: 22px; }
+    p { margin: 5px 0; color: #b9c0ca; }
+    .warning { color: #ffd27a; }
+    select { margin: 10px 0 4px; padding: 7px 10px; color: #eef1f5;
+             background: #20242c; border: 1px solid #4a5362; border-radius: 6px; }
+    main { padding: 22px 28px 40px; max-width: 1500px; margin: auto; }
+    .map { background: #171a20; border: 1px solid #343a45; border-radius: 10px;
+           padding: 14px; margin-bottom: 22px; }
+    .index-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    button { color: #eef1f5; background: #252b35; border: 1px solid #596577;
+             border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+    button:hover, button.active { background: #574719; border-color: #ffca5c; }
+    .preview { margin: 10px 0 18px; border: 1px solid #4a5362; border-radius: 8px;
+               overflow: hidden; background: #090a0c; }
+    .preview img { width: 100%; max-height: 70vh; object-fit: contain; display: block; }
+    .preview figcaption { padding: 9px 12px; color: #d4dae3; background: #171a20; }
+    .picker-actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center;
+                      padding: 10px 12px; background: #171a20; }
+    .selection-status { color: #ffd27a; }
+    svg { width: 100%; height: 260px; display: block; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(430px,1fr)); gap: 18px; }
+    article { background: #171a20; border: 1px solid #343a45; border-radius: 10px; overflow: hidden; }
+    article img { display: block; width: 100%; aspect-ratio: 4/3; object-fit: contain; background: #090a0c; }
+    .meta { padding: 13px 15px 16px; }
+    h2 { font-size: 17px; margin: 0 0 7px; }
+    code { color: #a7d8ff; }
+    label { display: inline-flex; gap: 8px; align-items: center; margin-top: 10px;
+            border: 1px solid #4a5362; border-radius: 6px; padding: 6px 9px; }
+    .node { fill: #6b7687; stroke: #0c0d10; stroke-width: 1; }
+    .marker.selected-choice .node { fill: #ffca5c; stroke-width: 1.5; }
+    .path { fill: none; stroke: #647184; stroke-width: 1.2; }
+    .all { fill: #6b7687; }
+    .arrow { stroke: #ffca5c; stroke-width: 2; display: none; }
+    .marker { cursor: pointer; outline: none; }
+    .marker:hover .node, .marker.active .node { fill: #fff0ad; stroke: #ffca5c; stroke-width: 3; }
+    .marker.active .arrow { display: block; }
+    .marker text { display: none; pointer-events: none; }
+    .marker:hover text, .marker.active text { display: block; }
+    .index-buttons button.selected-choice { background: #574719; border-color: #ffca5c; }
+    article.active { border-color: #ffca5c; box-shadow: 0 0 0 2px #ffca5c44; }
+    text { fill: #eef1f5; font-size: 12px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Candidate base viewpoints - <span id="scene-name"></span></h1>
+  <select id="scene-select" aria-label="Benchmark scene"></select>
+  <p>Five exact poses from the same 50-frame Hypersim trajectory supplied to Zoo3D.</p>
+  <p id="selection-note"></p>
+  <p class="warning">Review only: no panorama sweep, detector, lift, fusion, or SliceVote has been run.</p>
+</header>
+<main>
+  <section class="map">
+    <h2>Top-down trajectory (x/z)</h2>
+    <p>Every grey and gold Zoo3D pose is clickable. Click a map node or index 0-49 to inspect its original view; then add or remove it from the five gold bases.</p>
+    <div class="index-buttons" id="index-buttons"></div>
+    <figure class="preview">
+      <img id="preview-image" alt="Selected original Zoo3D source view">
+      <figcaption id="preview-caption"></figcaption>
+      <div class="picker-actions">
+        <button type="button" id="toggle-selection"></button>
+        <button type="button" id="reset-selection">Reset proposed five</button>
+        <span class="selection-status" id="selection-status"></span>
+      </div>
+    </figure>
+    <svg id="trajectory" viewBox="0 0 1000 260" aria-label="Top-down camera trajectory"></svg>
+  </section>
+  <section class="grid" id="cards"></section>
+</main>
+<script>
+const scenes = {
+  ai_051_002: 'Living room', ai_002_006: 'Kitchen', ai_006_008: 'Bedroom',
+  ai_037_007: 'Dining room', ai_003_009: 'Office'
+};
+// User-reviewed overrides. These preserve the accepted slots and replace
+// only cameras the user identified as outside the room. Every index remains
+// an exact pose and image from Zoo3D's 50-frame input trajectory.
+const reviewedSelections = {
+  ai_051_002: {
+    indices: [4, 45, 34, 43, 8],
+    note: 'User-approved final base viewpoints.'
+  },
+  ai_002_006: {
+    indices: [6, 21, 17, 19, 0],
+    note: 'User-approved final base viewpoints. Final change: Zoo index 19 replaces 13.'
+  },
+  ai_006_008: {
+    indices: [23, 0, 21, 11, 3],
+    note: 'User-approved final base viewpoints.'
+  },
+  ai_037_007: {
+    indices: [26, 29, 33, 43, 30],
+    note: 'User-approved final base viewpoints after exterior-camera rerolls.'
+  },
+  ai_003_009: {
+    indices: [13, 3, 29, 5, 35],
+    note: 'User-approved final base viewpoints.'
+  }
+};
+const query = new URLSearchParams(location.search);
+const scene = scenes[query.get('scene')] ? query.get('scene') : 'ai_037_007';
+const picker = document.querySelector('#scene-select');
+picker.innerHTML = Object.entries(scenes).map(([id,name]) =>
+  `<option value="${id}" ${id===scene?'selected':''}>${name} - ${id}</option>`).join('');
+picker.addEventListener('change', () => { location.search = `?scene=${picker.value}`; });
+document.querySelector('#scene-name').innerHTML = `${scenes[scene]} <code>${scene}</code>`;
+document.querySelector('#selection-note').textContent = reviewedSelections[scene]?.note ||
+  'Automatic proposal: trajectory-medoid plus farthest-point spatial coverage; awaiting review.';
+document.title = `Pipeline lifter base-view review - ${scene}`;
+
+fetch(`/benchmark-artifacts/prepared/${scene}/transforms.json`).then(r=>{
+  if (!r.ok) throw new Error(`transforms: HTTP ${r.status}`);
+  return r.json();
+}).then(data=>{
+  const frames=data.frames;
+  const positions=frames.map(f=>{const m=f.transform_matrix;return [m[0][3],m[1][3],m[2][3]]});
+  const distance=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+  // Deterministic k-center over Zoo3D's positions: start at the trajectory
+  // medoid, then repeatedly add the pose farthest from the selected set.
+  const meanDist=positions.map((p)=>positions.reduce((s,q)=>s+distance(p,q),0)/positions.length);
+  const proposed=reviewedSelections[scene]?.indices.slice() ||
+    [meanDist.indexOf(Math.min(...meanDist))];
+  while(proposed.length<5){
+    const nearest=positions.map((p,i)=>proposed.includes(i)?-1:Math.min(...proposed.map(j=>distance(p,positions[j]))));
+    proposed.push(nearest.indexOf(Math.max(...nearest)));
+  }
+  const storageKey=`pipeline-lifter-base-views:v2:${scene}`;
+  let selected=proposed.slice();
+  try {
+    const stored=JSON.parse(localStorage.getItem(storageKey));
+    if(Array.isArray(stored) && stored.every(i=>Number.isInteger(i) && i>=0 && i<frames.length)) selected=[...new Set(stored)].slice(0,5);
+  } catch (_) { /* corrupt local preference falls back to reviewed proposal */ }
+  const camera=(i,rank=0)=>{
+    const f=frames[i],m=f.transform_matrix;
+    return {i,rank:rank+1,frame:f.file_path.replace(/^images\//,''),p:positions[i],f:[-m[0][2],-m[1][2],-m[2][2]]};
+  };
+  let currentIndex=selected[0] ?? 0;
+  const indexButtons=document.querySelector('#index-buttons');
+  const cards=document.querySelector('#cards');
+  const status=document.querySelector('#selection-status');
+  const toggle=document.querySelector('#toggle-selection');
+  const markerByIndex=new Map();
+  const showCandidate=i=>{
+    currentIndex=i;
+    const c=camera(i);
+    document.querySelector('#preview-image').src=`/benchmark-artifacts/prepared/${scene}/images/${c.frame}`;
+    const rank=selected.indexOf(i);
+    document.querySelector('#preview-caption').innerHTML=`${rank>=0?`Selected base ${rank+1}`:'Available Zoo pose'} - Zoo input index <code>${c.i}</code> - <code>${c.frame}</code> - position <code>[${c.p.map(v=>v.toFixed(4)).join(', ')}]</code>`;
+    document.querySelectorAll('[data-index], [data-show-index]').forEach(el=>el.classList.remove('active'));
+    document.querySelectorAll(`[data-index="${i}"], [data-show-index="${i}"]`).forEach(el=>el.classList.add('active'));
+    toggle.textContent=rank>=0?'Remove from gold bases':'Add to gold bases';
+    toggle.disabled=rank<0 && selected.length>=5;
+    status.textContent=rank<0 && selected.length>=5?'Remove one gold base before adding another.':`${selected.length}/5 bases selected.`;
+  };
+  const renderSelection=()=>{
+    localStorage.setItem(storageKey,JSON.stringify(selected));
+    indexButtons.innerHTML=frames.map((_,i)=>`<button type="button" data-show-index="${i}" class="${selected.includes(i)?'selected-choice':''}">${i}</button>`).join('');
+    indexButtons.querySelectorAll('[data-show-index]').forEach(button=>button.addEventListener('click',()=>showCandidate(Number(button.dataset.showIndex))));
+    const candidates=selected.map((i,rank)=>camera(i,rank));
+    cards.innerHTML=candidates.map(c=>`<article id="candidate-${c.i}" data-index="${c.i}"><img src="/benchmark-artifacts/prepared/${scene}/images/${c.frame}" alt="Original Zoo3D source frame ${c.i}"><div class="meta"><h2>Selected base ${c.rank} - Zoo input index ${c.i}</h2><p>Original image <code>${c.frame}</code></p><p>Position <code>[${c.p.map(v=>v.toFixed(6)).join(', ')}]</code></p><p>Original forward <code>[${c.f.map(v=>v.toFixed(6)).join(', ')}]</code></p><button type="button" data-show-index="${c.i}">Show this view above</button></div></article>`).join('');
+    cards.querySelectorAll('[data-show-index]').forEach(button=>button.addEventListener('click',()=>showCandidate(Number(button.dataset.showIndex))));
+    markerByIndex.forEach((group,i)=>{
+      const chosen=selected.includes(i);
+      group.classList.toggle('selected-choice',chosen);
+      group.querySelector('circle').setAttribute('r',chosen?7:3.2);
+    });
+    showCandidate(currentIndex);
+  };
+  const all=positions.map(p=>[p[0],p[2]]);
+  const svg=document.querySelector('#trajectory'),xs=all.map(p=>p[0]),zs=all.map(p=>p[1]);
+  const minx=Math.min(...xs)-.4,maxx=Math.max(...xs)+.4,minz=Math.min(...zs)-.4,maxz=Math.max(...zs)+.4;
+  const pt=p=>[35+(p[0]-minx)/(maxx-minx)*930,235-(p[1]-minz)/(maxz-minz)*210];
+  const ns='http://www.w3.org/2000/svg';
+  const path=document.createElementNS(ns,'polyline');path.setAttribute('class','path');path.setAttribute('points',all.map(p=>pt(p).join(',')).join(' '));svg.append(path);
+  frames.forEach((_,i)=>{const c=camera(i),[x,y]=pt([c.p[0],c.p[2]]),end=pt([c.p[0]+c.f[0]*.65,c.p[2]+c.f[2]*.65]);const group=document.createElementNS(ns,'g');group.setAttribute('class','marker');group.setAttribute('data-index',i);group.setAttribute('role','button');group.setAttribute('tabindex','0');group.setAttribute('aria-label',`Show Zoo input ${i}`);const line=document.createElementNS(ns,'line');line.setAttribute('class','arrow');line.setAttribute('x1',x);line.setAttribute('y1',y);line.setAttribute('x2',end[0]);line.setAttribute('y2',end[1]);group.append(line);const dot=document.createElementNS(ns,'circle');dot.setAttribute('class','node');dot.setAttribute('cx',x);dot.setAttribute('cy',y);group.append(dot);const title=document.createElementNS(ns,'title');title.textContent=`Zoo input ${i}`;group.append(title);const t=document.createElementNS(ns,'text');t.setAttribute('x',x+8);t.setAttribute('y',y-7);t.textContent=i;group.append(t);group.addEventListener('click',()=>showCandidate(i));group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();showCandidate(i)}});svg.append(group);markerByIndex.set(i,group)});
+  toggle.addEventListener('click',()=>{
+    const at=selected.indexOf(currentIndex);
+    if(at>=0) selected.splice(at,1);
+    else if(selected.length<5) selected.push(currentIndex);
+    renderSelection();
+  });
+  document.querySelector('#reset-selection').addEventListener('click',()=>{selected=proposed.slice();currentIndex=selected[0];renderSelection()});
+  renderSelection();
+}).catch(error=>{document.querySelector('#cards').innerHTML=`<article><div class="meta"><h2>Could not load this scene</h2><p>${error.message}</p></div></article>`});
+</script>
+</body>
+</html>

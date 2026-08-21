@@ -4,36 +4,45 @@ This directory contains the versioned, model-independent plumbing for the
 lifting-paper benchmark. Heavy renders, splats, predictions, and checkpoints
 belong under the machine-local `out/` root and are never committed.
 
-Status on 2026-08-18: **five-scene development benchmark and Boxer/Zoo3D
-reference complete; method configuration frozen before held-out evaluation**.
+Status on 2026-08-20: **the corrected five-scene pipeline-lifter development
+run is frozen in `protocol.v1.json` and in progress**. The former
+fixed-proposal SliceVote experiment is quarantined as a legacy ablation: it
+started from Splat Analyzer proposals and masks and is not the pipeline lifter.
 
 ## Hypersim development benchmark (2026-08-17)
 
 The public-data development study uses five Hypersim train scenes spanning a
 living room, kitchen, bedroom, dining room, and office. Each scene uses 50
 evenly spaced source frames, exact metric cameras, five reserved reconstruction
-checks, and seven canonical object categories. The frozen selection and method
-settings are in `hypersim_split.v1.json`; four rejected kitchen candidates and
-their predeclared reconstruction-gate failures remain in that file.
+checks, and seven canonical object categories. Reconstructions use the frozen
+15,000-step recipe in `reconstruction_recipe.v1.json`.
 
-Across 87 visible ground-truth objects and the same 123 fixed proposals,
+The pipeline lifter uses five user-reviewed base poses per scene, loaded exactly
+from the same prepared Hypersim trajectories supplied to Zoo3D. It renders a
+20-view angular sweep at each base (100 views per scene), runs its own
+GroundingDINO and SAM discovery, lifts the masks with exact camera sidecars,
+spatially fuses the lifted observations, and then runs SliceVote. The approved
+pose indices are in `base_views.v1.json`; no novel base positions and no Splat
+Analyzer proposals, masks, or viewpoints enter this method.
+
+The old experiment across 87 visible ground-truth objects and the same 123
+fixed proposals reported
 scene-macro mAP25 is 0.124 for Splat Analyzer's rectangular lift, 0.054 for the
 global SAM mask-pixel lift, and **0.180 for active slice-vote lifting**. Active
 lifting also raises mean recall25 from 0.131 (rectangular) and 0.066 (global SAM)
-to 0.255. Its paired mAP25 gain over the stronger rectangular baseline is 0.056
+to 0.255. Its paired mAP25 gain over the stronger rectangular baseline was 0.056
 with a scene-bootstrap 95% interval of [0.008, 0.133]. It improves four scenes
 and ties the no-proposal scene against that baseline. These are development
-results, not held-out estimates.
+results, not held-out estimates, and are retained only as a historical
+fixed-proposal ablation. They must not be reported as the pipeline lifter.
 
 An external cross-system reference uses the same five scenes, 87 visible ground
 truth objects, seven-category normalization, and common evaluator, but lets each
 system keep its own proposal and aggregation pipeline. Zoo3D reaches scene-macro
 mAP25 0.194, recall25 0.249, and mAP50 0.151 from 50 target-category predictions.
-Active lifting reaches 0.180, **0.255**, and 0.062 from its fixed 123 proposals;
-it has the highest recall25 but does not beat Zoo3D on AP. Boxer reaches 0.019,
-0.057, and 0.000 from 49 predictions under the matched one-support fusion
-described below. Active lifting is 9.45x Boxer's AP25 and 4.46x its recall25.
-These remain development-set reference numbers, not a controlled causal or
+The corrected pipeline-lifter row is intentionally left unreported until all
+five native predictions have been frozen before ground truth is opened. Boxer
+and Zoo3D remain external development references, not a controlled causal or
 held-out system ranking.
 
 The offline visual summary, including the aggregate and per-scene
@@ -60,10 +69,12 @@ The reusable stages are:
    rectangular lift.
 7. `refine_splat_analyzer_masks.py`: hold detections and clusters fixed while
    replacing only their geometry with SAM mask-pixel depth lifting.
-8. `prepare_slicevote_scene.py`, `slicevote.py`, and `adapt_slicevote.py`: hold
-   proposal identities, labels, and scores fixed while applying active plan and
-   tunnel re-observation, then restore the common benchmark schema.
-9. `summarize_lifting_results.py`: recompute scene-macro and pooled metrics,
+8. `prepare_pipeline_lifter_scene.py`, `slicevote.py`, and
+   `adapt_pipeline_lifter.py`: run native multibase discovery, mask lift/fusion,
+   SliceVote, and freeze predictions without reading ground truth.
+9. `prepare_slicevote_scene.py` and `adapt_slicevote.py`: legacy
+   Splat-Analyzer-fixed-proposal ablation only; never the pipeline lifter.
+10. `summarize_lifting_results.py`: recompute scene-macro and pooled metrics,
    input hashes, and paired scene-bootstrap intervals from saved predictions.
 
 External systems are evaluated as a separate cross-system reference because
@@ -71,8 +82,9 @@ they generate and aggregate their own proposals. `export_scannet_sequence.py`
 and `adapt_boxer.py` preserve Boxer's native posed-RGB-D contract.
 `prepare_zoo3d_scene.py` writes Zoo3D's 640x480 posed-image layout while
 preserving the benchmark metric world frame, and `adapt_zoo3d.py` converts its
-point masks to benchmark AABBs. The main fixed-proposal table remains the
-controlled test of active re-observation.
+point masks to benchmark AABBs. The fixed-proposal table is a historical
+component ablation and is kept separate from the corrected native
+pipeline-lifter result.
 
 Heavy source data, splats, model outputs, and metrics remain under the ignored
 machine-local `out/` root. The committed split records which settings are frozen
@@ -80,10 +92,13 @@ and which held-out work remains.
 
 ## Protocol rules
 
-Keep the controlled and external protocols distinct:
+Keep the corrected native method, historical ablation, and external protocols
+distinct:
 
 - `fixed_proposal`: every lift receives the same proposal identity, label, score,
-  and initial global observations; only the box-measurement rule changes.
+  and initial global observations; legacy ablation only.
+- `pipeline_lifter_native`: five approved source-trajectory bases, 20 angular
+  views per base, native detector/masks/lift/fusion, then SliceVote.
 - `native_external`: each released system keeps its intended proposal and
   aggregation path; inputs and resource use are reported rather than treated as
   matched.
@@ -101,7 +116,7 @@ Predictions and ground truth use one JSON object per line:
  "aabb_min":[-0.5,0.0,-0.5],"aabb_max":[0.5,1.0,0.5],"score":0.9}
 ```
 
-The required coordinate frame and matching rules are in `protocol.v0.json`.
+The corrected method and matching rules are in `protocol.v1.json`.
 Native outputs must be preserved next to converted outputs.
 
 ## Commands

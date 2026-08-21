@@ -1,8 +1,9 @@
-"""Build the legacy scene bundle consumed by the active slice-vote lifter.
+"""Build the legacy fixed-proposal SliceVote ablation scene bundle.
 
 The benchmark starts from fixed Splat Analyzer proposals and SAM founding
 masks.  This adapter changes no proposal geometry: it only writes the camera,
 mask, graph, and shell files expected by ``entangled_gen/slicevote.py``.
+It is not the pipeline lifter and must never be reported as that method.
 The room shell is estimated from the reconstruction points and camera path;
 ground-truth object boxes are never read.
 """

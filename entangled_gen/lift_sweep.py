@@ -186,7 +186,7 @@ def lift_frame(xyz, cam, dets, masks, view="", vocab=None, keep_pts=True,
             continue        # whole-frame degenerate (see FRAME_COVER_MAX)
         if vocab is not None:
             label = canonicalize(det["label"], vocab)
-            if not label or label in SKIP_LABELS:
+            if not label or label not in vocab or label in SKIP_LABELS:
                 continue
         else:
             label = SYNONYMS.get(det["label"], det["label"])

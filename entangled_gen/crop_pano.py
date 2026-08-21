@@ -70,6 +70,11 @@ def main():
                     help="override output dir (default pano_crops/ — pass "
                          "this for self-rendered panos so the Marble crops "
                          "are not clobbered)")
+    ap.add_argument("--name-prefix", default="",
+                    help="prefix crop stems when combining multiple standpoints")
+    ap.add_argument("--eye-raw", default="",
+                    help="exact RAW/world pano eye x,y,z; writes exact OpenCV c2w sidecars")
+    ap.add_argument("--pano-to-raw-signs", default="1,-1,1")
     a = ap.parse_args()
 
     if a.pano:
@@ -101,6 +106,13 @@ def main():
     r3 = paths.load_r3()
     outd = Path(a.out_dir) if a.out_dir else paths.pano_crops_dir(a.scene)
     outd.mkdir(parents=True, exist_ok=True)
+    eye_raw = None
+    signs = None
+    if a.eye_raw:
+        eye_raw = np.asarray([float(t) for t in a.eye_raw.split(",")], float)
+        signs = np.asarray([float(t) for t in a.pano_to_raw_signs.split(",")], float)
+        if eye_raw.shape != (3,) or signs.shape != (3,):
+            ap.error("--eye-raw and --pano-to-raw-signs require x,y,z")
 
     n_out = 0
     for pitch, nyaw in RINGS:
@@ -111,7 +123,8 @@ def main():
             cam = r3.Cam([0, 0, 0], fwd, [0, 1, 0], a.fov, a.res, a.res)
             img = sample_equirect(pano, crop_dirs(cam, a.res), W, H).reshape(a.res, a.res, 3)
             img = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).convert("RGB")
-            tag = f"pano_y{int(round(yaw)):03d}_p{'m' if pitch < 0 else 'p'}{abs(pitch):02d}"
+            tag = (f"{a.name_prefix}pano_y{int(round(yaw)):03d}_"
+                   f"p{'m' if pitch < 0 else 'p'}{abs(pitch):02d}")
             img.save(outd / f"{tag}.webp", quality=92)
             side = {"file": f"{tag}.webp",
                     "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -120,6 +133,20 @@ def main():
                     "up": "0,1,0", "fov": a.fov, "near": 0.2,
                     "box": "", "sphere": "", "res": f"{a.res}x{a.res}",
                     "ply": str(panof)}
+            if eye_raw is not None:
+                R_raw = cam.R * signs[None, :]
+                c2w_cv = np.eye(4, dtype=float)
+                c2w_cv[:3, 0] = R_raw[0]
+                c2w_cv[:3, 1] = -R_raw[1]
+                c2w_cv[:3, 2] = R_raw[2]
+                c2w_cv[:3, 3] = eye_raw
+                side.update({"format": "exact-c2w-opencv-v1",
+                             "transform_matrix": c2w_cv.tolist(),
+                             "fl_x": float(cam.f), "fl_y": float(cam.f),
+                             "cx": float(cam.cx), "cy": float(cam.cy),
+                             "w": int(a.res), "h": int(a.res),
+                             "eye_raw": eye_raw.tolist(),
+                             "pano_to_raw_signs": signs.tolist()})
             (outd / f"{tag}.json").write_text(json.dumps(side, indent=2))
             n_out += 1
             print(f"  {tag}  yaw {yaw:5.1f} pitch {pitch:+3d}")

@@ -103,6 +103,7 @@ def summarize(
     *,
     seed: int = 17,
     bootstrap_samples: int = 10_000,
+    comparison_pairs: list[tuple[str, str]] | None = None,
 ) -> dict:
     ground_truth, native_counts, provenance = {}, {}, []
     for scene in scenes:
@@ -149,25 +150,33 @@ def summarize(
             for record in loaded_predictions[method][scene]
         ]
         methods_summary[method] = {
+            "prediction_count": sum(
+                len(loaded_predictions[method][scene]) for scene in scenes
+            ),
             "scene_macro": _macro(per_scene[method]),
             "pooled": evaluate(pooled_gt, pooled_predictions),
         }
 
     comparisons = {}
-    if "active" in methods:
-        for baseline in ("global", "native"):
-            if baseline not in methods:
-                continue
-            comparisons[f"active_minus_{baseline}"] = {
-                field: _bootstrap_delta(
-                    per_scene["active"],
-                    per_scene[baseline],
-                    field,
-                    seed=seed,
-                    samples=bootstrap_samples,
-                )
-                for field in ("map25", "recall25", "map50")
-            }
+    if comparison_pairs is None:
+        comparison_pairs = [
+            ("active", baseline)
+            for baseline in ("global", "native")
+            if "active" in methods and baseline in methods
+        ]
+    for left, right in comparison_pairs:
+        if left not in methods or right not in methods:
+            raise ValueError(f"unknown comparison method: {left}={right}")
+        comparisons[f"{left}_minus_{right}"] = {
+            field: _bootstrap_delta(
+                per_scene[left],
+                per_scene[right],
+                field,
+                seed=seed,
+                samples=bootstrap_samples,
+            )
+            for field in ("map25", "recall25", "map50")
+        }
 
     return {
         "format": "lifting-hypersim-summary-v1",
@@ -195,6 +204,12 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--bootstrap-samples", type=int, default=10_000)
+    parser.add_argument(
+        "--compare",
+        action="append",
+        default=[],
+        help="LEFT=RIGHT method pair for paired scene-bootstrap deltas",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     methods = {}
@@ -203,6 +218,12 @@ def main():
         if not separator or not name or "{scene}" not in pattern:
             parser.error("--method must be NAME=pattern-containing-{scene}")
         methods[name] = pattern
+    comparison_pairs = []
+    for value in args.compare:
+        left, separator, right = value.partition("=")
+        if not separator or not left or not right:
+            parser.error("--compare must be LEFT=RIGHT")
+        comparison_pairs.append((left, right))
     result = summarize(
         args.prepared_root,
         args.predictions_root,
@@ -210,6 +231,7 @@ def main():
         methods,
         seed=args.seed,
         bootstrap_samples=args.bootstrap_samples,
+        comparison_pairs=comparison_pairs or None,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

@@ -73,6 +73,26 @@ def camera_records(transforms: dict) -> list[dict]:
     return records
 
 
+def source_review_camera(transforms: dict) -> dict | None:
+    """Return the first known-valid prepared camera in raw splat coordinates."""
+    frames = transforms.get("frames", [])
+    if not frames:
+        return None
+    frame = frames[0]
+    matrix = frame["transform_matrix"]
+    # Prepared Hypersim transforms are camera-to-world in OpenGL convention:
+    # column 2 points backward, so the rendered viewing direction is -column 2.
+    return {
+        "source_frame": frame.get("file_path", "images/frame_0000.png"),
+        "camera_convention": transforms.get("camera_convention", "c2w_opengl"),
+        "position": [matrix[row][3] for row in range(3)],
+        "forward": [-matrix[row][2] for row in range(3)],
+        "up": [matrix[row][1] for row in range(3)],
+        "fov_y_deg": float(np.degrees(
+            2 * np.arctan(transforms["h"] / (2 * transforms["fl_y"])))),
+    }
+
+
 def build_scene(root: Path, out_dir: Path, scene_id: str, title: str,
                 max_points: int) -> dict:
     prepared = root / "prepared" / scene_id
@@ -86,6 +106,8 @@ def build_scene(root: Path, out_dir: Path, scene_id: str, title: str,
     boxer = read_jsonl(root / "external" / "comparison" / "boxer" /
                        scene_id / "predictions.jsonl")
     transforms = json.loads((analyzer / "transforms.json").read_text(encoding="utf-8"))
+    prepared_transforms = json.loads(
+        (prepared / "transforms.json").read_text(encoding="utf-8"))
     splat = (root / "training" / f"{scene_id}_gsplat5000" / "ply" /
              "point_cloud_4999.ply")
     if not splat.exists():
@@ -131,6 +153,7 @@ def build_scene(root: Path, out_dir: Path, scene_id: str, title: str,
         "base_camera_positions": transforms.get("camera_positions", []),
         "look_targets": transforms.get("look_targets", []),
         "cameras": camera_records(transforms),
+        "source_review_camera": source_review_camera(prepared_transforms),
         "layers": {
             "ground_truth": gt_keep,
             "raw_proposals": annotate_matches(proposals, gt),

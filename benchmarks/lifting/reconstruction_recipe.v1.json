@@ -1,0 +1,56 @@
+{
+  "format": "pipeline-lifter-reconstruction-recipe-v1",
+  "status": "frozen-before-corrected-lifting-run",
+  "frozen_at": "2026-08-20",
+  "selection_basis": {
+    "development_scene": "ai_002_006",
+    "comparison": "5000 versus 15000 steps with every other training input held fixed",
+    "user_visual_verdict": "15000-step reconstruction is better",
+    "held_out_mean_psnr_db": {
+      "5000": 20.96540912840288,
+      "15000": 21.27932154779422
+    },
+    "prohibited_selection_signal": "No downstream lifting predictions, labels, or localization metrics were used to select this recipe"
+  },
+  "trainer": {
+    "entrypoint": "benchmarks/lifting/train_hypersim_splat.py",
+    "gsplat_commit": "937e29912570c372bed6747a5c9bf85fed877bae",
+    "steps": 15000,
+    "max_initial_points": 100000,
+    "test_every": 10,
+    "data_factor": 1,
+    "normalize_world_space": false,
+    "packed": false,
+    "depth_loss": false,
+    "antialiased": false,
+    "appearance_optimization": false,
+    "strategy": "gsplat DefaultStrategy",
+    "physical_up": [0.0, -1.0, 0.0]
+  },
+  "scope": [
+    "ai_051_002",
+    "ai_002_006",
+    "ai_006_008",
+    "ai_037_007",
+    "ai_003_009"
+  ],
+  "verification": {
+    "held_out_cameras_per_scene": 5,
+    "minimum_mean_psnr_db": 18.0,
+    "minimum_single_view_psnr_db": 15.0,
+    "all_scenes_passed": true,
+    "scenes": {
+      "ai_051_002": {"mean_psnr_db": 22.91122607342523, "min_psnr_db": 19.207673183435787, "ply_sha256": "0e7ee048d4536e10e3739f0428ad13181411645748168aea1364b1aec348f6c2"},
+      "ai_002_006": {"mean_psnr_db": 21.27932154779422, "min_psnr_db": 18.392930236775356, "ply_sha256": "4cbc410b677ef33081750d04a68e75d9759a21e20eef9029df32598bcbf17da4"},
+      "ai_006_008": {"mean_psnr_db": 20.52505162678714, "min_psnr_db": 17.15437001267941, "ply_sha256": "eda8335f0bac0f734e90cf5c016c24369acf309195ec77ce0565042d81a02239"},
+      "ai_037_007": {"mean_psnr_db": 25.421417032405444, "min_psnr_db": 22.483411837079, "ply_sha256": "76f2d6681f6e20ce93801e6f944188fc63d8c0bbf1c25ea368ae21a539df0b63"},
+      "ai_003_009": {"mean_psnr_db": 26.20947517488883, "min_psnr_db": 18.26237737704638, "ply_sha256": "41e10008734245560d62efe1ce66ab329dd71da52c62ea04d74557372eb493d8"}
+    }
+  },
+  "fairness_rule": "Every compared method that consumes a Gaussian splat must use the same frozen 15000-step reconstruction; native RGB-D/point-input systems retain their documented input contracts",
+  "forbidden": [
+    "per-scene reconstruction tuning",
+    "recipe selection using downstream lifting ground truth or scores",
+    "mixing 5000-step and 15000-step reconstructions in the corrected comparison"
+  ]
+}

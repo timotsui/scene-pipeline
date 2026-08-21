@@ -1,0 +1,52 @@
+{
+  "schema_version": "lifting-benchmark-v1",
+  "status": "frozen-corrected-development-run",
+  "coordinate_frame": "scene-pipeline raw splat frame",
+  "units": "meters",
+  "box_type": "axis-aligned, full extents",
+  "development_scenes": "hypersim_split.v1.json#development",
+  "target_labels": "hypersim_split.v1.json#selection.labels",
+  "reconstruction": "reconstruction_recipe.v1.json",
+  "base_views": "base_views.v1.json",
+  "method": {
+    "name": "pipeline lifter",
+    "proposal_source": "native GroundingDINO detections and SAM masks",
+    "forbidden_inputs": [
+      "Splat Analyzer proposals",
+      "Splat Analyzer masks",
+      "Splat Analyzer viewpoints",
+      "invented novel base-camera positions",
+      "ground-truth instances before prediction freeze"
+    ],
+    "base_positions_per_scene": 5,
+    "angular_views_per_base": 20,
+    "global_views_per_scene": 100,
+    "detector_box_threshold": 0.2,
+    "detector_topk_per_view": 40,
+    "mask_lift_min_score": 0.2,
+    "spatial_fusion_quantile": 0.05,
+    "founding_manifest_score_threshold": 0.3,
+    "slicevote_gate": 3,
+    "slicevote_resolution": 768
+  },
+  "prediction_freeze": {
+    "adapter": "adapt_pipeline_lifter.py",
+    "requires_full_slicevote_run": true,
+    "requires_single_provenance": true,
+    "ground_truth_read": false,
+    "receipt": "benchmark/prediction_freeze.json"
+  },
+  "evaluation": {
+    "record_format": "JSONL, one object per line",
+    "semantic_policy": "exact canonical label after frozen synonym mapping",
+    "paired_errors": "Hungarian assignment maximizing 3D IoU per scene and label",
+    "detection_ap": "per-class confidence-ranked greedy matching with all-points interpolation",
+    "iou_thresholds": [0.25, 0.5],
+    "development_not_heldout": true
+  },
+  "historical_quarantine": {
+    "prepare_slicevote_scene.py": "legacy fixed-proposal ablation only",
+    "adapt_slicevote.py": "legacy fixed-proposal ablation only",
+    "reason": "Those scripts import Splat Analyzer proposals and masks and are not the pipeline lifter."
+  }
+}

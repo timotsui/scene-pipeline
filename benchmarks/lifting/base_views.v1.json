@@ -1,0 +1,45 @@
+{
+  "format": "pipeline-lifter-approved-base-views-v1",
+  "approved": true,
+  "approved_at": "2026-08-20",
+  "selection_source": "Exact camera poses from the 50-frame prepared Hypersim trajectories supplied to Zoo3D",
+  "selection_rule": "Five user-reviewed base positions per scene; the pipeline lifter will render its normal angular sweep at each position",
+  "forbidden": [
+    "invented or sampled novel base-camera positions",
+    "Splat Analyzer proposal or viewpoint bootstrap"
+  ],
+  "coordinate_frame": "Hypersim metric rotated to physical-up=-Y",
+  "pose_lookup": "Load the exact frame transform_matrix from the scene's prepared transforms.json at zoo_input_index; do not copy or round coordinates from this receipt",
+  "scenes": {
+    "ai_051_002": {
+      "scene_type": "Living room",
+      "transforms_sha256": "d97076cd9921c32080792bdfc03914b7aeff99a54b3cbaa94caad1847df313b1",
+      "zoo_input_indices": [4, 45, 34, 43, 8],
+      "source_images": ["frame_0008.png", "frame_0091.png", "frame_0069.png", "frame_0087.png", "frame_0016.png"]
+    },
+    "ai_002_006": {
+      "scene_type": "Kitchen",
+      "transforms_sha256": "5ce3f6bf899f7f9fa89822365fc35875b28cb695758464b38f98a46472e1b830",
+      "zoo_input_indices": [6, 21, 17, 19, 0],
+      "source_images": ["frame_0012.png", "frame_0042.png", "frame_0034.png", "frame_0038.png", "frame_0000.png"]
+    },
+    "ai_006_008": {
+      "scene_type": "Bedroom",
+      "transforms_sha256": "ae16dee0ecf2637f94e7700682387c654231940fb20070b8ec443dd3e417fc5b",
+      "zoo_input_indices": [23, 0, 21, 11, 3],
+      "source_images": ["frame_0046.png", "frame_0000.png", "frame_0042.png", "frame_0022.png", "frame_0006.png"]
+    },
+    "ai_037_007": {
+      "scene_type": "Dining room",
+      "transforms_sha256": "6ff78eeca5fcc5152a6b42444e2b5d61345e8e7b5c440709d1e477a3707000f7",
+      "zoo_input_indices": [26, 29, 33, 43, 30],
+      "source_images": ["frame_0053.png", "frame_0059.png", "frame_0067.png", "frame_0087.png", "frame_0061.png"]
+    },
+    "ai_003_009": {
+      "scene_type": "Office",
+      "transforms_sha256": "8b4741bf353f73b9cdb6cf49864428e10923a2577231567b736720e979299588",
+      "zoo_input_indices": [13, 3, 29, 5, 35],
+      "source_images": ["frame_0026.png", "frame_0006.png", "frame_0059.png", "frame_0010.png", "frame_0071.png"]
+    }
+  }
+}

@@ -58,6 +58,9 @@ def main():
                     help="horizontal standpoint offset 'dx,dz' in RAW "
                          "meters from the default center eye (second-"
                          "standpoint experiment 2026-08-06)")
+    ap.add_argument("--eye-raw", default="",
+                    help="exact trusted RAW/world camera position x,y,z; "
+                         "bypasses the derived room-centre standpoint")
     a = ap.parse_args()
     sc = a.scene
     sd = paths.scene_dir(sc)
@@ -82,17 +85,24 @@ def main():
     signs = np.array([1.0, -1.0, 1.0])          # the A2 readability mirror
     floor_y = fr["floor_y"]
     up_sign = -1 if fr["up"][1] < 0 else 1
-    dx, dz = (float(t) for t in a.eye_offset.split(","))
     ceil_y = fr.get("ceiling_y")
-    if ceil_y is not None:
-        eye_h = abs(floor_y - ceil_y) * EYE_FRAC
+    if a.eye_raw:
+        eye = [float(t) for t in a.eye_raw.split(",")]
+        if len(eye) != 3 or not np.isfinite(eye).all():
+            ap.error("--eye-raw requires three finite comma-separated values")
+        eye_h = abs(float(eye[1]) - float(floor_y))
+        print(f"[stitch] eye {eye} (exact trusted source-camera position)", flush=True)
     else:
-        eye_h = EYE_H          # no ceiling measured: the old absolute
-    eye = [dx, floor_y + up_sign * eye_h, dz]
-    print(f"[stitch] eye {eye} (offset {dx},{dz}; eye height {eye_h:.3f} "
-          f"= {EYE_FRAC:.3f} x room height"
-          + ("" if ceil_y is not None else " FALLBACK: no ceiling, "
-             "absolute 1.6") + ")", flush=True)
+        dx, dz = (float(t) for t in a.eye_offset.split(","))
+        if ceil_y is not None:
+            eye_h = abs(floor_y - ceil_y) * EYE_FRAC
+        else:
+            eye_h = EYE_H          # no ceiling measured: the old absolute
+        eye = [dx, floor_y + up_sign * eye_h, dz]
+        print(f"[stitch] eye {eye} (offset {dx},{dz}; eye height {eye_h:.3f} "
+              f"= {EYE_FRAC:.3f} x room height"
+              + ("" if ceil_y is not None else " FALLBACK: no ceiling, "
+                 "absolute 1.6") + ")", flush=True)
 
     # ---------- render the 6 faces (GPU, WSL, resumable) ----------
     # Face cache is valid ONLY for this exact camera + frame + ply state —
@@ -191,7 +201,9 @@ def main():
     Image.fromarray(np.clip(pano, 0, 255).astype(np.uint8)).save(pf)
     print(f"[stitch] wrote {pf} ({PANO_W}x{PANO_H})", flush=True)
     (outd / "pano_selfrender_meta.json").write_text(json.dumps(
-        {"scene": sc, "eye_raw": eye, "eye_height_m": round(eye_h, 4),
+        {"scene": sc, "eye_raw": eye,
+         "eye_source": ("trusted_source_camera" if a.eye_raw else "derived_room_center"),
+         "eye_height_m": round(eye_h, 4),
          "eye_frac_of_room": EYE_FRAC,
          "pano_to_raw_signs": signs.tolist(),
          "pano_to_raw": "d_raw = signs * d_p + eye offset — improper "
