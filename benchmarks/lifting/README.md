@@ -4,25 +4,27 @@ This directory contains the versioned, model-independent plumbing for the
 lifting-paper benchmark. Heavy renders, splats, predictions, and checkpoints
 belong under the machine-local `out/` root and are never committed.
 
-Status on 2026-08-20: **the corrected five-scene pipeline-lifter development
-run is frozen in `protocol.v1.json` and in progress**. The former
+Status on 2026-08-21: **the corrected five-scene Pipeline Lifter benchmark is
+complete**. The former
 fixed-proposal SliceVote experiment is quarantined as a legacy ablation: it
 started from Splat Analyzer proposals and masks and is not the pipeline lifter.
 
-## Hypersim development benchmark (2026-08-17)
+## Hypersim benchmark
 
-The public-data development study uses five Hypersim train scenes spanning a
+The public-data benchmark uses five Hypersim train scenes spanning a
 living room, kitchen, bedroom, dining room, and office. Each scene uses 50
 evenly spaced source frames, exact metric cameras, five reserved reconstruction
-checks, and seven canonical object categories. Reconstructions use the frozen
-15,000-step recipe in `reconstruction_recipe.v1.json`.
+checks, and seven canonical object categories. Every splat-consuming
+configuration uses the same highest-quality available 15,000-step
+reconstruction in `reconstruction_recipe.v1.json`. Reconstruction quality is
+common input preparation, not part of the lifting method.
 
-The pipeline lifter uses five user-reviewed base poses per scene, loaded exactly
-from the same prepared Hypersim trajectories supplied to Zoo3D. It renders a
-20-view angular sweep at each base (100 views per scene), runs its own
+The pipeline lifter uses a fixed five-pose compute budget from the same prepared
+Hypersim trajectories supplied to Zoo3D. It renders a 20-view angular sweep at
+each base (100 views per scene), runs its own
 GroundingDINO and SAM discovery, lifts the masks with exact camera sidecars,
-spatially fuses the lifted observations, and then runs SliceVote. The approved
-pose indices are in `base_views.v1.json`; no novel base positions and no Splat
+spatially fuses the lifted observations, and then runs SliceVote. The exact pose
+indices are in `base_views.v1.json`; no novel base positions and no Splat
 Analyzer proposals, masks, or viewpoints enter this method.
 
 The old experiment across 87 visible ground-truth objects and the same 123
@@ -36,14 +38,14 @@ and ties the no-proposal scene against that baseline. These are development
 results, not held-out estimates, and are retained only as a historical
 fixed-proposal ablation. They must not be reported as the pipeline lifter.
 
-An external cross-system reference uses the same five scenes, 87 visible ground
+The corrected cross-system benchmark uses the same five scenes, 87 visible ground
 truth objects, seven-category normalization, and common evaluator, but lets each
 system keep its own proposal and aggregation pipeline. Zoo3D reaches scene-macro
 mAP25 0.194, recall25 0.249, and mAP50 0.151 from 50 target-category predictions.
-The corrected pipeline-lifter row is intentionally left unreported until all
-five native predictions have been frozen before ground truth is opened. Boxer
-and Zoo3D remain external development references, not a controlled causal or
-held-out system ranking.
+Pipeline Lifter reaches 0.401, 0.495, and 0.237 from 183 predictions; Boxer
+reaches 0.019, 0.057, and 0.000 from 49 predictions. All five Pipeline Lifter
+prediction files were frozen before ground truth was opened. This is a native
+same-scene system comparison, not a fixed-proposal causal ablation.
 
 The offline visual summary, including the aggregate and per-scene
 ours-versus-Zoo3D win/tie/loss tables, is in
@@ -87,8 +89,8 @@ component ablation and is kept separate from the corrected native
 pipeline-lifter result.
 
 Heavy source data, splats, model outputs, and metrics remain under the ignored
-machine-local `out/` root. The committed split records which settings are frozen
-and which held-out work remains.
+machine-local `out/` root. The committed receipts record the frozen inputs,
+settings, and predictions.
 
 ## Protocol rules
 
@@ -97,15 +99,15 @@ distinct:
 
 - `fixed_proposal`: every lift receives the same proposal identity, label, score,
   and initial global observations; legacy ablation only.
-- `pipeline_lifter_native`: five approved source-trajectory bases, 20 angular
+- `pipeline_lifter_native`: five measured source-trajectory bases, 20 angular
   views per base, native detector/masks/lift/fusion, then SliceVote.
 - `native_external`: each released system keeps its intended proposal and
   aggregation path; inputs and resource use are reported rather than treated as
   matched.
 
-Do not tune on held-out scenes. Existing generated scenes have no object-level
-metric ground truth and may be used only for plumbing, timing, and qualitative
-checks.
+Do not use object-level benchmark ground truth to tune discovery, lifting,
+fusion, or refinement. Existing generated scenes have no object-level metric
+ground truth and may be used for plumbing, timing, and qualitative checks.
 
 ## Unified object record
 

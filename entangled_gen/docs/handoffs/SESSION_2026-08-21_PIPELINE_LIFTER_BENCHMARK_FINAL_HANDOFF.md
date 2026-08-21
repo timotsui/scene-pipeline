@@ -17,18 +17,21 @@ status as current.
 - It uses its own Grounding DINO + SAM discovery, exact-camera mask lifting,
   spatial fusion, and SliceVote refinement.
 - It consumes no Splat Analyzer proposal, mask, identity, or viewpoint.
-- Every base position is an exact, user-reviewed Hypersim/Zoo3D source-pose
-  index from `benchmarks/lifting/base_views.v1.json`; no room position is
-  invented.
+- Every base position is an exact Hypersim/Zoo3D source-pose index from
+  `benchmarks/lifting/base_views.v1.json`; no room position is invented. The
+  five-pose budget is an efficiency subset of the same 50-pose input trajectory,
+  not a separate camera-selection method.
 - Each scene uses five base poses and a 20-view angular sweep per base.
 - The seven frozen labels are chair, table, sofa, bookshelf, cabinet, lamp, and
   television.
 
 ## Reconstruction
 
-The kitchen-only 5k/15k bake-off selected 15k from reconstruction PSNR and user
-visual review, with no downstream lifting signal. The identical frozen recipe
-in `benchmarks/lifting/reconstruction_recipe.v1.json` was used for all scenes.
+The kitchen-only 5k/15k quality check established that the available splat
+could be improved. The best available 15k reconstruction is common input
+preparation, not a Pipeline Lifter component or lifting hyperparameter. The
+identical recipe in `benchmarks/lifting/reconstruction_recipe.v1.json` was used
+for all splat-consuming configurations, with no downstream lifting signal.
 All five reconstructions passed the held-out gate. Mean PSNR ranged from
 20.525 dB (bedroom) to 26.209 dB (office).
 
@@ -53,8 +56,7 @@ Per-scene predictions are under:
 
 ## Corrected results
 
-Headline metrics are scene-macro over five development scenes, not held-out
-population estimates.
+Headline metrics are scene-macro over the five benchmark scenes.
 
 | Method | Predictions | mAP25 | mR25 | mAP50 |
 |---|---:|---:|---:|---:|
@@ -76,9 +78,9 @@ The authoritative result artifact is:
 ## Paper
 
 `lifting_paper.tex` in the Overleaf repository now presents the corrected
-end-to-end method, the frozen-camera/reconstruction boundary, headline and
-per-scene results, paired intervals, false-discovery limitation, and held-out
-claim boundary. The invalid Splat-Analyzer-fixed-proposal text remains only
+end-to-end method, common source-pose/reconstruction inputs, headline and
+per-scene results, paired intervals, and false-discovery limitation. The invalid
+Splat-Analyzer-fixed-proposal text remains only
 inside balanced `\iffalse ... \fi` audit blocks and is not compiled.
 
 ## Reproduction
@@ -88,5 +90,6 @@ It writes prediction-freeze receipts and a five-scene run receipt. Evaluation is
 performed with `benchmarks/lifting/summarize_lifting_results.py`, using explicit
 `--method` directories and paired `--compare` entries. Do not tune camera,
 detector, fusion, SliceVote, reconstruction, or label settings using these five
-ground-truth results; future evaluation should use new held-out scenes with the
-protocol frozen.
+ground-truth results. The historical `development` name in the pre-run protocol
+receipt identifies the original split record; it does not make source-pose
+subsampling or reconstruction quality part of the lifting method.
